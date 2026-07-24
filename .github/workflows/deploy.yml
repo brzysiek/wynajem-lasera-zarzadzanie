@@ -16,7 +16,13 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm ci
+        # npm ci is intentionally not used here: the lockfile was generated
+        # with a newer npm than the one bundled with Node 20 on this runner,
+        # and older npm mishandles bundleDependencies on the optional
+        # @tailwindcss/oxide-wasm32-wasi package, wrongly reporting
+        # @emnapi/runtime and @emnapi/core as missing. npm install tolerates
+        # this and self-heals (same fix as deploy-finish.sh on the server).
+        run: npm install
 
       - name: Generate Prisma client
         run: npx prisma generate
