@@ -35,6 +35,14 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Debug build output
+        if: always()
+        run: |
+          echo "PWD: $(pwd)"
+          ls -la
+          echo "---"
+          ls -la .next || echo ".next directory does not exist"
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
