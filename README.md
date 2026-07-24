@@ -6,7 +6,7 @@ Ten etap (Etap 1 — fundament) zawiera: szkielet stron nawigacji bez funkcjonal
 
 ## Stack
 
-Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · PostgreSQL · NextAuth v5 (beta)
+Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · MySQL · NextAuth v5 (beta)
 
 > Specyfikacja wskazuje `bcrypt` do hashowania haseł — użyto `bcryptjs` (czysty JS, bez kompilacji natywnej), API jest kompatybilne.
 
@@ -15,7 +15,7 @@ Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · PostgreS
 ## Wymagania
 
 - Node.js 20+
-- Baza PostgreSQL (lokalna lub np. Neon/Supabase)
+- Baza MySQL (lokalna lub np. PlanetScale)
 
 ## Konfiguracja
 
@@ -31,7 +31,7 @@ Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · PostgreS
    cp .env.example .env
    ```
 
-   - `DATABASE_URL` — connection string do Twojej bazy PostgreSQL.
+   - `DATABASE_URL` — connection string do Twojej bazy MySQL, np. `mysql://user:haslo@localhost:3306/nazwa_bazy`.
    - `NEXTAUTH_SECRET` — wygeneruj np. `openssl rand -base64 32`.
    - `NEXTAUTH_URL` — `http://localhost:3000` na dev, `https://brzychu.cfolks.pl` na produkcji (bez `/wynajem` — Next.js sam dokleja `basePath`, dopisanie go tutaj psuje parsowanie akcji NextAuth; patrz sekcja Deploy).
 
@@ -40,8 +40,8 @@ Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · PostgreS
 3. Załóż bazę danych **ręcznie**, uruchamiając kolejno pliki SQL z katalogu `sql/`:
 
    ```bash
-   psql "$DATABASE_URL" -f sql/schema.sql
-   psql "$DATABASE_URL" -f sql/seed.sql
+   mysql -u UZYTKOWNIK -p NAZWA_BAZY < sql/schema.sql
+   mysql -u UZYTKOWNIK -p NAZWA_BAZY < sql/seed.sql
    ```
 
    - `sql/schema.sql` — pełny schemat (tabele, enumy, klucze obce) wygenerowany z `prisma/schema.prisma`.
@@ -160,22 +160,22 @@ npm run build
 
 W panelu Node.js Selector kliknij **Restart** dla aplikacji (albo `touch tmp/restart.txt`).
 
-### Krok 3 — baza PostgreSQL
+### Krok 3 — baza MySQL
 
-cyberfolks (jak większość cPanel-i) udostępnia **PostgreSQL Databases** w
+cyberfolks (jak większość cPanel-i) udostępnia **MySQL Databases** w
 panelu — tam zakładasz bazę i użytkownika (cPanel zwykle prefiksuje nazwy
 loginem konta, np. `twojuser_wynajem`). Connection string do `.env`:
 
 ```
-DATABASE_URL=postgresql://twojuser_wynajem:HASLO@localhost:5432/twojuser_wynajem
+DATABASE_URL=mysql://twojuser_wynajem:HASLO@localhost:3306/twojuser_wynajem
 ```
 
-Zastosuj schemat (jeśli `psql` jest dostępny po SSH — sprawdź `which psql`;
-jeśli nie, użyj narzędzia SQL z panelu, np. phpPgAdmin, jeśli jest dostępne):
+Zastosuj schemat (jeśli `mysql` jest dostępny po SSH — sprawdź `which mysql`;
+jeśli nie, użyj narzędzia SQL z panelu, np. phpMyAdmin, jeśli jest dostępne):
 
 ```bash
-psql "$DATABASE_URL" -f sql/schema.sql
-psql "$DATABASE_URL" -f sql/seed.sql
+mysql -u twojuser_wynajem -p twojuser_wynajem < sql/schema.sql
+mysql -u twojuser_wynajem -p twojuser_wynajem < sql/seed.sql
 ```
 
 Konto startowe z `sql/seed.sql`: login `lukasz@wynajemlasera.pl`, hasło `12345678` — zmień je po pierwszym logowaniu (funkcja zmiany hasła to kolejny etap prac).
