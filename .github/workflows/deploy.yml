@@ -35,20 +35,17 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Debug build output
-        if: always()
-        run: |
-          echo "PWD: $(pwd)"
-          ls -la
-          echo "---"
-          ls -la .next || echo ".next directory does not exist"
-
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: next-build
           path: .next
           retention-days: 1
+          # .next is a dot-directory, and upload-artifact v4 silently
+          # excludes hidden files/dirs unless told otherwise — without this
+          # the step reports "No files were found" even though .next is
+          # fully populated (confirmed via the debug step above).
+          include-hidden-files: true
           # Default behavior is to warn (and still exit 0) when no files
           # match — that hides a broken build behind a green checkmark and
           # only surfaces as a confusing "artifact not found" in the deploy
