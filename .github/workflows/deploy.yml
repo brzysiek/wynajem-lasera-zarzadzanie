@@ -41,6 +41,11 @@ jobs:
           name: next-build
           path: .next
           retention-days: 1
+          # Default behavior is to warn (and still exit 0) when no files
+          # match — that hides a broken build behind a green checkmark and
+          # only surfaces as a confusing "artifact not found" in the deploy
+          # job. Fail loudly here instead, where the real cause is visible.
+          if-no-files-found: error
 
   deploy:
     needs: build
