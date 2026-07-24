@@ -19,7 +19,11 @@ echo "==> Activating cPanel Node.js virtual environment"
 source "$NODEVENV_DIR/bin/activate"
 
 echo "==> Installing dependencies"
-npm ci
+# npm ci is strict about optional platform-specific packages (e.g. the
+# @emnapi/* WASM fallback deps) matching the lockfile exactly, which has
+# proven flaky across different npm versions/hosts; npm install tolerates
+# and self-heals that instead.
+npm install
 
 echo "==> Generating Prisma client"
 npx prisma generate

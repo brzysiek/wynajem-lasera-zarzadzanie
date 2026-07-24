@@ -103,7 +103,7 @@ firewalla ani SSL (AutoSSL w cPanel ogarnia certyfikat dla całej domeny).
 
 Ciągłe wdrażanie działa tak: każdy push do `main` uruchamia
 `.github/workflows/deploy.yml`, który łączy się po SSH z kontem i wykonuje
-`deploy/deploy.sh` (git pull, `npm ci`, `prisma generate`, `npm run build`,
+`deploy/deploy.sh` (git pull, `npm install`, `prisma generate`, `npm run build`,
 restart aplikacji przez Passengera).
 
 ### Krok 1 — załóż aplikację Node.js w panelu cyberfolks
@@ -153,7 +153,7 @@ Potem pierwszy build (w środowisku Node z Kroku 1):
 ```bash
 source /home/brzychu/nodevenv/domains/brzychu.cfolks.pl/public_html/wynajem/20/bin/activate
 cd /home/brzychu/domains/brzychu.cfolks.pl/public_html/wynajem
-npm ci
+npm install
 npx prisma generate
 npm run build
 ```
