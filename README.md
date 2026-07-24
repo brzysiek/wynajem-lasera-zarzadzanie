@@ -88,7 +88,9 @@ Dostęp do stron `ADMIN`-only jest sprawdzany po stronie serwera (`requireAdmin(
 - `src/proxy.ts` — ochrona tras (odpowiednik `middleware.ts` w Next.js 16).
 - `src/app/(app)` — strony wymagające zalogowania, wspólny layout z nawigacją.
 - `src/app/login` — ekran logowania.
-- `deploy/` — skrypty wdrożeniowe dla cyberfolks (patrz niżej).
+- `deploy/deploy-pull.sh` — synchronizuje kod źródłowy na serwerze (git fetch/reset).
+- `deploy/deploy-finish.sh` — na serwerze: `npm install`, `prisma generate`, restart Passengera (bez builda — patrz niżej, dlaczego).
+- `deploy/generate-actions-key.sh` — jednorazowy generator klucza SSH dla GitHub Actions.
 - `.github/workflows/deploy.yml` — automatyczny deploy po pushu do `main`.
 - `server.js` — custom server wymagany przez Passenger (Node.js Selector w cPanel); `npm start` uruchamia ten plik zamiast `next start`.
 
@@ -102,9 +104,20 @@ typowego wdrożenia na VPS: nie instalujemy nic systemowo, nie dotykamy
 firewalla ani SSL (AutoSSL w cPanel ogarnia certyfikat dla całej domeny).
 
 Ciągłe wdrażanie działa tak: każdy push do `main` uruchamia
-`.github/workflows/deploy.yml`, który łączy się po SSH z kontem i wykonuje
-`deploy/deploy.sh` (git pull, `npm install`, `prisma generate`, `npm run build`,
-restart aplikacji przez Passengera).
+`.github/workflows/deploy.yml`, które:
+
+1. Buduje aplikację (`npm run build`) **na runnerze GitHub Actions**, nie na
+   serwerze — koszty budowy (kompilacja SWC/webpack) potrafią uruchomić
+   więcej wątków systemowych, niż pozwala na to limit CloudLinux LVE
+   konta cyberfolks (nawet gdy `ulimit -u` na koncie wygląda na
+   nieograniczony — to osobny, niewidoczny limit), więc `next build`
+   na samym koncie kończy się panikiem Rusta/tokio.
+2. Synchronizuje kod źródłowy na serwerze (`deploy/deploy-pull.sh` — git
+   fetch/reset).
+3. Wysyła gotowy zbudowany katalog `.next/` na serwer przez `rsync`.
+4. Na serwerze uruchamia `deploy/deploy-finish.sh` (`npm install`,
+   `prisma generate` — to lekkie operacje, działają bez problemu lokalnie
+   na koncie — i restart aplikacji przez Passengera).
 
 ### Krok 1 — załóż aplikację Node.js w panelu cyberfolks
 
@@ -148,17 +161,17 @@ Uzupełnij w `.env`:
 - `NEXTAUTH_SECRET` — `openssl rand -base64 32`.
 - `NEXTAUTH_URL=https://brzychu.cfolks.pl` (bez `/wynajem`, patrz sekcja Konfiguracja wyżej).
 
-Potem pierwszy build (w środowisku Node z Kroku 1):
+Potem zainstaluj zależności i wygeneruj klienta Prisma (w środowisku Node z
+Kroku 1) — **nie buduj tutaj ręcznie** (`npm run build` na tym koncie kończy
+się panikiem Rusta/tokio przez limity CloudLinux LVE, patrz wyżej); pierwszy
+build dostarczy dopiero pierwszy automatyczny deploy z Kroku 6:
 
 ```bash
 source /home/brzychu/nodevenv/domains/brzychu.cfolks.pl/public_html/wynajem/20/bin/activate
 cd /home/brzychu/domains/brzychu.cfolks.pl/public_html/wynajem
 npm install
 npx prisma generate
-npm run build
 ```
-
-W panelu Node.js Selector kliknij **Restart** dla aplikacji (albo `touch tmp/restart.txt`).
 
 ### Krok 3 — baza MySQL
 
