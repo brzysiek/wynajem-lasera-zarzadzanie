@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+}
+
+enum Channel {
+  SMS
+  EMAIL
+}
+
+enum ReminderStatus {
+  SCHEDULED
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum MessageStatus {
+  SENT
+  FAILED
+}
+
+enum SyncDirection {
+  PULL
+  PUSH
+}
+
+enum SyncStatus {
+  OK
+  ERROR
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(STAFF)
+  createdAt    DateTime @default(now())
+
+  messages Message[]
+
+  @@map("users")
+}
+
+model Device {
+  id               String   @id @default(uuid())
+  name             String
+  shortName        String
+  color            String
+  googleCalendarId String
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  rentals  Rental[]
+  syncLogs SyncLog[]
+
+  @@map("devices")
+}
+
+model Rental {
+  id                String    @id @default(uuid())
+  deviceId          String
+  googleEventId     String
+  googleCalendarId  String
+  title             String
+  description       String?
+  startsAt          DateTime
+  endsAt            DateTime
+  allDay            Boolean   @default(false)
+  hubspotContactId  String?
+  contactNameCache  String?
+  contactPhoneCache String?
+  contactEmailCache String?
+  internalNotes     String?
+  lastSyncedAt      DateTime?
+  deletedInGoogle   Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  device        Device         @relation(fields: [deviceId], references: [id])
+  reminderRules ReminderRule[]
+  messages      Message[]
+
+  @@unique([googleCalendarId, googleEventId])
+  @@map("rentals")
+}
+
+model ReminderRule {
+  id           String         @id @default(uuid())
+  rentalId     String
+  daysBefore   Int
+  channel      Channel
+  messageBody  String
+  status       ReminderStatus @default(SCHEDULED)
+  scheduledFor DateTime
+  sentAt       DateTime?
+  errorMessage String?
+
+  rental Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  @@map("reminder_rules")
+}
+
+model Message {
+  id                String        @id @default(uuid())
+  rentalId          String?
+  userId            String?
+  channel           Channel
+  recipient         String
+  subject           String?
+  body              String
+  status            MessageStatus
+  providerMessageId String?
+  errorMessage      String?
+  sentAt            DateTime      @default(now())
+
+  rental Rental? @relation(fields: [rentalId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+
+  @@map("messages")
+}
+
+model MessageTemplate {
+  id      String  @id @default(uuid())
+  key     String  @unique
+  label   String
+  channel Channel
+  subject String?
+  body    String
+
+  @@map("message_templates")
+}
+
+model Setting {
+  key   String @id
+  value String
+
+  @@map("settings")
+}
+
+model SyncLog {
+  id              String        @id @default(uuid())
+  deviceId        String?
+  direction       SyncDirection
+  eventsProcessed Int
+  status          SyncStatus
+  errorMessage    String?
+  createdAt       DateTime      @default(now())
+
+  device Device? @relation(fields: [deviceId], references: [id])
+
+  @@map("sync_logs")
+}

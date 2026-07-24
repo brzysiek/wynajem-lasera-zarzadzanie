@@ -1,2 +1,226 @@
 # wynajem-lasera-zarzadzanie
-# wynajem-lasera-zarzadzanie
+
+Panel do zarządzania wynajmem urządzeń — WynajemLasera.pl. Pełna specyfikacja: [`SPECYFIKACJA-wynajemlasera-app.md`](./SPECYFIKACJA-wynajemlasera-app.md).
+
+Ten etap (Etap 1 — fundament) zawiera: szkielet stron nawigacji bez funkcjonalności biznesowej, logowanie (NextAuth Credentials) oraz schemat bazy danych do ręcznego zastosowania.
+
+## Stack
+
+Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · PostgreSQL · NextAuth v5 (beta)
+
+> Specyfikacja wskazuje `bcrypt` do hashowania haseł — użyto `bcryptjs` (czysty JS, bez kompilacji natywnej), API jest kompatybilne.
+
+> Aplikacja jest wdrażana pod ścieżką `/wynajem` (patrz `basePath` w `next.config.ts`), bo docelowa domena to `brzychu.cfolks.pl/wynajem/`, nie osobna subdomena. Lokalnie (`npm run dev`) aplikacja jest więc dostępna pod `http://localhost:3000/wynajem`, nie pod samym `/`.
+
+## Wymagania
+
+- Node.js 20+
+- Baza PostgreSQL (lokalna lub np. Neon/Supabase)
+
+## Konfiguracja
+
+1. Zainstaluj zależności:
+
+   ```bash
+   npm install
+   ```
+
+2. Skopiuj `.env.example` do `.env` i uzupełnij przynajmniej:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   - `DATABASE_URL` — connection string do Twojej bazy PostgreSQL.
+   - `NEXTAUTH_SECRET` — wygeneruj np. `openssl rand -base64 32`.
+   - `NEXTAUTH_URL` — `http://localhost:3000` na dev, `https://brzychu.cfolks.pl` na produkcji (bez `/wynajem` — Next.js sam dokleja `basePath`, dopisanie go tutaj psuje parsowanie akcji NextAuth; patrz sekcja Deploy).
+
+   Pozostałe zmienne (Google, HubSpot, SMS, e-mail) dotyczą kolejnych etapów integracji i mogą na razie zostać puste.
+
+3. Załóż bazę danych **ręcznie**, uruchamiając kolejno pliki SQL z katalogu `sql/`:
+
+   ```bash
+   psql "$DATABASE_URL" -f sql/schema.sql
+   psql "$DATABASE_URL" -f sql/seed.sql
+   ```
+
+   - `sql/schema.sql` — pełny schemat (tabele, enumy, klucze obce) wygenerowany z `prisma/schema.prisma`.
+   - `sql/seed.sql` — konto startowe administratora:
+     - login: `lukasz@wynajemlasera.pl`
+     - hasło: `12345678`
+
+   Prisma Client łączy się z bazą przez `DATABASE_URL` z `.env` — nie jest wymagane uruchamianie `prisma migrate`/`prisma db push`, bo schemat zakłada się ręcznie przez powyższe pliki SQL.
+
+4. Wygeneruj Prisma Client (wymagane do działania `@/lib/prisma`):
+
+   ```bash
+   npx prisma generate
+   ```
+
+5. Uruchom aplikację:
+
+   ```bash
+   npm run dev
+   ```
+
+   Aplikacja jest dostępna pod `http://localhost:3000` i przekierowuje do `/login`.
+
+## Struktura stron
+
+Wszystkie strony poza `/login` są chronione (przekierowanie do `/login` dla niezalogowanych, zarówno w `proxy.ts`, jak i w layoucie `(app)`):
+
+- `/kalendarz` — widok kalendarza (placeholder)
+- `/nadchodzace` — lista nadchodzących wynajmów (placeholder)
+- `/urzadzenia` — lista urządzeń (placeholder)
+- `/ustawienia/konto` — dane własnego konta
+- `/ustawienia/szablony` — szablony wiadomości
+- `/ustawienia/integracje` — tylko `ADMIN`
+- `/ustawienia/bramka` — tylko `ADMIN`
+- `/ustawienia/uzytkownicy` — tylko `ADMIN`
+
+Dostęp do stron `ADMIN`-only jest sprawdzany po stronie serwera (`requireAdmin()` w `src/lib/auth-guards.ts`), zgodnie z zasadą ze specyfikacji, że rola `STAFF` nie może uzyskać dostępu nawet przy znajomości adresu URL.
+
+## Struktura projektu
+
+- `prisma/schema.prisma` — źródło prawdy dla modelu danych.
+- `sql/schema.sql`, `sql/seed.sql` — statyczny SQL wygenerowany z modelu Prisma (bez połączenia z żywą bazą), do ręcznego zastosowania.
+- `src/auth.ts` — konfiguracja NextAuth (Credentials provider).
+- `src/proxy.ts` — ochrona tras (odpowiednik `middleware.ts` w Next.js 16).
+- `src/app/(app)` — strony wymagające zalogowania, wspólny layout z nawigacją.
+- `src/app/login` — ekran logowania.
+- `deploy/` — skrypty wdrożeniowe dla cyberfolks (patrz niżej).
+- `.github/workflows/deploy.yml` — automatyczny deploy po pushu do `main`.
+- `server.js` — custom server wymagany przez Passenger (Node.js Selector w cPanel); `npm start` uruchamia ten plik zamiast `next start`.
+
+## Deploy na cyberfolks (cPanel Node.js Selector) z automatycznym wdrożeniem po pushu
+
+To konto ma dostęp SSH **bez roota**, ale panel cyberfolks daje **Node.js
+Selector** (Passenger) — to on uruchamia i nadzoruje proces Node zamiast
+PM2/systemd, a routing `brzychu.cfolks.pl/wynajem/` → aplikacja obsługuje
+sam, bez ręcznej konfiguracji Nginx. Dlatego cały setup poniżej różni się od
+typowego wdrożenia na VPS: nie instalujemy nic systemowo, nie dotykamy
+firewalla ani SSL (AutoSSL w cPanel ogarnia certyfikat dla całej domeny).
+
+Ciągłe wdrażanie działa tak: każdy push do `main` uruchamia
+`.github/workflows/deploy.yml`, który łączy się po SSH z kontem i wykonuje
+`deploy/deploy.sh` (git pull, `npm ci`, `prisma generate`, `npm run build`,
+restart aplikacji przez Passengera).
+
+### Krok 1 — załóż aplikację Node.js w panelu cyberfolks
+
+W panelu (sekcja **Setup Node.js App** / Node.js Selector):
+
+1. **Node.js version** — 20.x (najnowsza dostępna 20.x).
+2. **Application mode** — `Production`.
+3. **Application root** — `domains/brzychu.cfolks.pl/public_html/wynajem` (czyli pełna ścieżka `/home/brzychu/domains/brzychu.cfolks.pl/public_html/wynajem` — ten katalog musi być głównym katalogiem repo, patrz Krok 2).
+4. **Application URL** — domena `brzychu.cfolks.pl`, ścieżka `wynajem`.
+5. **Application startup file** — `server.js`.
+6. Zapisz. Panel pokaże komendę do wejścia do wirtualnego środowiska Node, w stylu:
+
+   ```bash
+   source /home/brzychu/nodevenv/domains/brzychu.cfolks.pl/public_html/wynajem/20/bin/activate && cd /home/brzychu/domains/brzychu.cfolks.pl/public_html/wynajem
+   ```
+
+   Zapisz sobie tę ścieżkę do `nodevenv/...` (może się różnić od powyższej — użyj dokładnie tej, którą pokazał panel) — to Twój `NODEVENV_DIR` z Kroku 5.
+
+### Krok 2 — sklonuj repo na konto
+
+Panel Node.js Selector zwykle od razu tworzy katalog aplikacji (`Application root`
+z Kroku 1) i może wrzucić do niego placeholder (`app.js`, `package.json`).
+Zwykłe `git clone` odmówi klonowania do niepustego katalogu, więc zamiast
+tego zainicjalizuj repo bezpośrednio w tym katalogu. Masz już skonfigurowany
+klucz SSH między serwerem a GitHubem (do pobierania kodu), więc zalogowany po
+SSH na konto cyberfolks:
+
+```bash
+cd /home/brzychu/domains/brzychu.cfolks.pl/public_html/wynajem
+rm -rf ./* ./.[!.]*        # usuń placeholder wygenerowany przez panel (katalog musi być pusty)
+git init
+git remote add origin git@github.com:brzysiek/wynajem-lasera-zarzadzanie.git
+git fetch origin main
+git checkout -f main
+cp .env.example .env
+```
+
+Uzupełnij w `.env`:
+
+- `DATABASE_URL` — patrz Krok 3 (baza).
+- `NEXTAUTH_SECRET` — `openssl rand -base64 32`.
+- `NEXTAUTH_URL=https://brzychu.cfolks.pl` (bez `/wynajem`, patrz sekcja Konfiguracja wyżej).
+
+Potem pierwszy build (w środowisku Node z Kroku 1):
+
+```bash
+source /home/brzychu/nodevenv/domains/brzychu.cfolks.pl/public_html/wynajem/20/bin/activate
+cd /home/brzychu/domains/brzychu.cfolks.pl/public_html/wynajem
+npm ci
+npx prisma generate
+npm run build
+```
+
+W panelu Node.js Selector kliknij **Restart** dla aplikacji (albo `touch tmp/restart.txt`).
+
+### Krok 3 — baza PostgreSQL
+
+cyberfolks (jak większość cPanel-i) udostępnia **PostgreSQL Databases** w
+panelu — tam zakładasz bazę i użytkownika (cPanel zwykle prefiksuje nazwy
+loginem konta, np. `twojuser_wynajem`). Connection string do `.env`:
+
+```
+DATABASE_URL=postgresql://twojuser_wynajem:HASLO@localhost:5432/twojuser_wynajem
+```
+
+Zastosuj schemat (jeśli `psql` jest dostępny po SSH — sprawdź `which psql`;
+jeśli nie, użyj narzędzia SQL z panelu, np. phpPgAdmin, jeśli jest dostępne):
+
+```bash
+psql "$DATABASE_URL" -f sql/schema.sql
+psql "$DATABASE_URL" -f sql/seed.sql
+```
+
+Konto startowe z `sql/seed.sql`: login `lukasz@wynajemlasera.pl`, hasło `12345678` — zmień je po pierwszym logowaniu (funkcja zmiany hasła to kolejny etap prac).
+
+### Krok 4 — klucz SSH dla GitHub Actions
+
+Ten istniejący klucz (serwer → GitHub) służy tylko do `git pull`, nie do
+logowania z zewnątrz. Do tego, żeby GitHub Actions mogło wejść NA serwer,
+potrzebny jest osobny klucz — wygeneruj go jednym poleceniem, zalogowany po
+SSH na konto cyberfolks:
+
+```bash
+cd /home/brzychu/domains/brzychu.cfolks.pl/public_html/wynajem
+bash deploy/generate-actions-key.sh
+```
+
+Skrypt wypisze na końcu gotowy klucz prywatny oraz podpowie dokładne
+wartości do wpisania w GitHub.
+
+### Krok 5 — sekrety i zmienne w GitHub
+
+**Settings → Secrets and variables → Actions → New repository secret:**
+
+| Sekret | Wartość |
+|---|---|
+| `DEPLOY_SSH_HOST` | host serwera (z wyjścia skryptu z Kroku 4) |
+| `DEPLOY_SSH_PORT` | port SSH cyberfolks (sprawdź w panelu, często inny niż 22) |
+| `DEPLOY_SSH_USER` | login konta cyberfolks |
+| `DEPLOY_SSH_KEY` | klucz prywatny z Kroku 4 |
+
+**Settings → Secrets and variables → Actions → Variables → New repository variable:**
+
+| Zmienna | Wartość |
+|---|---|
+| `APP_DIR` | `/home/brzychu/domains/brzychu.cfolks.pl/public_html/wynajem` |
+| `NODEVENV_DIR` | `/home/brzychu/nodevenv/domains/brzychu.cfolks.pl/public_html/wynajem/20` (dokładna wartość z Kroku 1 — potwierdź w panelu) |
+
+### Krok 6 — deploy
+
+Od tej pory każdy `git push origin main` automatycznie wdraża aplikację —
+postęp widać w zakładce **Actions** w GitHub. Można też odpalić wdrożenie
+ręcznie przyciskiem **Run workflow** przy `deploy.yml`.
+
+### Co zostaje poza automatem
+
+- Zmiany w `prisma/schema.prisma` **nie** są automatycznie aplikowane do bazy — trzeba ręcznie przygotować i uruchomić SQL migracyjny na serwerze.
+- Sekrety integracji (Google, HubSpot, SMS, e-mail) uzupełnia się bezpośrednio w `.env` na serwerze — nie trzymamy ich w repo ani w Actions.
+- Sama aplikacja Node.js w panelu (Krok 1) zakłada się tylko raz, ręcznie — deploy automatyczny aktualizuje już istniejącą aplikację, nie tworzy nowej.
