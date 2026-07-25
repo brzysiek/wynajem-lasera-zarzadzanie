@@ -2,30 +2,49 @@
 // Passenger starts this file directly and expects the app to listen on
 // the port it provides via process.env.PORT.
 
-// Safety valve for the still-unexplained LVE process/thread spike: this
-// account's CloudLinux "Entry Processes" limit (100) counts OS threads as
-// well as forked processes, and something in this app (suspected: Prisma's
-// Tokio runtime sizing its worker threads off the shared host's full CPU
-// count rather than this account's actual LVE allocation) has repeatedly
-// driven it to exactly that ceiling — which also breaks SSH itself (fork()
-// fails account-wide once the limit is hit), making it impossible to
-// `ps aux` or kill anything without asking cyberfolks support to intervene.
-// Passenger execs this file directly with no shell in between, so `ulimit`
-// can't just be prepended to the launch command — instead, re-exec through
-// bash once to apply a self-imposed RLIMIT_NPROC well below LVE's ceiling.
-// rlimits set by a shell survive `exec` into the replacing process, and
-// RLIMIT_NPROC is enforced per-uid across the whole account (counting every
-// thread, not just this app's), so if the spike recurs it now hits our own
-// cap first — failing fast at (e.g.) 50 instead of silently climbing to
-// LVE's hard 100 — leaving the rest of the account's process/thread budget
-// free for SSH and diagnosis. Configurable via WYNAJEM_MAX_NPROC so it can
-// be tuned from cPanel's env vars without a redeploy.
+// Root cause, confirmed via diag.log + server-side checks: this shared host
+// reports 64 CPUs (`nproc`), and Prisma's query engine (Rust/Tokio) sizes its
+// async runtime's worker threads off the detected CPU count, not this
+// account's actual CloudLinux LVE allocation — diag.log showed 40 threads
+// already present at bare startup, before a single real request, on an
+// account whose entire "Entry Processes" limit is 100 (counts threads, not
+// just forked processes). That alone was enough to make Prisma-driven thread
+// creation eat roughly half the account's total process/thread budget on
+// every cold start, and once it wins the race against Passenger's spawn
+// timeout or LVE's cap, the process dies natively (no JS-level exception —
+// crash.log stays empty) and Passenger respawns it, repeatedly, right into
+// the same ceiling.
+//
+// Passenger execs this file directly with no shell in between, so neither
+// `ulimit` nor `taskset` can just be prepended to the launch command —
+// instead, re-exec once through bash to apply both:
+//   - CPU affinity restricted to 2 cores, so num_cpus-based sizing (Rust's
+//     num_cpus crate reads sched_getaffinity() on Linux, not raw core count)
+//     sees 2 instead of 64 and Tokio's worker pool shrinks proportionally —
+//     this is the actual fix, attacking the thread count at its source
+//     rather than just capping the blast radius.
+//   - A self-imposed RLIMIT_NPROC (rlimits set by a shell survive exec into
+//     the replacing process, and RLIMIT_NPROC is enforced per-uid across the
+//     whole account) as a backstop in case the affinity fix doesn't fully
+//     eliminate the spike — set high enough (70) that hitting it doesn't
+//     itself trigger a native abort the way an over-tight 50 did, while
+//     still leaving headroom below LVE's hard 100 for SSH and diagnosis.
+// Both are configurable via env vars so they can be tuned from cPanel
+// without a redeploy.
 if (!process.env.WYNAJEM_RLIMIT_APPLIED) {
   const { spawn } = require("child_process");
-  const maxNproc = process.env.WYNAJEM_MAX_NPROC || "50";
+  const maxNproc = process.env.WYNAJEM_MAX_NPROC || "70";
+  const cpuList = process.env.WYNAJEM_CPU_AFFINITY || "0,1";
   const child = spawn(
     "/bin/bash",
-    ["-c", 'ulimit -u "$0" 2>/dev/null; exec "$1" "$2"', maxNproc, process.execPath, __filename],
+    [
+      "-c",
+      'ulimit -u "$0" 2>/dev/null; exec taskset -c "$1" "$2" "$3"',
+      maxNproc,
+      cpuList,
+      process.execPath,
+      __filename,
+    ],
     { stdio: "inherit", env: { ...process.env, WYNAJEM_RLIMIT_APPLIED: "1" } },
   );
   process.on("SIGTERM", () => child.kill("SIGTERM"));
