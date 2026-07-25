@@ -25,8 +25,45 @@ function logCrash(label, err) {
   console.error(line);
 }
 
+// crash.log stays empty during the LVE process-limit spikes, which rules out
+// JS-level throws/rejections as the cause — but ps aux on the server also
+// shows nothing during a spike, and SSH itself starts failing to fork at the
+// same time, so there's no way to inspect the process live from outside it.
+// Log from inside the process instead: thread count (CloudLinux LVE's
+// nproc-style limit counts OS threads, not just distinct process names, so a
+// single Node process whose native addons — e.g. Prisma's Tokio runtime —
+// spawn many threads would show as one line in `ps aux` while still being
+// the thing exhausting the account's limit) plus Node's own handle/request
+// counts, on every request. This survives even if the process gets killed
+// right after, unlike a live ps aux snapshot.
+const DIAG_LOG = path.join(__dirname, "diag.log");
+function readThreadCount() {
+  try {
+    const status = fs.readFileSync("/proc/self/status", "utf8");
+    const match = status.match(/^Threads:\s*(\d+)/m);
+    return match ? match[1] : "unknown";
+  } catch {
+    return "unavailable";
+  }
+}
+function logDiag(label) {
+  const line = `[${new Date().toISOString()}] pid=${process.pid} threads=${readThreadCount()} handles=${process._getActiveHandles().length} requests=${process._getActiveRequests().length} ${label}\n`;
+  try {
+    fs.appendFileSync(DIAG_LOG, line);
+  } catch {
+    // Best-effort only.
+  }
+}
+
 app.prepare().then(() => {
+  logDiag("startup");
+  // Fires regardless of request traffic, so the thread ramp-up between the
+  // process starting and the first request landing is also captured, not
+  // just the request-triggered samples below.
+  setInterval(() => logDiag("interval"), 2000).unref();
+
   const server = createServer((req, res) => {
+    logDiag(`request ${req.method} ${req.url}`);
     // A synchronous throw here would otherwise be an uncaught exception on
     // the http.Server 'request' event, killing the entire process (and
     // every other in-flight request with it) instead of just failing this
@@ -70,10 +107,11 @@ app.prepare().then(() => {
   // keep the old process alive past Passenger's cleanup, leaving it as an
   // orphaned process that counts against the account's LVE process limit —
   // which compounds over many redeploys.
-  const shutdown = () => {
+  const shutdown = (signal) => {
+    logDiag(`shutdown ${signal}`);
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
   };
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 });
