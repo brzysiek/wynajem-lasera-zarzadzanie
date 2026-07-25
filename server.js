@@ -1,6 +1,42 @@
 // Custom server required by cPanel's Node.js Selector (Passenger).
 // Passenger starts this file directly and expects the app to listen on
 // the port it provides via process.env.PORT.
+
+// Safety valve for the still-unexplained LVE process/thread spike: this
+// account's CloudLinux "Entry Processes" limit (100) counts OS threads as
+// well as forked processes, and something in this app (suspected: Prisma's
+// Tokio runtime sizing its worker threads off the shared host's full CPU
+// count rather than this account's actual LVE allocation) has repeatedly
+// driven it to exactly that ceiling — which also breaks SSH itself (fork()
+// fails account-wide once the limit is hit), making it impossible to
+// `ps aux` or kill anything without asking cyberfolks support to intervene.
+// Passenger execs this file directly with no shell in between, so `ulimit`
+// can't just be prepended to the launch command — instead, re-exec through
+// bash once to apply a self-imposed RLIMIT_NPROC well below LVE's ceiling.
+// rlimits set by a shell survive `exec` into the replacing process, and
+// RLIMIT_NPROC is enforced per-uid across the whole account (counting every
+// thread, not just this app's), so if the spike recurs it now hits our own
+// cap first — failing fast at (e.g.) 50 instead of silently climbing to
+// LVE's hard 100 — leaving the rest of the account's process/thread budget
+// free for SSH and diagnosis. Configurable via WYNAJEM_MAX_NPROC so it can
+// be tuned from cPanel's env vars without a redeploy.
+if (!process.env.WYNAJEM_RLIMIT_APPLIED) {
+  const { spawn } = require("child_process");
+  const maxNproc = process.env.WYNAJEM_MAX_NPROC || "50";
+  const child = spawn(
+    "/bin/bash",
+    ["-c", 'ulimit -u "$0" 2>/dev/null; exec "$1" "$2"', maxNproc, process.execPath, __filename],
+    { stdio: "inherit", env: { ...process.env, WYNAJEM_RLIMIT_APPLIED: "1" } },
+  );
+  process.on("SIGTERM", () => child.kill("SIGTERM"));
+  process.on("SIGINT", () => child.kill("SIGINT"));
+  child.on("exit", (code, signal) => {
+    if (signal) process.kill(process.pid, signal);
+    else process.exit(code === null ? 1 : code);
+  });
+  return;
+}
+
 const { createServer } = require("http");
 const fs = require("fs");
 const path = require("path");
@@ -46,8 +82,17 @@ function readThreadCount() {
     return "unavailable";
   }
 }
+function readNprocLimit() {
+  try {
+    const limits = fs.readFileSync("/proc/self/limits", "utf8");
+    const match = limits.match(/Max processes\s+(\S+)\s+(\S+)/);
+    return match ? `${match[1]}/${match[2]}` : "unknown";
+  } catch {
+    return "unavailable";
+  }
+}
 function logDiag(label) {
-  const line = `[${new Date().toISOString()}] pid=${process.pid} threads=${readThreadCount()} handles=${process._getActiveHandles().length} requests=${process._getActiveRequests().length} ${label}\n`;
+  const line = `[${new Date().toISOString()}] pid=${process.pid} threads=${readThreadCount()} nproc_limit=${readNprocLimit()} handles=${process._getActiveHandles().length} requests=${process._getActiveRequests().length} ${label}\n`;
   try {
     fs.appendFileSync(DIAG_LOG, line);
   } catch {
