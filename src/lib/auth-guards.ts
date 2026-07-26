@@ -5,7 +5,7 @@ export async function requireAdmin() {
   const session = await auth();
 
   if (session?.user.role !== "ADMIN") {
-    redirect("/ustawienia/konto");
+    redirect("/ustawienia/szablony");
   }
 
   return session;

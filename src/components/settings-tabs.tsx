@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const ALL_TABS = [
-  { href: "/ustawienia/konto", label: "Konto", adminOnly: false },
   { href: "/ustawienia/integracje", label: "Integracje", adminOnly: true },
   { href: "/ustawienia/szablony", label: "Szablony", adminOnly: false },
   { href: "/ustawienia/bramka", label: "Bramka", adminOnly: true },

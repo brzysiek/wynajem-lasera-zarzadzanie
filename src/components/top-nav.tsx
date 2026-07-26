@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { href: "/kalendarz", label: "Kalendarz" },
   { href: "/nadchodzace", label: "Nadchodzące" },
   { href: "/urzadzenia", label: "Urządzenia" },
-  { href: "/ustawienia/konto", label: "Ustawienia", match: "/ustawienia" },
+  { href: "/ustawienia/szablony", label: "Ustawienia", match: "/ustawienia" },
 ];
 
 export function TopNav({ userName }: { userName: string }) {
