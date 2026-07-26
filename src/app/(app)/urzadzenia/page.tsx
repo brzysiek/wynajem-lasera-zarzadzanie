@@ -15,14 +15,29 @@ export default async function DevicesPage() {
     },
   });
 
+  const UPCOMING_PER_DEVICE = 5;
   const now = new Date();
-  const nextRentals = await prisma.rental.findMany({
+  const upcomingRentals = await prisma.rental.findMany({
     where: { deviceId: { in: devices.map((d) => d.id) }, deletedInGoogle: false, startsAt: { gte: now } },
     orderBy: { startsAt: "asc" },
+    select: {
+      id: true,
+      deviceId: true,
+      title: true,
+      startsAt: true,
+      endsAt: true,
+      allDay: true,
+      contactNameCache: true,
+      contactCompanyCache: true,
+    },
   });
-  const nextRentalByDevice = new Map<string, (typeof nextRentals)[number]>();
-  for (const rental of nextRentals) {
-    if (!nextRentalByDevice.has(rental.deviceId)) nextRentalByDevice.set(rental.deviceId, rental);
+  const upcomingByDevice = new Map<string, typeof upcomingRentals>();
+  for (const rental of upcomingRentals) {
+    const list = upcomingByDevice.get(rental.deviceId) ?? [];
+    if (list.length < UPCOMING_PER_DEVICE) {
+      list.push(rental);
+      upcomingByDevice.set(rental.deviceId, list);
+    }
   }
 
   const devicesData = devices.map((device) => ({
@@ -36,17 +51,20 @@ export default async function DevicesPage() {
     lastSync: device.syncLogs[0]
       ? { status: device.syncLogs[0].status, createdAt: device.syncLogs[0].createdAt.toISOString() }
       : null,
-    nextRental: nextRentalByDevice.has(device.id)
-      ? {
-          title: nextRentalByDevice.get(device.id)!.title,
-          startsAt: nextRentalByDevice.get(device.id)!.startsAt.toISOString(),
-        }
-      : null,
+    upcomingRentals: (upcomingByDevice.get(device.id) ?? []).map((rental) => ({
+      id: rental.id,
+      title: rental.title,
+      startsAt: rental.startsAt.toISOString(),
+      endsAt: rental.endsAt.toISOString(),
+      allDay: rental.allDay,
+      contactNameCache: rental.contactNameCache,
+      contactCompanyCache: rental.contactCompanyCache,
+    })),
   }));
 
   return (
     <div>
-      <PageHeader title="Urządzenia" description="Lista urządzeń dostępnych do wynajmu i ich powiązanie z kalendarzami Google." />
+      <PageHeader title="Urządzenia" description="Rozwiń urządzenie, aby zobaczyć szczegóły, nadchodzące rezerwacje i zsynchronizować kalendarz." />
       <DevicesPanel devices={devicesData} isAdmin={isAdmin} />
     </div>
   );

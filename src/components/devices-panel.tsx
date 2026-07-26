@@ -3,6 +3,16 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
+type UpcomingRental = {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  allDay: boolean;
+  contactNameCache: string | null;
+  contactCompanyCache: string | null;
+};
+
 type Device = {
   id: string;
   name: string;
@@ -12,7 +22,7 @@ type Device = {
   active: boolean;
   rentalCount: number;
   lastSync: { status: "OK" | "ERROR"; createdAt: string } | null;
-  nextRental: { title: string; startsAt: string } | null;
+  upcomingRentals: UpcomingRental[];
 };
 
 type GoogleCalendarOption = { id: string; summary: string };
@@ -28,6 +38,29 @@ async function api(url: string, init?: RequestInit) {
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+}
+
+function formatRentalRange(rental: UpcomingRental) {
+  if (rental.allDay) {
+    return new Date(rental.startsAt).toLocaleDateString("pl-PL");
+  }
+  const start = formatDateTime(rental.startsAt);
+  const end = formatDateTime(rental.endsAt);
+  return `${start} – ${end}`;
+}
+
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      className={`h-4 w-4 flex-none text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`}
+    >
+      <path d="M5 7.5 10 12.5 15 7.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function DeviceForm({
@@ -161,7 +194,28 @@ function DeviceForm({
   );
 }
 
+function UpcomingRentalsList({ rentals }: { rentals: UpcomingRental[] }) {
+  if (rentals.length === 0) {
+    return <p className="text-sm text-gray-400">Brak nadchodzących rezerwacji.</p>;
+  }
+  return (
+    <ul className="divide-y divide-gray-100">
+      {rentals.map((rental) => (
+        <li key={rental.id} className="py-2">
+          <p className="text-sm font-medium text-gray-900">{rental.title}</p>
+          <p className="text-xs text-gray-500">
+            {formatRentalRange(rental)}
+            {rental.contactNameCache && ` · ${rental.contactNameCache}`}
+            {rental.contactCompanyCache && ` (${rental.contactCompanyCache})`}
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function DeviceRow({ device, isAdmin, onChanged }: { device: Device; isAdmin: boolean; onChanged: () => void }) {
+  const [expanded, setExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -183,84 +237,111 @@ function DeviceRow({ device, isAdmin, onChanged }: { device: Device; isAdmin: bo
     if (ok) onChanged();
   }
 
-  if (isEditing) {
-    return (
-      <div className="py-3">
-        <DeviceForm
-          device={device}
-          onSaved={() => {
-            setIsEditing(false);
-            onChanged();
-          }}
-          onCancel={() => setIsEditing(false)}
-        />
-      </div>
-    );
-  }
+  const nextRental = device.upcomingRentals[0] ?? null;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 py-3">
-      <span className="h-4 w-4 flex-none rounded-full border border-gray-300" style={{ backgroundColor: device.color }} />
-      <div className="min-w-[10rem] flex-1">
-        <p className="text-sm font-medium text-gray-900">
-          {device.name} <span className="text-gray-400">({device.shortName})</span>
-          {!device.active && (
-            <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">wycofane</span>
-          )}
-        </p>
-        <p className="truncate text-xs text-gray-500">{device.googleCalendarId}</p>
-      </div>
-
-      <div className="min-w-[9rem] text-xs text-gray-600">
-        <p>{device.rentalCount} rezerwacji</p>
-        {device.nextRental ? (
-          <p>
-            Najbliższa: {device.nextRental.title} · {formatDateTime(device.nextRental.startsAt)}
+    <div className="py-1">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full flex-wrap items-center gap-3 rounded-md py-2 text-left hover:bg-gray-50"
+      >
+        <span
+          className="h-4 w-4 flex-none rounded-full border border-gray-300"
+          style={{ backgroundColor: device.color }}
+        />
+        <div className="min-w-[10rem] flex-1">
+          <p className="text-sm font-medium text-gray-900">
+            {device.name} <span className="text-gray-400">({device.shortName})</span>
+            {!device.active && (
+              <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                wycofane
+              </span>
+            )}
           </p>
-        ) : (
-          <p className="text-gray-400">Brak nadchodzących</p>
-        )}
-      </div>
+          <p className="text-xs text-gray-500">
+            {device.rentalCount} rezerwacji ·{" "}
+            {nextRental ? (
+              <>
+                najbliższa: {nextRental.title} · {formatRentalRange(nextRental)}
+              </>
+            ) : (
+              "brak nadchodzących"
+            )}
+          </p>
+        </div>
+        <ChevronIcon expanded={expanded} />
+      </button>
 
-      <div className="min-w-[9rem] text-xs">
-        {device.lastSync ? (
-          <span className={device.lastSync.status === "OK" ? "text-green-700" : "text-red-700"}>
-            Sync: {device.lastSync.status === "OK" ? "OK" : "błąd"} · {formatDateTime(device.lastSync.createdAt)}
-          </span>
-        ) : (
-          <span className="text-gray-400">Brak synchronizacji</span>
-        )}
-        {syncMessage && <p className="text-gray-500">{syncMessage}</p>}
-      </div>
+      {expanded && (
+        <div className="ml-7 border-l border-gray-100 py-3 pl-4">
+          {isEditing ? (
+            <DeviceForm
+              device={device}
+              onSaved={() => {
+                setIsEditing(false);
+                onChanged();
+              }}
+              onCancel={() => setIsEditing(false)}
+            />
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs text-gray-600">
+                  <p>
+                    Kalendarz Google: <span className="font-mono">{device.googleCalendarId}</span>
+                  </p>
+                  {device.lastSync ? (
+                    <span className={device.lastSync.status === "OK" ? "text-green-700" : "text-red-700"}>
+                      Sync: {device.lastSync.status === "OK" ? "OK" : "błąd"} ·{" "}
+                      {formatDateTime(device.lastSync.createdAt)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">Brak synchronizacji</span>
+                  )}
+                  {syncMessage && <p className="mt-1 text-gray-500">{syncMessage}</p>}
+                </div>
 
-      <div className="flex flex-none gap-2">
-        <button
-          type="button"
-          onClick={handleSync}
-          disabled={isSyncing}
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-        >
-          {isSyncing ? "Synchronizowanie…" : "Synchronizuj teraz"}
-        </button>
-        {isAdmin && (
-          <>
-            <button
-              type="button"
-              onClick={() => setIsEditing(true)}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Edytuj
-            </button>
-            <button
-              type="button"
-              onClick={handleToggleActive}
-              className="rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
-            >
-              {device.active ? "Wycofaj" : "Przywróć"}
-            </button>
-          </>
-        )}
-      </div>
+                <div className="flex flex-none gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {isSyncing ? "Synchronizowanie…" : "Synchronizuj teraz"}
+                  </button>
+                  {isAdmin && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditing(true)}
+                        className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Edytuj
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleToggleActive}
+                        className="rounded-md px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
+                      >
+                        {device.active ? "Wycofaj" : "Przywróć"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Nadchodzące rezerwacje
+                </h3>
+                <UpcomingRentalsList rentals={device.upcomingRentals} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
