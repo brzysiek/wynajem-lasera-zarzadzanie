@@ -42,3 +42,28 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
     throw err;
   }
 }
+
+export async function sendUserInviteEmail(to: string, name: string, inviteUrl: string): Promise<void> {
+  const from = process.env.EMAIL_FROM;
+  if (!from) {
+    throw new Error("EMAIL_FROM is not configured");
+  }
+
+  try {
+    const info = await getTransport().sendMail({
+      from,
+      to,
+      subject: "Zaproszenie do panelu WynajemLasera.pl",
+      html: `
+        <p>Cześć ${name},</p>
+        <p>Zostałeś/-aś zaproszony/-a do dołączenia do panelu WynajemLasera.pl.</p>
+        <p><a href="${inviteUrl}">Ustaw hasło i aktywuj konto</a></p>
+        <p>Link jest ważny przez 7 dni. Jeśli nie spodziewałeś/-aś się tej wiadomości, zignoruj ją.</p>
+      `,
+    });
+    logInfo("user_invite_email_sent", { to, messageId: info.messageId, response: info.response });
+  } catch (err) {
+    logError("user_invite_email_failed", err, { to, smtpHost: process.env.SMTP_HOST });
+    throw err;
+  }
+}

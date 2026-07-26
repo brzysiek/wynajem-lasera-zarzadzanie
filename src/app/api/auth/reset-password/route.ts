@@ -35,11 +35,15 @@ export async function POST(req: NextRequest) {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
+  const user = await prisma.user.findUnique({ where: { id: resetToken.userId } });
 
   await prisma.$transaction([
     prisma.user.update({
       where: { id: resetToken.userId },
-      data: { passwordHash },
+      // Also activates the account on first password set — covers both a
+      // self-service reset and an invited user completing their invite,
+      // since both flows land on this same endpoint.
+      data: { passwordHash, activatedAt: user?.activatedAt ?? new Date() },
     }),
     prisma.passwordResetToken.update({
       where: { id: resetToken.id },

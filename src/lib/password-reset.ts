@@ -3,6 +3,11 @@ import { prisma } from "@/lib/prisma";
 
 export const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
+// Invite links need a much longer window than a password reset — an invited
+// user may not check their e-mail within the hour a self-service reset link
+// is valid for.
+export const INVITE_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 // The raw token goes in the email link; only its hash is stored, so a
 // database read (backup leak, etc.) can't be used to reset someone's
 // password — same reasoning as storing passwordHash instead of passwordHash.
@@ -10,14 +15,14 @@ export function hashResetToken(rawToken: string): string {
   return createHash("sha256").update(rawToken).digest("hex");
 }
 
-export async function createResetToken(userId: string): Promise<string> {
+export async function createResetToken(userId: string, ttlMs: number = RESET_TOKEN_TTL_MS): Promise<string> {
   const rawToken = randomBytes(32).toString("hex");
 
   await prisma.passwordResetToken.create({
     data: {
       userId,
       tokenHash: hashResetToken(rawToken),
-      expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+      expiresAt: new Date(Date.now() + ttlMs),
     },
   });
 
