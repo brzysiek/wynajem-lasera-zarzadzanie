@@ -7,7 +7,7 @@ import { auth } from "@/auth";
 // it can't be trusted here and is hardcoded instead.
 const BASE_PATH = "/wynajem";
 
-const PUBLIC_ROUTES = [`${BASE_PATH}/login`];
+const PUBLIC_ROUTES = [`${BASE_PATH}/login`, `${BASE_PATH}/forgot-password`, `${BASE_PATH}/reset-password`];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;

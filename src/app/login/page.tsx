@@ -3,6 +3,7 @@
 import { Suspense, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import Link from "next/link";
 
 function LoginForm() {
   const router = useRouter();
@@ -88,7 +89,11 @@ function LoginForm() {
         {isSubmitting ? "Logowanie…" : "Zaloguj"}
       </button>
 
-      <p className="text-center text-sm text-gray-400">Nie pamiętam hasła</p>
+      <p className="text-center text-sm">
+        <Link href="/forgot-password" className="text-gray-500 hover:text-gray-700">
+          Nie pamiętam hasła
+        </Link>
+      </p>
     </form>
   );
 }

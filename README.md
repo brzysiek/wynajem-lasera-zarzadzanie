@@ -34,8 +34,9 @@ Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · MySQL ·
    - `DATABASE_URL` — connection string do Twojej bazy MySQL, np. `mysql://user:haslo@localhost:3306/nazwa_bazy`.
    - `NEXTAUTH_SECRET` — wygeneruj np. `openssl rand -base64 32`.
    - `NEXTAUTH_URL` — `http://localhost:3000` na dev, `https://brzychu.cfolks.pl` na produkcji (bez `/wynajem` — Next.js sam dokleja `basePath`, dopisanie go tutaj psuje parsowanie akcji NextAuth; patrz sekcja Deploy).
+   - `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` — wymagane, żeby działał reset hasła (`/forgot-password`), wysyłany przez zwykłe SMTP (np. skrzynka pocztowa w tej samej domenie, założona w panelu cyberfolks/cPanel — **Email Accounts**). `SMTP_PORT=465` włącza szyfrowanie TLS od razu (implicit TLS), `587`/`25` używają STARTTLS.
 
-   Pozostałe zmienne (Google, HubSpot, SMS, e-mail) dotyczą kolejnych etapów integracji i mogą na razie zostać puste.
+   Pozostałe zmienne (Google, HubSpot, SMS) dotyczą kolejnych etapów integracji i mogą na razie zostać puste.
 
 3. Załóż bazę danych **ręcznie**, uruchamiając kolejno pliki SQL z katalogu `sql/`:
 
@@ -67,8 +68,10 @@ Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · MySQL ·
 
 ## Struktura stron
 
-Wszystkie strony poza `/login` są chronione (przekierowanie do `/login` dla niezalogowanych, zarówno w `proxy.ts`, jak i w layoucie `(app)`):
+Wszystkie strony poza `/login`, `/forgot-password` i `/reset-password` są chronione (przekierowanie do `/login` dla niezalogowanych, zarówno w `proxy.ts`, jak i w layoucie `(app)`):
 
+- `/forgot-password` — prośba o link do resetu hasła (mailem, przez Resend)
+- `/reset-password?token=...` — ustawienie nowego hasła po kliknięciu w link z maila
 - `/kalendarz` — widok kalendarza (placeholder)
 - `/nadchodzace` — lista nadchodzących wynajmów (placeholder)
 - `/urzadzenia` — lista urządzeń (placeholder)
@@ -88,6 +91,8 @@ Dostęp do stron `ADMIN`-only jest sprawdzany po stronie serwera (`requireAdmin(
 - `src/proxy.ts` — ochrona tras (odpowiednik `middleware.ts` w Next.js 16).
 - `src/app/(app)` — strony wymagające zalogowania, wspólny layout z nawigacją.
 - `src/app/login` — ekran logowania.
+- `src/app/forgot-password`, `src/app/reset-password` — reset hasła (publiczne, patrz „Struktura stron”).
+- `src/app/api/auth/forgot-password`, `src/app/api/auth/reset-password` — endpointy resetu hasła; `src/lib/password-reset.ts` (generowanie/haszowanie tokenu) i `src/lib/email.ts` (wysyłka przez Resend) zawierają logikę.
 - `deploy/deploy-pull.sh` — synchronizuje kod źródłowy na serwerze (git fetch/reset).
 - `deploy/deploy-finish.sh` — na serwerze: `npm install`, `prisma generate`, restart Passengera (bez builda — patrz niżej, dlaczego).
 - `deploy/generate-actions-key.sh` — jednorazowy generator klucza SSH dla GitHub Actions.
@@ -191,7 +196,7 @@ mysql -u twojuser_wynajem -p twojuser_wynajem < sql/schema.sql
 mysql -u twojuser_wynajem -p twojuser_wynajem < sql/seed.sql
 ```
 
-Konto startowe z `sql/seed.sql`: login `lukasz@wynajemlasera.pl`, hasło `12345678` — zmień je po pierwszym logowaniu (funkcja zmiany hasła to kolejny etap prac).
+Konto startowe z `sql/seed.sql`: login `lukasz@wynajemlasera.pl`, hasło `12345678` — zmień je po pierwszym logowaniu przez „Nie pamiętam hasła” na `/login` (wymaga skonfigurowanego `RESEND_API_KEY`/`EMAIL_FROM`, patrz sekcja Konfiguracja). Zmiana hasła z poziomu zalogowanego konta (bez maila) to kolejny etap prac.
 
 ### Krok 4 — klucz SSH dla GitHub Actions
 
@@ -234,6 +239,6 @@ ręcznie przyciskiem **Run workflow** przy `deploy.yml`.
 
 ### Co zostaje poza automatem
 
-- Zmiany w `prisma/schema.prisma` **nie** są automatycznie aplikowane do bazy — trzeba ręcznie przygotować i uruchomić SQL migracyjny na serwerze.
+- Zmiany w `prisma/schema.prisma` **nie** są automatycznie aplikowane do bazy — trzeba ręcznie przygotować i uruchomić SQL migracyjny na serwerze (np. `sql/2026-07-26_add_password_reset_tokens.sql` dla resetu hasła — uruchom go ręcznie na produkcyjnej bazie po tym deployu, `sql/schema.sql` służy tylko do zakładania bazy od zera).
 - Sekrety integracji (Google, HubSpot, SMS, e-mail) uzupełnia się bezpośrednio w `.env` na serwerze — nie trzymamy ich w repo ani w Actions.
 - Sama aplikacja Node.js w panelu (Krok 1) zakłada się tylko raz, ręcznie — deploy automatyczny aktualizuje już istniejącą aplikację, nie tworzy nowej.
