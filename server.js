@@ -1,60 +1,23 @@
 // Custom server required by cPanel's Node.js Selector (Passenger).
 // Passenger starts this file directly and expects the app to listen on
 // the port it provides via process.env.PORT.
-
-// Root cause, confirmed via diag.log + server-side checks: this shared host
-// reports 64 CPUs (`nproc`), and Prisma's query engine (Rust/Tokio) sizes its
-// async runtime's worker threads off the detected CPU count, not this
-// account's actual CloudLinux LVE allocation — diag.log showed 40 threads
-// already present at bare startup, before a single real request, on an
-// account whose entire "Entry Processes" limit is 100 (counts threads, not
-// just forked processes). That alone was enough to make Prisma-driven thread
-// creation eat roughly half the account's total process/thread budget on
-// every cold start, and once it wins the race against Passenger's spawn
-// timeout or LVE's cap, the process dies natively (no JS-level exception —
-// crash.log stays empty) and Passenger respawns it, repeatedly, right into
-// the same ceiling.
 //
-// Passenger execs this file directly with no shell in between, so neither
-// `ulimit` nor `taskset` can just be prepended to the launch command —
-// instead, re-exec once through bash to apply both:
-//   - CPU affinity restricted to 2 cores, so num_cpus-based sizing (Rust's
-//     num_cpus crate reads sched_getaffinity() on Linux, not raw core count)
-//     sees 2 instead of 64 and Tokio's worker pool shrinks proportionally —
-//     this is the actual fix, attacking the thread count at its source
-//     rather than just capping the blast radius.
-//   - A self-imposed RLIMIT_NPROC (rlimits set by a shell survive exec into
-//     the replacing process, and RLIMIT_NPROC is enforced per-uid across the
-//     whole account) as a backstop in case the affinity fix doesn't fully
-//     eliminate the spike — set high enough (70) that hitting it doesn't
-//     itself trigger a native abort the way an over-tight 50 did, while
-//     still leaving headroom below LVE's hard 100 for SSH and diagnosis.
-// Both are configurable via env vars so they can be tuned from cPanel
-// without a redeploy.
-if (!process.env.WYNAJEM_RLIMIT_APPLIED) {
-  const { spawn } = require("child_process");
-  const maxNproc = process.env.WYNAJEM_MAX_NPROC || "70";
-  const cpuList = process.env.WYNAJEM_CPU_AFFINITY || "0,1";
-  const child = spawn(
-    "/bin/bash",
-    [
-      "-c",
-      'ulimit -u "$0" 2>/dev/null; exec taskset -c "$1" "$2" "$3"',
-      maxNproc,
-      cpuList,
-      process.execPath,
-      __filename,
-    ],
-    { stdio: "inherit", env: { ...process.env, WYNAJEM_RLIMIT_APPLIED: "1" } },
-  );
-  process.on("SIGTERM", () => child.kill("SIGTERM"));
-  process.on("SIGINT", () => child.kill("SIGINT"));
-  child.on("exit", (code, signal) => {
-    if (signal) process.kill(process.pid, signal);
-    else process.exit(code === null ? 1 : code);
-  });
-  return;
-}
+// NOTE: this account's actual serving stack turned out to be LiteSpeed's own
+// "lsnode" Node.js integration (LSAPI), not Apache+Passenger, despite the
+// PassengerXxx directive names in .htaccess (LiteSpeed reads them for cPanel
+// compatibility). lsnode spawns this file's process directly and tracks that
+// exact PID for its request hand-off (a unix socket, per LSNODE_SOCKET/fd 0 —
+// there is no PORT env var in this environment at all). An earlier fix here
+// had this file re-exec itself through a `bash -c 'ulimit ...; exec taskset
+// ...'` wrapper via child_process.spawn() to fight a Prisma/Tokio
+// thread-explosion (see prisma.ts) — but spawn() creates a NEW child PID, so
+// the process lsnode actually forwards traffic to was no longer the one it
+// had originally launched/tracked. Result: a perfectly stable, low-thread
+// process that never received a single request. The ulimit/taskset fix is
+// still needed, but now applied one layer up — via a wrapper script
+// (deploy/node-wrapper.sh) substituted as PassengerNodejs in .htaccess, so
+// the whole chain is true exec() (same PID throughout) and this file goes
+// back to just listening directly, matching what lsnode expects.
 
 const { createServer } = require("http");
 const fs = require("fs");

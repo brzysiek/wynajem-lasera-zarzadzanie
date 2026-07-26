@@ -31,6 +31,7 @@ yarn-error.log*
 .pnpm-debug.log*
 crash.log
 diag.log
+/node-wrapper.sh
 
 # env files (can opt-in for committing if needed)
 .env*

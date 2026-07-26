@@ -18,6 +18,17 @@ git reset --hard origin/main
 
 echo "==> Source synced ($(git rev-parse --short HEAD))"
 
+echo "==> Generating node-wrapper.sh (ulimit/taskset, exec'd in place of node)"
+# lsnode (this account's actual LiteSpeed Node.js/LSAPI integration — see
+# server.js's top comment) execs PassengerNodejs directly and tracks that
+# exact PID for request routing, so the ulimit/taskset fix has to be applied
+# by substituting the node binary itself, not by having the app spawn a
+# child (a child gets a new PID lsnode never learns about, which left the
+# app alive but orphaned from all traffic). Regenerated every deploy so the
+# real node path always matches NODEVENV_DIR.
+sed "s#__REAL_NODE_BIN__#$NODEVENV_DIR/bin/node#" deploy/node-wrapper.sh.template > node-wrapper.sh
+chmod +x node-wrapper.sh
+
 echo "==> Ensuring .htaccess (Passenger routing config)"
 # cPanel's own .htaccess generation for this app has been unreliable (it has
 # gone missing entirely at least once, causing plain Apache 404s with no
@@ -26,7 +37,7 @@ echo "==> Ensuring .htaccess (Passenger routing config)"
 cat > .htaccess <<EOF
 PassengerAppRoot "$APP_DIR"
 PassengerBaseURI "/wynajem"
-PassengerNodejs "$NODEVENV_DIR/bin/node"
+PassengerNodejs "$APP_DIR/node-wrapper.sh"
 PassengerAppType node
 PassengerStartupFile server.js
 PassengerEnv NODE_ENV production

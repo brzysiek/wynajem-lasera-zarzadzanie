@@ -1,0 +1,23 @@
+#!/bin/bash
+# Generated as node-wrapper.sh by deploy-pull.sh on every deploy — do not
+# edit the generated copy on the server directly, it will be overwritten.
+#
+# lsnode (this account's LiteSpeed Node.js/LSAPI integration) execs
+# PassengerNodejs directly and treats the resulting PID as the one it routes
+# request traffic to (see server.js's top comment). ulimit/taskset can't be
+# applied by having server.js spawn a child for this reason — spawn()
+# creates a new PID that lsnode never learns about. Instead this script is
+# substituted as PassengerNodejs itself, so lsnode execs THIS, and every step
+# below is a true exec() that preserves the PID all the way to the real node
+# process:
+#   - RLIMIT_NPROC self-imposed cap (backstop below CloudLinux LVE's hard
+#     account limit, low enough to fail fast but high enough that hitting it
+#     doesn't itself trigger a native abort — 50 was too tight, 70 is not).
+#   - CPU affinity pinned to 2 cores, so Prisma's Tokio runtime (which sizes
+#     its worker-thread pool off sched_getaffinity()-visible CPU count, not
+#     this account's real LVE allocation) sees 2 CPUs instead of the host's
+#     64 and stops over-provisioning threads on every cold start.
+# Both configurable via env vars (set in cPanel's Node app config) without
+# touching this file.
+ulimit -u "${WYNAJEM_MAX_NPROC:-70}" 2>/dev/null
+exec /usr/bin/taskset -c "${WYNAJEM_CPU_AFFINITY:-0,1}" "__REAL_NODE_BIN__" "$@"
