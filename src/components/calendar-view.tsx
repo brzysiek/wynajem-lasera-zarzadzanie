@@ -237,9 +237,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
                         title={rental.title}
                       >
                         {!rental.hubspotContactId && <span className="h-1.5 w-1.5 flex-none rounded-full bg-white" />}
-                        <span className="truncate">
-                          {rental.device.shortName} · {rental.title}
-                        </span>
+                        <span className="truncate">{rental.title}</span>
                       </button>
                     ))}
                   </div>
@@ -283,9 +281,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
                             {rental.allDay ? "Cały dzień" : `${formatTime(rental.startsAt)}–${formatTime(rental.endsAt)}`}
                           </span>
                         </span>
-                        <span className="truncate">
-                          {rental.device.shortName} · {rental.title}
-                        </span>
+                        <span className="truncate">{rental.title}</span>
                       </button>
                     ))}
                     {dayRentals.length === 0 && <p className="text-xs text-gray-300">—</p>}
