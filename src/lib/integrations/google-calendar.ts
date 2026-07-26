@@ -47,7 +47,7 @@ async function getAccessToken(): Promise<string> {
   const claims = base64url(
     JSON.stringify({
       iss: email,
-      scope: "https://www.googleapis.com/auth/calendar.readonly",
+      scope: "https://www.googleapis.com/auth/calendar",
       aud: "https://oauth2.googleapis.com/token",
       sub: impersonatedUser,
       iat: now,
