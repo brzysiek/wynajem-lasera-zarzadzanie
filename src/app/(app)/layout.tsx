@@ -14,7 +14,7 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="flex min-h-screen flex-1 flex-col">
+    <div className="flex flex-1 flex-col">
       <TopNav userName={session.user.name ?? session.user.email ?? "Użytkownik"} />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>
     </div>

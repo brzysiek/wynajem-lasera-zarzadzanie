@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build --webpack",
+    "build": "NEXT_PUBLIC_APP_COMMIT=$(git rev-parse --short HEAD) NEXT_PUBLIC_APP_VERSION=$(TZ=Europe/Warsaw date +%y%m%d-%H%M) next build --webpack",
     "start": "NODE_ENV=production node server.js",
     "lint": "eslint"
   },
