@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { RentalModal, type Device, type Rental } from "@/components/rental-modal";
 
-type RawRental = Rental & { device: Device; hubspotContactId: string | null };
+type RawRental = Rental & { device: Device };
 
 const WEEKDAY_LABELS = ["Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Nd"];
 const MONTH_LABELS = [
@@ -37,6 +37,20 @@ function monthGridDays(reference: Date): Date[] {
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
+}
+
+function ContactBadge() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className="h-3 w-3 flex-none"
+      aria-hidden="true"
+    >
+      <title>Przypisany kontakt</title>
+      <path d="M10 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-3.31 0-6 2.24-6 5v1h12v-1c0-2.76-2.69-5-6-5Z" />
+    </svg>
+  );
 }
 
 export function CalendarView({ devices }: { devices: Device[] }) {
@@ -83,6 +97,10 @@ export function CalendarView({ devices }: { devices: Device[] }) {
 
   function reload() {
     setModalState(null);
+    startLoading(() => fetchRentals());
+  }
+
+  function refreshQuietly() {
     startLoading(() => fetchRentals());
   }
 
@@ -236,7 +254,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
                         style={{ backgroundColor: rental.device.color }}
                         title={rental.title}
                       >
-                        {!rental.hubspotContactId && <span className="h-1.5 w-1.5 flex-none rounded-full bg-white" />}
+                        {rental.hubspotContactId && <ContactBadge />}
                         <span className="truncate">{rental.title}</span>
                       </button>
                     ))}
@@ -276,7 +294,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
                         style={{ backgroundColor: rental.device.color }}
                       >
                         <span className="flex items-center gap-1">
-                          {!rental.hubspotContactId && <span className="h-1.5 w-1.5 flex-none rounded-full bg-white" />}
+                          {rental.hubspotContactId && <ContactBadge />}
                           <span className="font-medium">
                             {rental.allDay ? "Cały dzień" : `${formatTime(rental.startsAt)}–${formatTime(rental.endsAt)}`}
                           </span>
@@ -302,6 +320,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
           onClose={() => setModalState(null)}
           onSaved={reload}
           onDeleted={reload}
+          onContactChanged={refreshQuietly}
         />
       )}
     </div>

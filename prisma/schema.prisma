@@ -40,12 +40,14 @@ enum SyncStatus {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
+  id           String    @id @default(uuid())
+  email        String    @unique
   passwordHash String
   name         String
-  role         Role     @default(STAFF)
-  createdAt    DateTime @default(now())
+  role         Role      @default(STAFF)
+  invitedAt    DateTime?
+  activatedAt  DateTime?
+  createdAt    DateTime  @default(now())
 
   messages            Message[]
   passwordResetTokens PasswordResetToken[]
@@ -82,24 +84,26 @@ model Device {
 }
 
 model Rental {
-  id                String    @id @default(uuid())
-  deviceId          String
-  googleEventId     String
-  googleCalendarId  String
-  title             String
-  description       String?   @db.Text
-  startsAt          DateTime
-  endsAt            DateTime
-  allDay            Boolean   @default(false)
-  hubspotContactId  String?
-  contactNameCache  String?
-  contactPhoneCache String?
-  contactEmailCache String?
-  internalNotes     String?   @db.Text
-  lastSyncedAt      DateTime?
-  deletedInGoogle   Boolean   @default(false)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  deviceId            String
+  googleEventId       String
+  googleCalendarId    String
+  title               String
+  description         String?   @db.Text
+  startsAt            DateTime
+  endsAt              DateTime
+  allDay              Boolean   @default(false)
+  hubspotContactId    String?
+  contactNameCache    String?
+  contactPhoneCache   String?
+  contactEmailCache   String?
+  contactCompanyCache String?
+  contactAddressCache String?   @db.Text
+  internalNotes       String?   @db.Text
+  lastSyncedAt        DateTime?
+  deletedInGoogle     Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   device        Device         @relation(fields: [deviceId], references: [id])
   reminderRules ReminderRule[]

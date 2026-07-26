@@ -5,6 +5,8 @@ CREATE TABLE `users` (
     `passwordHash` VARCHAR(191) NOT NULL,
     `name` VARCHAR(191) NOT NULL,
     `role` ENUM('ADMIN', 'STAFF') NOT NULL DEFAULT 'STAFF',
+    `invitedAt` DATETIME(3) NULL,
+    `activatedAt` DATETIME(3) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     UNIQUE INDEX `users_email_key`(`email`),
@@ -52,6 +54,8 @@ CREATE TABLE `rentals` (
     `contactNameCache` VARCHAR(191) NULL,
     `contactPhoneCache` VARCHAR(191) NULL,
     `contactEmailCache` VARCHAR(191) NULL,
+    `contactCompanyCache` VARCHAR(191) NULL,
+    `contactAddressCache` TEXT NULL,
     `internalNotes` TEXT NULL,
     `lastSyncedAt` DATETIME(3) NULL,
     `deletedInGoogle` BOOLEAN NOT NULL DEFAULT false,
