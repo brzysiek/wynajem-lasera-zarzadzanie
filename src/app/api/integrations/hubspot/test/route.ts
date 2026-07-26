@@ -1,0 +1,20 @@
+import { NextResponse } from "next/server";
+import { requireAdminSession } from "@/lib/auth-guards";
+import { testHubspotConnection } from "@/lib/integrations/hubspot";
+import { logInfo, logError } from "@/lib/logger";
+
+export async function POST() {
+  const session = await requireAdminSession();
+  if (!session) {
+    return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
+  }
+
+  const result = await testHubspotConnection();
+  if (result.ok) {
+    logInfo("integration_hubspot_test_ok", { userId: session.user.id });
+  } else {
+    logError("integration_hubspot_test_failed", new Error(result.message), { userId: session.user.id });
+  }
+
+  return NextResponse.json(result);
+}

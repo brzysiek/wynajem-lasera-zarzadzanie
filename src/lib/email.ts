@@ -1,4 +1,5 @@
 import nodemailer, { type Transporter } from "nodemailer";
+import { logInfo, logError } from "@/lib/logger";
 
 // Constructed lazily (not at module load) because SMTP_* env vars are empty
 // during `next build` (only the Node runtime has real env vars, via
@@ -24,14 +25,20 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
     throw new Error("EMAIL_FROM is not configured");
   }
 
-  await getTransport().sendMail({
-    from,
-    to,
-    subject: "Reset hasła — WynajemLasera.pl",
-    html: `
-      <p>Otrzymaliśmy prośbę o reset hasła do panelu WynajemLasera.pl.</p>
-      <p><a href="${resetUrl}">Ustaw nowe hasło</a></p>
-      <p>Link jest ważny przez godzinę. Jeśli to nie Ty, zignoruj tę wiadomość.</p>
-    `,
-  });
+  try {
+    const info = await getTransport().sendMail({
+      from,
+      to,
+      subject: "Reset hasła — WynajemLasera.pl",
+      html: `
+        <p>Otrzymaliśmy prośbę o reset hasła do panelu WynajemLasera.pl.</p>
+        <p><a href="${resetUrl}">Ustaw nowe hasło</a></p>
+        <p>Link jest ważny przez godzinę. Jeśli to nie Ty, zignoruj tę wiadomość.</p>
+      `,
+    });
+    logInfo("password_reset_email_sent", { to, messageId: info.messageId, response: info.response });
+  } catch (err) {
+    logError("password_reset_email_failed", err, { to, smtpHost: process.env.SMTP_HOST });
+    throw err;
+  }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createResetToken, buildResetUrl } from "@/lib/password-reset";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { logInfo } from "@/lib/logger";
 
 // Always returns the same generic response whether or not the e-mail
 // exists, so this endpoint can't be used to enumerate registered accounts.
@@ -20,11 +21,13 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.findUnique({ where: { email } });
 
   if (user) {
+    logInfo("password_reset_requested", { userId: user.id, email: user.email });
     const rawToken = await createResetToken(user.id);
     try {
       await sendPasswordResetEmail(user.email, buildResetUrl(rawToken));
-    } catch (err) {
-      console.error("Failed to send password reset email:", err);
+    } catch {
+      // Already logged inside sendPasswordResetEmail (app-error.log) — the
+      // response here must stay generic regardless of send success.
     }
   }
 

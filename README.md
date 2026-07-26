@@ -70,14 +70,14 @@ Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · MySQL ·
 
 Wszystkie strony poza `/login`, `/forgot-password` i `/reset-password` są chronione (przekierowanie do `/login` dla niezalogowanych, zarówno w `proxy.ts`, jak i w layoucie `(app)`):
 
-- `/forgot-password` — prośba o link do resetu hasła (mailem, przez Resend)
+- `/forgot-password` — prośba o link do resetu hasła (mailem, przez SMTP)
 - `/reset-password?token=...` — ustawienie nowego hasła po kliknięciu w link z maila
 - `/kalendarz` — widok kalendarza (placeholder)
 - `/nadchodzace` — lista nadchodzących wynajmów (placeholder)
 - `/urzadzenia` — lista urządzeń (placeholder)
 - `/ustawienia/konto` — dane własnego konta
 - `/ustawienia/szablony` — szablony wiadomości
-- `/ustawienia/integracje` — tylko `ADMIN`
+- `/ustawienia/integracje` — tylko `ADMIN`; instrukcje konfiguracji Google Calendar i HubSpot (przygotowanie danych dostępowych — kod właściwej synchronizacji to osobny etap)
 - `/ustawienia/bramka` — tylko `ADMIN`
 - `/ustawienia/uzytkownicy` — tylko `ADMIN`
 
@@ -92,7 +92,7 @@ Dostęp do stron `ADMIN`-only jest sprawdzany po stronie serwera (`requireAdmin(
 - `src/app/(app)` — strony wymagające zalogowania, wspólny layout z nawigacją.
 - `src/app/login` — ekran logowania.
 - `src/app/forgot-password`, `src/app/reset-password` — reset hasła (publiczne, patrz „Struktura stron”).
-- `src/app/api/auth/forgot-password`, `src/app/api/auth/reset-password` — endpointy resetu hasła; `src/lib/password-reset.ts` (generowanie/haszowanie tokenu) i `src/lib/email.ts` (wysyłka przez Resend) zawierają logikę.
+- `src/app/api/auth/forgot-password`, `src/app/api/auth/reset-password` — endpointy resetu hasła; `src/lib/password-reset.ts` (generowanie/haszowanie tokenu) i `src/lib/email.ts` (wysyłka przez SMTP) zawierają logikę.
 - `deploy/deploy-pull.sh` — synchronizuje kod źródłowy na serwerze (git fetch/reset).
 - `deploy/deploy-finish.sh` — na serwerze: `npm install`, `prisma generate`, restart Passengera (bez builda — patrz niżej, dlaczego).
 - `deploy/generate-actions-key.sh` — jednorazowy generator klucza SSH dla GitHub Actions.
