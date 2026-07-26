@@ -28,7 +28,7 @@ function base64url(input: string): string {
   return Buffer.from(input).toString("base64url");
 }
 
-async function getAccessToken(): Promise<string> {
+export async function getAccessToken(): Promise<string> {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
   const impersonatedUser = process.env.GOOGLE_IMPERSONATED_USER;
@@ -73,6 +73,162 @@ async function getAccessToken(): Promise<string> {
   }
 
   return body.access_token as string;
+}
+
+export type GoogleCalendarListEntry = { id: string; summary: string };
+
+export type GoogleEventInput = {
+  title: string;
+  description?: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  allDay: boolean;
+};
+
+export type GoogleEvent = {
+  id: string;
+  title: string;
+  description: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  allDay: boolean;
+  cancelled: boolean;
+  updatedAt: Date;
+};
+
+function toDateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function toGoogleEventBody(input: GoogleEventInput) {
+  const start = input.allDay ? { date: toDateOnly(input.startsAt) } : { dateTime: input.startsAt.toISOString() };
+  const end = input.allDay ? { date: toDateOnly(input.endsAt) } : { dateTime: input.endsAt.toISOString() };
+
+  return {
+    summary: input.title,
+    description: input.description ?? undefined,
+    start,
+    end,
+  };
+}
+
+function parseGoogleDateTime(value: { dateTime?: string; date?: string }): { date: Date; allDay: boolean } {
+  if (value.date) {
+    return { date: new Date(`${value.date}T00:00:00.000Z`), allDay: true };
+  }
+  return { date: new Date(value.dateTime!), allDay: false };
+}
+
+async function googleFetch(url: string, accessToken: string, init?: RequestInit) {
+  const res = await fetch(url, {
+    ...init,
+    headers: { Authorization: `Bearer ${accessToken}`, ...(init?.headers ?? {}) },
+  });
+  const body = await res.json().catch(() => null);
+  return { res, body };
+}
+
+export async function listGoogleCalendars(): Promise<GoogleCalendarListEntry[]> {
+  const accessToken = await getAccessToken();
+  const calendars: GoogleCalendarListEntry[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({ maxResults: "250", ...(pageToken ? { pageToken } : {}) });
+    const { res, body } = await googleFetch(
+      `https://www.googleapis.com/calendar/v3/users/me/calendarList?${params}`,
+      accessToken,
+    );
+    if (!res.ok) {
+      throw new Error(body?.error?.message || `Calendar API zwróciło błąd (HTTP ${res.status}).`);
+    }
+    for (const item of body.items ?? []) {
+      calendars.push({ id: item.id, summary: item.summary ?? item.id });
+    }
+    pageToken = body.nextPageToken;
+  } while (pageToken);
+
+  return calendars;
+}
+
+export async function listCalendarEvents(calendarId: string, timeMin: Date, timeMax: Date): Promise<GoogleEvent[]> {
+  const accessToken = await getAccessToken();
+  const events: GoogleEvent[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      timeMin: timeMin.toISOString(),
+      timeMax: timeMax.toISOString(),
+      singleEvents: "true",
+      showDeleted: "true",
+      maxResults: "250",
+      ...(pageToken ? { pageToken } : {}),
+    });
+    const { res, body } = await googleFetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+      accessToken,
+    );
+    if (!res.ok) {
+      throw new Error(body?.error?.message || `Calendar API zwróciło błąd (HTTP ${res.status}).`);
+    }
+    for (const item of body.items ?? []) {
+      if (item.status === "cancelled") continue;
+      const start = parseGoogleDateTime(item.start);
+      const end = parseGoogleDateTime(item.end);
+      events.push({
+        id: item.id,
+        title: item.summary ?? "(bez tytułu)",
+        description: item.description ?? null,
+        startsAt: start.date,
+        endsAt: end.date,
+        allDay: start.allDay,
+        cancelled: false,
+        updatedAt: new Date(item.updated),
+      });
+    }
+    pageToken = body.nextPageToken;
+  } while (pageToken);
+
+  return events;
+}
+
+export async function insertCalendarEvent(calendarId: string, input: GoogleEventInput): Promise<{ id: string }> {
+  const accessToken = await getAccessToken();
+  const { res, body } = await googleFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+    accessToken,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(toGoogleEventBody(input)) },
+  );
+  if (!res.ok) {
+    throw new Error(body?.error?.message || `Nie udało się utworzyć wydarzenia (HTTP ${res.status}).`);
+  }
+  return { id: body.id };
+}
+
+export async function updateCalendarEvent(calendarId: string, eventId: string, input: GoogleEventInput): Promise<void> {
+  const accessToken = await getAccessToken();
+  const { res, body } = await googleFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    accessToken,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(toGoogleEventBody(input)) },
+  );
+  if (!res.ok) {
+    throw new Error(body?.error?.message || `Nie udało się zaktualizować wydarzenia (HTTP ${res.status}).`);
+  }
+}
+
+export async function deleteCalendarEvent(calendarId: string, eventId: string): Promise<void> {
+  const accessToken = await getAccessToken();
+  const { res, body } = await googleFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    accessToken,
+    { method: "DELETE" },
+  );
+  // Google returns 410/404 if the event is already gone — treat as success.
+  if (!res.ok && res.status !== 410 && res.status !== 404) {
+    throw new Error(body?.error?.message || `Nie udało się usunąć wydarzenia (HTTP ${res.status}).`);
+  }
 }
 
 export async function testGoogleCalendarConnection(): Promise<IntegrationTestResult> {

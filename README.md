@@ -72,9 +72,9 @@ Wszystkie strony poza `/login`, `/forgot-password` i `/reset-password` są chron
 
 - `/forgot-password` — prośba o link do resetu hasła (mailem, przez SMTP)
 - `/reset-password?token=...` — ustawienie nowego hasła po kliknięciu w link z maila
-- `/kalendarz` — widok kalendarza (placeholder)
+- `/kalendarz` — widok miesięczny/tygodniowy wynajmów, filtr urządzeń, tworzenie/edycja/usuwanie rezerwacji (synchronizacja z Google Calendar)
 - `/nadchodzace` — lista nadchodzących wynajmów (placeholder)
-- `/urzadzenia` — lista urządzeń (placeholder)
+- `/urzadzenia` — lista urządzeń, mapowanie na kalendarze Google, ręczna synchronizacja (dodawanie/edycja tylko dla `ADMIN`)
 - `/ustawienia/konto` — dane własnego konta
 - `/ustawienia/szablony` — szablony wiadomości
 - `/ustawienia/integracje` — tylko `ADMIN`; instrukcje konfiguracji Google Calendar i HubSpot (przygotowanie danych dostępowych — kod właściwej synchronizacji to osobny etap)
