@@ -39,6 +39,7 @@ function InviteForm({
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"ADMIN" | "STAFF">("STAFF");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +50,7 @@ function InviteForm({
 
     const { ok, data } = await api("/api/users", {
       method: "POST",
-      body: JSON.stringify({ name, email }),
+      body: JSON.stringify({ name, email, role }),
     });
 
     setIsSaving(false);
@@ -86,6 +87,17 @@ function InviteForm({
             className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
           />
         </label>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          Rola
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as "ADMIN" | "STAFF")}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+          >
+            <option value="STAFF">Pracownik</option>
+            <option value="ADMIN">Administrator</option>
+          </select>
+        </label>
       </div>
 
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
@@ -112,15 +124,18 @@ function InviteForm({
 
 function EditForm({
   user,
+  isSelf,
   onSaved,
   onCancel,
 }: {
   user: User;
+  isSelf: boolean;
   onSaved: () => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
+  const [role, setRole] = useState(user.role);
   const [changingPassword, setChangingPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -143,9 +158,10 @@ function EditForm({
     }
 
     setIsSaving(true);
-    const body: { name?: string; email?: string; password?: string } = {};
+    const body: { name?: string; email?: string; password?: string; role?: "ADMIN" | "STAFF" } = {};
     if (name !== user.name) body.name = name;
     if (email !== user.email) body.email = email;
+    if (!isSelf && role !== user.role) body.role = role;
     if (changingPassword) body.password = password;
 
     const { ok, data } = await api(`/api/users/${user.id}`, {
@@ -182,6 +198,19 @@ function EditForm({
             required
             className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
           />
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          Rola
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as "ADMIN" | "STAFF")}
+            disabled={isSelf}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+          >
+            <option value="STAFF">Pracownik</option>
+            <option value="ADMIN">Administrator</option>
+          </select>
+          {isSelf && <span className="text-xs text-gray-400">Nie możesz zmienić własnej roli.</span>}
         </label>
       </div>
 
@@ -283,6 +312,7 @@ function UserRow({
       <div className="py-3">
         <EditForm
           user={user}
+          isSelf={isSelf}
           onSaved={() => {
             setIsEditing(false);
             onChanged();

@@ -20,7 +20,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const body = await req.json().catch(() => null);
-  const data: { name?: string; email?: string; passwordHash?: string; activatedAt?: Date } = {};
+  const data: { name?: string; email?: string; passwordHash?: string; activatedAt?: Date; role?: "ADMIN" | "STAFF" } = {};
 
   if (typeof body?.name === "string" && body.name.trim()) {
     data.name = body.name.trim();
@@ -38,6 +38,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
     data.email = email;
+  }
+
+  if (body?.role === "ADMIN" || body?.role === "STAFF") {
+    if (id === session.user.id) {
+      return NextResponse.json({ message: "Nie możesz zmienić własnej roli." }, { status: 400 });
+    }
+    data.role = body.role;
   }
 
   if (typeof body?.password === "string" && body.password) {

@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  const role = body?.role === "ADMIN" ? "ADMIN" : "STAFF";
 
   if (!name || !EMAIL_PATTERN.test(email)) {
     return NextResponse.json({ message: "Podaj imię i poprawny adres e-mail." }, { status: 400 });
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
   const placeholderHash = await bcrypt.hash(randomBytes(32).toString("hex"), 10);
 
   const user = await prisma.user.create({
-    data: { name, email, passwordHash: placeholderHash, invitedAt: new Date() },
+    data: { name, email, role, passwordHash: placeholderHash, invitedAt: new Date() },
   });
 
   logInfo("user_invited", { userId: session.user.id, invitedUserId: user.id, email });
