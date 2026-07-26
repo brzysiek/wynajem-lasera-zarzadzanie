@@ -39,6 +39,13 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
 }
 
+function formatRentalDate(iso: string, allDay: boolean): string {
+  const date = new Date(iso);
+  return allDay
+    ? date.toLocaleDateString("pl-PL")
+    : date.toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+}
+
 function ContactBadge() {
   return (
     <svg
@@ -114,6 +121,9 @@ export function CalendarView({ devices }: { devices: Device[] }) {
   }
 
   const visibleRentals = rentals.filter((r) => checkedDeviceIds.has(r.deviceId));
+  const sortedRentals = [...visibleRentals].sort(
+    (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
+  );
 
   function rentalsForDay(day: Date): RawRental[] {
     return visibleRentals
@@ -310,6 +320,63 @@ export function CalendarView({ devices }: { devices: Device[] }) {
           </div>
         </div>
       )}
+
+      <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <div className="border-b border-gray-200 px-4 py-3">
+          <h3 className="text-sm font-semibold text-gray-900">Zaplanowane wynajmy</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs font-medium text-gray-500">
+              <tr>
+                <th className="px-3 py-2">Urządzenie</th>
+                <th className="px-3 py-2">Rozpoczęcie</th>
+                <th className="px-3 py-2">Zakończenie</th>
+                <th className="px-3 py-2">Kontakt</th>
+                <th className="px-3 py-2">Firma</th>
+                <th className="px-3 py-2">Adres dostawy (wkrótce)</th>
+                <th className="px-3 py-2">Data dostawy (wkrótce)</th>
+                <th className="px-3 py-2">Data odbioru (wkrótce)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {sortedRentals.map((rental) => (
+                <tr
+                  key={rental.id}
+                  onClick={() => openEdit(rental)}
+                  className="cursor-pointer hover:bg-gray-50"
+                >
+                  <td className="px-3 py-2">
+                    <span className="flex items-center gap-1.5 font-medium text-gray-900">
+                      <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: rental.device.color }} />
+                      {rental.device.name}
+                    </span>
+                    <span className="text-xs text-gray-400">{rental.title}</span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-gray-700">
+                    {formatRentalDate(rental.startsAt, rental.allDay)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-gray-700">
+                    {formatRentalDate(rental.endsAt, rental.allDay)}
+                  </td>
+                  <td className="px-3 py-2 text-gray-700">{rental.contactNameCache || "—"}</td>
+                  <td className="px-3 py-2 text-gray-700">{rental.contactCompanyCache || "—"}</td>
+                  <td className="px-3 py-2 text-gray-300">—</td>
+                  <td className="px-3 py-2 text-gray-300">—</td>
+                  <td className="px-3 py-2 text-gray-300">—</td>
+                </tr>
+              ))}
+              {sortedRentals.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-3 py-6 text-center text-gray-400">
+                    Brak zaplanowanych wynajmów w tym okresie.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {modalState && (
         <RentalModal
