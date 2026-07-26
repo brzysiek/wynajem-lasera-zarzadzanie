@@ -69,6 +69,8 @@ export function CalendarView({ devices }: { devices: Device[] }) {
   const [modalState, setModalState] = useState<{ rental: Rental | null; defaultDeviceId?: string; defaultDate?: Date } | null>(
     null,
   );
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [dragError, setDragError] = useState<string | null>(null);
 
   const rangeStart = useMemo(
     () => (mode === "month" ? monthGridDays(current)[0] : startOfWeek(current)),
@@ -147,6 +149,39 @@ export function CalendarView({ devices }: { devices: Device[] }) {
     setModalState({ rental: null, defaultDate: day });
   }
 
+  async function handleDropOnDay(day: Date, event: React.DragEvent) {
+    event.preventDefault();
+    setDragOverKey(null);
+
+    const rentalId = event.dataTransfer.getData("text/plain");
+    if (!rentalId) return;
+    const rental = rentals.find((r) => r.id === rentalId);
+    if (!rental) return;
+
+    const originalStartDay = new Date(rental.startsAt);
+    originalStartDay.setHours(0, 0, 0, 0);
+    const targetDay = new Date(day);
+    targetDay.setHours(0, 0, 0, 0);
+    const deltaDays = Math.round((targetDay.getTime() - originalStartDay.getTime()) / 86_400_000);
+    if (deltaDays === 0) return;
+
+    const newStart = addDays(new Date(rental.startsAt), deltaDays);
+    const newEnd = addDays(new Date(rental.endsAt), deltaDays);
+
+    setDragError(null);
+    const res = await fetch(`/wynajem/api/rentals/${rentalId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ startsAt: newStart.toISOString(), endsAt: newEnd.toISOString() }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      setDragError(data?.message || "Nie udało się przenieść rezerwacji.");
+      return;
+    }
+    refreshQuietly();
+  }
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -222,6 +257,14 @@ export function CalendarView({ devices }: { devices: Device[] }) {
       </div>
 
       {isLoading && <p className="mb-2 text-sm text-gray-400">Ładowanie…</p>}
+      {dragError && (
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{dragError}</span>
+          <button type="button" onClick={() => setDragError(null)} className="text-red-500 hover:text-red-700">
+            ✕
+          </button>
+        </div>
+      )}
 
       {mode === "month" ? (
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -236,30 +279,40 @@ export function CalendarView({ devices }: { devices: Device[] }) {
             {monthGridDays(current).map((day) => {
               const dayRentals = rentalsForDay(day);
               const inMonth = day.getMonth() === current.getMonth();
+              const dayKey = day.toISOString();
+              const isDragOver = dragOverKey === dayKey;
               return (
                 <div
-                  key={day.toISOString()}
-                  className={`min-h-[6rem] border-b border-r border-gray-100 p-1.5 ${inMonth ? "" : "bg-gray-50"}`}
+                  key={dayKey}
+                  onClick={() => openCreate(day)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDragEnter={() => setDragOverKey(dayKey)}
+                  onDragLeave={() => setDragOverKey((prev) => (prev === dayKey ? null : prev))}
+                  onDrop={(e) => handleDropOnDay(day, e)}
+                  title="Nowa rezerwacja"
+                  className={`min-h-[6rem] cursor-pointer border-b border-r border-gray-100 p-1.5 hover:bg-gray-50 ${
+                    inMonth ? "" : "bg-gray-50"
+                  } ${isDragOver ? "bg-blue-50" : ""}`}
                 >
                   <div className="mb-1 flex items-center justify-between">
                     <span className={`text-xs ${isSameDay(day, new Date()) ? "font-bold text-gray-900" : "text-gray-400"}`}>
                       {day.getDate()}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => openCreate(day)}
-                      className="text-xs text-gray-300 hover:text-gray-600"
-                      title="Nowa rezerwacja"
-                    >
-                      +
-                    </button>
                   </div>
                   <div className="flex flex-col gap-1">
                     {dayRentals.map((rental) => (
                       <button
                         key={rental.id}
                         type="button"
-                        onClick={() => openEdit(rental)}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", rental.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEdit(rental);
+                        }}
                         className="flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-xs text-white"
                         style={{ backgroundColor: rental.device.color }}
                         title={rental.title}
@@ -279,27 +332,40 @@ export function CalendarView({ devices }: { devices: Device[] }) {
           <div className="grid grid-cols-7">
             {Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(current), i)).map((day) => {
               const dayRentals = rentalsForDay(day);
+              const dayKey = day.toISOString();
+              const isDragOver = dragOverKey === dayKey;
               return (
-                <div key={day.toISOString()} className="min-h-[16rem] border-r border-gray-100 p-2">
+                <div
+                  key={dayKey}
+                  onClick={() => openCreate(day)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDragEnter={() => setDragOverKey(dayKey)}
+                  onDragLeave={() => setDragOverKey((prev) => (prev === dayKey ? null : prev))}
+                  onDrop={(e) => handleDropOnDay(day, e)}
+                  title="Nowa rezerwacja"
+                  className={`min-h-[16rem] cursor-pointer border-r border-gray-100 p-2 hover:bg-gray-50 ${
+                    isDragOver ? "bg-blue-50" : ""
+                  }`}
+                >
                   <div className="mb-2 flex items-center justify-between">
                     <p className={`text-sm font-medium ${isSameDay(day, new Date()) ? "text-gray-900" : "text-gray-500"}`}>
                       {WEEKDAY_LABELS[(day.getDay() + 6) % 7]} {day.getDate()}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => openCreate(day)}
-                      className="text-xs text-gray-300 hover:text-gray-600"
-                      title="Nowa rezerwacja"
-                    >
-                      +
-                    </button>
                   </div>
                   <div className="flex flex-col gap-1.5">
                     {dayRentals.map((rental) => (
                       <button
                         key={rental.id}
                         type="button"
-                        onClick={() => openEdit(rental)}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", rental.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEdit(rental);
+                        }}
                         className="flex flex-col gap-0.5 rounded px-2 py-1 text-left text-xs text-white"
                         style={{ backgroundColor: rental.device.color }}
                       >
