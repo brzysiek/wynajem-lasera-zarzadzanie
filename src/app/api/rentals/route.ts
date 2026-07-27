@@ -3,6 +3,19 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { insertCalendarEvent } from "@/lib/integrations/google-calendar";
 import { logInfo } from "@/lib/logger";
+import { REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
+
+const RENTAL_INCLUDE = {
+  device: true,
+  reminderRules: { orderBy: { daysBefore: "asc" as const } },
+  messages: { orderBy: { sentAt: "desc" as const } },
+};
+
+function parseReminderDays(body: unknown): ReminderDays[] {
+  const raw = (body as { reminderDays?: unknown })?.reminderDays;
+  if (!Array.isArray(raw)) return [...REMINDER_DAYS];
+  return REMINDER_DAYS.filter((days) => raw.includes(days));
+}
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -23,7 +36,7 @@ export async function GET(req: NextRequest) {
       startsAt: { lte: new Date(to) },
       endsAt: { gte: new Date(from) },
     },
-    include: { device: true },
+    include: RENTAL_INCLUDE,
     orderBy: { startsAt: "asc" },
   });
 
@@ -80,12 +93,14 @@ export async function POST(req: NextRequest) {
         allDay,
         lastSyncedAt: new Date(),
       },
-      include: { device: true },
     });
+
+    await syncReminderRules(rental, parseReminderDays(body));
 
     logInfo("rental_created", { userId: session.user.id, rentalId: rental.id, deviceId: device.id });
 
-    return NextResponse.json({ rental });
+    const withRelations = await prisma.rental.findUniqueOrThrow({ where: { id: rental.id }, include: RENTAL_INCLUDE });
+    return NextResponse.json({ rental: withRelations });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ message }, { status: 502 });

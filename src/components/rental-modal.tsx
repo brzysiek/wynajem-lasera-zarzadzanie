@@ -4,6 +4,25 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 
 export type Device = { id: string; name: string; shortName: string; color: string; active: boolean };
 
+export type ReminderDays = 1 | 3 | 7;
+
+export type ReminderRuleSummary = {
+  id: string;
+  daysBefore: ReminderDays;
+  status: "SCHEDULED" | "SENT" | "FAILED" | "CANCELLED";
+  sentAt: string | null;
+  errorMessage: string | null;
+};
+
+export type MessageSummary = {
+  id: string;
+  recipient: string;
+  body: string;
+  status: "SENT" | "FAILED";
+  errorMessage: string | null;
+  sentAt: string;
+};
+
 export type Rental = {
   id: string;
   deviceId: string;
@@ -18,7 +37,89 @@ export type Rental = {
   contactEmailCache?: string | null;
   contactCompanyCache?: string | null;
   contactAddressCache?: string | null;
+  reminderRules?: ReminderRuleSummary[];
+  messages?: MessageSummary[];
 };
+
+const REMINDER_OPTIONS: { days: ReminderDays; label: string }[] = [
+  { days: 1, label: "1 dzień przed" },
+  { days: 3, label: "3 dni przed" },
+  { days: 7, label: "tydzień (7 dni) przed" },
+];
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+}
+
+function ReminderCheckboxes({
+  rental,
+  selected,
+  onToggle,
+}: {
+  rental: Rental | null;
+  selected: Set<ReminderDays>;
+  onToggle: (days: ReminderDays) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 text-sm text-gray-700">
+      Przypomnienia SMS przed wynajmem
+      <div className="flex flex-col gap-1.5 rounded-md border border-gray-200 bg-gray-50 p-3">
+        {REMINDER_OPTIONS.map(({ days, label }) => {
+          const rule = rental?.reminderRules?.find((r) => r.daysBefore === days);
+          const locked = rule?.status === "SENT";
+          return (
+            <label key={days} className={`flex flex-col gap-0.5 ${locked ? "text-gray-400" : ""}`}>
+              <span className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selected.has(days)}
+                  disabled={locked}
+                  onChange={() => onToggle(days)}
+                />
+                {label}
+              </span>
+              {rule?.status === "SENT" && rule.sentAt && (
+                <span className="ml-6 text-xs text-green-700">wysłano {formatDateTime(rule.sentAt)}</span>
+              )}
+              {rule?.status === "FAILED" && (
+                <span className="ml-6 text-xs text-red-600">błąd wysyłki: {rule.errorMessage || "nieznany błąd"}</span>
+              )}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MessageHistorySection({ messages }: { messages: MessageSummary[] }) {
+  if (messages.length === 0) {
+    return <p className="text-xs text-gray-400">Brak wysłanych SMS-ów dla tego wynajmu.</p>;
+  }
+  return (
+    <ul className="flex flex-col gap-2">
+      {messages.map((m) => (
+        <li key={m.id} className="rounded-md border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <span className="font-medium text-gray-900">{m.recipient}</span>
+            <span className="flex items-center gap-2">
+              <span
+                className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                  m.status === "SENT" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                }`}
+              >
+                {m.status === "SENT" ? "wysłano" : "błąd"}
+              </span>
+              <span className="text-gray-400">{formatDateTime(m.sentAt)}</span>
+            </span>
+          </div>
+          <p className="text-gray-600">{m.body}</p>
+          {m.errorMessage && <p className="mt-1 text-red-600">{m.errorMessage}</p>}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 type ContactSummary = {
   id: string;
@@ -290,8 +391,24 @@ export function RentalModal({
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reminderDays, setReminderDays] = useState<Set<ReminderDays>>(() => {
+    if (!rental) return new Set([1, 3, 7]);
+    const checked = rental.reminderRules
+      ?.filter((r) => r.status === "SENT" || r.status === "SCHEDULED")
+      .map((r) => r.daysBefore);
+    return new Set(checked ?? []);
+  });
 
   const device = devices.find((d) => d.id === deviceId);
+
+  function toggleReminderDay(days: ReminderDays) {
+    setReminderDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(days)) next.delete(days);
+      else next.add(days);
+      return next;
+    });
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -305,6 +422,7 @@ export function RentalModal({
       allDay,
       startsAt: new Date(startsAt).toISOString(),
       endsAt: new Date(endsAt).toISOString(),
+      reminderDays: Array.from(reminderDays),
     };
 
     const { ok, data } = isEditing
@@ -424,6 +542,15 @@ export function RentalModal({
                 initialContact={contactFromRental(rental)}
                 onChanged={() => onContactChanged?.()}
               />
+            </div>
+          )}
+
+          <ReminderCheckboxes rental={rental} selected={reminderDays} onToggle={toggleReminderDay} />
+
+          {isEditing && (
+            <div className="flex flex-col gap-1 text-sm text-gray-700">
+              Historia SMS
+              <MessageHistorySection messages={rental!.messages ?? []} />
             </div>
           )}
 

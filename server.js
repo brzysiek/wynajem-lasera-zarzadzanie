@@ -19,7 +19,8 @@
 // the whole chain is true exec() (same PID throughout) and this file goes
 // back to just listening directly, matching what lsnode expects.
 
-const { createServer } = require("http");
+const { createServer, request: httpRequest } = require("http");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const next = require("next");
@@ -82,6 +83,45 @@ function logDiag(label) {
   }
 }
 
+// There's no real cron on this host, so SMS reminders are triggered by this
+// process itself: a loopback HTTP POST to the internal Next.js API route on
+// an interval. CRON_SECRET only needs to match between this call and the
+// route handler within the same process's lifetime — both read
+// process.env.CRON_SECRET from the same process, so generating it in-memory
+// here (rather than persisting it to .env) is sufficient; nothing external
+// ever needs to know it.
+function startReminderCron(port) {
+  if (!process.env.CRON_SECRET) {
+    process.env.CRON_SECRET = crypto.randomBytes(24).toString("hex");
+  }
+  const cronSecret = process.env.CRON_SECRET;
+  const intervalMs = parseInt(process.env.REMINDER_CRON_INTERVAL_MS || "", 10) || 5 * 60 * 1000;
+
+  const trigger = () => {
+    const req = httpRequest(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/wynajem/api/cron/reminders",
+        method: "POST",
+        headers: { "x-cron-secret": cronSecret, "content-length": 0 },
+      },
+      (res) => {
+        res.on("data", () => {});
+        res.on("end", () => {
+          if (res.statusCode !== 200) {
+            logCrash("reminder_cron_http_error", new Error(`HTTP ${res.statusCode}`));
+          }
+        });
+      }
+    );
+    req.on("error", (err) => logCrash("reminder_cron_request_failed", err));
+    req.end();
+  };
+
+  setInterval(trigger, intervalMs).unref();
+}
+
 app.prepare().then(() => {
   logDiag("startup");
   // Fires regardless of request traffic, so the thread ramp-up between the
@@ -114,6 +154,7 @@ app.prepare().then(() => {
     }
   }).listen(port, () => {
     console.log(`> Ready on port ${port} (${dev ? "development" : "production"})`);
+    startReminderCron(port);
   });
 
   // Node's own guidance is not to keep running after uncaughtException (the
