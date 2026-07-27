@@ -174,15 +174,18 @@ export async function sendDueReminders(): Promise<{ checked: number; sent: numbe
     where: { status: "SCHEDULED", channel: "SMS" },
     include: { rental: { include: { device: true } } },
   });
+  const rentalsChecked = new Set(dueRules.map((r) => r.rentalId)).size;
 
   let sent = 0;
   let failed = 0;
+  let due = 0;
 
   for (const rule of dueRules) {
     const targetParts = warsawParts(rule.scheduledFor);
     const isPastDay = targetParts.dateStr < nowParts.dateStr;
     const isDueToday = targetParts.dateStr === nowParts.dateStr && nowParts.hour * 60 + nowParts.minute >= targetMinutes;
     if (!isPastDay && !isDueToday) continue;
+    due++;
 
     const rental = rule.rental;
     const days = rule.daysBefore as ReminderDays;
@@ -234,5 +237,22 @@ export async function sendDueReminders(): Promise<{ checked: number; sent: numbe
     }
   }
 
+  await prisma.reminderCheckLog.create({
+    data: { rentalsChecked, dueCount: due, sentCount: sent, failedCount: failed },
+  });
+
   return { checked: dueRules.length, sent, failed };
+}
+
+export type ReminderCheckLogDto = {
+  id: string;
+  rentalsChecked: number;
+  dueCount: number;
+  sentCount: number;
+  failedCount: number;
+  createdAt: Date;
+};
+
+export async function getReminderCheckLogs(limit = 50): Promise<ReminderCheckLogDto[]> {
+  return prisma.reminderCheckLog.findMany({ orderBy: { createdAt: "desc" }, take: limit });
 }

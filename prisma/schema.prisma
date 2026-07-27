@@ -179,3 +179,14 @@ model SyncLog {
 
   @@map("sync_logs")
 }
+
+model ReminderCheckLog {
+  id             String   @id @default(uuid())
+  rentalsChecked Int
+  dueCount       Int
+  sentCount      Int
+  failedCount    Int
+  createdAt      DateTime @default(now())
+
+  @@map("reminder_check_logs")
+}
