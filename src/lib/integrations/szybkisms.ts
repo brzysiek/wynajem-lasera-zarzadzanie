@@ -19,7 +19,7 @@ export async function testSzybkiSmsConnection(): Promise<IntegrationTestResult> 
 
     const body = await res.json().catch(() => null);
     if (!res.ok) {
-      throw new Error(body?.message || `SzybkiSMS API zwróciło błąd (HTTP ${res.status}).`);
+      throw new Error(body?.detail || body?.title || body?.message || `SzybkiSMS API zwróciło błąd (HTTP ${res.status}).`);
     }
 
     const credit = body?.credit ?? "?";
