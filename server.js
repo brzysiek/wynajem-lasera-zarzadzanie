@@ -119,6 +119,13 @@ function startReminderCron(port) {
     req.end();
   };
 
+  // setInterval alone only fires after a full interval elapses, so a process
+  // that keeps getting restarted (e.g. by an LVE limit spike, see the
+  // logDiag comments above) faster than intervalMs would never complete a
+  // single tick and the automatic check would never run at all. Firing once
+  // immediately on every startup means each restart gets at least one
+  // attempt regardless of how long the process survives afterwards.
+  trigger();
   setInterval(trigger, intervalMs).unref();
 }
 
