@@ -51,38 +51,65 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
 }
 
+// Whole calendar days remaining until the rental's start date (negative/zero
+// once it has started). A "N dni przed" reminder only makes sense while at
+// least N days remain — otherwise its template text (e.g. "za 3 dni") would
+// be factually wrong by the time it went out.
+function daysUntilStart(startsAt: string): number {
+  const start = new Date(startsAt);
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const today = new Date();
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((startDay.getTime() - todayDay.getTime()) / 86_400_000);
+}
+
 function ReminderCheckboxes({
   rental,
+  startsAt,
   selected,
   onToggle,
 }: {
   rental: Rental | null;
+  startsAt: string;
   selected: Set<ReminderDays>;
   onToggle: (days: ReminderDays) => void;
 }) {
+  const remaining = daysUntilStart(startsAt);
   return (
     <div className="flex flex-col gap-1.5 text-sm text-gray-700">
       Przypomnienia SMS przed wynajmem
       <div className="flex flex-col gap-1.5 rounded-md border border-gray-200 bg-gray-50 p-3">
         {REMINDER_OPTIONS.map(({ days, label }) => {
           const rule = rental?.reminderRules?.find((r) => r.daysBefore === days);
-          const locked = rule?.status === "SENT";
+          const sent = rule?.status === "SENT";
+          const impossible = !sent && remaining < days;
+          const disabled = sent || impossible;
+          const checked = sent ? true : impossible ? false : selected.has(days);
           return (
-            <label key={days} className={`flex flex-col gap-0.5 ${locked ? "text-gray-400" : ""}`}>
+            <label
+              key={days}
+              className={`flex flex-col gap-0.5 ${sent ? "text-green-700" : impossible ? "text-red-500" : ""}`}
+            >
               <span className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={selected.has(days)}
-                  disabled={locked}
+                  checked={checked}
+                  disabled={disabled}
                   onChange={() => onToggle(days)}
+                  className={sent ? "accent-green-600" : impossible ? "accent-red-500" : undefined}
                 />
                 {label}
               </span>
-              {rule?.status === "SENT" && rule.sentAt && (
+              {sent && rule?.sentAt && (
                 <span className="ml-6 text-xs text-green-700">wysłano {formatDateTime(rule.sentAt)}</span>
               )}
               {rule?.status === "FAILED" && (
                 <span className="ml-6 text-xs text-red-600">błąd wysyłki: {rule.errorMessage || "nieznany błąd"}</span>
+              )}
+              {impossible && (
+                <span className="ml-6 text-xs text-red-500">
+                  za mało czasu do wynajmu ({Math.max(remaining, 0)} {remaining === 1 ? "dzień" : "dni"})
+                </span>
               )}
             </label>
           );
@@ -445,6 +472,12 @@ export function RentalModal({
     setIsSaving(true);
     setError(null);
 
+    const remaining = daysUntilStart(startsAt);
+    const sentDays = new Set(
+      rental?.reminderRules?.filter((r) => r.status === "SENT").map((r) => r.daysBefore) ?? [],
+    );
+    const effectiveReminderDays = Array.from(reminderDays).filter((d) => sentDays.has(d) || remaining >= d);
+
     const body: Record<string, unknown> = {
       deviceId,
       title,
@@ -452,7 +485,7 @@ export function RentalModal({
       allDay,
       startsAt: new Date(startsAt).toISOString(),
       endsAt: new Date(endsAt).toISOString(),
-      reminderDays: Array.from(reminderDays),
+      reminderDays: effectiveReminderDays,
     };
     if (!isEditing && pendingContact) {
       body.contactId = pendingContact.id;
@@ -577,7 +610,7 @@ export function RentalModal({
             />
           </div>
 
-          <ReminderCheckboxes rental={rental} selected={reminderDays} onToggle={toggleReminderDay} />
+          <ReminderCheckboxes rental={rental} startsAt={startsAt} selected={reminderDays} onToggle={toggleReminderDay} />
 
           {isEditing && (
             <div className="flex flex-col gap-1 text-sm text-gray-700">

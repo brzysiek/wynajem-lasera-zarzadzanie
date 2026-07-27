@@ -29,10 +29,26 @@ function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+function startOfToday(): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+function isPastDay(day: Date): boolean {
+  return day < startOfToday();
+}
+
 function monthGridDays(reference: Date): Date[] {
   const firstOfMonth = new Date(reference.getFullYear(), reference.getMonth(), 1);
   const gridStart = startOfWeek(firstOfMonth);
   return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+}
+
+function weeksOf(days: Date[]): Date[][] {
+  const weeks: Date[][] = [];
+  for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
+  return weeks;
 }
 
 function formatTime(iso: string): string {
@@ -44,6 +60,167 @@ function formatRentalDate(iso: string, allDay: boolean): string {
   return allDay
     ? date.toLocaleDateString("pl-PL")
     : date.toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+}
+
+function rentalTouchesDay(rental: RawRental, day: Date): boolean {
+  const start = new Date(rental.startsAt);
+  const end = new Date(rental.endsAt);
+  return start < addDays(day, 1) && end >= day;
+}
+
+type WeekSpan = { rental: RawRental; startCol: number; span: number; lane: number };
+
+// Greedy interval-scheduling: sorts by start (then longest first) and packs each
+// rental into the first lane whose last-occupied column doesn't overlap it, so
+// multi-day rentals render as one continuous bar instead of per-day chips.
+function computeWeekSpans(weekDays: Date[], rentals: RawRental[]): WeekSpan[] {
+  const items = rentals
+    .map((rental) => {
+      let startCol = -1;
+      let endCol = -1;
+      weekDays.forEach((day, i) => {
+        if (rentalTouchesDay(rental, day)) {
+          if (startCol === -1) startCol = i;
+          endCol = i;
+        }
+      });
+      return { rental, startCol, endCol };
+    })
+    .filter((item) => item.startCol !== -1)
+    .sort((a, b) => a.startCol - b.startCol || b.endCol - b.startCol - (a.endCol - a.startCol));
+
+  const laneEnds: number[] = [];
+  return items.map((item) => {
+    let lane = 0;
+    while (lane < laneEnds.length && laneEnds[lane] >= item.startCol) lane++;
+    laneEnds[lane] = item.endCol;
+    return { rental: item.rental, startCol: item.startCol, span: item.endCol - item.startCol + 1, lane };
+  });
+}
+
+const WEEK_ROW_HEADER_HEIGHT = 20;
+const WEEK_ROW_BAR_HEIGHT = 20;
+const WEEK_ROW_BAR_GAP = 3;
+
+function CalendarWeekRow({
+  weekDays,
+  rentals,
+  monthContext,
+  variant,
+  dragOverDay,
+  onDragOverDay,
+  onDragLeaveRow,
+  onDropDay,
+  onOpenCreate,
+  onOpenEdit,
+}: {
+  weekDays: Date[];
+  rentals: RawRental[];
+  monthContext?: Date;
+  variant: "month" | "week";
+  dragOverDay: string | null;
+  onDragOverDay: (day: Date) => void;
+  onDragLeaveRow: () => void;
+  onDropDay: (day: Date, event: React.DragEvent) => void;
+  onOpenCreate: (day: Date) => void;
+  onOpenEdit: (rental: RawRental) => void;
+}) {
+  const spans = useMemo(() => computeWeekSpans(weekDays, rentals), [weekDays, rentals]);
+  const laneCount = spans.reduce((max, s) => Math.max(max, s.lane + 1), 0);
+  const barsAreaHeight = laneCount * (WEEK_ROW_BAR_HEIGHT + WEEK_ROW_BAR_GAP);
+  const cellMinHeight =
+    variant === "month"
+      ? Math.max(96, WEEK_ROW_HEADER_HEIGHT + barsAreaHeight + 8)
+      : Math.max(256, WEEK_ROW_HEADER_HEIGHT + barsAreaHeight + 8);
+
+  function resolveDay(event: React.DragEvent<HTMLDivElement>): Date {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = (event.clientX - rect.left) / rect.width;
+    const idx = Math.min(6, Math.max(0, Math.floor(ratio * 7)));
+    return weekDays[idx];
+  }
+
+  return (
+    <div
+      className="relative grid grid-cols-7"
+      onDragOver={(e) => {
+        e.preventDefault();
+        onDragOverDay(resolveDay(e));
+      }}
+      onDragLeave={(e) => {
+        const related = e.relatedTarget as Node | null;
+        if (!related || !e.currentTarget.contains(related)) onDragLeaveRow();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDropDay(resolveDay(e), e);
+      }}
+    >
+      {weekDays.map((day) => {
+        const inMonth = monthContext ? day.getMonth() === monthContext.getMonth() : true;
+        const isToday = isSameDay(day, new Date());
+        const isOver = dragOverDay === day.toISOString();
+        return (
+          <div
+            key={day.toISOString()}
+            onClick={() => onOpenCreate(day)}
+            title="Nowa rezerwacja"
+            className={`cursor-pointer border-b border-r border-gray-100 p-1.5 pt-1 hover:bg-gray-50 ${
+              isOver
+                ? "bg-blue-50"
+                : isToday
+                  ? "bg-amber-50"
+                  : isPastDay(day)
+                    ? "bg-gray-100"
+                    : !inMonth
+                      ? "bg-gray-50"
+                      : ""
+            }`}
+            style={{ minHeight: cellMinHeight }}
+          >
+            <span
+              className={`text-xs ${isToday ? "font-bold text-gray-900" : isPastDay(day) ? "text-gray-300" : "text-gray-400"}`}
+            >
+              {variant === "week" ? `${WEEKDAY_LABELS[(day.getDay() + 6) % 7]} ${day.getDate()}` : day.getDate()}
+            </span>
+          </div>
+        );
+      })}
+      <div className="pointer-events-none absolute inset-x-0" style={{ top: WEEK_ROW_HEADER_HEIGHT }}>
+        {spans.map((s) => (
+          <button
+            key={s.rental.id}
+            type="button"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/plain", s.rental.id);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenEdit(s.rental);
+            }}
+            className="pointer-events-auto absolute flex items-center gap-1 overflow-hidden rounded px-1.5 text-left text-xs text-white shadow-sm"
+            style={{
+              left: `calc(${(s.startCol / 7) * 100}% + 2px)`,
+              width: `calc(${(s.span / 7) * 100}% - 4px)`,
+              top: s.lane * (WEEK_ROW_BAR_HEIGHT + WEEK_ROW_BAR_GAP),
+              height: WEEK_ROW_BAR_HEIGHT,
+              backgroundColor: s.rental.device.color,
+            }}
+            title={s.rental.title}
+          >
+            {s.rental.hubspotContactId && <ContactBadge />}
+            <span className="truncate">
+              {variant === "week" && !s.rental.allDay
+                ? `${formatTime(s.rental.startsAt)}–${formatTime(s.rental.endsAt)} ${s.rental.title}`
+                : s.rental.title}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ContactBadge() {
@@ -69,7 +246,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
   const [modalState, setModalState] = useState<{ rental: Rental | null; defaultDeviceId?: string; defaultDate?: Date } | null>(
     null,
   );
-  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [dragOverDay, setDragOverDay] = useState<string | null>(null);
   const [dragError, setDragError] = useState<string | null>(null);
 
   const rangeStart = useMemo(
@@ -127,16 +304,6 @@ export function CalendarView({ devices }: { devices: Device[] }) {
     (a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
   );
 
-  function rentalsForDay(day: Date): RawRental[] {
-    return visibleRentals
-      .filter((r) => {
-        const start = new Date(r.startsAt);
-        const end = new Date(r.endsAt);
-        return start < addDays(day, 1) && end >= day;
-      })
-      .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
-  }
-
   function navigate(step: number) {
     setCurrent((prev) => (mode === "month" ? new Date(prev.getFullYear(), prev.getMonth() + step, 1) : addDays(prev, step * 7)));
   }
@@ -151,7 +318,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
 
   async function handleDropOnDay(day: Date, event: React.DragEvent) {
     event.preventDefault();
-    setDragOverKey(null);
+    setDragOverDay(null);
 
     const rentalId = event.dataTransfer.getData("text/plain");
     if (!rentalId) return;
@@ -275,115 +442,35 @@ export function CalendarView({ devices }: { devices: Device[] }) {
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7">
-            {monthGridDays(current).map((day) => {
-              const dayRentals = rentalsForDay(day);
-              const inMonth = day.getMonth() === current.getMonth();
-              const dayKey = day.toISOString();
-              const isDragOver = dragOverKey === dayKey;
-              return (
-                <div
-                  key={dayKey}
-                  onClick={() => openCreate(day)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDragEnter={() => setDragOverKey(dayKey)}
-                  onDragLeave={() => setDragOverKey((prev) => (prev === dayKey ? null : prev))}
-                  onDrop={(e) => handleDropOnDay(day, e)}
-                  title="Nowa rezerwacja"
-                  className={`min-h-[6rem] cursor-pointer border-b border-r border-gray-100 p-1.5 hover:bg-gray-50 ${
-                    inMonth ? "" : "bg-gray-50"
-                  } ${isDragOver ? "bg-blue-50" : ""}`}
-                >
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className={`text-xs ${isSameDay(day, new Date()) ? "font-bold text-gray-900" : "text-gray-400"}`}>
-                      {day.getDate()}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {dayRentals.map((rental) => (
-                      <button
-                        key={rental.id}
-                        type="button"
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("text/plain", rental.id);
-                          e.dataTransfer.effectAllowed = "move";
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEdit(rental);
-                        }}
-                        className="flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-xs text-white"
-                        style={{ backgroundColor: rental.device.color }}
-                        title={rental.title}
-                      >
-                        {rental.hubspotContactId && <ContactBadge />}
-                        <span className="truncate">{rental.title}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {weeksOf(monthGridDays(current)).map((weekDays) => (
+            <CalendarWeekRow
+              key={weekDays[0].toISOString()}
+              weekDays={weekDays}
+              rentals={visibleRentals.filter((r) => weekDays.some((d) => rentalTouchesDay(r, d)))}
+              monthContext={current}
+              variant="month"
+              dragOverDay={dragOverDay}
+              onDragOverDay={(day) => setDragOverDay(day.toISOString())}
+              onDragLeaveRow={() => setDragOverDay(null)}
+              onDropDay={handleDropOnDay}
+              onOpenCreate={openCreate}
+              onOpenEdit={openEdit}
+            />
+          ))}
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <div className="grid grid-cols-7">
-            {Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(current), i)).map((day) => {
-              const dayRentals = rentalsForDay(day);
-              const dayKey = day.toISOString();
-              const isDragOver = dragOverKey === dayKey;
-              return (
-                <div
-                  key={dayKey}
-                  onClick={() => openCreate(day)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDragEnter={() => setDragOverKey(dayKey)}
-                  onDragLeave={() => setDragOverKey((prev) => (prev === dayKey ? null : prev))}
-                  onDrop={(e) => handleDropOnDay(day, e)}
-                  title="Nowa rezerwacja"
-                  className={`min-h-[16rem] cursor-pointer border-r border-gray-100 p-2 hover:bg-gray-50 ${
-                    isDragOver ? "bg-blue-50" : ""
-                  }`}
-                >
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className={`text-sm font-medium ${isSameDay(day, new Date()) ? "text-gray-900" : "text-gray-500"}`}>
-                      {WEEKDAY_LABELS[(day.getDay() + 6) % 7]} {day.getDate()}
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    {dayRentals.map((rental) => (
-                      <button
-                        key={rental.id}
-                        type="button"
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("text/plain", rental.id);
-                          e.dataTransfer.effectAllowed = "move";
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEdit(rental);
-                        }}
-                        className="flex flex-col gap-0.5 rounded px-2 py-1 text-left text-xs text-white"
-                        style={{ backgroundColor: rental.device.color }}
-                      >
-                        <span className="flex items-center gap-1">
-                          {rental.hubspotContactId && <ContactBadge />}
-                          <span className="font-medium">
-                            {rental.allDay ? "Cały dzień" : `${formatTime(rental.startsAt)}–${formatTime(rental.endsAt)}`}
-                          </span>
-                        </span>
-                        <span className="truncate">{rental.title}</span>
-                      </button>
-                    ))}
-                    {dayRentals.length === 0 && <p className="text-xs text-gray-300">—</p>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <CalendarWeekRow
+            weekDays={Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(current), i))}
+            rentals={visibleRentals}
+            variant="week"
+            dragOverDay={dragOverDay}
+            onDragOverDay={(day) => setDragOverDay(day.toISOString())}
+            onDragLeaveRow={() => setDragOverDay(null)}
+            onDropDay={handleDropOnDay}
+            onOpenCreate={openCreate}
+            onOpenEdit={openEdit}
+          />
         </div>
       )}
 
