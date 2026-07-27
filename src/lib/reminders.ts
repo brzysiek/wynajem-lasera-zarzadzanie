@@ -77,15 +77,29 @@ export function computeScheduledFor(rentalStartsAt: Date, daysBefore: number): D
 
 type RentalForSync = { id: string; startsAt: Date };
 
+function daysUntilStart(startsAt: Date): number {
+  const startDay = new Date(startsAt.getFullYear(), startsAt.getMonth(), startsAt.getDate());
+  const today = new Date();
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((startDay.getTime() - todayDay.getTime()) / 86_400_000);
+}
+
 // Keeps at most one ReminderRule per (rental, daysBefore) offset in sync with
 // the desired checked/unchecked checkbox state from the rental form. SENT
 // rules are immutable history and are never touched here — the UI renders
 // them checked+disabled so `selectedDays` naturally still includes them.
+//
+// `remaining < days` forces `wanted` to false regardless of what the caller
+// asked for — this is what protects offsets that became impossible after a
+// rental's startsAt moved (e.g. calendar drag-and-drop, which PATCHes only
+// startsAt/endsAt and re-selects whatever was already SCHEDULED without
+// itself re-checking validity against the new date).
 export async function syncReminderRules(rental: RentalForSync, selectedDays: ReminderDays[]): Promise<void> {
   const existing = await prisma.reminderRule.findMany({ where: { rentalId: rental.id, channel: "SMS" } });
+  const remaining = daysUntilStart(rental.startsAt);
 
   for (const days of REMINDER_DAYS) {
-    const wanted = selectedDays.includes(days);
+    const wanted = selectedDays.includes(days) && remaining >= days;
     const current = existing.find((r) => r.daysBefore === days);
     if (current?.status === "SENT") continue;
 
@@ -183,12 +197,25 @@ export async function sendDueReminders(): Promise<{ checked: number; sent: numbe
   for (const rule of dueRules) {
     const targetParts = warsawParts(rule.scheduledFor);
     const isPastDay = targetParts.dateStr < nowParts.dateStr;
-    const isDueToday = targetParts.dateStr === nowParts.dateStr && nowParts.hour * 60 + nowParts.minute >= targetMinutes;
-    if (!isPastDay && !isDueToday) continue;
+    const isExactDueToday = targetParts.dateStr === nowParts.dateStr && nowParts.hour * 60 + nowParts.minute >= targetMinutes;
+    if (!isPastDay && !isExactDueToday) continue;
     due++;
 
     const rental = rule.rental;
     const days = rule.daysBefore as ReminderDays;
+
+    if (isPastDay) {
+      // The exact "N dni przed" day already passed without this firing
+      // (e.g. the app was down at the time) — sending it now would state a
+      // wrong day count ("za 7 dni" with fewer than 7 actually left), so
+      // it's marked failed instead of catching up late with stale wording.
+      const errorMessage = "Termin wysyłki minął bez wysłania przypomnienia (np. aplikacja była wyłączona o właściwej porze).";
+      await prisma.reminderRule.update({ where: { id: rule.id }, data: { status: "FAILED", errorMessage } });
+      failed++;
+      logError("reminder_window_missed", new Error(errorMessage), { rentalId: rental.id, daysBefore: days });
+      continue;
+    }
+
     const template = TEMPLATE_KEYS[days]
       ? await prisma.messageTemplate.findUnique({ where: { key: TEMPLATE_KEYS[days] } })
       : null;
