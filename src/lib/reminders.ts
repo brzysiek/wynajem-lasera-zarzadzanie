@@ -155,7 +155,7 @@ function renderTemplate(body: string, rental: RentalForRender): string {
     .trim();
 }
 
-function normalizePolishPhone(raw: string): string | null {
+export function normalizePolishPhone(raw: string): string | null {
   const digits = raw.trim().replace(/[^\d+]/g, "");
   if (/^\+\d{9,15}$/.test(digits)) return digits;
   if (/^48\d{9}$/.test(digits)) return `+${digits}`;

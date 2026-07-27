@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/kalendarz", label: "Kalendarz" },
   { href: "/nadchodzace", label: "Nadchodzące" },
   { href: "/urzadzenia", label: "Urządzenia" },
+  { href: "/wysylka-sms", label: "Wysyłka SMS" },
   { href: "/ustawienia/przypomnienia-sms", label: "Ustawienia", match: "/ustawienia" },
 ];
 
