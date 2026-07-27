@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 
 const ALL_TABS = [
   { href: "/ustawienia/integracje", label: "Integracje", adminOnly: true },
-  { href: "/ustawienia/szablony", label: "Szablony", adminOnly: false },
   { href: "/ustawienia/przypomnienia-sms", label: "Przypomnienia SMS", adminOnly: false },
   { href: "/ustawienia/bramka", label: "Bramka", adminOnly: true },
   { href: "/ustawienia/uzytkownicy", label: "Użytkownicy", adminOnly: true },

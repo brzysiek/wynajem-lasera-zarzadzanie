@@ -189,10 +189,15 @@ function ContactSection({
   rentalId,
   initialContact,
   onChanged,
+  onPendingChange,
 }: {
-  rentalId: string;
+  // null while creating a new rental (it doesn't have an id yet) — in that
+  // case assign/unassign only update local state instead of calling the API,
+  // and the picked contact id travels in the rental-creation request body.
+  rentalId: string | null;
   initialContact: AssignedContact | null;
-  onChanged: () => void;
+  onChanged?: () => void;
+  onPendingChange?: (contact: AssignedContact | null) => void;
 }) {
   const [contact, setContact] = useState(initialContact);
   const [query, setQuery] = useState("");
@@ -237,13 +242,31 @@ function ContactSection({
     };
   }, [query]);
 
-  async function assign(contactId: string) {
+  async function assign(c: ContactSummary) {
+    if (!rentalId) {
+      const name = [c.firstname, c.lastname].filter(Boolean).join(" ").trim() || null;
+      const next: AssignedContact = {
+        id: c.id,
+        name,
+        phone: c.phone,
+        email: c.email,
+        company: c.company,
+        address: null,
+        url: null,
+      };
+      setContact(next);
+      setQuery("");
+      setResults(null);
+      onPendingChange?.(next);
+      return;
+    }
+
     setIsAssigning(true);
     setError(null);
     const res = await fetch(`/wynajem/api/rentals/${rentalId}/contact`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contactId }),
+      body: JSON.stringify({ contactId: c.id }),
     });
     const data = await res.json().catch(() => null);
     setIsAssigning(false);
@@ -263,10 +286,16 @@ function ContactSection({
     });
     setQuery("");
     setResults(null);
-    onChanged();
+    onChanged?.();
   }
 
   async function unassign() {
+    if (!rentalId) {
+      setContact(null);
+      onPendingChange?.(null);
+      return;
+    }
+
     setIsAssigning(true);
     setError(null);
     const res = await fetch(`/wynajem/api/rentals/${rentalId}/contact`, { method: "DELETE" });
@@ -277,7 +306,7 @@ function ContactSection({
       return;
     }
     setContact(null);
-    onChanged();
+    onChanged?.();
   }
 
   if (contact) {
@@ -344,7 +373,7 @@ function ContactSection({
                 <button
                   type="button"
                   disabled={isAssigning}
-                  onClick={() => assign(c.id)}
+                  onClick={() => assign(c)}
                   className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50"
                 >
                   <span className="font-medium text-gray-900">{name}</span>
@@ -391,6 +420,7 @@ export function RentalModal({
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingContact, setPendingContact] = useState<AssignedContact | null>(null);
   const [reminderDays, setReminderDays] = useState<Set<ReminderDays>>(() => {
     if (!rental) return new Set([1, 3, 7]);
     const checked = rental.reminderRules
@@ -415,7 +445,7 @@ export function RentalModal({
     setIsSaving(true);
     setError(null);
 
-    const body = {
+    const body: Record<string, unknown> = {
       deviceId,
       title,
       description,
@@ -424,6 +454,9 @@ export function RentalModal({
       endsAt: new Date(endsAt).toISOString(),
       reminderDays: Array.from(reminderDays),
     };
+    if (!isEditing && pendingContact) {
+      body.contactId = pendingContact.id;
+    }
 
     const { ok, data } = isEditing
       ? await api(`/api/rentals/${rental!.id}`, { method: "PATCH", body: JSON.stringify(body) })
@@ -534,16 +567,15 @@ export function RentalModal({
             </label>
           </div>
 
-          {isEditing && (
-            <div className="flex flex-col gap-1 text-sm text-gray-700">
-              Klient (HubSpot)
-              <ContactSection
-                rentalId={rental!.id}
-                initialContact={contactFromRental(rental)}
-                onChanged={() => onContactChanged?.()}
-              />
-            </div>
-          )}
+          <div className="flex flex-col gap-1 text-sm text-gray-700">
+            Klient (HubSpot)
+            <ContactSection
+              rentalId={isEditing ? rental!.id : null}
+              initialContact={isEditing ? contactFromRental(rental) : null}
+              onChanged={() => onContactChanged?.()}
+              onPendingChange={setPendingContact}
+            />
+          </div>
 
           <ReminderCheckboxes rental={rental} selected={reminderDays} onToggle={toggleReminderDay} />
 

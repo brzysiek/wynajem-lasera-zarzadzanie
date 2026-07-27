@@ -5,7 +5,7 @@ export async function requireAdmin() {
   const session = await auth();
 
   if (session?.user.role !== "ADMIN") {
-    redirect("/ustawienia/szablony");
+    redirect("/ustawienia/przypomnienia-sms");
   }
 
   return session;

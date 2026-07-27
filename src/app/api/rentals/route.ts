@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { insertCalendarEvent } from "@/lib/integrations/google-calendar";
-import { logInfo } from "@/lib/logger";
+import { getHubspotContact, formatHubspotAddress } from "@/lib/integrations/hubspot";
+import { logInfo, logError } from "@/lib/logger";
 import { REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 
 const RENTAL_INCLUDE = {
@@ -96,6 +97,30 @@ export async function POST(req: NextRequest) {
     });
 
     await syncReminderRules(rental, parseReminderDays(body));
+
+    // Contact assignment is best-effort: the calendar event and rental are
+    // already created at this point, so a HubSpot lookup failure shouldn't
+    // fail the whole request — the user can still assign it from the edit view.
+    const contactId = typeof body?.contactId === "string" ? body.contactId.trim() : "";
+    if (contactId) {
+      try {
+        const contact = await getHubspotContact(contactId);
+        const name = [contact.firstname, contact.lastname].filter(Boolean).join(" ").trim() || null;
+        await prisma.rental.update({
+          where: { id: rental.id },
+          data: {
+            hubspotContactId: contact.id,
+            contactNameCache: name,
+            contactPhoneCache: contact.phone,
+            contactEmailCache: contact.email,
+            contactCompanyCache: contact.company,
+            contactAddressCache: formatHubspotAddress(contact),
+          },
+        });
+      } catch (err) {
+        logError("rental_contact_assign_on_create_failed", err, { rentalId: rental.id, contactId });
+      }
+    }
 
     logInfo("rental_created", { userId: session.user.id, rentalId: rental.id, deviceId: device.id });
 
