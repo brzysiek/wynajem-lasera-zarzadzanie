@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
 import { createResetToken, buildResetUrl, INVITE_TOKEN_TTL_MS } from "@/lib/password-reset";
 import { sendUserInviteEmail } from "@/lib/email";
-import { logInfo, logError } from "@/lib/logger";
+import { logInfo, logWarn, logError } from "@/lib/logger";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -43,11 +43,13 @@ export async function POST(req: NextRequest) {
   const role = body?.role === "ADMIN" ? "ADMIN" : "STAFF";
 
   if (!name || !EMAIL_PATTERN.test(email)) {
+    logWarn("user_invite_rejected", { userId: session.user.id, reason: "invalid_input" });
     return NextResponse.json({ message: "Podaj imię i poprawny adres e-mail." }, { status: 400 });
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
+    logWarn("user_invite_rejected", { userId: session.user.id, reason: "email_exists", email });
     return NextResponse.json({ message: "Użytkownik z takim adresem e-mail już istnieje." }, { status: 409 });
   }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { deleteSmsTemplate, updateSmsTemplate } from "@/lib/message-templates";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logWarn } from "@/lib/logger";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -31,6 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     logInfo("sms_template_updated", { userId: session.user.id, templateId: id });
     return NextResponse.json({ template });
   } catch {
+    logWarn("sms_template_update_not_found", { userId: session.user.id, templateId: id });
     return NextResponse.json({ message: "Nie znaleziono szablonu." }, { status: 404 });
   }
 }
@@ -46,6 +47,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await deleteSmsTemplate(id);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Nie udało się usunąć szablonu.";
+    logWarn("sms_template_delete_rejected", { userId: session.user.id, templateId: id, reason: message });
     return NextResponse.json({ message }, { status: 400 });
   }
 

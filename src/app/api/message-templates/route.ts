@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createSmsTemplate, listSmsTemplates } from "@/lib/message-templates";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logWarn } from "@/lib/logger";
 
 export async function GET() {
   const session = await auth();
@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
   const text = typeof body?.body === "string" ? body.body.trim() : "";
 
   if (!label || !text) {
+    logWarn("sms_template_create_rejected", { userId: session.user.id });
     return NextResponse.json({ message: "Podaj nazwę i treść szablonu." }, { status: 400 });
   }
 

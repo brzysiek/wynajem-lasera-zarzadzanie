@@ -1,3 +1,5 @@
+import { logDebug, logInfo, logWarn } from "@/lib/logger";
+
 export type IntegrationTestResult = { ok: boolean; message: string };
 export type SendSmsResult = { ok: boolean; message: string; providerMessageId?: string };
 
@@ -36,8 +38,11 @@ export async function testSzybkiSmsConnection(): Promise<IntegrationTestResult> 
 export async function sendSms(recipient: string, message: string): Promise<SendSmsResult> {
   const token = process.env.SZYBKISMS_API_TOKEN;
   if (!token) {
+    logWarn("szybkisms_send_skipped_no_token", { recipient });
     return { ok: false, message: "Brak SZYBKISMS_API_TOKEN." };
   }
+
+  logDebug("szybkisms_send_attempt", { recipient, messageLength: message.length });
 
   try {
     const res = await fetch(`${API_BASE}/messages/sms`, {
@@ -59,12 +64,15 @@ export async function sendSms(recipient: string, message: string): Promise<SendS
       throw new Error(first.status_description || `SzybkiSMS odrzuciło wiadomość (${first.status_code}).`);
     }
 
+    logInfo("szybkisms_send_ok", { recipient, providerMessageId: first.id, statusCode: first.status_code });
     return {
       ok: true,
       message: first.status_description || "Wysłano.",
       providerMessageId: first.id != null ? String(first.id) : undefined,
     };
   } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    const reason = err instanceof Error ? err.message : String(err);
+    logWarn("szybkisms_send_failed", { recipient, reason });
+    return { ok: false, message: reason };
   }
 }

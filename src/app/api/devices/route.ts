@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logWarn } from "@/lib/logger";
 
 const COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
   const googleCalendarId = typeof body?.googleCalendarId === "string" ? body.googleCalendarId.trim() : "";
 
   if (!name || !shortName || !COLOR_PATTERN.test(color) || !googleCalendarId) {
+    logWarn("device_create_rejected", { userId: session.user.id });
     return NextResponse.json(
       { message: "Uzupełnij nazwę, skrót, poprawny kolor (#RRGGBB) i kalendarz Google." },
       { status: 400 },

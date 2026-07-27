@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { insertCalendarEvent } from "@/lib/integrations/google-calendar";
 import { getHubspotContact, formatHubspotAddress } from "@/lib/integrations/hubspot";
-import { logInfo, logError } from "@/lib/logger";
+import { logInfo, logWarn, logError } from "@/lib/logger";
 import { REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 
 const RENTAL_INCLUDE = {
@@ -59,12 +59,14 @@ export async function POST(req: NextRequest) {
   const endsAt = typeof body?.endsAt === "string" ? new Date(body.endsAt) : null;
 
   if (!deviceId || !title || !startsAt || !endsAt || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
+    logWarn("rental_create_rejected", { userId: session.user.id, reason: "invalid_input" });
     return NextResponse.json(
       { message: "Uzupełnij urządzenie, tytuł oraz poprawny termin rozpoczęcia i zakończenia." },
       { status: 400 },
     );
   }
   if (endsAt <= startsAt) {
+    logWarn("rental_create_rejected", { userId: session.user.id, reason: "invalid_date_range" });
     return NextResponse.json({ message: "Termin zakończenia musi być późniejszy niż rozpoczęcia." }, { status: 400 });
   }
 
@@ -127,6 +129,7 @@ export async function POST(req: NextRequest) {
     const withRelations = await prisma.rental.findUniqueOrThrow({ where: { id: rental.id }, include: RENTAL_INCLUDE });
     return NextResponse.json({ rental: withRelations });
   } catch (err) {
+    logError("rental_create_failed", err, { userId: session.user.id, deviceId: device.id });
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ message }, { status: 502 });
   }

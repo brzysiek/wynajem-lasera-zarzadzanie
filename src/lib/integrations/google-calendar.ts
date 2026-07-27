@@ -1,4 +1,5 @@
 import { createSign } from "crypto";
+import { logDebug, logInfo } from "@/lib/logger";
 
 export type IntegrationTestResult = { ok: boolean; message: string };
 
@@ -72,6 +73,7 @@ export async function getAccessToken(): Promise<string> {
     throw new Error(body?.error_description || body?.error || `Google zwrócił błąd autoryzacji (HTTP ${res.status}).`);
   }
 
+  logDebug("google_calendar_token_obtained", { impersonatedUser });
   return body.access_token as string;
 }
 
@@ -148,6 +150,7 @@ export async function listGoogleCalendars(): Promise<GoogleCalendarListEntry[]> 
     pageToken = body.nextPageToken;
   } while (pageToken);
 
+  logDebug("google_calendars_listed", { count: calendars.length });
   return calendars;
 }
 
@@ -190,6 +193,7 @@ export async function listCalendarEvents(calendarId: string, timeMin: Date, time
     pageToken = body.nextPageToken;
   } while (pageToken);
 
+  logDebug("google_calendar_events_listed", { calendarId, count: events.length });
   return events;
 }
 
@@ -203,6 +207,7 @@ export async function insertCalendarEvent(calendarId: string, input: GoogleEvent
   if (!res.ok) {
     throw new Error(body?.error?.message || `Nie udało się utworzyć wydarzenia (HTTP ${res.status}).`);
   }
+  logInfo("google_calendar_event_created", { calendarId, eventId: body.id });
   return { id: body.id };
 }
 
@@ -216,6 +221,7 @@ export async function updateCalendarEvent(calendarId: string, eventId: string, i
   if (!res.ok) {
     throw new Error(body?.error?.message || `Nie udało się zaktualizować wydarzenia (HTTP ${res.status}).`);
   }
+  logInfo("google_calendar_event_updated", { calendarId, eventId });
 }
 
 export async function deleteCalendarEvent(calendarId: string, eventId: string): Promise<void> {
@@ -229,6 +235,7 @@ export async function deleteCalendarEvent(calendarId: string, eventId: string): 
   if (!res.ok && res.status !== 410 && res.status !== 404) {
     throw new Error(body?.error?.message || `Nie udało się usunąć wydarzenia (HTTP ${res.status}).`);
   }
+  logInfo("google_calendar_event_deleted", { calendarId, eventId, alreadyGone: res.status === 410 || res.status === 404 });
 }
 
 export async function testGoogleCalendarConnection(): Promise<IntegrationTestResult> {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logWarn } from "@/lib/logger";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -42,6 +42,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (body?.role === "ADMIN" || body?.role === "STAFF") {
     if (id === session.user.id) {
+      logWarn("user_self_role_change_blocked", { userId: session.user.id });
       return NextResponse.json({ message: "Nie możesz zmienić własnej roli." }, { status: 400 });
     }
     data.role = body.role;
@@ -87,6 +88,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params;
   if (id === session.user.id) {
+    logWarn("user_self_delete_blocked", { userId: session.user.id });
     return NextResponse.json({ message: "Nie możesz usunąć własnego konta." }, { status: 400 });
   }
 

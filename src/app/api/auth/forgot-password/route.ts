@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createResetToken, buildResetUrl } from "@/lib/password-reset";
 import { sendPasswordResetEmail } from "@/lib/email";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logWarn } from "@/lib/logger";
 
 // Always returns the same generic response whether or not the e-mail
 // exists, so this endpoint can't be used to enumerate registered accounts.
@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
 
   if (!email) {
+    logWarn("password_reset_request_rejected", {});
     return NextResponse.json({ message: "Podaj adres e-mail." }, { status: 400 });
   }
 

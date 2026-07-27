@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { searchHubspotContacts } from "@/lib/integrations/hubspot";
+import { logError } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest) {
     const contacts = await searchHubspotContacts(query);
     return NextResponse.json({ contacts });
   } catch (err) {
+    logError("hubspot_contact_search_failed", err, { userId: session.user.id });
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ message }, { status: 502 });
   }

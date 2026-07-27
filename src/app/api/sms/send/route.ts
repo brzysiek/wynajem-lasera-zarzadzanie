@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/integrations/szybkisms";
 import { normalizePolishPhone } from "@/lib/reminders";
-import { logInfo, logError } from "@/lib/logger";
+import { logInfo, logWarn, logError } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -17,11 +17,13 @@ export async function POST(req: NextRequest) {
   const rentalId = typeof body?.rentalId === "string" && body.rentalId ? body.rentalId : null;
 
   if (!message) {
+    logWarn("sms_manual_send_rejected", { userId: session.user.id, reason: "empty_message" });
     return NextResponse.json({ message: "Treść wiadomości nie może być pusta." }, { status: 400 });
   }
 
   const phone = normalizePolishPhone(rawPhone);
   if (!phone) {
+    logWarn("sms_manual_send_rejected", { userId: session.user.id, reason: "invalid_phone", phone: rawPhone });
     // Every real send attempt is recorded — including ones that fail because
     // there's no usable phone number, per the requirement that a SMS cannot
     // go out without one but the attempt must still show up in history.

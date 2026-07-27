@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getHubspotContact, getHubspotContactUrl, formatHubspotAddress } from "@/lib/integrations/hubspot";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logError } from "@/lib/logger";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     return NextResponse.json({ rental: updated, contactUrl: getHubspotContactUrl(contact.id) });
   } catch (err) {
+    logError("rental_contact_assign_failed", err, { userId: session.user.id, rentalId: id, contactId });
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ message }, { status: 502 });
   }

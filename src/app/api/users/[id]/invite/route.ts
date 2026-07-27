@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
 import { createResetToken, buildResetUrl, INVITE_TOKEN_TTL_MS } from "@/lib/password-reset";
 import { sendUserInviteEmail } from "@/lib/email";
-import { logInfo, logError } from "@/lib/logger";
+import { logInfo, logWarn, logError } from "@/lib/logger";
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAdminSession();
@@ -17,6 +17,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: "Nie znaleziono użytkownika." }, { status: 404 });
   }
   if (target.activatedAt) {
+    logWarn("user_invite_resend_rejected", { userId: session.user.id, targetUserId: target.id });
     return NextResponse.json({ message: "Użytkownik już aktywował konto." }, { status: 400 });
   }
 

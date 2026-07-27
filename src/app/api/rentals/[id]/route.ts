@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { updateCalendarEvent, deleteCalendarEvent } from "@/lib/integrations/google-calendar";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logWarn, logError } from "@/lib/logger";
 import { REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 
 const RENTAL_INCLUDE = {
@@ -34,9 +34,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const endsAt = typeof body?.endsAt === "string" ? new Date(body.endsAt) : rental.endsAt;
 
   if (!title || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
+    logWarn("rental_update_rejected", { userId: session.user.id, rentalId: id, reason: "invalid_input" });
     return NextResponse.json({ message: "Uzupełnij tytuł i poprawny termin." }, { status: 400 });
   }
   if (endsAt <= startsAt) {
+    logWarn("rental_update_rejected", { userId: session.user.id, rentalId: id, reason: "invalid_date_range" });
     return NextResponse.json({ message: "Termin zakończenia musi być późniejszy niż rozpoczęcia." }, { status: 400 });
   }
 
@@ -78,6 +80,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const withRelations = await prisma.rental.findUniqueOrThrow({ where: { id }, include: RENTAL_INCLUDE });
     return NextResponse.json({ rental: withRelations });
   } catch (err) {
+    logError("rental_update_failed", err, { userId: session.user.id, rentalId: id });
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ message }, { status: 502 });
   }
@@ -106,6 +109,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({ ok: true });
   } catch (err) {
+    logError("rental_delete_failed", err, { userId: session.user.id, rentalId: id });
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ message }, { status: 502 });
   }

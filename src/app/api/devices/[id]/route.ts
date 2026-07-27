@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logWarn } from "@/lib/logger";
 
 const COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
@@ -20,6 +20,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body?.shortName === "string" && body.shortName.trim()) data.shortName = body.shortName.trim();
   if (typeof body?.color === "string") {
     if (!COLOR_PATTERN.test(body.color.trim())) {
+      logWarn("device_update_rejected", { userId: session.user.id, deviceId: id, reason: "invalid_color" });
       return NextResponse.json({ message: "Kolor musi być w formacie #RRGGBB." }, { status: 400 });
     }
     data.color = body.color.trim();
@@ -30,6 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body?.active === "boolean") data.active = body.active;
 
   if (Object.keys(data).length === 0) {
+    logWarn("device_update_rejected", { userId: session.user.id, deviceId: id, reason: "no_changes" });
     return NextResponse.json({ message: "Brak zmian do zapisania." }, { status: 400 });
   }
 

@@ -33,6 +33,8 @@ crash.log
 diag.log
 app.log
 app-error.log
+app-*.log
+app-error-*.log
 /node-wrapper.sh
 /tmp
 

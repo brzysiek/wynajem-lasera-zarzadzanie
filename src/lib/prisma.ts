@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { logDebug, logInfo } from "@/lib/logger";
 
 // @prisma/adapter-mariadb bundles its own nested copy of the `mariadb`
 // package (a different version than the one in our own node_modules), so
@@ -56,7 +57,16 @@ function parsePoolConfig(url: string | undefined): MariaPoolConfig | undefined {
 
 function createPrismaClient(): PrismaClient {
   const poolConfig = parsePoolConfig(process.env.DATABASE_URL);
-  if (!poolConfig) return new PrismaClient();
+  if (!poolConfig) {
+    // Falls back to the native Rust/Tokio engine, which is exactly the
+    // thread-growth source the driver adapter exists to avoid (see comment
+    // above). Expected during `next build` (DATABASE_URL is empty then) —
+    // DEBUG-only so it doesn't read as an alarm on every deploy, but still
+    // traceable if the runtime process unexpectedly ends up on this path.
+    logDebug("prisma_client_native_engine_fallback", {});
+    return new PrismaClient();
+  }
+  logInfo("prisma_client_adapter_initialized", { host: poolConfig.host, database: poolConfig.database });
   return new PrismaClient({ adapter: new PrismaMariaDb(poolConfig) });
 }
 

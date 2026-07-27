@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendDueReminders } from "@/lib/reminders";
-import { logError } from "@/lib/logger";
+import { logWarn, logError } from "@/lib/logger";
 
 // Internal-only endpoint. This host (cPanel/LiteSpeed lsnode) has no real
 // cron — server.js runs a setInterval loop that calls this route on its own
@@ -10,6 +10,7 @@ import { logError } from "@/lib/logger";
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-cron-secret");
   if (!secret || secret !== process.env.CRON_SECRET) {
+    logWarn("reminder_cron_rejected", { hasSecret: Boolean(secret) });
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/integrations/szybkisms";
-import { logInfo, logError } from "@/lib/logger";
+import { logDebug, logInfo, logError } from "@/lib/logger";
 import { SUPPORT_PHONE } from "@/lib/sms-template";
 
 export const REMINDER_DAYS = [1, 3, 7] as const;
@@ -267,6 +267,8 @@ export async function sendDueReminders(): Promise<{ checked: number; sent: numbe
   await prisma.reminderCheckLog.create({
     data: { rentalsChecked, dueCount: due, sentCount: sent, failedCount: failed },
   });
+
+  logDebug("reminder_check_run", { rentalsChecked, dueCount: due, sentCount: sent, failedCount: failed });
 
   return { checked: dueRules.length, sent, failed };
 }

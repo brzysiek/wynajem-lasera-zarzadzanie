@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { hashResetToken } from "@/lib/password-reset";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logWarn } from "@/lib/logger";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   const isValid = resetToken && !resetToken.usedAt && resetToken.expiresAt > new Date();
   if (!isValid) {
-    logInfo("password_reset_invalid_token", { tokenId: resetToken?.id ?? null });
+    logWarn("password_reset_invalid_token", { tokenId: resetToken?.id ?? null });
     return NextResponse.json(
       { message: "Link do resetu hasła jest nieprawidłowy lub wygasł." },
       { status: 400 },

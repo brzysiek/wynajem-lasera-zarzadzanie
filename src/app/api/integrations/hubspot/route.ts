@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/auth-guards";
 import { setEnvValue, triggerRestart } from "@/lib/env-file";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logWarn } from "@/lib/logger";
 
 // HubSpot Private App tokens are always `pat-<region>-<uuid>` — alphanumeric
 // and hyphens only, so this also guards against writing a value that could
@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
   const token = typeof body?.token === "string" ? body.token.trim() : "";
 
   if (!token || !TOKEN_PATTERN.test(token)) {
+    logWarn("integration_hubspot_token_rejected", { userId: session.user.id });
     return NextResponse.json({ message: "Nieprawidłowy format tokenu." }, { status: 400 });
   }
 

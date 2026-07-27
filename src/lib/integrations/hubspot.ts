@@ -1,3 +1,5 @@
+import { logDebug } from "@/lib/logger";
+
 export type IntegrationTestResult = { ok: boolean; message: string };
 
 export type HubspotContactSummary = {
@@ -65,7 +67,9 @@ export async function searchHubspotContacts(query: string): Promise<HubspotConta
     throw new Error(body?.message || `HubSpot API zwróciło błąd (HTTP ${res.status}).`);
   }
 
-  return (body.results ?? []).map(toContactSummary);
+  const results = (body.results ?? []).map(toContactSummary);
+  logDebug("hubspot_contacts_searched", { query, resultCount: results.length });
+  return results;
 }
 
 export async function getHubspotContact(id: string): Promise<HubspotContactDetail> {
@@ -82,6 +86,7 @@ export async function getHubspotContact(id: string): Promise<HubspotContactDetai
     throw new Error(body?.message || `HubSpot API zwróciło błąd (HTTP ${res.status}).`);
   }
 
+  logDebug("hubspot_contact_fetched", { id });
   const p = body.properties ?? {};
   return {
     id: body.id,

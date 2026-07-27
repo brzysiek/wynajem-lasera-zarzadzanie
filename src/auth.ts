@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { logInfo, logWarn } from "@/lib/logger";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
@@ -30,19 +31,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const password = credentials?.password as string | undefined;
 
         if (!email || !password) {
+          logWarn("login_missing_credentials", {});
           return null;
         }
 
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user) {
+          logWarn("login_unknown_email", { email });
           return null;
         }
 
         const isValidPassword = await bcrypt.compare(password, user.passwordHash);
         if (!isValidPassword) {
+          logWarn("login_wrong_password", { userId: user.id, email });
           return null;
         }
 
+        logInfo("login_success", { userId: user.id, email });
         return {
           id: user.id,
           email: user.email,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/auth-guards";
 import { setEnvValue, triggerRestart } from "@/lib/env-file";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logWarn } from "@/lib/logger";
 
 // SzybkiSMS API Access Tokens are opaque alphanumeric strings — this guards
 // against writing a value that could break the .env line (newlines, `=`, etc.).
@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
   const token = typeof body?.token === "string" ? body.token.trim() : "";
 
   if (!token || !TOKEN_PATTERN.test(token)) {
+    logWarn("integration_szybkisms_token_rejected", { userId: session.user.id });
     return NextResponse.json({ message: "Nieprawidłowy format tokenu." }, { status: 400 });
   }
 
