@@ -17,10 +17,12 @@ const TEMPLATE_LABELS: Record<ReminderDays, string> = {
   7: "Przypomnienie SMS – 7 dni przed",
 };
 
+const SUPPORT_PHONE = "531574115";
+
 const DEFAULT_TEMPLATE_BODY: Record<ReminderDays, string> = {
-  7: "Przypomnienie: za tydzień, {data_start} o {godzina_start}, rozpoczyna się wynajem: {urzadzenie}. Pozdrawiamy, WynajemLasera.pl",
-  3: "Przypomnienie: za 3 dni, {data_start} o {godzina_start}, rozpoczyna się wynajem: {urzadzenie}. Pozdrawiamy, WynajemLasera.pl",
-  1: "Przypomnienie: jutro, {data_start} o {godzina_start}, rozpoczyna się wynajem: {urzadzenie}. Pozdrawiamy, WynajemLasera.pl",
+  7: "Przypomnienie: za tydzień, {data_start} o {godzina_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
+  3: "Przypomnienie: za 3 dni, {data_start} o {godzina_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
+  1: "Przypomnienie: jutro, {data_start} o {godzina_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
 };
 
 const SETTING_KEY_HOUR = "sms_reminder_hour";
@@ -148,6 +150,7 @@ function renderTemplate(body: string, rental: RentalForRender): string {
     .replaceAll("{data_start}", start.toLocaleDateString("pl-PL"))
     .replaceAll("{godzina_start}", rental.allDay ? "" : start.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }))
     .replaceAll("{data_koniec}", end.toLocaleDateString("pl-PL"))
+    .replaceAll("{telefon_obslugi}", SUPPORT_PHONE)
     .replace(/\s+/g, " ")
     .trim();
 }

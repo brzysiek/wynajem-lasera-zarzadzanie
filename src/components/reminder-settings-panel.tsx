@@ -80,7 +80,8 @@ export function ReminderSettingsPanel({
           <code className="rounded bg-gray-100 px-1 py-0.5">{"{urzadzenie}"}</code>{" "}
           <code className="rounded bg-gray-100 px-1 py-0.5">{"{data_start}"}</code>{" "}
           <code className="rounded bg-gray-100 px-1 py-0.5">{"{godzina_start}"}</code>{" "}
-          <code className="rounded bg-gray-100 px-1 py-0.5">{"{data_koniec}"}</code>
+          <code className="rounded bg-gray-100 px-1 py-0.5">{"{data_koniec}"}</code>{" "}
+          <code className="rounded bg-gray-100 px-1 py-0.5">{"{telefon_obslugi}"}</code>
         </p>
         <div className="flex flex-col gap-4">
           {ORDER.map((days) => (
