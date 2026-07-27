@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/integrations/szybkisms";
 import { logInfo, logError } from "@/lib/logger";
+import { SUPPORT_PHONE } from "@/lib/sms-template";
 
 export const REMINDER_DAYS = [1, 3, 7] as const;
 export type ReminderDays = (typeof REMINDER_DAYS)[number];
 
-const TEMPLATE_KEYS: Record<ReminderDays, string> = {
+export const TEMPLATE_KEYS: Record<ReminderDays, string> = {
   1: "reminder_1d",
   3: "reminder_3d",
   7: "reminder_7d",
@@ -17,12 +18,10 @@ const TEMPLATE_LABELS: Record<ReminderDays, string> = {
   7: "Przypomnienie SMS – 7 dni przed",
 };
 
-const SUPPORT_PHONE = "531574115";
-
 const DEFAULT_TEMPLATE_BODY: Record<ReminderDays, string> = {
-  7: "Przypomnienie: za tydzień, {data_start} o {godzina_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
-  3: "Przypomnienie: za 3 dni, {data_start} o {godzina_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
-  1: "Przypomnienie: jutro, {data_start} o {godzina_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
+  7: "Przypomnienie: za tydzień, {data_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
+  3: "Przypomnienie: za 3 dni, {data_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
+  1: "Przypomnienie: jutro, {data_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
 };
 
 const SETTING_KEY_HOUR = "sms_reminder_hour";
@@ -148,9 +147,11 @@ function renderTemplate(body: string, rental: RentalForRender): string {
     .replaceAll("{klient}", rental.contactNameCache?.trim() || "")
     .replaceAll("{urzadzenie}", rental.device.name)
     .replaceAll("{data_start}", start.toLocaleDateString("pl-PL"))
-    .replaceAll("{godzina_start}", rental.allDay ? "" : start.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" }))
     .replaceAll("{data_koniec}", end.toLocaleDateString("pl-PL"))
     .replaceAll("{telefon_obslugi}", SUPPORT_PHONE)
+    // Defensive cleanup for any template bodies saved before this token was retired.
+    .replaceAll(" o {godzina_start}", "")
+    .replaceAll("{godzina_start}", "")
     .replace(/\s+/g, " ")
     .trim();
 }

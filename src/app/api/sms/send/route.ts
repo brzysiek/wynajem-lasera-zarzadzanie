@@ -14,12 +14,28 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const rawPhone = typeof body?.phone === "string" ? body.phone.trim() : "";
   const message = typeof body?.message === "string" ? body.message.trim() : "";
+  const rentalId = typeof body?.rentalId === "string" && body.rentalId ? body.rentalId : null;
 
   if (!message) {
     return NextResponse.json({ message: "Treść wiadomości nie może być pusta." }, { status: 400 });
   }
+
   const phone = normalizePolishPhone(rawPhone);
   if (!phone) {
+    // Every real send attempt is recorded — including ones that fail because
+    // there's no usable phone number, per the requirement that a SMS cannot
+    // go out without one but the attempt must still show up in history.
+    await prisma.message.create({
+      data: {
+        rentalId,
+        userId: session.user.id,
+        channel: "SMS",
+        recipient: rawPhone || "(brak numeru)",
+        body: message,
+        status: "FAILED",
+        errorMessage: "Brak poprawnego numeru telefonu.",
+      },
+    });
     return NextResponse.json({ message: "Podaj poprawny polski numer telefonu." }, { status: 400 });
   }
 
@@ -27,6 +43,7 @@ export async function POST(req: NextRequest) {
 
   await prisma.message.create({
     data: {
+      rentalId,
       userId: session.user.id,
       channel: "SMS",
       recipient: phone,

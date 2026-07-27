@@ -3,9 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { SmsSendPanel } from "@/components/sms-send-panel";
 import { ReminderRunNowButton } from "@/components/reminder-run-now-button";
 import { prisma } from "@/lib/prisma";
-import { getReminderTemplates } from "@/lib/reminders";
-
-const REMINDER_LABELS: Record<number, string> = { 1: "1 dzień przed", 3: "3 dni przed", 7: "7 dni przed" };
+import { listSmsTemplates } from "@/lib/message-templates";
 
 function formatDateTime(value: Date): string {
   return new Date(value).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
@@ -16,7 +14,7 @@ export default async function SmsSendingPage() {
   const isAdmin = session?.user.role === "ADMIN";
 
   const [templates, messages] = await Promise.all([
-    getReminderTemplates(),
+    listSmsTemplates(),
     prisma.message.findMany({
       where: { channel: "SMS" },
       orderBy: { sentAt: "desc" },
@@ -25,11 +23,7 @@ export default async function SmsSendingPage() {
     }),
   ]);
 
-  const templateOptions = templates.map((t) => ({
-    daysBefore: t.daysBefore,
-    label: `Przypomnienie – ${REMINDER_LABELS[t.daysBefore]}`,
-    body: t.body,
-  }));
+  const templateOptions = templates.map((t) => ({ id: t.id, label: t.label, body: t.body }));
 
   return (
     <div>

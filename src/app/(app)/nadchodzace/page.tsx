@@ -1,15 +1,20 @@
+import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
+import { UpcomingRentalsView } from "@/components/upcoming-rentals-view";
 
-export default function UpcomingPage() {
+export default async function UpcomingPage() {
+  const devices = await prisma.device.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, shortName: true, color: true, active: true },
+  });
+
   return (
     <div>
       <PageHeader
         title="Nadchodzące"
         description="Lista nadchodzących wynajmów wymagających uwagi."
       />
-      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-12 text-center text-sm text-gray-400">
-        Widok w budowie
-      </div>
+      <UpcomingRentalsView devices={devices} />
     </div>
   );
 }
