@@ -37,6 +37,7 @@ const DEFAULT_TEMPLATE_BODY: Record<ReminderOffset, string> = {
 
 const SETTING_KEY_HOUR = "sms_reminder_hour";
 const DEFAULT_REMINDER_HOUR = "09:00";
+const SETTING_KEY_ENABLED = "sms_reminders_enabled";
 
 export async function ensureDefaultTemplates(): Promise<void> {
   for (const offset of ALL_REMINDER_OFFSETS) {
@@ -58,6 +59,19 @@ export async function setReminderHour(value: string): Promise<void> {
     where: { key: SETTING_KEY_HOUR },
     update: { value },
     create: { key: SETTING_KEY_HOUR, value },
+  });
+}
+
+export async function getRemindersEnabled(): Promise<boolean> {
+  const row = await prisma.setting.findUnique({ where: { key: SETTING_KEY_ENABLED } });
+  return row?.value !== "false";
+}
+
+export async function setRemindersEnabled(value: boolean): Promise<void> {
+  await prisma.setting.upsert({
+    where: { key: SETTING_KEY_ENABLED },
+    update: { value: value ? "true" : "false" },
+    create: { key: SETTING_KEY_ENABLED, value: value ? "true" : "false" },
   });
 }
 
@@ -232,11 +246,58 @@ export function normalizePolishPhone(raw: string): string | null {
   return null;
 }
 
+// Called right when reminders are switched back on from paused: while
+// paused, sendDueReminders() no-ops entirely, so SCHEDULED rules just sit
+// untouched instead of sending. Anything that became "due" during that
+// window is marked as skipped here rather than sent late — a stale 7-day
+// reminder would state the wrong day count, and a confirmation SMS sent
+// days after booking would look like a mistake to the customer. Rules not
+// yet due are left alone and still fire normally once their time comes.
+export async function discardStaleReminders(): Promise<number> {
+  const hour = await getReminderHour();
+  const [hh, mm] = hour.split(":").map((n) => Number(n) || 0);
+  const targetMinutes = hh * 60 + mm;
+  const nowParts = warsawParts(new Date());
+
+  const scheduledRules = await prisma.reminderRule.findMany({ where: { status: "SCHEDULED", channel: "SMS" } });
+
+  let discarded = 0;
+  for (const rule of scheduledRules) {
+    const days = rule.daysBefore as ReminderOffset;
+    const isDue =
+      days === CONFIRMATION_OFFSET
+        ? rule.scheduledFor.getTime() <= Date.now()
+        : (() => {
+            const targetParts = warsawParts(rule.scheduledFor);
+            const isPastDay = targetParts.dateStr < nowParts.dateStr;
+            const isExactDueToday =
+              targetParts.dateStr === nowParts.dateStr && nowParts.hour * 60 + nowParts.minute >= targetMinutes;
+            return isPastDay || isExactDueToday;
+          })();
+    if (!isDue) continue;
+
+    await prisma.reminderRule.update({
+      where: { id: rule.id },
+      data: {
+        status: "FAILED",
+        errorMessage: "Przypomnienie pominięte — przypomnienia SMS były wstrzymane w tym czasie.",
+      },
+    });
+    discarded++;
+  }
+  return discarded;
+}
+
 export type ReminderCheckSource = "CRON" | "MANUAL";
 
 export async function sendDueReminders(
   source: ReminderCheckSource = "CRON",
 ): Promise<{ checked: number; sent: number; failed: number }> {
+  const remindersEnabled = await getRemindersEnabled();
+  if (!remindersEnabled) {
+    return { checked: 0, sent: 0, failed: 0 };
+  }
+
   const hour = await getReminderHour();
   const [hh, mm] = hour.split(":").map((n) => Number(n) || 0);
   const targetMinutes = hh * 60 + mm;

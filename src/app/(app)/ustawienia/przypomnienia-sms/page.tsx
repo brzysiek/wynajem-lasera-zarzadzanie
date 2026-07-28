@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/page-header";
 import { ReminderSettingsPanel } from "@/components/reminder-settings-panel";
-import { getReminderHour, getReminderCheckLogs } from "@/lib/reminders";
+import { getReminderHour, getRemindersEnabled, getReminderCheckLogs } from "@/lib/reminders";
 
 function formatDateTime(value: Date): string {
   return new Date(value).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "medium" });
@@ -15,7 +15,11 @@ function Steps({ children }: { children: React.ReactNode }) {
 }
 
 export default async function ReminderSettingsPage() {
-  const [hour, checkLogs] = await Promise.all([getReminderHour(), getReminderCheckLogs()]);
+  const [hour, remindersEnabled, checkLogs] = await Promise.all([
+    getReminderHour(),
+    getRemindersEnabled(),
+    getReminderCheckLogs(),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -34,9 +38,15 @@ export default async function ReminderSettingsPage() {
         Nie musisz nic uruchamiać ani klikać — wysyłka działa sama, w tle. Jedyne co możesz tu zmienić, to godzina,
         o której mają wychodzić przypomnienia (np. rano, żeby SMS nie przyszedł do klienta w nocy). SMS-y mogą wyjść
         z kilkuminutowym opóźnieniem względem wybranej godziny — to normalne i nie wymaga żadnej reakcji.
+        <br />
+        <br />
+        Jeśli trzeba pilnie wstrzymać wszystkie SMS-y (np. żeby poprawić treść albo uniknąć wysyłki podczas awarii),
+        możesz je wyłączyć przyciskiem poniżej. To bezpieczny wyłącznik: nic wtedy nie wychodzi do klientów, a to, co
+        w tym czasie „dojrzało” do wysyłki, po włączeniu z powrotem <strong>nie zostanie dosłane z opóźnieniem</strong>{" "}
+        — zostanie po prostu pominięte, żeby klienci nie dostali nieaktualnej wiadomości.
       </div>
 
-      <ReminderSettingsPanel initialHour={hour} />
+      <ReminderSettingsPanel initialHour={hour} initialEnabled={remindersEnabled} />
 
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
         <p className="mb-2">
