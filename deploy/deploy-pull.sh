@@ -19,6 +19,22 @@ BASE_PATH="${BASE_PATH-/wynajem}"
 
 cd "$APP_DIR"
 
+echo "==> Syncing NEXT_PUBLIC_BASE_PATH in .env with this deploy's BASE_PATH"
+# server.js's custom server calls next({ dev }), which reloads next.config.ts
+# from disk on every process start using THIS PROCESS's own process.env (from
+# .env here on the server) — not the env the CI build ran with. NEXT_PUBLIC_*
+# inlining only rewrites references inside application code (auth.ts,
+# client components, etc.), it does NOT apply to next.config.ts itself, which
+# is a plain file evaluated fresh at runtime. Without this, a stale/missing
+# NEXT_PUBLIC_BASE_PATH here silently falls back to next.config.ts's own
+# "/wynajem" default regardless of what the CI-built .next artifact was
+# actually compiled with, mismatching build vs runtime and 404ing every route.
+if [[ -f .env ]] && grep -q '^NEXT_PUBLIC_BASE_PATH=' .env; then
+  sed -i "s|^NEXT_PUBLIC_BASE_PATH=.*|NEXT_PUBLIC_BASE_PATH=$BASE_PATH|" .env
+else
+  echo "NEXT_PUBLIC_BASE_PATH=$BASE_PATH" >> .env
+fi
+
 echo "==> Fetching latest main"
 git fetch origin main
 git reset --hard origin/main
