@@ -19,8 +19,7 @@
 // the whole chain is true exec() (same PID throughout) and this file goes
 // back to just listening directly, matching what lsnode expects.
 
-const { createServer, request: httpRequest } = require("http");
-const crypto = require("crypto");
+const { createServer } = require("http");
 const fs = require("fs");
 const path = require("path");
 const next = require("next");
@@ -83,51 +82,16 @@ function logDiag(label) {
   }
 }
 
-// There's no real cron on this host, so SMS reminders are triggered by this
-// process itself: a loopback HTTP POST to the internal Next.js API route on
-// an interval. CRON_SECRET only needs to match between this call and the
-// route handler within the same process's lifetime — both read
-// process.env.CRON_SECRET from the same process, so generating it in-memory
-// here (rather than persisting it to .env) is sufficient; nothing external
-// ever needs to know it.
-function startReminderCron(port) {
-  if (!process.env.CRON_SECRET) {
-    process.env.CRON_SECRET = crypto.randomBytes(24).toString("hex");
-  }
-  const cronSecret = process.env.CRON_SECRET;
-  const intervalMs = parseInt(process.env.REMINDER_CRON_INTERVAL_MS || "", 10) || 5 * 60 * 1000;
-
-  const trigger = () => {
-    const req = httpRequest(
-      {
-        hostname: "127.0.0.1",
-        port,
-        path: "/wynajem/api/cron/reminders",
-        method: "POST",
-        headers: { "x-cron-secret": cronSecret, "content-length": 0 },
-      },
-      (res) => {
-        res.on("data", () => {});
-        res.on("end", () => {
-          if (res.statusCode !== 200) {
-            logCrash("reminder_cron_http_error", new Error(`HTTP ${res.statusCode}`));
-          }
-        });
-      }
-    );
-    req.on("error", (err) => logCrash("reminder_cron_request_failed", err));
-    req.end();
-  };
-
-  // setInterval alone only fires after a full interval elapses, so a process
-  // that keeps getting restarted (e.g. by an LVE limit spike, see the
-  // logDiag comments above) faster than intervalMs would never complete a
-  // single tick and the automatic check would never run at all. Firing once
-  // immediately on every startup means each restart gets at least one
-  // attempt regardless of how long the process survives afterwards.
-  trigger();
-  setInterval(trigger, intervalMs).unref();
-}
+// SMS reminders used to be triggered by this process itself (a loopback HTTP
+// POST on a setInterval), but this host's Node process isn't guaranteed to
+// stay alive between requests (LVE limit spikes, see the logDiag comments
+// above, plus LiteSpeed lsnode appears to recycle idle processes) — the
+// in-process timer would silently stop firing for long stretches whenever
+// nobody happened to be browsing the site. Reminders are now triggered by a
+// real cPanel Cron Job hitting /api/cron/reminders on the public domain on a
+// fixed schedule, which also has the side effect of waking the app up if it
+// had gone idle. See the "Przypomnienia SMS" settings page for the schedule
+// and how to change it.
 
 app.prepare().then(() => {
   logDiag("startup");
@@ -161,7 +125,6 @@ app.prepare().then(() => {
     }
   }).listen(port, () => {
     console.log(`> Ready on port ${port} (${dev ? "development" : "production"})`);
-    startReminderCron(port);
   });
 
   // Node's own guidance is not to keep running after uncaughtException (the
