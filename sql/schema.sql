@@ -139,6 +139,7 @@ CREATE TABLE `reminder_check_logs` (
     `dueCount` INTEGER NOT NULL,
     `sentCount` INTEGER NOT NULL,
     `failedCount` INTEGER NOT NULL,
+    `source` ENUM('CRON', 'MANUAL') NOT NULL DEFAULT 'CRON',
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     PRIMARY KEY (`id`)

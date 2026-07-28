@@ -13,7 +13,7 @@ export async function POST() {
   }
 
   try {
-    const result = await sendDueReminders();
+    const result = await sendDueReminders("MANUAL");
     return NextResponse.json(result);
   } catch (err) {
     logError("reminder_run_now_failed", err, { userId: session.user.id });

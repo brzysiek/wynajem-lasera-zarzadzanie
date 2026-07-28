@@ -180,13 +180,19 @@ model SyncLog {
   @@map("sync_logs")
 }
 
+enum ReminderCheckSource {
+  CRON
+  MANUAL
+}
+
 model ReminderCheckLog {
-  id             String   @id @default(uuid())
+  id             String              @id @default(uuid())
   rentalsChecked Int
   dueCount       Int
   sentCount      Int
   failedCount    Int
-  createdAt      DateTime @default(now())
+  source         ReminderCheckSource @default(CRON)
+  createdAt      DateTime            @default(now())
 
   @@map("reminder_check_logs")
 }

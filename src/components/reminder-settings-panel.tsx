@@ -38,7 +38,8 @@ export function ReminderSettingsPanel({ initialHour }: { initialHour: string }) 
       <div className="rounded-lg border border-gray-200 bg-white p-6">
         <h2 className="mb-1 text-lg font-semibold text-gray-900">Godzina wysyłki</h2>
         <p className="mb-4 text-sm text-gray-500">
-          O tej godzinie (czasu polskiego) system codziennie sprawdza i wysyła zaplanowane na dziś przypomnienia SMS.
+          Godzina, o której mają wychodzić przypomnienia 7/3/1-dniowe (np. 9:00 rano). Potwierdzenie rezerwacji
+          wychodzi zawsze od razu, niezależnie od tej godziny.
         </p>
         <input
           type="time"

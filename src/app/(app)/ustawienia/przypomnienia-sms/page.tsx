@@ -19,18 +19,40 @@ export default async function ReminderSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Przypomnienia SMS"
-        description="Godzina automatycznej wysyłki i historia sprawdzeń, które wynajmy wymagają przypomnienia."
-      />
+      <PageHeader title="Przypomnienia SMS" description="Automatyczne SMS-y do klientów i historia ich wysyłki." />
+
+      <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-700">
+        Ta strona steruje automatycznymi SMS-ami do klientów. System sam, bez Twojego udziału, wysyła:
+        <ul className="my-2 list-disc space-y-1 pl-5">
+          <li>
+            <strong>potwierdzenie rezerwacji</strong> — zaraz po zapisaniu wynajmu,
+          </li>
+          <li>
+            <strong>przypomnienia</strong> — 7, 3 i 1 dzień przed wynajmem, o porze dnia, którą ustawisz poniżej.
+          </li>
+        </ul>
+        Nie musisz nic uruchamiać ani klikać — wysyłka działa sama, w tle. Jedyne co możesz tu zmienić, to godzina,
+        o której mają wychodzić przypomnienia (np. rano, żeby SMS nie przyszedł do klienta w nocy). SMS-y mogą wyjść
+        z kilkuminutowym opóźnieniem względem wybranej godziny — to normalne i nie wymaga żadnej reakcji.
+      </div>
+
       <ReminderSettingsPanel initialHour={hour} />
 
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-        Automatyczne sprawdzanie, które przypomnienia trzeba dziś wysłać, uruchamia zewnętrzny{" "}
-        <strong>Cron Job w cPanelu (Cyberfolks)</strong> — nie sam serwer aplikacji. Ten hosting (LiteSpeed lsnode)
-        nie gwarantuje, że proces Node.js działa non-stop w tle, więc wewnętrzny mechanizm w aplikacji nie był
-        wiarygodny (proces bywał uśpiony/restartowany, gdy nikt akurat nie przeglądał strony). Zewnętrzny cron
-        budzi aplikację i wywołuje sprawdzenie na stałym harmonogramie, niezależnie od ruchu na stronie.
+        <p className="mb-2">
+          <strong>Jak to jest zrobione technicznie:</strong> sprawdzanie, co jest do wysłania, wykonuje zewnętrzny{" "}
+          <strong>Cron Job w cPanelu (Cyberfolks)</strong> — nie sam proces aplikacji. Ten hosting (LiteSpeed lsnode)
+          nie gwarantuje, że proces Node.js działa non-stop w tle — bywa usypiany lub restartowany, gdy nikt akurat
+          nie przegląda strony — więc wewnętrzny mechanizm w samej aplikacji nie był wiarygodny. Cron Job budzi
+          aplikację i na stałym harmonogramie (obecnie co 5 minut) wywołuje adres{" "}
+          <Code>/api/cron/reminders</Code>, niezależnie od ruchu na stronie.
+        </p>
+        <p>
+          Każde takie wywołanie sprawdza w bazie wszystkie zaplanowane przypomnienia SMS i wysyła te, których termin
+          już nadszedł: potwierdzenia rezerwacji — od razu, bez warunku godzinowego; przypomnienia 7/3/1-dniowe —
+          dopiero gdy bieżąca godzina (czasu polskiego) osiągnęła godzinę ustawioną powyżej. Wynik każdego wywołania
+          (ile sprawdzono, ile wysłano, ile błędów) trafia do historii poniżej.
+        </p>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">
@@ -68,7 +90,7 @@ export default async function ReminderSettingsPage() {
         <div className="border-b border-gray-200 px-4 py-3">
           <h2 className="text-lg font-semibold text-gray-900">Historia sprawdzeń</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Każde automatyczne sprawdzenie przypomnień do wysyłki (wywołane przez cron Cyberfolks).
+            Każde sprawdzenie przypomnień do wysyłki — automatyczne (cron) albo ręczne (przycisk „Wyślij teraz”).
           </p>
         </div>
         {checkLogs.length === 0 ? (
@@ -88,7 +110,20 @@ export default async function ReminderSettingsPage() {
               <tbody className="divide-y divide-gray-100">
                 {checkLogs.map((log) => (
                   <tr key={log.id}>
-                    <td className="whitespace-nowrap px-4 py-2 text-gray-700">{formatDateTime(log.createdAt)}</td>
+                    <td className="whitespace-nowrap px-4 py-2 text-gray-700">
+                      <span className="flex items-center gap-2">
+                        {formatDateTime(log.createdAt)}
+                        {log.source === "MANUAL" ? (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                            Ręczne
+                          </span>
+                        ) : (
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">
+                            Automatyczne
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="px-4 py-2 text-gray-700">{log.rentalsChecked}</td>
                     <td className="px-4 py-2 text-gray-700">{log.dueCount}</td>
                     <td className="px-4 py-2 text-gray-700">{log.sentCount}</td>

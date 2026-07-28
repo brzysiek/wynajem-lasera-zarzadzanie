@@ -232,7 +232,11 @@ export function normalizePolishPhone(raw: string): string | null {
   return null;
 }
 
-export async function sendDueReminders(): Promise<{ checked: number; sent: number; failed: number }> {
+export type ReminderCheckSource = "CRON" | "MANUAL";
+
+export async function sendDueReminders(
+  source: ReminderCheckSource = "CRON",
+): Promise<{ checked: number; sent: number; failed: number }> {
   const hour = await getReminderHour();
   const [hh, mm] = hour.split(":").map((n) => Number(n) || 0);
   const targetMinutes = hh * 60 + mm;
@@ -327,7 +331,7 @@ export async function sendDueReminders(): Promise<{ checked: number; sent: numbe
   }
 
   await prisma.reminderCheckLog.create({
-    data: { rentalsChecked, dueCount: due, sentCount: sent, failedCount: failed },
+    data: { rentalsChecked, dueCount: due, sentCount: sent, failedCount: failed, source },
   });
 
   logDebug("reminder_check_run", { rentalsChecked, dueCount: due, sentCount: sent, failedCount: failed });
@@ -341,6 +345,7 @@ export type ReminderCheckLogDto = {
   dueCount: number;
   sentCount: number;
   failedCount: number;
+  source: ReminderCheckSource;
   createdAt: Date;
 };
 

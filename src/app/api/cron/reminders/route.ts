@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await sendDueReminders();
+    const result = await sendDueReminders("CRON");
     return NextResponse.json(result);
   } catch (err) {
     logError("reminder_cron_failed", err);
