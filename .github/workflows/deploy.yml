@@ -3,7 +3,12 @@ name: Deploy to cyberfolks
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      deploy_server_2:
+        description: "Wdróż też na serwer 2 (domyślnie push wdraża tylko serwer 1)"
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -52,7 +57,7 @@ jobs:
           # job. Fail loudly here instead, where the real cause is visible.
           if-no-files-found: error
 
-  deploy:
+  deploy-server-1:
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -100,3 +105,65 @@ jobs:
         env:
           APP_DIR: ${{ vars.APP_DIR }}
           NODEVENV_DIR: ${{ vars.NODEVENV_DIR }}
+
+  # Second, independent cyberfolks installation (own domain, own database,
+  # own cron) — deployed from the same build artifact in parallel with
+  # deploy-server-1 rather than rebuilding, since `next build` can't run on
+  # either account directly (see the build job's comments) and CI minutes/
+  # LVE limits make a second build wasteful. Uses its own secret/variable
+  # names (DEPLOY2_*, *_2) so both servers' credentials coexist independently
+  # in the repo's GitHub Actions settings.
+  #
+  # Unlike deploy-server-1, this job does NOT run on every push — only when
+  # the workflow is triggered manually (Actions tab → Run workflow) with the
+  # "deploy_server_2" checkbox ticked. A plain push to main only redeploys
+  # server 1.
+  deploy-server-2:
+    needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_server_2 == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: next-build
+          path: .next
+
+      - name: Sync source on server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY2_SSH_HOST }}
+          port: ${{ secrets.DEPLOY2_SSH_PORT }}
+          username: ${{ secrets.DEPLOY2_SSH_USER }}
+          key: ${{ secrets.DEPLOY2_SSH_KEY }}
+          envs: APP_DIR,NODEVENV_DIR
+          script: bash "$APP_DIR/deploy/deploy-pull.sh"
+        env:
+          APP_DIR: ${{ vars.APP_DIR_2 }}
+          NODEVENV_DIR: ${{ vars.NODEVENV_DIR_2 }}
+
+      - name: Set up SSH for rsync
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.DEPLOY2_SSH_PORT }}" "${{ secrets.DEPLOY2_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload built .next to server
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.DEPLOY2_SSH_PORT }}" \
+            .next/ "${{ secrets.DEPLOY2_SSH_USER }}@${{ secrets.DEPLOY2_SSH_HOST }}:${{ vars.APP_DIR_2 }}/.next/"
+
+      - name: Install deps and restart app on server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY2_SSH_HOST }}
+          port: ${{ secrets.DEPLOY2_SSH_PORT }}
+          username: ${{ secrets.DEPLOY2_SSH_USER }}
+          key: ${{ secrets.DEPLOY2_SSH_KEY }}
+          envs: APP_DIR,NODEVENV_DIR
+          script: bash "$APP_DIR/deploy/deploy-finish.sh"
+        env:
+          APP_DIR: ${{ vars.APP_DIR_2 }}
+          NODEVENV_DIR: ${{ vars.NODEVENV_DIR_2 }}

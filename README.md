@@ -237,6 +237,54 @@ Od tej pory każdy `git push origin main` automatycznie wdraża aplikację —
 postęp widać w zakładce **Actions** w GitHub. Można też odpalić wdrożenie
 ręcznie przyciskiem **Run workflow** przy `deploy.yml`.
 
+## Drugi serwer (deploy na dwa konta cyberfolks naraz)
+
+`deploy.yml` buduje aplikację **raz** (job `build`), a potem wysyła gotowy
+`.next/` na serwer(y) dwoma niezależnymi jobami (`deploy-server-1`,
+`deploy-server-2`). To jest **pełna, niezależna instalacja**: własna baza
+MySQL, własny `.env`, własny cron przypomnień SMS — tak samo jak w Krokach
+1–4 wyżej, tylko na innym koncie/domenie cyberfolks.
+
+**Deploy na serwer 2 nie jest automatyczny.** Zwykły `push` do `main`
+wdraża tylko serwer 1 (`deploy-server-1`), tak jak dotychczas. Serwer 2
+dostaje deploy wyłącznie wtedy, gdy uruchomisz workflow ręcznie: zakładka
+**Actions → Deploy to cyberfolks → Run workflow**, i zaznaczysz checkbox
+„Wdróż też na serwer 2". Dzięki temu serwer 2 możesz traktować jako
+testowy/zapasowy, który aktualizujesz tylko wtedy, kiedy naprawdę tego
+chcesz, bez ryzyka przypadkowego wdrożenia przy każdym push.
+
+1. Powtórz **Krok 1–4** wyżej na nowym koncie cyberfolks (nowa aplikacja
+   Node.js w panelu, `git init` + checkout repo, własna baza MySQL +
+   `sql/schema.sql`/`sql/seed.sql`, własny `.env` z osobnym
+   `NEXTAUTH_SECRET` i `NEXTAUTH_URL` wskazującym na nową domenę, oraz
+   `deploy/generate-actions-key.sh` — da nowy, osobny klucz SSH tylko dla
+   tego serwera).
+2. Jeśli druga instalacja ma też wysyłać automatyczne przypomnienia SMS,
+   skonfiguruj na tym koncie **osobny** Cron Job w cPanelu (jak w sekcji
+   „Jak zmienić harmonogram" na stronie Przypomnienia SMS w aplikacji) i
+   osobny `CRON_SECRET` w jego `.env` — nie używaj tego samego sekretu co
+   pierwszy serwer.
+3. W GitHubie: **Settings → Secrets and variables → Actions**, dodaj **nowe**
+   wpisy (obok istniejących z Kroku 5, nie zamiast nich):
+
+   | Sekret | Wartość |
+   |---|---|
+   | `DEPLOY2_SSH_HOST` | host drugiego serwera |
+   | `DEPLOY2_SSH_PORT` | port SSH drugiego serwera |
+   | `DEPLOY2_SSH_USER` | login konta drugiego serwera |
+   | `DEPLOY2_SSH_KEY` | klucz prywatny wygenerowany w kroku 1 (na drugim serwerze) |
+
+   | Zmienna | Wartość |
+   |---|---|
+   | `APP_DIR_2` | ścieżka aplikacji na drugim serwerze |
+   | `NODEVENV_DIR_2` | ścieżka `nodevenv/.../20` na drugim serwerze |
+
+4. Zwykły push do `main` wdraża tylko serwer 1. Żeby wdrożyć też serwer 2,
+   wejdź w **Actions → Deploy to cyberfolks → Run workflow**, zaznacz
+   „Wdróż też na serwer 2" i uruchom — wtedy zbuduje się aplikacja i wdroży
+   na oba serwery równolegle, widoczne jako osobne joby w zakładce
+   **Actions**.
+
 ### Co zostaje poza automatem
 
 - Zmiany w `prisma/schema.prisma` **nie** są automatycznie aplikowane do bazy — trzeba ręcznie przygotować i uruchomić SQL migracyjny na serwerze (np. `sql/2026-07-26_add_password_reset_tokens.sql` dla resetu hasła — uruchom go ręcznie na produkcyjnej bazie po tym deployu, `sql/schema.sql` służy tylko do zakładania bazy od zera).
