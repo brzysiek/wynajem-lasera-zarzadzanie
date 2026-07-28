@@ -1,14 +1,20 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 export type Device = { id: string; name: string; shortName: string; color: string; active: boolean };
 
 export type ReminderDays = 1 | 3 | 7;
+// 0 = one-off "reservation confirmation" message, sent immediately instead
+// of counting down days before the rental starts (see ReminderSection).
+const CONFIRMATION_OFFSET = 0 as const;
+export type ReminderOffset = typeof CONFIRMATION_OFFSET | ReminderDays;
 
 export type ReminderRuleSummary = {
   id: string;
-  daysBefore: ReminderDays;
+  daysBefore: ReminderOffset;
   status: "SCHEDULED" | "SENT" | "FAILED" | "CANCELLED";
   sentAt: string | null;
   errorMessage: string | null;
@@ -41,6 +47,8 @@ export type Rental = {
   messages?: MessageSummary[];
 };
 
+export type ReminderTemplatePreview = { offset: ReminderOffset; templateId: string; body: string };
+
 const REMINDER_OPTIONS: { days: ReminderDays; label: string }[] = [
   { days: 1, label: "1 dzień przed" },
   { days: 3, label: "3 dni przed" },
@@ -63,55 +71,123 @@ function daysUntilStart(startsAt: string): number {
   return Math.round((startDay.getTime() - todayDay.getTime()) / 86_400_000);
 }
 
-function ReminderCheckboxes({
+function ReminderOptionRow({
+  label,
+  checked,
+  disabled,
+  sent,
+  sentAt,
+  failedMessage,
+  impossibleReason,
+  onToggle,
+  template,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  sent: boolean;
+  sentAt: string | null;
+  failedMessage: string | null;
+  impossibleReason: string | null;
+  onToggle: () => void;
+  template?: ReminderTemplatePreview;
+}) {
+  return (
+    <label
+      className={`flex flex-col gap-1 rounded-md border p-2.5 ${
+        sent ? "border-green-200 bg-green-50" : impossibleReason ? "border-red-100 bg-red-50/60" : "border-gray-200 bg-white"
+      }`}
+    >
+      <span className={`flex items-center gap-2 text-sm ${sent ? "text-green-700" : impossibleReason ? "text-red-500" : "text-gray-800"}`}>
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={onToggle}
+          className={sent ? "accent-green-600" : impossibleReason ? "accent-red-500" : undefined}
+        />
+        {label}
+      </span>
+      {sent && sentAt && <span className="ml-6 text-xs text-green-700">wysłano {formatDateTime(sentAt)}</span>}
+      {failedMessage && <span className="ml-6 text-xs text-red-600">błąd wysyłki: {failedMessage}</span>}
+      {impossibleReason && <span className="ml-6 text-xs text-red-500">{impossibleReason}</span>}
+      {template && (
+        <div className="ml-6 mt-0.5 flex items-start justify-between gap-2">
+          <p className="line-clamp-2 flex-1 text-xs italic text-gray-400">„{template.body}”</p>
+          {template.templateId && (
+            <Link
+              href={`/ustawienia/szablony-sms#template-${template.templateId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-none text-xs font-medium text-blue-600 hover:underline"
+            >
+              Edytuj →
+            </Link>
+          )}
+        </div>
+      )}
+    </label>
+  );
+}
+
+function ReminderSection({
   rental,
   startsAt,
-  selected,
-  onToggle,
+  confirmationChecked,
+  onToggleConfirmation,
+  selectedDays,
+  onToggleDay,
+  templates,
 }: {
   rental: Rental | null;
   startsAt: string;
-  selected: Set<ReminderDays>;
-  onToggle: (days: ReminderDays) => void;
+  confirmationChecked: boolean;
+  onToggleConfirmation: () => void;
+  selectedDays: Set<ReminderDays>;
+  onToggleDay: (days: ReminderDays) => void;
+  templates: ReminderTemplatePreview[];
 }) {
   const remaining = daysUntilStart(startsAt);
+  const templateFor = (offset: ReminderOffset) => templates.find((t) => t.offset === offset);
+  const confirmationRule = rental?.reminderRules?.find((r) => r.daysBefore === CONFIRMATION_OFFSET);
+  const confirmationSent = confirmationRule?.status === "SENT";
+
   return (
     <div className="flex flex-col gap-1.5 text-sm text-gray-700">
-      Przypomnienia SMS przed wynajmem
-      <div className="flex flex-col gap-1.5 rounded-md border border-gray-200 bg-gray-50 p-3">
+      Wiadomości SMS dla klienta
+      <div className="flex flex-col gap-2">
+        <ReminderOptionRow
+          label="Potwierdzenie rezerwacji"
+          checked={confirmationSent ? true : confirmationChecked}
+          disabled={confirmationSent}
+          sent={Boolean(confirmationSent)}
+          sentAt={confirmationRule?.sentAt ?? null}
+          failedMessage={confirmationRule?.status === "FAILED" ? confirmationRule.errorMessage || "nieznany błąd" : null}
+          impossibleReason={null}
+          onToggle={onToggleConfirmation}
+          template={templateFor(CONFIRMATION_OFFSET)}
+        />
         {REMINDER_OPTIONS.map(({ days, label }) => {
           const rule = rental?.reminderRules?.find((r) => r.daysBefore === days);
           const sent = rule?.status === "SENT";
           const impossible = !sent && remaining < days;
           const disabled = sent || impossible;
-          const checked = sent ? true : impossible ? false : selected.has(days);
+          const checked = sent ? true : impossible ? false : selectedDays.has(days);
           return (
-            <label
+            <ReminderOptionRow
               key={days}
-              className={`flex flex-col gap-0.5 ${sent ? "text-green-700" : impossible ? "text-red-500" : ""}`}
-            >
-              <span className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={disabled}
-                  onChange={() => onToggle(days)}
-                  className={sent ? "accent-green-600" : impossible ? "accent-red-500" : undefined}
-                />
-                {label}
-              </span>
-              {sent && rule?.sentAt && (
-                <span className="ml-6 text-xs text-green-700">wysłano {formatDateTime(rule.sentAt)}</span>
-              )}
-              {rule?.status === "FAILED" && (
-                <span className="ml-6 text-xs text-red-600">błąd wysyłki: {rule.errorMessage || "nieznany błąd"}</span>
-              )}
-              {impossible && (
-                <span className="ml-6 text-xs text-red-500">
-                  za mało czasu do wynajmu ({Math.max(remaining, 0)} {remaining === 1 ? "dzień" : "dni"})
-                </span>
-              )}
-            </label>
+              label={label}
+              checked={checked}
+              disabled={disabled}
+              sent={Boolean(sent)}
+              sentAt={rule?.sentAt ?? null}
+              failedMessage={rule?.status === "FAILED" ? rule.errorMessage || "nieznany błąd" : null}
+              impossibleReason={
+                impossible ? `za mało czasu do wynajmu (${Math.max(remaining, 0)} ${remaining === 1 ? "dzień" : "dni"})` : null
+              }
+              onToggle={() => onToggleDay(days)}
+              template={templateFor(days)}
+            />
           );
         })}
       </div>
@@ -215,7 +291,6 @@ function contactFromRental(rental: Rental | null): AssignedContact | null {
 function ContactSection({
   rentalId,
   initialContact,
-  onChanged,
   onPendingChange,
 }: {
   // null while creating a new rental (it doesn't have an id yet) — in that
@@ -223,7 +298,6 @@ function ContactSection({
   // and the picked contact id travels in the rental-creation request body.
   rentalId: string | null;
   initialContact: AssignedContact | null;
-  onChanged?: () => void;
   onPendingChange?: (contact: AssignedContact | null) => void;
 }) {
   const [contact, setContact] = useState(initialContact);
@@ -313,7 +387,6 @@ function ContactSection({
     });
     setQuery("");
     setResults(null);
-    onChanged?.();
   }
 
   async function unassign() {
@@ -333,7 +406,6 @@ function ContactSection({
       return;
     }
     setContact(null);
-    onChanged?.();
   }
 
   if (contact) {
@@ -416,31 +488,40 @@ function ContactSection({
   );
 }
 
-export function RentalModal({
+function BackArrowIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden="true">
+      <path
+        fillRule="evenodd"
+        d="M17 10a.75.75 0 0 1-.75.75H5.56l4.22 4.22a.75.75 0 1 1-1.06 1.06l-5.5-5.5a.75.75 0 0 1 0-1.06l5.5-5.5a.75.75 0 1 1 1.06 1.06L5.56 9.25H16.25A.75.75 0 0 1 17 10Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
+export function RentalForm({
   devices,
   rental,
   defaultDeviceId,
-  defaultDate,
-  onClose,
-  onSaved,
-  onDeleted,
-  onContactChanged,
+  defaultDateIso,
+  reminderTemplates,
+  backHref,
 }: {
   devices: Device[];
   rental: Rental | null;
   defaultDeviceId?: string;
-  defaultDate?: Date;
-  onClose: () => void;
-  onSaved: () => void;
-  onDeleted: () => void;
-  onContactChanged?: () => void;
+  defaultDateIso?: string;
+  reminderTemplates: ReminderTemplatePreview[];
+  backHref: string;
 }) {
+  const router = useRouter();
   const isEditing = Boolean(rental);
   const [deviceId, setDeviceId] = useState(rental?.deviceId ?? defaultDeviceId ?? devices[0]?.id ?? "");
   const [title, setTitle] = useState(rental?.title ?? "");
   const [description, setDescription] = useState(rental?.description ?? "");
   const [allDay, setAllDay] = useState(rental?.allDay ?? false);
-  const initialStart = rental ? toLocalInputValue(rental.startsAt) : defaultStart(defaultDate);
+  const initialStart = rental ? toLocalInputValue(rental.startsAt) : defaultStart(defaultDateIso ? new Date(defaultDateIso) : undefined);
   const [startsAt, setStartsAt] = useState(initialStart);
   const [endsAt, setEndsAt] = useState(rental ? toLocalInputValue(rental.endsAt) : defaultEnd(initialStart));
   const [isSaving, setIsSaving] = useState(false);
@@ -452,11 +533,22 @@ export function RentalModal({
     if (!rental) return new Set([1, 3, 7]);
     const checked = rental.reminderRules
       ?.filter((r) => r.status === "SENT" || r.status === "SCHEDULED")
-      .map((r) => r.daysBefore);
+      .map((r) => r.daysBefore)
+      .filter((d): d is ReminderDays => d === 1 || d === 3 || d === 7);
     return new Set(checked ?? []);
+  });
+  const [sendConfirmation, setSendConfirmation] = useState(() => {
+    if (!rental) return true;
+    return rental.reminderRules?.some(
+      (r) => r.daysBefore === CONFIRMATION_OFFSET && (r.status === "SENT" || r.status === "SCHEDULED"),
+    ) ?? false;
   });
 
   const device = devices.find((d) => d.id === deviceId);
+
+  function goBack() {
+    router.push(backHref);
+  }
 
   function toggleReminderDay(days: ReminderDays) {
     setReminderDays((prev) => {
@@ -486,6 +578,7 @@ export function RentalModal({
       startsAt: new Date(startsAt).toISOString(),
       endsAt: new Date(endsAt).toISOString(),
       reminderDays: effectiveReminderDays,
+      sendConfirmation,
     };
     if (!isEditing && pendingContact) {
       body.contactId = pendingContact.id;
@@ -500,7 +593,7 @@ export function RentalModal({
       setError(data?.message || "Nie udało się zapisać rezerwacji.");
       return;
     }
-    onSaved();
+    goBack();
   }
 
   async function handleDelete() {
@@ -513,165 +606,187 @@ export function RentalModal({
       setError(data?.message || "Nie udało się usunąć rezerwacji.");
       return;
     }
-    onDeleted();
+    goBack();
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">
-          {isEditing ? "Edytuj rezerwację" : "Nowa rezerwacja"}
-        </h2>
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={goBack}
+          aria-label="Powrót do kalendarza"
+          title="Powrót do kalendarza"
+          className="flex-none rounded-md border border-gray-300 p-2 text-gray-600 hover:bg-gray-50"
+        >
+          <BackArrowIcon />
+        </button>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">{isEditing ? "Edytuj rezerwację" : "Nowa rezerwacja"}</h1>
+          {isEditing && device && <p className="text-sm text-gray-500">{device.name}</p>}
+        </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
-            Urządzenie
-            {isEditing ? (
-              <span className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: device?.color }} />
-                {device?.name ?? "—"}
-              </span>
-            ) : (
-              <select
-                value={deviceId}
-                onChange={(e) => setDeviceId(e.target.value)}
-                required
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
-              >
-                {devices
-                  .filter((d) => d.active)
-                  .map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-              </select>
-            )}
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
-            Tytuł
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm text-gray-700">
-            Opis
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
-            />
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
-            Cały dzień
-          </label>
-
-          <div className="grid gap-3 sm:grid-cols-2">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5 lg:col-span-2">
             <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Początek
+              Urządzenie
+              {isEditing ? (
+                <span className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: device?.color }} />
+                  {device?.name ?? "—"}
+                </span>
+              ) : (
+                <select
+                  value={deviceId}
+                  onChange={(e) => setDeviceId(e.target.value)}
+                  required
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                >
+                  {devices
+                    .filter((d) => d.active)
+                    .map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                </select>
+              )}
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm text-gray-700">
+              Tytuł
               <input
-                type={allDay ? "date" : "datetime-local"}
-                value={allDay ? startsAt.slice(0, 10) : startsAt}
-                onChange={(e) => setStartsAt(allDay ? `${e.target.value}T00:00` : e.target.value)}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
                 required
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
               />
             </label>
+
             <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Koniec
-              <input
-                type={allDay ? "date" : "datetime-local"}
-                value={allDay ? endsAt.slice(0, 10) : endsAt}
-                onChange={(e) => setEndsAt(allDay ? `${e.target.value}T00:00` : e.target.value)}
-                required
+              Opis
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
               />
             </label>
-          </div>
 
-          <div className="flex flex-col gap-1 text-sm text-gray-700">
-            Klient (HubSpot)
-            <ContactSection
-              rentalId={isEditing ? rental!.id : null}
-              initialContact={isEditing ? contactFromRental(rental) : null}
-              onChanged={() => onContactChanged?.()}
-              onPendingChange={setPendingContact}
-            />
-          </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+              Cały dzień
+            </label>
 
-          <ReminderCheckboxes rental={rental} startsAt={startsAt} selected={reminderDays} onToggle={toggleReminderDay} />
-
-          {isEditing && (
-            <div className="flex flex-col gap-1 text-sm text-gray-700">
-              Historia SMS
-              <MessageHistorySection messages={rental!.messages ?? []} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Początek
+                <input
+                  type={allDay ? "date" : "datetime-local"}
+                  value={allDay ? startsAt.slice(0, 10) : startsAt}
+                  onChange={(e) => setStartsAt(allDay ? `${e.target.value}T00:00` : e.target.value)}
+                  required
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Koniec
+                <input
+                  type={allDay ? "date" : "datetime-local"}
+                  value={allDay ? endsAt.slice(0, 10) : endsAt}
+                  onChange={(e) => setEndsAt(allDay ? `${e.target.value}T00:00` : e.target.value)}
+                  required
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                />
+              </label>
             </div>
-          )}
 
-          {error && <p className="text-sm text-red-700">{error}</p>}
+            {isEditing && (
+              <div className="flex flex-col gap-1 text-sm text-gray-700">
+                Historia SMS
+                <MessageHistorySection messages={rental!.messages ?? []} />
+              </div>
+            )}
+          </div>
 
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              {isEditing &&
-                (confirmingDelete ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">Na pewno usunąć?</span>
-                    <button
-                      type="button"
-                      onClick={handleDelete}
-                      disabled={isDeleting}
-                      className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                    >
-                      {isDeleting ? "Usuwanie…" : "Tak, usuń"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmingDelete(false)}
-                      className="text-sm text-gray-500 hover:underline"
-                    >
-                      Anuluj
-                    </button>
-                  </div>
-                ) : (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-lg border border-gray-200 bg-white p-5">
+              <p className="mb-2 text-sm text-gray-700">Klient (HubSpot)</p>
+              <ContactSection
+                rentalId={isEditing ? rental!.id : null}
+                initialContact={isEditing ? contactFromRental(rental) : null}
+                onPendingChange={setPendingContact}
+              />
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-white p-5">
+              <ReminderSection
+                rental={rental}
+                startsAt={startsAt}
+                confirmationChecked={sendConfirmation}
+                onToggleConfirmation={() => setSendConfirmation((v) => !v)}
+                selectedDays={reminderDays}
+                onToggleDay={toggleReminderDay}
+                templates={reminderTemplates}
+              />
+            </div>
+          </div>
+        </div>
+
+        {error && <p className="text-sm text-red-700">{error}</p>}
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-4">
+          <div>
+            {isEditing &&
+              (confirmingDelete ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Na pewno usunąć?</span>
                   <button
                     type="button"
-                    onClick={() => setConfirmingDelete(true)}
-                    className="rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                    className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
                   >
-                    Usuń rezerwację
+                    {isDeleting ? "Usuwanie…" : "Tak, usuń"}
                   </button>
-                ))}
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Zamknij
-              </button>
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-              >
-                {isSaving ? "Zapisywanie…" : "Zapisz"}
-              </button>
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                    className="text-sm text-gray-500 hover:underline"
+                  >
+                    Anuluj
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  className="rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  Usuń rezerwację
+                </button>
+              ))}
           </div>
-        </form>
-      </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={goBack}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Anuluj
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+            >
+              {isSaving ? "Zapisywanie…" : "Zapisz"}
+            </button>
+          </div>
+        </div>
+      </form>
     </div>
   );
 }

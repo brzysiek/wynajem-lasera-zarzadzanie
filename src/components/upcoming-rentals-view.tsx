@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { RentalModal, type Device, type Rental } from "@/components/rental-modal";
+import { useRouter } from "next/navigation";
+import type { Device, Rental } from "@/components/rental-form";
 
 type RawRental = Rental & { device: Device };
 
@@ -81,11 +82,11 @@ function RentalsTable({ rentals, onOpenEdit }: { rentals: RawRental[]; onOpenEdi
 }
 
 export function UpcomingRentalsView({ devices }: { devices: Device[] }) {
+  const router = useRouter();
   const [rentals, setRentals] = useState<RawRental[]>([]);
   const [isLoading, startLoading] = useTransition();
   const [grouping, setGrouping] = useState<Grouping>("none");
   const [clientFilter, setClientFilter] = useState("");
-  const [modalState, setModalState] = useState<{ rental: Rental | null } | null>(null);
 
   function fetchRentals() {
     startLoading(async () => {
@@ -102,17 +103,8 @@ export function UpcomingRentalsView({ devices }: { devices: Device[] }) {
     fetchRentals();
   }, []);
 
-  function reload() {
-    setModalState(null);
-    fetchRentals();
-  }
-
-  function refreshQuietly() {
-    fetchRentals();
-  }
-
   function openEdit(rental: RawRental) {
-    setModalState({ rental });
+    router.push(`/kalendarz/wynajem/${rental.id}?from=/nadchodzace`);
   }
 
   const now = useMemo(() => new Date(), []);
@@ -215,17 +207,6 @@ export function UpcomingRentalsView({ devices }: { devices: Device[] }) {
             </div>
           ))}
         </div>
-      )}
-
-      {modalState && (
-        <RentalModal
-          devices={devices}
-          rental={modalState.rental}
-          onClose={() => setModalState(null)}
-          onSaved={reload}
-          onDeleted={reload}
-          onContactChanged={refreshQuietly}
-        />
       )}
     </div>
   );

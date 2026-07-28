@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    await syncReminderRules(rental, parseReminderDays(body));
+    await syncReminderRules(rental, parseReminderDays(body), Boolean(body?.sendConfirmation));
 
     // Contact assignment is best-effort: the calendar event and rental are
     // already created at this point, so a HubSpot lookup failure shouldn't

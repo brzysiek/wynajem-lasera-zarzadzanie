@@ -6,19 +6,30 @@ import { SUPPORT_PHONE } from "@/lib/sms-template";
 export const REMINDER_DAYS = [1, 3, 7] as const;
 export type ReminderDays = (typeof REMINDER_DAYS)[number];
 
-export const TEMPLATE_KEYS: Record<ReminderDays, string> = {
+// The reservation-confirmation message reuses the same ReminderRule/SMS
+// pipeline (scheduling, sending, history) as the day-before reminders, with
+// 0 as its "daysBefore" — it has no day-count wording, so unlike 1/3/7 it
+// isn't gated by how many days remain before the rental starts.
+export const CONFIRMATION_OFFSET = 0 as const;
+export const ALL_REMINDER_OFFSETS = [CONFIRMATION_OFFSET, ...REMINDER_DAYS] as const;
+export type ReminderOffset = (typeof ALL_REMINDER_OFFSETS)[number];
+
+export const TEMPLATE_KEYS: Record<ReminderOffset, string> = {
+  0: "reservation_confirmation",
   1: "reminder_1d",
   3: "reminder_3d",
   7: "reminder_7d",
 };
 
-const TEMPLATE_LABELS: Record<ReminderDays, string> = {
+const TEMPLATE_LABELS: Record<ReminderOffset, string> = {
+  0: "Potwierdzenie rezerwacji",
   1: "Przypomnienie SMS – 1 dzień przed",
   3: "Przypomnienie SMS – 3 dni przed",
   7: "Przypomnienie SMS – 7 dni przed",
 };
 
-const DEFAULT_TEMPLATE_BODY: Record<ReminderDays, string> = {
+const DEFAULT_TEMPLATE_BODY: Record<ReminderOffset, string> = {
+  0: "Potwierdzamy rezerwację: {urzadzenie}, termin {data_start} – {data_koniec}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
   7: "Przypomnienie: za tydzień, {data_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
   3: "Przypomnienie: za 3 dni, {data_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
   1: "Przypomnienie: jutro, {data_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
@@ -28,11 +39,11 @@ const SETTING_KEY_HOUR = "sms_reminder_hour";
 const DEFAULT_REMINDER_HOUR = "09:00";
 
 export async function ensureDefaultTemplates(): Promise<void> {
-  for (const days of REMINDER_DAYS) {
+  for (const offset of ALL_REMINDER_OFFSETS) {
     await prisma.messageTemplate.upsert({
-      where: { key: TEMPLATE_KEYS[days] },
+      where: { key: TEMPLATE_KEYS[offset] },
       update: {},
-      create: { key: TEMPLATE_KEYS[days], label: TEMPLATE_LABELS[days], channel: "SMS", body: DEFAULT_TEMPLATE_BODY[days] },
+      create: { key: TEMPLATE_KEYS[offset], label: TEMPLATE_LABELS[offset], channel: "SMS", body: DEFAULT_TEMPLATE_BODY[offset] },
     });
   }
 }
@@ -69,6 +80,19 @@ export async function setReminderTemplateBody(days: ReminderDays, body: string):
   });
 }
 
+// Used by the rental form to preview the exact SMS body under each reminder
+// checkbox (confirmation + 1/3/7 days before), alongside a link to edit it.
+export async function getAllReminderTemplates(): Promise<{ offset: ReminderOffset; templateId: string; body: string }[]> {
+  await ensureDefaultTemplates();
+  const templates = await prisma.messageTemplate.findMany({
+    where: { key: { in: Object.values(TEMPLATE_KEYS) } },
+  });
+  return ALL_REMINDER_OFFSETS.map((offset) => {
+    const template = templates.find((t) => t.key === TEMPLATE_KEYS[offset]);
+    return { offset, templateId: template?.id ?? "", body: template?.body || DEFAULT_TEMPLATE_BODY[offset] };
+  });
+}
+
 export function computeScheduledFor(rentalStartsAt: Date, daysBefore: number): Date {
   const result = new Date(rentalStartsAt);
   result.setDate(result.getDate() - daysBefore);
@@ -94,9 +118,39 @@ function daysUntilStart(startsAt: Date): number {
 // rental's startsAt moved (e.g. calendar drag-and-drop, which PATCHes only
 // startsAt/endsAt and re-selects whatever was already SCHEDULED without
 // itself re-checking validity against the new date).
-export async function syncReminderRules(rental: RentalForSync, selectedDays: ReminderDays[]): Promise<void> {
+export async function syncReminderRules(
+  rental: RentalForSync,
+  selectedDays: ReminderDays[],
+  confirmationSelected: boolean,
+): Promise<void> {
   const existing = await prisma.reminderRule.findMany({ where: { rentalId: rental.id, channel: "SMS" } });
   const remaining = daysUntilStart(rental.startsAt);
+
+  const currentConfirmation = existing.find((r) => r.daysBefore === CONFIRMATION_OFFSET);
+  if (currentConfirmation?.status !== "SENT") {
+    if (confirmationSelected && !currentConfirmation) {
+      const template = await prisma.messageTemplate.findUnique({ where: { key: TEMPLATE_KEYS[CONFIRMATION_OFFSET] } });
+      await prisma.reminderRule.create({
+        data: {
+          rentalId: rental.id,
+          daysBefore: CONFIRMATION_OFFSET,
+          channel: "SMS",
+          status: "SCHEDULED",
+          scheduledFor: new Date(),
+          messageBody: template?.body || DEFAULT_TEMPLATE_BODY[CONFIRMATION_OFFSET],
+        },
+      });
+    } else if (confirmationSelected && currentConfirmation && currentConfirmation.status !== "SCHEDULED") {
+      // FAILED or CANCELLED -> re-arm as a fresh scheduled send (retry).
+      await prisma.reminderRule.update({
+        where: { id: currentConfirmation.id },
+        data: { status: "SCHEDULED", scheduledFor: new Date(), errorMessage: null },
+      });
+    } else if (!confirmationSelected && currentConfirmation && currentConfirmation.status === "SCHEDULED") {
+      await prisma.reminderRule.delete({ where: { id: currentConfirmation.id } });
+    }
+    // confirmationSelected && currentConfirmation?.status === "SCHEDULED": already queued, nothing to do.
+  }
 
   for (const days of REMINDER_DAYS) {
     const wanted = selectedDays.includes(days) && remaining >= days;
@@ -195,16 +249,26 @@ export async function sendDueReminders(): Promise<{ checked: number; sent: numbe
   let due = 0;
 
   for (const rule of dueRules) {
-    const targetParts = warsawParts(rule.scheduledFor);
-    const isPastDay = targetParts.dateStr < nowParts.dateStr;
-    const isExactDueToday = targetParts.dateStr === nowParts.dateStr && nowParts.hour * 60 + nowParts.minute >= targetMinutes;
-    if (!isPastDay && !isExactDueToday) continue;
+    const days = rule.daysBefore as ReminderOffset;
+    const isConfirmation = days === CONFIRMATION_OFFSET;
+    let expiredWithoutSending = false;
+
+    if (isConfirmation) {
+      // Scheduled at creation/re-arm time, with no daily-hour gate and no
+      // "wrong day count" risk — send as soon as a cron tick sees it due.
+      if (rule.scheduledFor.getTime() > Date.now()) continue;
+    } else {
+      const targetParts = warsawParts(rule.scheduledFor);
+      const isPastDay = targetParts.dateStr < nowParts.dateStr;
+      const isExactDueToday = targetParts.dateStr === nowParts.dateStr && nowParts.hour * 60 + nowParts.minute >= targetMinutes;
+      if (!isPastDay && !isExactDueToday) continue;
+      expiredWithoutSending = isPastDay;
+    }
     due++;
 
     const rental = rule.rental;
-    const days = rule.daysBefore as ReminderDays;
 
-    if (isPastDay) {
+    if (expiredWithoutSending) {
       // The exact "N dni przed" day already passed without this firing
       // (e.g. the app was down at the time) — sending it now would state a
       // wrong day count ("za 7 dni" with fewer than 7 actually left), so
@@ -216,9 +280,7 @@ export async function sendDueReminders(): Promise<{ checked: number; sent: numbe
       continue;
     }
 
-    const template = TEMPLATE_KEYS[days]
-      ? await prisma.messageTemplate.findUnique({ where: { key: TEMPLATE_KEYS[days] } })
-      : null;
+    const template = await prisma.messageTemplate.findUnique({ where: { key: TEMPLATE_KEYS[days] } });
     const body = renderTemplate(template?.body || DEFAULT_TEMPLATE_BODY[days] || "{urzadzenie}", rental);
     const phone = rental.contactPhoneCache ? normalizePolishPhone(rental.contactPhoneCache) : null;
 

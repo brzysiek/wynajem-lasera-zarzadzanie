@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { updateCalendarEvent, deleteCalendarEvent } from "@/lib/integrations/google-calendar";
 import { logInfo, logWarn, logError } from "@/lib/logger";
-import { REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
+import { CONFIRMATION_OFFSET, REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 
 const RENTAL_INCLUDE = {
   device: true,
@@ -49,14 +49,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const explicitReminderDays = Array.isArray(body?.reminderDays)
     ? REMINDER_DAYS.filter((days) => body.reminderDays.includes(days))
     : null;
+  const explicitConfirmation = typeof body?.sendConfirmation === "boolean" ? body.sendConfirmation : null;
+
   let selectedDays: ReminderDays[];
-  if (explicitReminderDays) {
+  let confirmationSelected: boolean;
+  if (explicitReminderDays !== null && explicitConfirmation !== null) {
     selectedDays = explicitReminderDays;
+    confirmationSelected = explicitConfirmation;
   } else {
     const existingRules = await prisma.reminderRule.findMany({ where: { rentalId: id, channel: "SMS" } });
-    selectedDays = existingRules
-      .filter((r) => r.status === "SENT" || r.status === "SCHEDULED")
-      .map((r) => r.daysBefore) as ReminderDays[];
+    const activeRules = existingRules.filter((r) => r.status === "SENT" || r.status === "SCHEDULED");
+    selectedDays =
+      explicitReminderDays ??
+      (activeRules.filter((r) => REMINDER_DAYS.includes(r.daysBefore as ReminderDays)).map((r) => r.daysBefore) as ReminderDays[]);
+    confirmationSelected =
+      explicitConfirmation ?? activeRules.some((r) => r.daysBefore === CONFIRMATION_OFFSET);
   }
 
   try {
@@ -73,7 +80,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: { title, description: description || null, startsAt, endsAt, allDay, lastSyncedAt: new Date() },
     });
 
-    await syncReminderRules(updated, selectedDays);
+    await syncReminderRules(updated, selectedDays, confirmationSelected);
 
     logInfo("rental_updated", { userId: session.user.id, rentalId: id });
 

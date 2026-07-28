@@ -61,7 +61,7 @@ function TemplateRow({
   }
 
   return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+    <div id={`template-${template.id}`} className="rounded-md border border-gray-200 bg-gray-50 p-3 scroll-mt-20">
       <div className="mb-2 flex items-center justify-between gap-2">
         {template.locked ? (
           <span className="flex items-center gap-2 text-sm font-medium text-gray-800">

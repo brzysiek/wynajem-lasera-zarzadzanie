@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { RentalModal, type Device, type Rental } from "@/components/rental-modal";
+import { useRouter } from "next/navigation";
+import type { Device, Rental } from "@/components/rental-form";
 
 type RawRental = Rental & { device: Device };
 
@@ -231,14 +232,12 @@ function ContactBadge() {
 }
 
 export function CalendarView({ devices }: { devices: Device[] }) {
+  const router = useRouter();
   const [mode, setMode] = useState<"month" | "week">("month");
   const [current, setCurrent] = useState(() => new Date());
   const [checkedDeviceIds, setCheckedDeviceIds] = useState<Set<string>>(() => new Set(devices.map((d) => d.id)));
   const [rentals, setRentals] = useState<RawRental[]>([]);
   const [isLoading, startLoading] = useTransition();
-  const [modalState, setModalState] = useState<{ rental: Rental | null; defaultDeviceId?: string; defaultDate?: Date } | null>(
-    null,
-  );
   const [dragOverDay, setDragOverDay] = useState<string | null>(null);
   const [dragError, setDragError] = useState<string | null>(null);
 
@@ -274,11 +273,6 @@ export function CalendarView({ devices }: { devices: Device[] }) {
     return () => controller.abort();
   }, [fetchRentals]);
 
-  function reload() {
-    setModalState(null);
-    startLoading(() => fetchRentals());
-  }
-
   function refreshQuietly() {
     startLoading(() => fetchRentals());
   }
@@ -299,11 +293,12 @@ export function CalendarView({ devices }: { devices: Device[] }) {
   }
 
   function openEdit(rental: RawRental) {
-    setModalState({ rental });
+    router.push(`/kalendarz/wynajem/${rental.id}`);
   }
 
   function openCreate(day?: Date) {
-    setModalState({ rental: null, defaultDate: day });
+    const params = day ? `?date=${encodeURIComponent(day.toISOString())}` : "";
+    router.push(`/kalendarz/wynajem/nowy${params}`);
   }
 
   async function handleDropOnDay(day: Date, event: React.DragEvent) {
@@ -462,19 +457,6 @@ export function CalendarView({ devices }: { devices: Device[] }) {
             onOpenEdit={openEdit}
           />
         </div>
-      )}
-
-      {modalState && (
-        <RentalModal
-          devices={devices}
-          rental={modalState.rental}
-          defaultDeviceId={modalState.defaultDeviceId}
-          defaultDate={modalState.defaultDate}
-          onClose={() => setModalState(null)}
-          onSaved={reload}
-          onDeleted={reload}
-          onContactChanged={refreshQuietly}
-        />
       )}
     </div>
   );
