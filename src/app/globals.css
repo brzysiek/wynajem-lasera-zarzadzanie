@@ -12,12 +12,10 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* The rest of the UI (cards, text, borders) is styled for light mode only —
+   no dark: variants anywhere in the app — so following the OS dark-mode
+   preference here would flip just the page background to near-black while
+   everything else stayed light, making it unreadable. Keep it white always. */
 
 body {
   background: var(--background);
