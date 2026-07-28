@@ -120,12 +120,19 @@ jobs:
           port: ${{ secrets.DEPLOY_SSH_PORT }}
           username: ${{ secrets.DEPLOY_SSH_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: APP_DIR,NODEVENV_DIR,BASE_PATH
-          script: bash "$APP_DIR/deploy/deploy-pull.sh"
+          envs: APP_DIR,NODEVENV_DIR
+          # BASE_PATH is interpolated directly into the script text (not
+          # passed via envs:) because appleboy/ssh-action's envs forwarding
+          # silently drops empty-string values when exporting them on the
+          # remote side — that left BASE_PATH unset on server 2 and the
+          # script's "/wynajem" fallback kicked in instead of "". Baking the
+          # value into the script line sidesteps that entirely.
+          script: |
+            export BASE_PATH="/wynajem"
+            bash "$APP_DIR/deploy/deploy-pull.sh"
         env:
           APP_DIR: ${{ vars.APP_DIR }}
           NODEVENV_DIR: ${{ vars.NODEVENV_DIR }}
-          BASE_PATH: /wynajem
 
       - name: Set up SSH for rsync
         run: |
@@ -182,14 +189,20 @@ jobs:
           port: ${{ secrets.DEPLOY2_SSH_PORT }}
           username: ${{ secrets.DEPLOY2_SSH_USER }}
           key: ${{ secrets.DEPLOY2_SSH_KEY }}
-          envs: APP_DIR,NODEVENV_DIR,BASE_PATH
-          script: bash "$APP_DIR/deploy/deploy-pull.sh"
+          envs: APP_DIR,NODEVENV_DIR
+          # BASE_PATH is interpolated directly into the script text, not
+          # forwarded via envs: — appleboy/ssh-action's envs mechanism
+          # silently drops empty-string values on export, which left
+          # BASE_PATH unset here and fell back to deploy-pull.sh's default
+          # "/wynajem" instead of "". Must match the NEXT_PUBLIC_BASE_PATH
+          # build-server-2 was compiled with — empty means the app is served
+          # at the domain root.
+          script: |
+            export BASE_PATH=""
+            bash "$APP_DIR/deploy/deploy-pull.sh"
         env:
           APP_DIR: ${{ vars.APP_DIR_2 }}
           NODEVENV_DIR: ${{ vars.NODEVENV_DIR_2 }}
-          # Must match the NEXT_PUBLIC_BASE_PATH build-server-2 was compiled
-          # with — empty means the app is served at the domain root.
-          BASE_PATH: ""
 
       - name: Set up SSH for rsync
         run: |
