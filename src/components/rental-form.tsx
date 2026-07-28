@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { BASE_PATH } from "@/lib/base-path";
 
 export type Device = { id: string; name: string; shortName: string; color: string; active: boolean };
 
@@ -244,7 +245,7 @@ type AssignedContact = {
 };
 
 async function api(url: string, init?: RequestInit) {
-  const res = await fetch(`/wynajem${url}`, {
+  const res = await fetch(`${BASE_PATH}${url}`, {
     ...init,
     headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
   });
@@ -320,7 +321,7 @@ function ContactSection({
       setError(null);
       try {
         const res = await fetch(
-          `/wynajem/api/integrations/hubspot/contacts/search?q=${encodeURIComponent(query.trim())}`,
+          `${BASE_PATH}/api/integrations/hubspot/contacts/search?q=${encodeURIComponent(query.trim())}`,
           { signal: controller.signal },
         );
         const data = await res.json().catch(() => null);
@@ -364,7 +365,7 @@ function ContactSection({
 
     setIsAssigning(true);
     setError(null);
-    const res = await fetch(`/wynajem/api/rentals/${rentalId}/contact`, {
+    const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}/contact`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contactId: c.id }),
@@ -398,7 +399,7 @@ function ContactSection({
 
     setIsAssigning(true);
     setError(null);
-    const res = await fetch(`/wynajem/api/rentals/${rentalId}/contact`, { method: "DELETE" });
+    const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}/contact`, { method: "DELETE" });
     setIsAssigning(false);
     if (!res.ok) {
       const data = await res.json().catch(() => null);

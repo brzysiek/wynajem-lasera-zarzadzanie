@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { applySmsPlaceholders } from "@/lib/sms-template";
+import { BASE_PATH } from "@/lib/base-path";
 
 type ContactSummary = {
   id: string;
@@ -67,7 +68,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
       setContactSearchError(null);
       try {
         const res = await fetch(
-          `/wynajem/api/integrations/hubspot/contacts/search?q=${encodeURIComponent(contactQuery.trim())}`,
+          `${BASE_PATH}/api/integrations/hubspot/contacts/search?q=${encodeURIComponent(contactQuery.trim())}`,
           { signal: controller.signal },
         );
         const data = await res.json().catch(() => null);
@@ -99,7 +100,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
       setIsSearchingRental(true);
       setRentalSearchError(null);
       try {
-        const res = await fetch(`/wynajem/api/rentals/search?q=${encodeURIComponent(rentalQuery.trim())}`, {
+        const res = await fetch(`${BASE_PATH}/api/rentals/search?q=${encodeURIComponent(rentalQuery.trim())}`, {
           signal: controller.signal,
         });
         const data = await res.json().catch(() => null);
@@ -177,7 +178,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
     setSendError(null);
     setSendSuccess(false);
     try {
-      const res = await fetch("/wynajem/api/sms/send", {
+      const res = await fetch(`${BASE_PATH}/api/sms/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, message, rentalId: pickedRental?.id ?? null }),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { BASE_PATH } from "@/lib/base-path";
 
 type TestResult = { ok: boolean; message: string };
 
@@ -49,7 +50,7 @@ export function HubspotPanel({ initiallyConfigured }: { initiallyConfigured: boo
     setSaveMessage(null);
     setTestResult(null);
 
-    const { ok, data } = await postJson("/wynajem/api/integrations/hubspot", { token });
+    const { ok, data } = await postJson(`${BASE_PATH}/api/integrations/hubspot`, { token });
 
     setIsSaving(false);
     setSaveMessage(data?.message || (ok ? "Zapisano." : "Nie udało się zapisać tokenu."));
@@ -64,7 +65,7 @@ export function HubspotPanel({ initiallyConfigured }: { initiallyConfigured: boo
     setSaveMessage(null);
     setTestResult(null);
 
-    const { data } = await postJson("/wynajem/api/integrations/hubspot");
+    const { data } = await postJson(`${BASE_PATH}/api/integrations/hubspot`);
 
     setIsSaving(false);
     setSaveMessage(data?.message || "Token usunięty.");
@@ -75,7 +76,7 @@ export function HubspotPanel({ initiallyConfigured }: { initiallyConfigured: boo
     setIsTesting(true);
     setTestResult(null);
 
-    const { data } = await postJson("/wynajem/api/integrations/hubspot/test", {});
+    const { data } = await postJson(`${BASE_PATH}/api/integrations/hubspot/test`, {});
 
     setIsTesting(false);
     setTestResult(data || { ok: false, message: "Brak odpowiedzi z serwera." });

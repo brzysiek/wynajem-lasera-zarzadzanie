@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Device, Rental } from "@/components/rental-form";
+import { BASE_PATH } from "@/lib/base-path";
 
 type RawRental = Rental & { device: Device };
 
@@ -93,7 +94,7 @@ export function UpcomingRentalsView({ devices }: { devices: Device[] }) {
       const from = new Date();
       from.setHours(0, 0, 0, 0);
       const to = addDays(from, 365 * 3);
-      const res = await fetch(`/wynajem/api/rentals?from=${from.toISOString()}&to=${to.toISOString()}`);
+      const res = await fetch(`${BASE_PATH}/api/rentals?from=${from.toISOString()}&to=${to.toISOString()}`);
       const data = await res.json().catch(() => null);
       setRentals(Array.isArray(data?.rentals) ? data.rentals : []);
     });

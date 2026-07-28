@@ -3,6 +3,7 @@
 import { Suspense, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { BASE_PATH } from "@/lib/base-path";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -26,7 +27,7 @@ function ResetPasswordForm() {
 
     setIsSubmitting(true);
 
-    const res = await fetch("/wynajem/api/auth/reset-password", {
+    const res = await fetch(`${BASE_PATH}/api/auth/reset-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, password }),

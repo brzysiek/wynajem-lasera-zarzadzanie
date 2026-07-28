@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import { BASE_PATH } from "@/lib/base-path";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -13,7 +14,7 @@ export default function ForgotPasswordPage() {
     setIsSubmitting(true);
     setMessage(null);
 
-    const res = await fetch("/wynajem/api/auth/forgot-password", {
+    const res = await fetch(`${BASE_PATH}/api/auth/forgot-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),

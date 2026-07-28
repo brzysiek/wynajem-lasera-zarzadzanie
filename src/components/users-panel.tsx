@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { BASE_PATH } from "@/lib/base-path";
 
 type User = {
   id: string;
@@ -14,7 +15,7 @@ type User = {
 };
 
 async function api(url: string, init?: RequestInit) {
-  const res = await fetch(`/wynajem${url}`, {
+  const res = await fetch(`${BASE_PATH}${url}`, {
     ...init,
     headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
   });

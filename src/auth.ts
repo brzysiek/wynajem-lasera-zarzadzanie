@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { logInfo, logWarn } from "@/lib/logger";
+import { BASE_PATH } from "@/lib/base-path";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
@@ -11,12 +12,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // NEXTAUTH_URL matches, since host inference is only automatic on Vercel.
   trustHost: true,
   // Auth.js derives basePath from NEXTAUTH_URL's pathname, but NEXTAUTH_URL
-  // is intentionally set to the plain origin (no /wynajem) — so it falls
+  // is intentionally set to the plain origin (no basePath) — so it falls
   // back to the default "/api/auth", generating callback/error/redirect
   // URLs without the basePath prefix. Those then land outside Apache's
-  // PassengerBaseURI "/wynajem" scope and 404. Must match `basePath` in
-  // next.config.ts (same class of bug as BASE_PATH in proxy.ts).
-  basePath: "/wynajem/api/auth",
+  // PassengerBaseURI scope and 404. Must match `basePath` in next.config.ts
+  // (same class of bug as BASE_PATH in proxy.ts).
+  basePath: `${BASE_PATH}/api/auth`,
   pages: {
     signIn: "/login",
   },

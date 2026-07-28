@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { BASE_PATH } from "@/lib/base-path";
 
 // Must match `basePath` in next.config.ts. In this custom-server (Passenger)
 // setup, req.nextUrl.basePath comes back empty in middleware even though
-// pathname still carries the "/wynajem" prefix — confirmed at runtime — so
-// it can't be trusted here and is hardcoded instead.
-const BASE_PATH = "/wynajem";
+// pathname still carries the basePath prefix — confirmed at runtime — so
+// it can't be trusted here and BASE_PATH is used directly instead.
 
 const PUBLIC_ROUTES = [`${BASE_PATH}/login`, `${BASE_PATH}/forgot-password`, `${BASE_PATH}/reset-password`];
 

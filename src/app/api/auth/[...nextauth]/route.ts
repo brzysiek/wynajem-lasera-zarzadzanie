@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { handlers } from "@/auth";
+import { BASE_PATH } from "@/lib/base-path";
 
 // Next.js strips the basePath from the URL before this route handler runs
-// (unlike middleware, where pathname keeps it), so NextAuth's own
-// basePath: "/wynajem/api/auth" (set in src/auth.ts) can't match incoming
-// requests and can't build correct outgoing URLs either. Add the prefix
-// back before handing the request to NextAuth so both sides agree.
-const BASE_PATH = "/wynajem";
+// (unlike middleware, where pathname keeps it), so NextAuth's own basePath
+// (set in src/auth.ts) can't match incoming requests and can't build
+// correct outgoing URLs either. Add the prefix back before handing the
+// request to NextAuth so both sides agree.
 
 function withBasePath(req: NextRequest): NextRequest {
   const { href, pathname } = req.nextUrl;

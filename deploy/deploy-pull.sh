@@ -9,6 +9,13 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:?Set APP_DIR, e.g. /home/USERNAME/wynajem-lasera-zarzadzanie}"
 NODEVENV_DIR="${NODEVENV_DIR:?Set NODEVENV_DIR, e.g. /home/USERNAME/nodevenv/wynajem-lasera-zarzadzanie/20}"
+# Must match the NEXT_PUBLIC_BASE_PATH the deployed build artifact was
+# compiled with (see next.config.ts / src/lib/base-path.ts) — Next.js bakes
+# basePath into the build, so this can't drift independently of which
+# artifact got rsynced here. "" means the app is served at the domain root.
+# Uses `-` (not `:-`) so an explicitly empty value from the workflow is kept
+# instead of falling back to the default.
+BASE_PATH="${BASE_PATH-/wynajem}"
 
 cd "$APP_DIR"
 
@@ -34,9 +41,14 @@ echo "==> Ensuring .htaccess (Passenger routing config)"
 # gone missing entirely at least once, causing plain Apache 404s with no
 # app-level error at all), so write it ourselves on every deploy instead of
 # relying on the cPanel UI to keep it in sync.
-cat > .htaccess <<EOF
-PassengerAppRoot "$APP_DIR"
-PassengerBaseURI "/wynajem"
+{
+  echo "PassengerAppRoot \"$APP_DIR\""
+  # Omit the directive entirely for an app served at the domain root —
+  # Passenger then treats the vhost's own docroot as the app's base.
+  if [[ -n "$BASE_PATH" ]]; then
+    echo "PassengerBaseURI \"$BASE_PATH\""
+  fi
+  cat <<EOF
 PassengerNodejs "$APP_DIR/node-wrapper.sh"
 PassengerAppType node
 PassengerStartupFile server.js
@@ -47,6 +59,7 @@ PassengerEnv NODE_ENV production
 # drove the account's process limit to its cap. Give it more headroom.
 PassengerStartTimeout 300
 EOF
+} > .htaccess
 
 echo "==> Restarting app (Passenger restart trigger)"
 mkdir -p tmp

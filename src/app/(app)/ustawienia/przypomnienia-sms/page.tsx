@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/page-header";
 import { ReminderSettingsPanel } from "@/components/reminder-settings-panel";
 import { getReminderHour, getRemindersEnabled, getReminderCheckLogs } from "@/lib/reminders";
+import { BASE_PATH } from "@/lib/base-path";
 
 function formatDateTime(value: Date): string {
   return new Date(value).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "medium" });
@@ -76,7 +77,7 @@ export default async function ReminderSettingsPage() {
             Zaloguj się do cPanela na Cyberfolks i wejdź w <Code>Cron Jobs</Code>.
           </li>
           <li>
-            Znajdź zadanie wywołujące adres <Code>/wynajem/api/cron/reminders</Code> pod domeną, na której działa
+            Znajdź zadanie wywołujące adres <Code>{`${BASE_PATH}/api/cron/reminders`}</Code> pod domeną, na której działa
             aplikacja — to ono odpowiada za automatyczne sprawdzenia.
           </li>
           <li>

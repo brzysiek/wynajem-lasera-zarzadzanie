@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { BASE_PATH } from "@/lib/base-path";
 
 async function postJson(url: string, body: unknown) {
-  const res = await fetch(`/wynajem${url}`, {
+  const res = await fetch(`${BASE_PATH}${url}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

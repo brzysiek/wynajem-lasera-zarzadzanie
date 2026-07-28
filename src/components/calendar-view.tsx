@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Device, Rental } from "@/components/rental-form";
+import { BASE_PATH } from "@/lib/base-path";
 
 type RawRental = Rental & { device: Device };
 
@@ -252,7 +253,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
 
   const fetchRentals = useCallback(
     async (signal?: AbortSignal) => {
-      const res = await fetch(`/wynajem/api/rentals?from=${rangeStart.toISOString()}&to=${rangeEnd.toISOString()}`, {
+      const res = await fetch(`${BASE_PATH}/api/rentals?from=${rangeStart.toISOString()}&to=${rangeEnd.toISOString()}`, {
         signal,
       });
       const data = await res.json();
@@ -321,7 +322,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
     const newEnd = addDays(new Date(rental.endsAt), deltaDays);
 
     setDragError(null);
-    const res = await fetch(`/wynajem/api/rentals/${rentalId}`, {
+    const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ startsAt: newStart.toISOString(), endsAt: newEnd.toISOString() }),

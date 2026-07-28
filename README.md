@@ -239,31 +239,47 @@ ręcznie przyciskiem **Run workflow** przy `deploy.yml`.
 
 ## Drugi serwer (deploy na dwa konta cyberfolks naraz)
 
-`deploy.yml` buduje aplikację **raz** (job `build`), a potem wysyła gotowy
-`.next/` na serwer(y) dwoma niezależnymi jobami (`deploy-server-1`,
-`deploy-server-2`). To jest **pełna, niezależna instalacja**: własna baza
-MySQL, własny `.env`, własny cron przypomnień SMS — tak samo jak w Krokach
-1–4 wyżej, tylko na innym koncie/domenie cyberfolks.
+Serwer 1 jest wdrażany pod ścieżką `/wynajem` swojej domeny (patrz
+ostrzeżenie na górze tego pliku). **Serwer 2 jest wdrażany pod samym
+adresem swojej domeny** (bez `/wynajem`), np. `https://panel.wynajemlasera.pl/`
+zamiast `.../wynajem/`. Next.js zapisuje tę ścieżkę (`basePath`) na stałe
+wewnątrz zbudowanych plików — nie da się tego przełączyć w locie na
+serwerze — dlatego `deploy.yml` ma **dwa osobne joby budujące** aplikację
+(`build-server-1` z `NEXT_PUBLIC_BASE_PATH=/wynajem`, `build-server-2` z
+pustym `NEXT_PUBLIC_BASE_PATH`), a nie jeden współdzielony build. Oba
+używane env-y są wpisane wprost w `deploy.yml` — nie trzeba nic dodatkowo
+ustawiać w sekretach/zmiennych GitHuba z tego powodu.
+
+Poza tym to jest **pełna, niezależna instalacja**: własna baza MySQL,
+własny `.env`, własny cron przypomnień SMS — tak samo jak w Krokach 1–4
+wyżej, tylko na innym koncie/domenie cyberfolks.
 
 **Deploy na serwer 2 nie jest automatyczny.** Zwykły `push` do `main`
-wdraża tylko serwer 1 (`deploy-server-1`), tak jak dotychczas. Serwer 2
-dostaje deploy wyłącznie wtedy, gdy uruchomisz workflow ręcznie: zakładka
-**Actions → Deploy to cyberfolks → Run workflow**, i zaznaczysz checkbox
-„Wdróż też na serwer 2". Dzięki temu serwer 2 możesz traktować jako
-testowy/zapasowy, który aktualizujesz tylko wtedy, kiedy naprawdę tego
-chcesz, bez ryzyka przypadkowego wdrożenia przy każdym push.
+buduje i wdraża tylko serwer 1 (`build-server-1` → `deploy-server-1`), tak
+jak dotychczas — `build-server-2`/`deploy-server-2` się wtedy w ogóle nie
+uruchamiają. Serwer 2 dostaje build i deploy wyłącznie wtedy, gdy
+uruchomisz workflow ręcznie: zakładka **Actions → Deploy to cyberfolks →
+Run workflow**, i zaznaczysz checkbox „Wdróż też na serwer 2". Dzięki temu
+serwer 2 możesz traktować jako testowy/zapasowy, który aktualizujesz tylko
+wtedy, kiedy naprawdę tego chcesz, bez ryzyka przypadkowego wdrożenia przy
+każdym push.
 
 1. Powtórz **Krok 1–4** wyżej na nowym koncie cyberfolks (nowa aplikacja
    Node.js w panelu, `git init` + checkout repo, własna baza MySQL +
    `sql/schema.sql`/`sql/seed.sql`, własny `.env` z osobnym
-   `NEXTAUTH_SECRET` i `NEXTAUTH_URL` wskazującym na nową domenę, oraz
-   `deploy/generate-actions-key.sh` — da nowy, osobny klucz SSH tylko dla
-   tego serwera).
+   `NEXTAUTH_SECRET` i `NEXTAUTH_URL` wskazującym na nową domenę — bez
+   `/wynajem` na końcu, tak samo jak dla serwera 1, patrz ostrzeżenie na
+   górze tego pliku — oraz `deploy/generate-actions-key.sh` — da nowy,
+   osobny klucz SSH tylko dla tego serwera). W panelu **Setup Node.js App**
+   dla tej aplikacji ustaw **Application URL** na samą domenę (bez
+   dodatkowej ścieżki) — aplikacja ma tu odpowiadać pod `/`, nie pod
+   `/wynajem`.
 2. Jeśli druga instalacja ma też wysyłać automatyczne przypomnienia SMS,
-   skonfiguruj na tym koncie **osobny** Cron Job w cPanelu (jak w sekcji
-   „Jak zmienić harmonogram" na stronie Przypomnienia SMS w aplikacji) i
-   osobny `CRON_SECRET` w jego `.env` — nie używaj tego samego sekretu co
-   pierwszy serwer.
+   skonfiguruj na tym koncie **osobny** Cron Job w cPanelu, wywołujący
+   `/api/cron/reminders` (bez `/wynajem` na początku, w odróżnieniu od
+   serwera 1 — patrz sekcja „Jak zmienić harmonogram" na stronie
+   Przypomnienia SMS w aplikacji) i osobny `CRON_SECRET` w jego `.env` —
+   nie używaj tego samego sekretu co pierwszy serwer.
 3. W GitHubie: **Settings → Secrets and variables → Actions**, dodaj **nowe**
    wpisy (obok istniejących z Kroku 5, nie zamiast nich):
 
@@ -281,9 +297,9 @@ chcesz, bez ryzyka przypadkowego wdrożenia przy każdym push.
 
 4. Zwykły push do `main` wdraża tylko serwer 1. Żeby wdrożyć też serwer 2,
    wejdź w **Actions → Deploy to cyberfolks → Run workflow**, zaznacz
-   „Wdróż też na serwer 2" i uruchom — wtedy zbuduje się aplikacja i wdroży
-   na oba serwery równolegle, widoczne jako osobne joby w zakładce
-   **Actions**.
+   „Wdróż też na serwer 2" i uruchom — wtedy zbuduje się (osobno, z
+   właściwym `basePath`) i wdroży aplikacja na oba serwery równolegle,
+   widoczne jako osobne joby w zakładce **Actions**.
 
 ### Co zostaje poza automatem
 

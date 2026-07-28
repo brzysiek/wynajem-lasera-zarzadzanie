@@ -11,7 +11,13 @@ on:
         default: false
 
 jobs:
-  build:
+  # Server 1 is served under the /wynajem path of its domain. Next.js bakes
+  # basePath into the build at compile time (see next.config.ts /
+  # src/lib/base-path.ts), so server 2 — served at its own domain's root —
+  # needs a build compiled with a different NEXT_PUBLIC_BASE_PATH, not just
+  # a different deploy target. That's why there are two build jobs instead
+  # of one shared between both deploys.
+  build-server-1:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,11 +45,13 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: /wynajem
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: next-build
+          name: next-build-1
           path: .next
           retention-days: 1
           # .next is a dot-directory, and upload-artifact v4 silently
@@ -57,14 +65,52 @@ jobs:
           # job. Fail loudly here instead, where the real cause is visible.
           if-no-files-found: error
 
+  # Only built when server 2 is actually going to be deployed (manual
+  # dispatch with the checkbox ticked) — building it on every push would
+  # burn CI minutes for a server that isn't being updated most of the time.
+  build-server-2:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_server_2 == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: mysql://user:pass@localhost:3306/placeholder
+
+      - name: Build
+        run: npm run build
+        env:
+          # Empty basePath: server 2 is served at its domain's root, not
+          # under /wynajem. Must match BASE_PATH passed to deploy-pull.sh
+          # in deploy-server-2 below.
+          NEXT_PUBLIC_BASE_PATH: ""
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build-2
+          path: .next
+          retention-days: 1
+          include-hidden-files: true
+          if-no-files-found: error
+
   deploy-server-1:
-    needs: build
+    needs: build-server-1
     runs-on: ubuntu-latest
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: next-build
+          name: next-build-1
           path: .next
 
       - name: Sync source on server
@@ -74,11 +120,12 @@ jobs:
           port: ${{ secrets.DEPLOY_SSH_PORT }}
           username: ${{ secrets.DEPLOY_SSH_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: APP_DIR,NODEVENV_DIR
+          envs: APP_DIR,NODEVENV_DIR,BASE_PATH
           script: bash "$APP_DIR/deploy/deploy-pull.sh"
         env:
           APP_DIR: ${{ vars.APP_DIR }}
           NODEVENV_DIR: ${{ vars.NODEVENV_DIR }}
+          BASE_PATH: /wynajem
 
       - name: Set up SSH for rsync
         run: |
@@ -107,26 +154,25 @@ jobs:
           NODEVENV_DIR: ${{ vars.NODEVENV_DIR }}
 
   # Second, independent cyberfolks installation (own domain, own database,
-  # own cron) — deployed from the same build artifact in parallel with
-  # deploy-server-1 rather than rebuilding, since `next build` can't run on
-  # either account directly (see the build job's comments) and CI minutes/
-  # LVE limits make a second build wasteful. Uses its own secret/variable
-  # names (DEPLOY2_*, *_2) so both servers' credentials coexist independently
-  # in the repo's GitHub Actions settings.
+  # own cron), served at its domain's root instead of /wynajem — deployed
+  # from the build-server-2 artifact, which was compiled with a matching
+  # empty NEXT_PUBLIC_BASE_PATH. Uses its own secret/variable names
+  # (DEPLOY2_*, *_2) so both servers' credentials coexist independently in
+  # the repo's GitHub Actions settings.
   #
   # Unlike deploy-server-1, this job does NOT run on every push — only when
   # the workflow is triggered manually (Actions tab → Run workflow) with the
   # "deploy_server_2" checkbox ticked. A plain push to main only redeploys
   # server 1.
   deploy-server-2:
-    needs: build
+    needs: build-server-2
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_server_2 == true }}
     runs-on: ubuntu-latest
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: next-build
+          name: next-build-2
           path: .next
 
       - name: Sync source on server
@@ -136,11 +182,14 @@ jobs:
           port: ${{ secrets.DEPLOY2_SSH_PORT }}
           username: ${{ secrets.DEPLOY2_SSH_USER }}
           key: ${{ secrets.DEPLOY2_SSH_KEY }}
-          envs: APP_DIR,NODEVENV_DIR
+          envs: APP_DIR,NODEVENV_DIR,BASE_PATH
           script: bash "$APP_DIR/deploy/deploy-pull.sh"
         env:
           APP_DIR: ${{ vars.APP_DIR_2 }}
           NODEVENV_DIR: ${{ vars.NODEVENV_DIR_2 }}
+          # Must match the NEXT_PUBLIC_BASE_PATH build-server-2 was compiled
+          # with — empty means the app is served at the domain root.
+          BASE_PATH: ""
 
       - name: Set up SSH for rsync
         run: |

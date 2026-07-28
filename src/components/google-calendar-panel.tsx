@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BASE_PATH } from "@/lib/base-path";
 
 type TestResult = { ok: boolean; message: string };
 
@@ -52,7 +53,7 @@ export function GoogleCalendarPanel({ initialStatus }: { initialStatus: GoogleSt
     setIsTesting(true);
     setTestResult(null);
 
-    const { data } = await postJson("/wynajem/api/integrations/google-calendar/test", {});
+    const { data } = await postJson(`${BASE_PATH}/api/integrations/google-calendar/test`, {});
 
     setIsTesting(false);
     setTestResult(data || { ok: false, message: "Brak odpowiedzi z serwera." });

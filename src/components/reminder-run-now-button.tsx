@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { BASE_PATH } from "@/lib/base-path";
 
 export function ReminderRunNowButton() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export function ReminderRunNowButton() {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch("/wynajem/api/reminders/run-now", { method: "POST" });
+      const res = await fetch(`${BASE_PATH}/api/reminders/run-now`, { method: "POST" });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         setError(data?.message || "Nie udało się uruchomić wysyłki.");
