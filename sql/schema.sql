@@ -77,6 +77,7 @@ CREATE TABLE `reminder_rules` (
     `scheduledFor` DATETIME(3) NOT NULL,
     `sentAt` DATETIME(3) NULL,
     `errorMessage` TEXT NULL,
+    `edited` BOOLEAN NOT NULL DEFAULT false,
 
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

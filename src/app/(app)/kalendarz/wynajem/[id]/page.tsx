@@ -57,6 +57,8 @@ export default async function RentalDetailPage({
       sentAt: r.sentAt ? r.sentAt.toISOString() : null,
       scheduledFor: r.scheduledFor.toISOString(),
       errorMessage: r.errorMessage,
+      edited: r.edited,
+      messageBody: r.messageBody,
     })),
     messages: rental.messages.map((m) => ({
       id: m.id,

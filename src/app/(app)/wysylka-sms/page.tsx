@@ -13,7 +13,7 @@ function formatDateTime(value: Date): string {
 
 type Row =
   | { kind: "message"; id: string; date: Date; recipient: string; rentalLabel: string; body: string; status: "SENT" | "FAILED"; errorMessage: string | null }
-  | { kind: "queued"; id: string; date: Date; recipient: string; rentalLabel: string; body: string };
+  | { kind: "queued"; id: string; date: Date; recipient: string; rentalLabel: string; body: string; daysBefore: 1 | 3 | 7 };
 
 export default async function SmsSendingPage() {
   const session = await auth();
@@ -41,6 +41,7 @@ export default async function SmsSendingPage() {
         recipient: item.phone || "—",
         rentalLabel: `${item.rentalTitle} (${item.deviceName})`,
         body: item.messageBody,
+        daysBefore: item.daysBefore,
       }),
     ),
     ...messages.map(
@@ -96,7 +97,7 @@ export default async function SmsSendingPage() {
                       </td>
                       <td className="whitespace-nowrap px-4 py-2">
                         {row.kind === "queued" ? (
-                          <QueueCancelBadge ruleId={row.id} />
+                          <QueueCancelBadge ruleId={row.id} daysBefore={row.daysBefore} initialMessageBody={row.body} />
                         ) : (
                           <span
                             className={`rounded px-1.5 py-0.5 text-xs font-medium ${

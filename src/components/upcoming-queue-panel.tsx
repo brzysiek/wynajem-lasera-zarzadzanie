@@ -26,13 +26,18 @@ export function UpcomingQueuePanel({ initialItems }: { initialItems: UpcomingQue
     setItems((prev) => prev.filter((i) => i.id !== id));
   }
 
+  function handleSaved(id: string, body: string) {
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, messageBody: body } : i)));
+  }
+
   return (
     <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
       <div className="border-b border-gray-200 px-4 py-3">
         <h2 className="text-lg font-semibold text-gray-900">Nadchodzące powiadomienia do wysłania</h2>
         <p className="mt-1 text-sm text-gray-500">
           Przypomnienia 1/3/7-dniowe, które wejdą do najbliższej wysyłki — widoczne tu, gdy zbliża się ich termin, na
-          tyle wcześnie, by można je jeszcze anulować przed wysłaniem. Kliknij badge „zakolejkowane”, żeby anulować.
+          tyle wcześnie, by można je jeszcze edytować lub anulować przed wysłaniem. Kliknij badge „zakolejkowane”, żeby
+          zmienić treść lub anulować wysyłkę.
         </p>
       </div>
       {items.length === 0 ? (
@@ -65,7 +70,13 @@ export function UpcomingQueuePanel({ initialItems }: { initialItems: UpcomingQue
                     {item.messageBody}
                   </td>
                   <td className="whitespace-nowrap px-4 py-2">
-                    <QueueCancelBadge ruleId={item.id} onCancelled={() => handleCancelled(item.id)} />
+                    <QueueCancelBadge
+                      ruleId={item.id}
+                      daysBefore={item.daysBefore}
+                      initialMessageBody={item.messageBody}
+                      onSaved={(body) => handleSaved(item.id, body)}
+                      onCancelled={() => handleCancelled(item.id)}
+                    />
                   </td>
                 </tr>
               ))}

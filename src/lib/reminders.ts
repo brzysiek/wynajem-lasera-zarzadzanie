@@ -273,17 +273,24 @@ export async function discardStaleReminders(): Promise<number> {
 
 export type ReminderCheckSource = "CRON" | "MANUAL";
 
-type ReminderRuleForSend = { id: string; rentalId: string; daysBefore: number };
+type ReminderRuleForSend = { id: string; rentalId: string; daysBefore: number; edited: boolean; messageBody: string };
 type RentalForSend = RentalForRender & { id: string; contactPhoneCache: string | null };
 
 // Renders the current template + sends the SMS + persists the outcome on
 // both the ReminderRule and the Message history. Shared by the confirmation
 // pipeline and the queued-send pipeline — the only difference between them
 // is which rules are eligible and how due-ness is decided upstream.
+//
+// A rule the admin manually edited (via the queue popup) keeps its exact
+// saved wording instead of being re-rendered from the live template — see
+// the `edited` flag on ReminderRule.
 async function sendReminderNow(rule: ReminderRuleForSend, rental: RentalForSend): Promise<"sent" | "failed"> {
   const days = rule.daysBefore as ReminderOffset;
-  const template = await prisma.messageTemplate.findUnique({ where: { key: TEMPLATE_KEYS[days] } });
-  const body = renderTemplate(template?.body || DEFAULT_TEMPLATE_BODY[days] || "{rezerwacja_urzadzenie}", rental);
+  let body = rule.messageBody;
+  if (!rule.edited) {
+    const template = await prisma.messageTemplate.findUnique({ where: { key: TEMPLATE_KEYS[days] } });
+    body = renderTemplate(template?.body || DEFAULT_TEMPLATE_BODY[days] || "{rezerwacja_urzadzenie}", rental);
+  }
   const phone = rental.contactPhoneCache ? normalizePolishPhone(rental.contactPhoneCache) : null;
 
   if (!phone) {
@@ -475,6 +482,17 @@ export async function cancelQueuedReminder(id: string): Promise<boolean> {
   return true;
 }
 
+// Saves a manual edit made from the queue popup. Marks the rule `edited` so
+// sendReminderNow()/getUpcomingQueue() use this exact wording instead of
+// re-rendering it from the (possibly since-changed) live template.
+export async function updateQueuedReminderBody(id: string, messageBody: string): Promise<boolean> {
+  const rule = await prisma.reminderRule.findUnique({ where: { id } });
+  if (!rule || (rule.status !== "QUEUED" && rule.status !== "SCHEDULED")) return false;
+
+  await prisma.reminderRule.update({ where: { id }, data: { messageBody, edited: true } });
+  return true;
+}
+
 export type UpcomingQueueItemDto = {
   id: string;
   rentalId: string;
@@ -513,7 +531,7 @@ export async function getUpcomingQueue(): Promise<UpcomingQueueItemDto[]> {
       phone: rule.rental.contactPhoneCache,
       daysBefore: days,
       scheduledFor: rule.scheduledFor.toISOString(),
-      messageBody: renderTemplate(template?.body || DEFAULT_TEMPLATE_BODY[days], rule.rental),
+      messageBody: rule.edited ? rule.messageBody : renderTemplate(template?.body || DEFAULT_TEMPLATE_BODY[days], rule.rental),
     };
   });
 }

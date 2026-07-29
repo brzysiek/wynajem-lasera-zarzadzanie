@@ -124,6 +124,7 @@ model ReminderRule {
   scheduledFor DateTime
   sentAt       DateTime?
   errorMessage String?        @db.Text
+  edited       Boolean        @default(false)
 
   rental Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
 

@@ -27,6 +27,8 @@ export type ReminderRuleSummary = {
   sentAt: string | null;
   scheduledFor: string;
   errorMessage: string | null;
+  edited: boolean;
+  messageBody: string;
 };
 
 export type MessageSummary = {
@@ -89,7 +91,9 @@ function ReminderOptionRow({
   failedMessage,
   impossibleReason,
   queuedRuleId,
+  queuedDaysBefore,
   queuedScheduledFor,
+  queuedMessageBody,
   onToggle,
   onCancelled,
   template,
@@ -102,7 +106,9 @@ function ReminderOptionRow({
   failedMessage: string | null;
   impossibleReason: string | null;
   queuedRuleId: string | null;
+  queuedDaysBefore: ReminderDays | null;
   queuedScheduledFor: string | null;
+  queuedMessageBody: string;
   onToggle: () => void;
   onCancelled: () => void;
   template?: ReminderTemplatePreview;
@@ -133,9 +139,14 @@ function ReminderOptionRow({
           className={sent ? "accent-green-600" : queued ? "accent-amber-500" : impossibleReason ? "accent-red-500" : undefined}
         />
         {label}
-        {queuedRuleId && (
+        {queuedRuleId && queuedDaysBefore && (
           <span onClick={(e) => e.preventDefault()}>
-            <QueueCancelBadge ruleId={queuedRuleId} onCancelled={onCancelled} />
+            <QueueCancelBadge
+              ruleId={queuedRuleId}
+              daysBefore={queuedDaysBefore}
+              initialMessageBody={queuedMessageBody}
+              onCancelled={onCancelled}
+            />
           </span>
         )}
       </span>
@@ -166,6 +177,7 @@ function ReminderOptionRow({
 
 function ReminderSection({
   rental,
+  device,
   startsAt,
   selectedDays,
   onToggleDay,
@@ -173,6 +185,7 @@ function ReminderSection({
   templates,
 }: {
   rental: Rental | null;
+  device: Device | undefined;
   startsAt: string;
   selectedDays: Set<ReminderDays>;
   onToggleDay: (days: ReminderDays) => void;
@@ -181,6 +194,12 @@ function ReminderSection({
 }) {
   const remaining = daysUntilStart(startsAt);
   const templateFor = (offset: ReminderOffset) => templates.find((t) => t.offset === offset);
+  const placeholderCtx = {
+    clientName: rental?.contactNameCache,
+    deviceName: device?.name,
+    startsAt: rental?.startsAt,
+    endsAt: rental?.endsAt,
+  };
 
   return (
     <div className="flex flex-col gap-1.5 text-sm text-gray-700">
@@ -193,6 +212,14 @@ function ReminderSection({
           const impossible = !sent && remaining < days;
           const disabled = sent || impossible;
           const checked = sent ? true : impossible ? false : selectedDays.has(days);
+          const template = templateFor(days);
+          const queuedMessageBody = queued
+            ? rule!.edited
+              ? rule!.messageBody
+              : template
+                ? applySmsPlaceholders(template.body, placeholderCtx)
+                : ""
+            : "";
           return (
             <ReminderOptionRow
               key={days}
@@ -206,10 +233,12 @@ function ReminderSection({
                 impossible ? `za mało czasu do wynajmu (${Math.max(remaining, 0)} ${remaining === 1 ? "dzień" : "dni"})` : null
               }
               queuedRuleId={queued ? rule!.id : null}
+              queuedDaysBefore={queued ? days : null}
               queuedScheduledFor={queued ? rule!.scheduledFor : null}
+              queuedMessageBody={queuedMessageBody}
               onToggle={() => onToggleDay(days)}
               onCancelled={() => onCancelQueued(days)}
-              template={templateFor(days)}
+              template={template}
             />
           );
         })}
@@ -844,6 +873,7 @@ export function RentalForm({
             <div className="rounded-lg border border-gray-200 bg-white p-5">
               <ReminderSection
                 rental={rental}
+                device={device}
                 startsAt={startsAt}
                 selectedDays={reminderDays}
                 onToggleDay={toggleReminderDay}
