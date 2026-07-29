@@ -4,10 +4,12 @@
 export function AppFooter() {
   const version = process.env.NEXT_PUBLIC_APP_VERSION ?? "dev";
   const commit = process.env.NEXT_PUBLIC_APP_COMMIT ?? "dev";
+  const isDev = process.env.NODE_ENV !== "production";
 
   return (
     <footer className="border-t border-gray-200 px-4 py-3 text-center text-xs text-gray-400">
       wersja {version} · {commit}
+      {isDev && <> · <span className="font-medium text-amber-700">środowisko deweloperskie</span></>}
     </footer>
   );
 }
