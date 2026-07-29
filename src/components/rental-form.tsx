@@ -775,26 +775,24 @@ export function RentalForm({
           <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5 lg:col-span-2">
             <label className="flex flex-col gap-1 text-sm text-gray-700">
               Urządzenie
-              {isEditing ? (
-                <span className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: device?.color }} />
-                  {device?.name ?? "—"}
-                </span>
-              ) : (
-                <select
-                  value={deviceId}
-                  onChange={(e) => setDeviceId(e.target.value)}
-                  required
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
-                >
-                  {devices
-                    .filter((d) => d.active)
-                    .map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                </select>
+              <select
+                value={deviceId}
+                onChange={(e) => setDeviceId(e.target.value)}
+                required
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+              >
+                {devices
+                  .filter((d) => d.active || d.id === deviceId)
+                  .map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+              </select>
+              {isEditing && deviceId !== rental!.deviceId && (
+                <p className="text-xs text-amber-700">
+                  Zmiana urządzenia przeniesie to wydarzenie do kalendarza Google innego urządzenia.
+                </p>
               )}
             </label>
 

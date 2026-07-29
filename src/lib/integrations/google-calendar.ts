@@ -224,6 +224,22 @@ export async function updateCalendarEvent(calendarId: string, eventId: string, i
   logInfo("google_calendar_event_updated", { calendarId, eventId });
 }
 
+// Moves an event to a different calendar (used when a rental's device
+// changes) — the event keeps the same id, just under a new calendarId, so
+// no history/attendee state is lost the way a delete+recreate would lose it.
+export async function moveCalendarEvent(calendarId: string, eventId: string, destinationCalendarId: string): Promise<void> {
+  const accessToken = await getAccessToken();
+  const { res, body } = await googleFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}/move?destination=${encodeURIComponent(destinationCalendarId)}`,
+    accessToken,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(body?.error?.message || `Nie udało się przenieść wydarzenia do innego kalendarza (HTTP ${res.status}).`);
+  }
+  logInfo("google_calendar_event_moved", { calendarId, eventId, destinationCalendarId });
+}
+
 export async function deleteCalendarEvent(calendarId: string, eventId: string): Promise<void> {
   const accessToken = await getAccessToken();
   const { res, body } = await googleFetch(

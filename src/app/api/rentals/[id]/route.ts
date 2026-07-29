@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { updateCalendarEvent, deleteCalendarEvent } from "@/lib/integrations/google-calendar";
+import { updateCalendarEvent, deleteCalendarEvent, moveCalendarEvent } from "@/lib/integrations/google-calendar";
 import { logInfo, logWarn, logError } from "@/lib/logger";
 import { CONFIRMATION_OFFSET, REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 
@@ -11,9 +11,6 @@ const RENTAL_INCLUDE = {
   messages: { orderBy: { sentAt: "desc" as const } },
 };
 
-// Device/calendar are not editable here — moving a rental to a different
-// device's calendar would require Google's events.move API, which this
-// stage doesn't implement.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) {
@@ -42,6 +39,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ message: "Termin zakończenia musi być późniejszy niż rozpoczęcia." }, { status: 400 });
   }
 
+  const requestedDeviceId = typeof body?.deviceId === "string" && body.deviceId ? body.deviceId : rental.deviceId;
+  const deviceChanged = requestedDeviceId !== rental.deviceId;
+  let targetCalendarId = rental.googleCalendarId;
+  if (deviceChanged) {
+    const newDevice = await prisma.device.findUnique({ where: { id: requestedDeviceId } });
+    if (!newDevice) {
+      logWarn("rental_update_rejected", { userId: session.user.id, rentalId: id, reason: "device_not_found" });
+      return NextResponse.json({ message: "Nie znaleziono wybranego urządzenia." }, { status: 400 });
+    }
+    targetCalendarId = newDevice.googleCalendarId;
+  }
+
   // reminderDays is only sent by the rental form. Partial updates from
   // elsewhere (e.g. the calendar's drag-and-drop date move) omit it — in
   // that case we keep whatever was already checked/sent, just re-syncing
@@ -67,7 +76,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   try {
-    await updateCalendarEvent(rental.googleCalendarId, rental.googleEventId, {
+    if (deviceChanged) {
+      await moveCalendarEvent(rental.googleCalendarId, rental.googleEventId, targetCalendarId);
+    }
+    await updateCalendarEvent(targetCalendarId, rental.googleEventId, {
       title,
       description: description || null,
       startsAt,
@@ -77,12 +89,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const updated = await prisma.rental.update({
       where: { id },
-      data: { title, description: description || null, startsAt, endsAt, allDay, lastSyncedAt: new Date() },
+      data: {
+        title,
+        description: description || null,
+        startsAt,
+        endsAt,
+        allDay,
+        deviceId: requestedDeviceId,
+        googleCalendarId: targetCalendarId,
+        lastSyncedAt: new Date(),
+      },
     });
 
     await syncReminderRules(updated, selectedDays, confirmationSelected);
 
-    logInfo("rental_updated", { userId: session.user.id, rentalId: id });
+    logInfo("rental_updated", { userId: session.user.id, rentalId: id, deviceChanged });
 
     const withRelations = await prisma.rental.findUniqueOrThrow({ where: { id }, include: RENTAL_INCLUDE });
     return NextResponse.json({ rental: withRelations });
