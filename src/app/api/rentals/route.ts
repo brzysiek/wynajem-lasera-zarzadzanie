@@ -57,6 +57,9 @@ export async function POST(req: NextRequest) {
   const allDay = Boolean(body?.allDay);
   const startsAt = typeof body?.startsAt === "string" ? new Date(body.startsAt) : null;
   const endsAt = typeof body?.endsAt === "string" ? new Date(body.endsAt) : null;
+  const deliveryAddress = typeof body?.deliveryAddress === "string" ? body.deliveryAddress.trim() : "";
+  const deliveryAt = typeof body?.deliveryAt === "string" && body.deliveryAt ? new Date(body.deliveryAt) : null;
+  const pickupAt = typeof body?.pickupAt === "string" && body.pickupAt ? new Date(body.pickupAt) : null;
 
   if (!deviceId || !title || !startsAt || !endsAt || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
     logWarn("rental_create_rejected", { userId: session.user.id, reason: "invalid_input" });
@@ -94,6 +97,9 @@ export async function POST(req: NextRequest) {
         startsAt,
         endsAt,
         allDay,
+        deliveryAddress: deliveryAddress || null,
+        deliveryAt,
+        pickupAt,
         lastSyncedAt: new Date(),
       },
     });

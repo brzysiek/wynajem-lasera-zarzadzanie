@@ -50,6 +50,9 @@ export default async function RentalDetailPage({
     contactEmailCache: rental.contactEmailCache,
     contactCompanyCache: rental.contactCompanyCache,
     contactAddressCache: rental.contactAddressCache,
+    deliveryAddress: rental.deliveryAddress,
+    deliveryAt: rental.deliveryAt ? rental.deliveryAt.toISOString() : null,
+    pickupAt: rental.pickupAt ? rental.pickupAt.toISOString() : null,
     reminderRules: rental.reminderRules.map((r) => ({
       id: r.id,
       daysBefore: r.daysBefore as ReminderOffset,

@@ -29,6 +29,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const allDay = typeof body?.allDay === "boolean" ? body.allDay : rental.allDay;
   const startsAt = typeof body?.startsAt === "string" ? new Date(body.startsAt) : rental.startsAt;
   const endsAt = typeof body?.endsAt === "string" ? new Date(body.endsAt) : rental.endsAt;
+  const deliveryAddress = typeof body?.deliveryAddress === "string" ? body.deliveryAddress.trim() : rental.deliveryAddress ?? "";
+  const deliveryAt =
+    typeof body?.deliveryAt === "string" ? (body.deliveryAt ? new Date(body.deliveryAt) : null) : rental.deliveryAt;
+  const pickupAt = typeof body?.pickupAt === "string" ? (body.pickupAt ? new Date(body.pickupAt) : null) : rental.pickupAt;
 
   if (!title || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
     logWarn("rental_update_rejected", { userId: session.user.id, rentalId: id, reason: "invalid_input" });
@@ -97,6 +101,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         allDay,
         deviceId: requestedDeviceId,
         googleCalendarId: targetCalendarId,
+        deliveryAddress: deliveryAddress || null,
+        deliveryAt,
+        pickupAt,
         lastSyncedAt: new Date(),
       },
     });

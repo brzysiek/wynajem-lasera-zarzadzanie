@@ -54,6 +54,9 @@ export type Rental = {
   contactEmailCache?: string | null;
   contactCompanyCache?: string | null;
   contactAddressCache?: string | null;
+  deliveryAddress?: string | null;
+  deliveryAt?: string | null;
+  pickupAt?: string | null;
   reminderRules?: ReminderRuleSummary[];
   messages?: MessageSummary[];
 };
@@ -432,14 +435,14 @@ function contactFromRental(rental: Rental | null): AssignedContact | null {
 function ContactSection({
   rentalId,
   initialContact,
-  onPendingChange,
+  onContactChange,
 }: {
   // null while creating a new rental (it doesn't have an id yet) — in that
   // case assign/unassign only update local state instead of calling the API,
   // and the picked contact id travels in the rental-creation request body.
   rentalId: string | null;
   initialContact: AssignedContact | null;
-  onPendingChange?: (contact: AssignedContact | null) => void;
+  onContactChange?: (contact: AssignedContact | null) => void;
 }) {
   const [contact, setContact] = useState(initialContact);
   const [query, setQuery] = useState("");
@@ -499,7 +502,7 @@ function ContactSection({
       setContact(next);
       setQuery("");
       setResults(null);
-      onPendingChange?.(next);
+      onContactChange?.(next);
       return;
     }
 
@@ -517,7 +520,7 @@ function ContactSection({
       return;
     }
     const r = data.rental;
-    setContact({
+    const next: AssignedContact = {
       id: r.hubspotContactId,
       name: r.contactNameCache,
       phone: r.contactPhoneCache,
@@ -525,15 +528,17 @@ function ContactSection({
       company: r.contactCompanyCache,
       address: r.contactAddressCache,
       url: data.contactUrl ?? null,
-    });
+    };
+    setContact(next);
     setQuery("");
     setResults(null);
+    onContactChange?.(next);
   }
 
   async function unassign() {
     if (!rentalId) {
       setContact(null);
-      onPendingChange?.(null);
+      onContactChange?.(null);
       return;
     }
 
@@ -547,6 +552,7 @@ function ContactSection({
       return;
     }
     setContact(null);
+    onContactChange?.(null);
   }
 
   if (contact) {
@@ -672,6 +678,9 @@ export function RentalForm({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingContact, setPendingContact] = useState<AssignedContact | null>(null);
+  const [deliveryAddress, setDeliveryAddress] = useState(rental?.deliveryAddress ?? rental?.contactAddressCache ?? "");
+  const [deliveryAt, setDeliveryAt] = useState(rental?.deliveryAt ? toLocalInputValue(rental.deliveryAt) : "");
+  const [pickupAt, setPickupAt] = useState(rental?.pickupAt ? toLocalInputValue(rental.pickupAt) : "");
   const [reminderDays, setReminderDays] = useState<Set<ReminderDays>>(() => {
     if (!rental) return new Set([1, 3, 7]);
     const checked = rental.reminderRules
@@ -703,6 +712,13 @@ export function RentalForm({
     });
   }
 
+  function handleContactChange(contact: AssignedContact | null) {
+    setPendingContact(contact);
+    if (contact?.address && !deliveryAddress.trim()) {
+      setDeliveryAddress(contact.address);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSaving(true);
@@ -722,6 +738,9 @@ export function RentalForm({
       startsAt: new Date(startsAt).toISOString(),
       endsAt: new Date(endsAt).toISOString(),
       reminderDays: effectiveReminderDays,
+      deliveryAddress,
+      deliveryAt: deliveryAt ? new Date(deliveryAt).toISOString() : null,
+      pickupAt: pickupAt ? new Date(pickupAt).toISOString() : null,
     };
     if (!isEditing && pendingContact) {
       body.contactId = pendingContact.id;
@@ -772,7 +791,9 @@ export function RentalForm({
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5 lg:col-span-2">
+          <div className="flex flex-col gap-6 lg:col-span-2">
+          <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5">
+            <p className="mb-2 text-sm text-gray-700">Dane rezerwacji</p>
             <label className="flex flex-col gap-1 text-sm text-gray-700">
               Urządzenie
               <select
@@ -843,13 +864,41 @@ export function RentalForm({
                 />
               </label>
             </div>
+          </div>
 
-            {isEditing && (
-              <div className="flex flex-col gap-1 text-sm text-gray-700">
-                Historia SMS
-                <MessageHistorySection messages={rental!.messages ?? []} />
-              </div>
-            )}
+          <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5">
+            <p className="mb-2 text-sm text-gray-700">Dostawa</p>
+            <label className="flex flex-col gap-1 text-sm text-gray-700">
+              Adres dostawy
+              <textarea
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+                rows={2}
+                placeholder="Uzupełnia się automatycznie z adresu klienta, jeśli jest dostępny"
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Data dostawy
+                <input
+                  type="datetime-local"
+                  value={deliveryAt}
+                  onChange={(e) => setDeliveryAt(e.target.value)}
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Data odbioru
+                <input
+                  type="datetime-local"
+                  value={pickupAt}
+                  onChange={(e) => setPickupAt(e.target.value)}
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                />
+              </label>
+            </div>
+          </div>
           </div>
 
           <div className="flex flex-col gap-4">
@@ -858,7 +907,7 @@ export function RentalForm({
               <ContactSection
                 rentalId={isEditing ? rental!.id : null}
                 initialContact={isEditing ? contactFromRental(rental) : null}
-                onPendingChange={setPendingContact}
+                onContactChange={handleContactChange}
               />
             </div>
 
@@ -933,6 +982,13 @@ export function RentalForm({
             </button>
           </div>
         </div>
+
+        {isEditing && (
+          <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <p className="mb-2 text-sm text-gray-700">Historia SMS</p>
+            <MessageHistorySection messages={rental!.messages ?? []} />
+          </div>
+        )}
       </form>
     </div>
   );
