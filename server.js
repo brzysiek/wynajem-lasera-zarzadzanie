@@ -99,8 +99,13 @@ app.prepare().then(() => {
   logDiag("startup");
   // Fires regardless of request traffic, so the thread ramp-up between the
   // process starting and the first request landing is also captured, not
-  // just the request-triggered samples below.
-  setInterval(() => logDiag("interval"), 2000).unref();
+  // just the request-triggered samples below. Opt-in via DIAG_LOG_INTERVAL=true
+  // — this was added to chase a specific LVE thread-explosion incident and
+  // left running by default afterwards would just grow diag.log forever for
+  // no ongoing benefit.
+  if (process.env.DIAG_LOG_INTERVAL === "true") {
+    setInterval(() => logDiag("interval"), 2000).unref();
+  }
 
   const server = createServer((req, res) => {
     logDiag(`request ${req.method} ${req.url}`);

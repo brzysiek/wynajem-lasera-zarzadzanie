@@ -55,6 +55,7 @@ export default async function RentalDetailPage({
       daysBefore: r.daysBefore as ReminderOffset,
       status: r.status,
       sentAt: r.sentAt ? r.sentAt.toISOString() : null,
+      scheduledFor: r.scheduledFor.toISOString(),
       errorMessage: r.errorMessage,
     })),
     messages: rental.messages.map((m) => ({

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { applySmsPlaceholders } from "@/lib/sms-template";
+import { QueueCancelBadge } from "@/components/queue-cancel-badge";
 
 export type Device = { id: string; name: string; shortName: string; color: string; active: boolean };
 
@@ -24,6 +25,7 @@ export type ReminderRuleSummary = {
   daysBefore: ReminderOffset;
   status: "SCHEDULED" | "QUEUED" | "SENT" | "FAILED" | "CANCELLED";
   sentAt: string | null;
+  scheduledFor: string;
   errorMessage: string | null;
 };
 
@@ -86,7 +88,10 @@ function ReminderOptionRow({
   sentAt,
   failedMessage,
   impossibleReason,
+  queuedRuleId,
+  queuedScheduledFor,
   onToggle,
+  onCancelled,
   template,
 }: {
   label: string;
@@ -96,26 +101,48 @@ function ReminderOptionRow({
   sentAt: string | null;
   failedMessage: string | null;
   impossibleReason: string | null;
+  queuedRuleId: string | null;
+  queuedScheduledFor: string | null;
   onToggle: () => void;
+  onCancelled: () => void;
   template?: ReminderTemplatePreview;
 }) {
+  const queued = Boolean(queuedRuleId);
   return (
     <label
       className={`flex flex-col gap-1 rounded-md border p-2.5 ${
-        sent ? "border-green-200 bg-green-50" : impossibleReason ? "border-red-100 bg-red-50/60" : "border-gray-200 bg-white"
+        sent
+          ? "border-green-200 bg-green-50"
+          : queued
+            ? "border-amber-200 bg-amber-50"
+            : impossibleReason
+              ? "border-red-100 bg-red-50/60"
+              : "border-gray-200 bg-white"
       }`}
     >
-      <span className={`flex items-center gap-2 text-sm ${sent ? "text-green-700" : impossibleReason ? "text-red-500" : "text-gray-800"}`}>
+      <span
+        className={`flex items-center gap-2 text-sm ${
+          sent ? "text-green-700" : queued ? "text-amber-700" : impossibleReason ? "text-red-500" : "text-gray-800"
+        }`}
+      >
         <input
           type="checkbox"
           checked={checked}
           disabled={disabled}
           onChange={onToggle}
-          className={sent ? "accent-green-600" : impossibleReason ? "accent-red-500" : undefined}
+          className={sent ? "accent-green-600" : queued ? "accent-amber-500" : impossibleReason ? "accent-red-500" : undefined}
         />
         {label}
+        {queuedRuleId && (
+          <span onClick={(e) => e.preventDefault()}>
+            <QueueCancelBadge ruleId={queuedRuleId} onCancelled={onCancelled} />
+          </span>
+        )}
       </span>
       {sent && sentAt && <span className="ml-6 text-xs text-green-700">wysłano {formatDateTime(sentAt)}</span>}
+      {queued && queuedScheduledFor && (
+        <span className="ml-6 text-xs text-amber-700">zakolejkowane — wysyłka: {formatDateTime(queuedScheduledFor)}</span>
+      )}
       {failedMessage && <span className="ml-6 text-xs text-red-600">błąd wysyłki: {failedMessage}</span>}
       {impossibleReason && <span className="ml-6 text-xs text-red-500">{impossibleReason}</span>}
       {template && (
@@ -142,12 +169,14 @@ function ReminderSection({
   startsAt,
   selectedDays,
   onToggleDay,
+  onCancelQueued,
   templates,
 }: {
   rental: Rental | null;
   startsAt: string;
   selectedDays: Set<ReminderDays>;
   onToggleDay: (days: ReminderDays) => void;
+  onCancelQueued: (days: ReminderDays) => void;
   templates: ReminderTemplatePreview[];
 }) {
   const remaining = daysUntilStart(startsAt);
@@ -160,6 +189,7 @@ function ReminderSection({
         {REMINDER_OPTIONS.map(({ days, label }) => {
           const rule = rental?.reminderRules?.find((r) => r.daysBefore === days);
           const sent = rule?.status === "SENT";
+          const queued = rule?.status === "QUEUED";
           const impossible = !sent && remaining < days;
           const disabled = sent || impossible;
           const checked = sent ? true : impossible ? false : selectedDays.has(days);
@@ -175,7 +205,10 @@ function ReminderSection({
               impossibleReason={
                 impossible ? `za mało czasu do wynajmu (${Math.max(remaining, 0)} ${remaining === 1 ? "dzień" : "dni"})` : null
               }
+              queuedRuleId={queued ? rule!.id : null}
+              queuedScheduledFor={queued ? rule!.scheduledFor : null}
               onToggle={() => onToggleDay(days)}
+              onCancelled={() => onCancelQueued(days)}
               template={templateFor(days)}
             />
           );
@@ -633,6 +666,14 @@ export function RentalForm({
     });
   }
 
+  function cancelQueuedReminderDay(days: ReminderDays) {
+    setReminderDays((prev) => {
+      const next = new Set(prev);
+      next.delete(days);
+      return next;
+    });
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSaving(true);
@@ -806,6 +847,7 @@ export function RentalForm({
                 startsAt={startsAt}
                 selectedDays={reminderDays}
                 onToggleDay={toggleReminderDay}
+                onCancelQueued={cancelQueuedReminderDay}
                 templates={reminderTemplates}
               />
             </div>
