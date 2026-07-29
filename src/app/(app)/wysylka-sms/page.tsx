@@ -1,7 +1,5 @@
-import { auth } from "@/auth";
 import { PageHeader } from "@/components/page-header";
 import { SmsSendPanel } from "@/components/sms-send-panel";
-import { ReminderRunNowButton } from "@/components/reminder-run-now-button";
 import { QueueCancelBadge } from "@/components/queue-cancel-badge";
 import { prisma } from "@/lib/prisma";
 import { listSmsTemplates } from "@/lib/message-templates";
@@ -16,9 +14,6 @@ type Row =
   | { kind: "queued"; id: string; date: Date; recipient: string; rentalLabel: string; body: string; daysBefore: 1 | 3 | 7 };
 
 export default async function SmsSendingPage() {
-  const session = await auth();
-  const isAdmin = session?.user.role === "ADMIN";
-
   const [templates, messages, queueItems] = await Promise.all([
     listSmsTemplates(),
     prisma.message.findMany({
@@ -60,9 +55,8 @@ export default async function SmsSendingPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mb-6">
         <PageHeader title="Wysyłka SMS" description="Wyślij pojedynczą wiadomość SMS i przeglądaj historię wysyłki." />
-        {isAdmin && <ReminderRunNowButton />}
       </div>
 
       <div className="flex flex-col gap-6">
