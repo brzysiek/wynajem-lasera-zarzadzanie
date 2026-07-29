@@ -2,13 +2,10 @@ import { auth } from "@/auth";
 import { PageHeader } from "@/components/page-header";
 import { ReminderSettingsPanel } from "@/components/reminder-settings-panel";
 import { ReminderManualRunPanel } from "@/components/reminder-manual-run-panel";
+import { ReminderCheckLogTable } from "@/components/reminder-check-log-table";
 import { UpcomingQueuePanel } from "@/components/upcoming-queue-panel";
 import { getRemindersEnabled, getReminderCheckLogs, getUpcomingQueue, QUEUE_LOOKAHEAD_DAYS } from "@/lib/reminders";
 import { BASE_PATH } from "@/lib/base-path";
-
-function formatDateTime(value: Date): string {
-  return new Date(value).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "medium" });
-}
 
 function Code({ children }: { children: string }) {
   return <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800">{children}</code>;
@@ -19,10 +16,10 @@ function Steps({ children }: { children: React.ReactNode }) {
 }
 
 export default async function ReminderSettingsPage() {
-  const [session, remindersEnabled, checkLogs, upcomingQueue] = await Promise.all([
+  const [session, remindersEnabled, checkLogPage, upcomingQueue] = await Promise.all([
     auth(),
     getRemindersEnabled(),
-    getReminderCheckLogs(),
+    getReminderCheckLogs({ page: 1, pageSize: 25 }),
     getUpcomingQueue(),
   ]);
   const isAdmin = session?.user.role === "ADMIN";
@@ -105,66 +102,7 @@ export default async function ReminderSettingsPage() {
         </Steps>
       </section>
 
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <div className="border-b border-gray-200 px-4 py-3">
-          <h2 className="text-lg font-semibold text-gray-900">Historia sprawdzeń</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Każde uruchomienie budowania kolejki lub wysyłki — automatyczne (Cron Job) albo ręczne (przyciski
-            „Sprawdź teraz” / „Wyślij teraz” powyżej).
-          </p>
-        </div>
-        {checkLogs.length === 0 ? (
-          <div className="p-12 text-center text-sm text-gray-400">Brak zarejestrowanych sprawdzeń.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-xs font-medium text-gray-500">
-                <tr>
-                  <th className="px-4 py-2">Godzina</th>
-                  <th className="px-4 py-2"># sprawdzonych wynajmów</th>
-                  <th className="px-4 py-2"># do wysłania</th>
-                  <th className="px-4 py-2"># wysłanych</th>
-                  <th className="px-4 py-2"># błędów</th>
-                  <th className="px-4 py-2"># nowo w kolejce</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {checkLogs.map((log) => (
-                  <tr key={log.id}>
-                    <td className="whitespace-nowrap px-4 py-2 text-gray-700">
-                      <span className="flex items-center gap-2">
-                        {formatDateTime(log.createdAt)}
-                        {log.source === "MANUAL" ? (
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
-                            Ręczne
-                          </span>
-                        ) : (
-                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">
-                            Automatyczne
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-gray-700">{log.rentalsChecked}</td>
-                    <td className="px-4 py-2 text-gray-700">{log.dueCount}</td>
-                    <td className="px-4 py-2 text-gray-700">{log.sentCount}</td>
-                    <td className="px-4 py-2 text-gray-700">
-                      {log.failedCount > 0 ? (
-                        <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700">
-                          {log.failedCount}
-                        </span>
-                      ) : (
-                        "0"
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-gray-700">{log.queuedCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <ReminderCheckLogTable initialLogs={checkLogPage.logs} initialTotal={checkLogPage.total} />
     </div>
   );
 }

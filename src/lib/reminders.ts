@@ -547,6 +547,37 @@ export type ReminderCheckLogDto = {
   createdAt: Date;
 };
 
-export async function getReminderCheckLogs(limit = 50): Promise<ReminderCheckLogDto[]> {
-  return prisma.reminderCheckLog.findMany({ orderBy: { createdAt: "desc" }, take: limit });
+export type ReminderCheckLogFilter = {
+  page?: number;
+  pageSize?: number;
+  activityOnly?: boolean;
+};
+
+export type ReminderCheckLogPage = {
+  logs: ReminderCheckLogDto[];
+  total: number;
+};
+
+export async function getReminderCheckLogs({
+  page = 1,
+  pageSize = 25,
+  activityOnly = false,
+}: ReminderCheckLogFilter = {}): Promise<ReminderCheckLogPage> {
+  const where = activityOnly
+    ? {
+        OR: [{ dueCount: { gt: 0 } }, { sentCount: { gt: 0 } }, { failedCount: { gt: 0 } }, { queuedCount: { gt: 0 } }],
+      }
+    : undefined;
+
+  const [logs, total] = await Promise.all([
+    prisma.reminderCheckLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.reminderCheckLog.count({ where }),
+  ]);
+
+  return { logs, total };
 }
