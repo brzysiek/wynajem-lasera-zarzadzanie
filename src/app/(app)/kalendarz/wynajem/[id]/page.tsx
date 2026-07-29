@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getAllReminderTemplates } from "@/lib/reminders";
+import { listSmsTemplates } from "@/lib/message-templates";
 import { RentalForm, type Rental, type ReminderOffset } from "@/components/rental-form";
 
 const RENTAL_INCLUDE = {
@@ -21,13 +22,14 @@ export default async function RentalDetailPage({
   const { id } = await params;
   const { from } = await searchParams;
 
-  const [devices, rental, reminderTemplates] = await Promise.all([
+  const [devices, rental, reminderTemplates, smsTemplates] = await Promise.all([
     prisma.device.findMany({
       orderBy: { name: "asc" },
       select: { id: true, name: true, shortName: true, color: true, active: true },
     }),
     prisma.rental.findUnique({ where: { id }, include: RENTAL_INCLUDE }),
     getAllReminderTemplates(),
+    listSmsTemplates(),
   ]);
 
   if (!rental) {
@@ -70,6 +72,7 @@ export default async function RentalDetailPage({
       devices={devices}
       rental={rentalDto}
       reminderTemplates={reminderTemplates}
+      smsTemplates={smsTemplates}
       backHref={from && ALLOWED_FROM.has(from) ? from : "/kalendarz"}
     />
   );

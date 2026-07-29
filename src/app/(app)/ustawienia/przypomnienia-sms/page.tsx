@@ -1,6 +1,7 @@
 import { PageHeader } from "@/components/page-header";
 import { ReminderSettingsPanel } from "@/components/reminder-settings-panel";
-import { getReminderHour, getRemindersEnabled, getReminderCheckLogs } from "@/lib/reminders";
+import { UpcomingQueuePanel } from "@/components/upcoming-queue-panel";
+import { getRemindersEnabled, getReminderCheckLogs, getUpcomingQueue, QUEUE_LOOKAHEAD_DAYS } from "@/lib/reminders";
 import { BASE_PATH } from "@/lib/base-path";
 
 function formatDateTime(value: Date): string {
@@ -16,10 +17,10 @@ function Steps({ children }: { children: React.ReactNode }) {
 }
 
 export default async function ReminderSettingsPage() {
-  const [hour, remindersEnabled, checkLogs] = await Promise.all([
-    getReminderHour(),
+  const [remindersEnabled, checkLogs, upcomingQueue] = await Promise.all([
     getRemindersEnabled(),
     getReminderCheckLogs(),
+    getUpcomingQueue(),
   ]);
 
   return (
@@ -27,72 +28,71 @@ export default async function ReminderSettingsPage() {
       <PageHeader title="Przypomnienia SMS" description="Automatyczne SMS-y do klientów i historia ich wysyłki." />
 
       <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-700">
-        Ta strona steruje automatycznymi SMS-ami do klientów. System sam, bez Twojego udziału, wysyła:
+        Ta strona steruje automatycznymi SMS-ami do klientów — <strong>przypomnieniami</strong> 7, 3 i 1 dzień przed
+        wynajmem. (Potwierdzenie rezerwacji wysyłasz teraz ręcznie, bezpośrednio w widoku rezerwacji.) Nie musisz nic
+        uruchamiać ani klikać — wysyłka działa sama, w tle, w dwóch krokach:
         <ul className="my-2 list-disc space-y-1 pl-5">
           <li>
-            <strong>potwierdzenie rezerwacji</strong> — zaraz po zapisaniu wynajmu,
+            regularnie zbierana jest <strong>kolejka</strong> przypomnień, które zbliżają się do terminu wysyłki
+            (widoczna poniżej, do {QUEUE_LOOKAHEAD_DAYS} dni naprzód) — możesz w niej anulować pojedyncze
+            przypomnienie, zanim pójdzie do klienta,
           </li>
-          <li>
-            <strong>przypomnienia</strong> — 7, 3 i 1 dzień przed wynajmem, o porze dnia, którą ustawisz poniżej.
-          </li>
+          <li>raz dziennie wysyłane jest to z kolejki, czego termin faktycznie nadszedł.</li>
         </ul>
-        Nie musisz nic uruchamiać ani klikać — wysyłka działa sama, w tle. Jedyne co możesz tu zmienić, to godzina,
-        o której mają wychodzić przypomnienia (np. rano, żeby SMS nie przyszedł do klienta w nocy). SMS-y mogą wyjść
-        z kilkuminutowym opóźnieniem względem wybranej godziny — to normalne i nie wymaga żadnej reakcji.
-        <br />
-        <br />
         Jeśli trzeba pilnie wstrzymać wszystkie SMS-y (np. żeby poprawić treść albo uniknąć wysyłki podczas awarii),
         możesz je wyłączyć przyciskiem poniżej. To bezpieczny wyłącznik: nic wtedy nie wychodzi do klientów, a to, co
         w tym czasie „dojrzało” do wysyłki, po włączeniu z powrotem <strong>nie zostanie dosłane z opóźnieniem</strong>{" "}
         — zostanie po prostu pominięte, żeby klienci nie dostali nieaktualnej wiadomości.
       </div>
 
-      <ReminderSettingsPanel initialHour={hour} initialEnabled={remindersEnabled} />
+      <ReminderSettingsPanel initialEnabled={remindersEnabled} />
+
+      <UpcomingQueuePanel initialItems={upcomingQueue} />
 
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
         <p className="mb-2">
-          <strong>Jak to jest zrobione technicznie:</strong> sprawdzanie, co jest do wysłania, wykonuje zewnętrzny{" "}
-          <strong>Cron Job w cPanelu (Cyberfolks)</strong> — nie sam proces aplikacji. Ten hosting (LiteSpeed lsnode)
-          nie gwarantuje, że proces Node.js działa non-stop w tle — bywa usypiany lub restartowany, gdy nikt akurat
-          nie przegląda strony — więc wewnętrzny mechanizm w samej aplikacji nie był wiarygodny. Cron Job budzi
-          aplikację i na stałym harmonogramie (obecnie co 5 minut) wywołuje adres{" "}
-          <Code>/api/cron/reminders</Code>, niezależnie od ruchu na stronie.
+          <strong>Jak to jest zrobione technicznie:</strong> ten mechanizm napędzają dwa niezależne{" "}
+          <strong>Cron Joby w cPanelu (Cyberfolks)</strong> — nie sam proces aplikacji. Ten hosting (LiteSpeed
+          lsnode) nie gwarantuje, że proces Node.js działa non-stop w tle — bywa usypiany lub restartowany, gdy nikt
+          akurat nie przegląda strony — więc wewnętrzny mechanizm w samej aplikacji nie był wiarygodny.
         </p>
-        <p>
-          Każde takie wywołanie sprawdza w bazie wszystkie zaplanowane przypomnienia SMS i wysyła te, których termin
-          już nadszedł: potwierdzenia rezerwacji — od razu, bez warunku godzinowego; przypomnienia 7/3/1-dniowe —
-          dopiero gdy bieżąca godzina (czasu polskiego) osiągnęła godzinę ustawioną powyżej. Wynik każdego wywołania
-          (ile sprawdzono, ile wysłano, ile błędów) trafia do historii poniżej.
+        <p className="mb-2">
+          Pierwszy Cron Job wywołuje adres <Code>/api/cron/reminders</Code> często (obecnie co 5 minut) i buduje
+          kolejkę widoczną powyżej. Drugi Cron Job wywołuje adres <Code>/api/cron/reminders/send</Code> raz dziennie,
+          o godzinie ustalonej wyłącznie w samym cPanelu (aplikacja jej nie zna ani nie pokazuje) — to on faktycznie
+          wysyła to, co z kolejki jest już aktualne. Wynik każdego wywołania (ile sprawdzono, ile wysłano, ile
+          błędów) trafia do historii poniżej.
         </p>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">
         <h2 className="mb-1 text-lg font-semibold text-gray-900">Jak zmienić harmonogram lub sekret</h2>
         <p className="mb-5 text-sm text-gray-500">
-          Cron Job jest skonfigurowany w panelu hostingowym (Cyberfolks), nie w tej aplikacji — to jedyne miejsce,
-          w którym można zmienić częstotliwość sprawdzeń.
+          Oba Cron Joby są skonfigurowane w panelu hostingowym (Cyberfolks), nie w tej aplikacji — to jedyne miejsce,
+          w którym można zmienić ich częstotliwość, w tym godzinę codziennej wysyłki.
         </p>
         <Steps>
           <li>
             Zaloguj się do cPanela na Cyberfolks i wejdź w <Code>Cron Jobs</Code>.
           </li>
           <li>
-            Znajdź zadanie wywołujące adres <Code>{`${BASE_PATH}/api/cron/reminders`}</Code> pod domeną, na której działa
-            aplikacja — to ono odpowiada za automatyczne sprawdzenia.
+            Znajdź dwa zadania pod domeną, na której działa aplikacja: jedno wywołujące{" "}
+            <Code>{`${BASE_PATH}/api/cron/reminders`}</Code> (budowanie kolejki) i drugie wywołujące{" "}
+            <Code>{`${BASE_PATH}/api/cron/reminders/send`}</Code> (wysyłka).
           </li>
           <li>
-            Częstotliwość zmienisz edytując pola <Code>Minute / Hour / Day / Month / Weekday</Code> tego zadania
-            (np. <Code>*/5 * * * *</Code> oznacza „co 5 minut”).
+            Częstotliwość lub godzinę zmienisz edytując pola <Code>Minute / Hour / Day / Month / Weekday</Code>{" "}
+            odpowiedniego zadania (np. <Code>0 8 * * *</Code> oznacza „codziennie o 8:00” dla zadania wysyłki).
           </li>
           <li>
-            Sekret uwierzytelniający (nagłówek <Code>x-cron-secret</Code> w komendzie <Code>curl</Code> zadania)
+            Sekret uwierzytelniający (nagłówek <Code>x-cron-secret</Code> w komendzie <Code>curl</Code> obu zadań)
             musi być identyczny z wartością <Code>CRON_SECRET</Code> w pliku <Code>.env</Code> na serwerze. Jeśli
             zmienisz jedno, zmień też drugie i zrestartuj aplikację (<Code>touch tmp/restart.txt</Code> albo przez
-            deploy) — inaczej zadanie zacznie dostawać błąd 403 i przestanie działać po cichu.
+            deploy) — inaczej zadania zaczną dostawać błąd 403 i przestaną działać po cichu.
           </li>
           <li>
-            Doraźne, natychmiastowe sprawdzenie (bez czekania na cron) można też odpalić ręcznie przyciskiem
-            „Wyślij teraz” na stronie <Code>Wysyłka SMS</Code>.
+            Doraźne, natychmiastowe uruchomienie obu kroków (bez czekania na cron) można też odpalić ręcznie
+            przyciskiem „Wyślij teraz” na stronie <Code>Wysyłka SMS</Code>.
           </li>
         </Steps>
       </section>
@@ -101,7 +101,8 @@ export default async function ReminderSettingsPage() {
         <div className="border-b border-gray-200 px-4 py-3">
           <h2 className="text-lg font-semibold text-gray-900">Historia sprawdzeń</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Każde sprawdzenie przypomnień do wysyłki — automatyczne (cron) albo ręczne (przycisk „Wyślij teraz”).
+            Każde uruchomienie budowania kolejki lub wysyłki — automatyczne (cron) albo ręczne (przycisk „Wyślij
+            teraz”).
           </p>
         </div>
         {checkLogs.length === 0 ? (
@@ -113,9 +114,10 @@ export default async function ReminderSettingsPage() {
                 <tr>
                   <th className="px-4 py-2">Godzina</th>
                   <th className="px-4 py-2"># sprawdzonych wynajmów</th>
-                  <th className="px-4 py-2"># przypomnień do wysłania</th>
-                  <th className="px-4 py-2"># wysłanych przypomnień</th>
+                  <th className="px-4 py-2"># do wysłania</th>
+                  <th className="px-4 py-2"># wysłanych</th>
                   <th className="px-4 py-2"># błędów</th>
+                  <th className="px-4 py-2"># nowo w kolejce</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -147,6 +149,7 @@ export default async function ReminderSettingsPage() {
                         "0"
                       )}
                     </td>
+                    <td className="px-4 py-2 text-gray-700">{log.queuedCount}</td>
                   </tr>
                 ))}
               </tbody>

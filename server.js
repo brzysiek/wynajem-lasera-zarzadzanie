@@ -87,11 +87,13 @@ function logDiag(label) {
 // stay alive between requests (LVE limit spikes, see the logDiag comments
 // above, plus LiteSpeed lsnode appears to recycle idle processes) — the
 // in-process timer would silently stop firing for long stretches whenever
-// nobody happened to be browsing the site. Reminders are now triggered by a
-// real cPanel Cron Job hitting /api/cron/reminders on the public domain on a
-// fixed schedule, which also has the side effect of waking the app up if it
-// had gone idle. See the "Przypomnienia SMS" settings page for the schedule
-// and how to change it.
+// nobody happened to be browsing the site. Reminders are now triggered by
+// two real cPanel Cron Jobs hitting the public domain on fixed schedules
+// (which also has the side effect of waking the app up if it had gone
+// idle): a frequent one hitting /api/cron/reminders that builds the
+// send-queue, and a once-a-day one hitting /api/cron/reminders/send that
+// actually sends what's queued. Both schedules live only in cPanel — see
+// the "Przypomnienia SMS" settings page for how to change them.
 
 app.prepare().then(() => {
   logDiag("startup");

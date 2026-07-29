@@ -6,13 +6,20 @@ import { SUPPORT_PHONE } from "@/lib/sms-template";
 export const REMINDER_DAYS = [1, 3, 7] as const;
 export type ReminderDays = (typeof REMINDER_DAYS)[number];
 
-// The reservation-confirmation message reuses the same ReminderRule/SMS
-// pipeline (scheduling, sending, history) as the day-before reminders, with
-// 0 as its "daysBefore" — it has no day-count wording, so unlike 1/3/7 it
-// isn't gated by how many days remain before the rental starts.
+// The reservation-confirmation message used to reuse the same
+// ReminderRule/SMS pipeline (scheduling, sending, history) as the
+// day-before reminders, with 0 as its "daysBefore" offset. Confirmations are
+// now always sent manually (see ClientMessageComposer in rental-form.tsx),
+// so no new rules with this offset are created — but the pipeline still
+// processes any that linger from before that change.
 export const CONFIRMATION_OFFSET = 0 as const;
 export const ALL_REMINDER_OFFSETS = [CONFIRMATION_OFFSET, ...REMINDER_DAYS] as const;
 export type ReminderOffset = (typeof ALL_REMINDER_OFFSETS)[number];
+
+// How far ahead the hourly cron looks when promoting SCHEDULED 1/3/7-day
+// reminders into QUEUED, so the "Nadchodzące powiadomienia do wysłania"
+// review/cancel UI has visibility before the daily send cron picks them up.
+export const QUEUE_LOOKAHEAD_DAYS = 7;
 
 export const TEMPLATE_KEYS: Record<ReminderOffset, string> = {
   0: "reservation_confirmation",
@@ -29,14 +36,12 @@ const TEMPLATE_LABELS: Record<ReminderOffset, string> = {
 };
 
 const DEFAULT_TEMPLATE_BODY: Record<ReminderOffset, string> = {
-  0: "Potwierdzamy rezerwację: {urzadzenie}, termin {data_start} – {data_koniec}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
-  7: "Przypomnienie: za tydzień, {data_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
-  3: "Przypomnienie: za 3 dni, {data_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
-  1: "Przypomnienie: jutro, {data_start}, rozpoczyna się wynajem: {urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
+  0: "Potwierdzamy rezerwację: {rezerwacja_urzadzenie}, termin {rezerwacja_data_start} – {rezerwacja_data_koniec}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
+  7: "Przypomnienie: za tydzień, {rezerwacja_data_start}, rozpoczyna się wynajem: {rezerwacja_urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
+  3: "Przypomnienie: za 3 dni, {rezerwacja_data_start}, rozpoczyna się wynajem: {rezerwacja_urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
+  1: "Przypomnienie: jutro, {rezerwacja_data_start}, rozpoczyna się wynajem: {rezerwacja_urzadzenie}. Pytania: {telefon_obslugi}. Pozdrawiamy, WynajemLasera.pl",
 };
 
-const SETTING_KEY_HOUR = "sms_reminder_hour";
-const DEFAULT_REMINDER_HOUR = "09:00";
 const SETTING_KEY_ENABLED = "sms_reminders_enabled";
 
 export async function ensureDefaultTemplates(): Promise<void> {
@@ -47,19 +52,6 @@ export async function ensureDefaultTemplates(): Promise<void> {
       create: { key: TEMPLATE_KEYS[offset], label: TEMPLATE_LABELS[offset], channel: "SMS", body: DEFAULT_TEMPLATE_BODY[offset] },
     });
   }
-}
-
-export async function getReminderHour(): Promise<string> {
-  const row = await prisma.setting.findUnique({ where: { key: SETTING_KEY_HOUR } });
-  return row?.value || DEFAULT_REMINDER_HOUR;
-}
-
-export async function setReminderHour(value: string): Promise<void> {
-  await prisma.setting.upsert({
-    where: { key: SETTING_KEY_HOUR },
-    update: { value },
-    create: { key: SETTING_KEY_HOUR, value },
-  });
 }
 
 export async function getRemindersEnabled(): Promise<boolean> {
@@ -184,7 +176,8 @@ export async function syncReminderRules(
         },
       });
     } else if (wanted && current && current.status !== "SCHEDULED") {
-      // FAILED or CANCELLED -> re-arm as a fresh scheduled reminder (retry).
+      // FAILED, CANCELLED, or already QUEUED -> re-arm as a fresh scheduled
+      // reminder (retry / undo an accidental cancel).
       await prisma.reminderRule.update({
         where: { id: current.id },
         data: { status: "SCHEDULED", scheduledFor: computeScheduledFor(rental.startsAt, days), errorMessage: null },
@@ -194,7 +187,7 @@ export async function syncReminderRules(
       if (newScheduledFor.getTime() !== current.scheduledFor.getTime()) {
         await prisma.reminderRule.update({ where: { id: current.id }, data: { scheduledFor: newScheduledFor } });
       }
-    } else if (!wanted && current && current.status === "SCHEDULED") {
+    } else if (!wanted && current && (current.status === "SCHEDULED" || current.status === "QUEUED")) {
       await prisma.reminderRule.delete({ where: { id: current.id } });
     }
   }
@@ -226,10 +219,10 @@ function renderTemplate(body: string, rental: RentalForRender): string {
   const start = new Date(rental.startsAt);
   const end = new Date(rental.endsAt);
   return body
-    .replaceAll("{klient}", rental.contactNameCache?.trim() || "")
-    .replaceAll("{urzadzenie}", rental.device.name)
-    .replaceAll("{data_start}", start.toLocaleDateString("pl-PL"))
-    .replaceAll("{data_koniec}", end.toLocaleDateString("pl-PL"))
+    .replaceAll("{rezerwacja_klient}", rental.contactNameCache?.trim() || "")
+    .replaceAll("{rezerwacja_urzadzenie}", rental.device.name)
+    .replaceAll("{rezerwacja_data_start}", start.toLocaleDateString("pl-PL"))
+    .replaceAll("{rezerwacja_data_koniec}", end.toLocaleDateString("pl-PL"))
     .replaceAll("{telefon_obslugi}", SUPPORT_PHONE)
     // Defensive cleanup for any template bodies saved before this token was retired.
     .replaceAll(" o {godzina_start}", "")
@@ -247,33 +240,23 @@ export function normalizePolishPhone(raw: string): string | null {
 }
 
 // Called right when reminders are switched back on from paused: while
-// paused, sendDueReminders() no-ops entirely, so SCHEDULED rules just sit
-// untouched instead of sending. Anything that became "due" during that
-// window is marked as skipped here rather than sent late — a stale 7-day
-// reminder would state the wrong day count, and a confirmation SMS sent
-// days after booking would look like a mistake to the customer. Rules not
-// yet due are left alone and still fire normally once their time comes.
+// paused, the hourly/daily cycles no-op entirely, so SCHEDULED/QUEUED rules
+// just sit untouched instead of sending. Anything that became due during
+// that window is marked as skipped here rather than sent late — a stale
+// 7-day reminder would state the wrong day count, and a confirmation SMS
+// sent days after booking would look like a mistake to the customer. Rules
+// not yet due are left alone and still fire normally once their time comes.
 export async function discardStaleReminders(): Promise<number> {
-  const hour = await getReminderHour();
-  const [hh, mm] = hour.split(":").map((n) => Number(n) || 0);
-  const targetMinutes = hh * 60 + mm;
   const nowParts = warsawParts(new Date());
-
-  const scheduledRules = await prisma.reminderRule.findMany({ where: { status: "SCHEDULED", channel: "SMS" } });
+  const rules = await prisma.reminderRule.findMany({ where: { status: { in: ["SCHEDULED", "QUEUED"] }, channel: "SMS" } });
 
   let discarded = 0;
-  for (const rule of scheduledRules) {
+  for (const rule of rules) {
     const days = rule.daysBefore as ReminderOffset;
     const isDue =
       days === CONFIRMATION_OFFSET
         ? rule.scheduledFor.getTime() <= Date.now()
-        : (() => {
-            const targetParts = warsawParts(rule.scheduledFor);
-            const isPastDay = targetParts.dateStr < nowParts.dateStr;
-            const isExactDueToday =
-              targetParts.dateStr === nowParts.dateStr && nowParts.hour * 60 + nowParts.minute >= targetMinutes;
-            return isPastDay || isExactDueToday;
-          })();
+        : warsawParts(rule.scheduledFor).dateStr <= nowParts.dateStr;
     if (!isDue) continue;
 
     await prisma.reminderRule.update({
@@ -290,114 +273,249 @@ export async function discardStaleReminders(): Promise<number> {
 
 export type ReminderCheckSource = "CRON" | "MANUAL";
 
-export async function sendDueReminders(
+type ReminderRuleForSend = { id: string; rentalId: string; daysBefore: number };
+type RentalForSend = RentalForRender & { id: string; contactPhoneCache: string | null };
+
+// Renders the current template + sends the SMS + persists the outcome on
+// both the ReminderRule and the Message history. Shared by the confirmation
+// pipeline and the queued-send pipeline — the only difference between them
+// is which rules are eligible and how due-ness is decided upstream.
+async function sendReminderNow(rule: ReminderRuleForSend, rental: RentalForSend): Promise<"sent" | "failed"> {
+  const days = rule.daysBefore as ReminderOffset;
+  const template = await prisma.messageTemplate.findUnique({ where: { key: TEMPLATE_KEYS[days] } });
+  const body = renderTemplate(template?.body || DEFAULT_TEMPLATE_BODY[days] || "{rezerwacja_urzadzenie}", rental);
+  const phone = rental.contactPhoneCache ? normalizePolishPhone(rental.contactPhoneCache) : null;
+
+  if (!phone) {
+    const errorMessage = "Brak poprawnego numeru telefonu kontaktu.";
+    await prisma.$transaction([
+      prisma.reminderRule.update({ where: { id: rule.id }, data: { status: "FAILED", errorMessage, messageBody: body } }),
+      prisma.message.create({
+        data: { rentalId: rental.id, channel: "SMS", recipient: rental.contactPhoneCache || "", body, status: "FAILED", errorMessage },
+      }),
+    ]);
+    logError("reminder_send_failed", new Error(errorMessage), { rentalId: rental.id, daysBefore: days });
+    return "failed";
+  }
+
+  const result = await sendSms(phone, body);
+  if (result.ok) {
+    await prisma.$transaction([
+      prisma.reminderRule.update({ where: { id: rule.id }, data: { status: "SENT", sentAt: new Date(), messageBody: body } }),
+      prisma.message.create({
+        data: { rentalId: rental.id, channel: "SMS", recipient: phone, body, status: "SENT", providerMessageId: result.providerMessageId },
+      }),
+    ]);
+    logInfo("reminder_sent", { rentalId: rental.id, daysBefore: days, phone });
+    return "sent";
+  }
+
+  await prisma.$transaction([
+    prisma.reminderRule.update({ where: { id: rule.id }, data: { status: "FAILED", errorMessage: result.message, messageBody: body } }),
+    prisma.message.create({
+      data: { rentalId: rental.id, channel: "SMS", recipient: phone, body, status: "FAILED", errorMessage: result.message },
+    }),
+  ]);
+  logError("reminder_send_failed", new Error(result.message), { rentalId: rental.id, daysBefore: days });
+  return "failed";
+}
+
+async function markExpired(ruleId: string, rentalId: string, days: ReminderOffset): Promise<void> {
+  // The exact "N dni przed" day already passed without this firing (e.g.
+  // the daily cron didn't run that day) — sending it now would state a
+  // wrong day count ("za 7 dni" with fewer than 7 actually left), so it's
+  // marked failed instead of catching up late with stale wording.
+  const errorMessage = "Termin wysyłki minął bez wysłania przypomnienia (np. aplikacja była wyłączona o właściwej porze).";
+  await prisma.reminderRule.update({ where: { id: ruleId }, data: { status: "FAILED", errorMessage } });
+  logError("reminder_window_missed", new Error(errorMessage), { rentalId, daysBefore: days });
+}
+
+type PipelineTally = { checked: number; rentalsChecked: number; due: number; sent: number; failed: number };
+
+// Reservation confirmations (offset 0) bypass the queue entirely — they're
+// meant to go out immediately, with no "N dni przed" wording that could go
+// stale, so there's nothing to gain from a review/cancel window. In
+// practice this only ever processes rules left over from before
+// confirmations became manual-only.
+async function processDueConfirmations(): Promise<PipelineTally> {
+  const rules = await prisma.reminderRule.findMany({
+    where: { status: "SCHEDULED", channel: "SMS", daysBefore: CONFIRMATION_OFFSET },
+    include: { rental: { include: { device: true } } },
+  });
+  const rentalsChecked = new Set(rules.map((r) => r.rentalId)).size;
+
+  let due = 0;
+  let sent = 0;
+  let failed = 0;
+  for (const rule of rules) {
+    if (rule.scheduledFor.getTime() > Date.now()) continue;
+    due++;
+    const outcome = await sendReminderNow(rule, rule.rental);
+    if (outcome === "sent") sent++;
+    else failed++;
+  }
+
+  return { checked: rules.length, rentalsChecked, due, sent, failed };
+}
+
+// Promotes SCHEDULED 1/3/7-day reminders into QUEUED once they're within
+// the lookahead window, so they show up in the review/cancel UI ahead of
+// the daily send. Idempotent — rules already QUEUED are simply skipped by
+// the SCHEDULED-only filter.
+async function processQueueBuild(): Promise<number> {
+  const horizon = new Date(Date.now() + QUEUE_LOOKAHEAD_DAYS * 86_400_000);
+  const due = await prisma.reminderRule.findMany({
+    where: { status: "SCHEDULED", channel: "SMS", daysBefore: { in: [...REMINDER_DAYS] }, scheduledFor: { lte: horizon } },
+    select: { id: true },
+  });
+  if (due.length === 0) return 0;
+
+  await prisma.reminderRule.updateMany({ where: { id: { in: due.map((r) => r.id) } }, data: { status: "QUEUED" } });
+  return due.length;
+}
+
+// Sends whatever in the QUEUED 1/3/7-day pipeline is actually due "today"
+// (Warsaw date). Items whose date hasn't arrived yet are left QUEUED for a
+// future run; items whose date already passed are marked failed rather than
+// sent late (see markExpired).
+async function processQueuedSends(): Promise<PipelineTally> {
+  const nowParts = warsawParts(new Date());
+  const rules = await prisma.reminderRule.findMany({
+    where: { status: "QUEUED", channel: "SMS" },
+    include: { rental: { include: { device: true } } },
+  });
+  const rentalsChecked = new Set(rules.map((r) => r.rentalId)).size;
+
+  let due = 0;
+  let sent = 0;
+  let failed = 0;
+  for (const rule of rules) {
+    const days = rule.daysBefore as ReminderOffset;
+    const targetDateStr = warsawParts(rule.scheduledFor).dateStr;
+    if (targetDateStr > nowParts.dateStr) continue; // not due yet, stays queued
+
+    due++;
+    if (targetDateStr < nowParts.dateStr) {
+      await markExpired(rule.id, rule.rentalId, days);
+      failed++;
+      continue;
+    }
+
+    const outcome = await sendReminderNow(rule, rule.rental);
+    if (outcome === "sent") sent++;
+    else failed++;
+  }
+
+  return { checked: rules.length, rentalsChecked, due, sent, failed };
+}
+
+// Meant for the hourly cron: sends any overdue confirmations (legacy) and
+// builds the reminder queue. Call this frequently — it's cheap and
+// idempotent either way.
+export async function runHourlyReminderCycle(
+  source: ReminderCheckSource = "CRON",
+): Promise<{ checked: number; sent: number; failed: number; queued: number }> {
+  if (!(await getRemindersEnabled())) {
+    return { checked: 0, sent: 0, failed: 0, queued: 0 };
+  }
+
+  const confirmations = await processDueConfirmations();
+  const queued = await processQueueBuild();
+
+  await prisma.reminderCheckLog.create({
+    data: {
+      rentalsChecked: confirmations.rentalsChecked,
+      dueCount: confirmations.due,
+      sentCount: confirmations.sent,
+      failedCount: confirmations.failed,
+      queuedCount: queued,
+      source,
+    },
+  });
+  logDebug("reminder_hourly_cycle", { ...confirmations, queued });
+
+  return { checked: confirmations.checked, sent: confirmations.sent, failed: confirmations.failed, queued };
+}
+
+// Meant for the daily cron (schedule configured in cPanel, invisible to the
+// app): sends whatever in the queue is due today.
+export async function runDailySendCycle(
   source: ReminderCheckSource = "CRON",
 ): Promise<{ checked: number; sent: number; failed: number }> {
-  const remindersEnabled = await getRemindersEnabled();
-  if (!remindersEnabled) {
+  if (!(await getRemindersEnabled())) {
     return { checked: 0, sent: 0, failed: 0 };
   }
 
-  const hour = await getReminderHour();
-  const [hh, mm] = hour.split(":").map((n) => Number(n) || 0);
-  const targetMinutes = hh * 60 + mm;
-  const nowParts = warsawParts(new Date());
-
-  const dueRules = await prisma.reminderRule.findMany({
-    where: { status: "SCHEDULED", channel: "SMS" },
-    include: { rental: { include: { device: true } } },
-  });
-  const rentalsChecked = new Set(dueRules.map((r) => r.rentalId)).size;
-
-  let sent = 0;
-  let failed = 0;
-  let due = 0;
-
-  for (const rule of dueRules) {
-    const days = rule.daysBefore as ReminderOffset;
-    const isConfirmation = days === CONFIRMATION_OFFSET;
-    let expiredWithoutSending = false;
-
-    if (isConfirmation) {
-      // Scheduled at creation/re-arm time, with no daily-hour gate and no
-      // "wrong day count" risk — send as soon as a cron tick sees it due.
-      if (rule.scheduledFor.getTime() > Date.now()) continue;
-    } else {
-      const targetParts = warsawParts(rule.scheduledFor);
-      const isPastDay = targetParts.dateStr < nowParts.dateStr;
-      const isExactDueToday = targetParts.dateStr === nowParts.dateStr && nowParts.hour * 60 + nowParts.minute >= targetMinutes;
-      if (!isPastDay && !isExactDueToday) continue;
-      expiredWithoutSending = isPastDay;
-    }
-    due++;
-
-    const rental = rule.rental;
-
-    if (expiredWithoutSending) {
-      // The exact "N dni przed" day already passed without this firing
-      // (e.g. the app was down at the time) — sending it now would state a
-      // wrong day count ("za 7 dni" with fewer than 7 actually left), so
-      // it's marked failed instead of catching up late with stale wording.
-      const errorMessage = "Termin wysyłki minął bez wysłania przypomnienia (np. aplikacja była wyłączona o właściwej porze).";
-      await prisma.reminderRule.update({ where: { id: rule.id }, data: { status: "FAILED", errorMessage } });
-      failed++;
-      logError("reminder_window_missed", new Error(errorMessage), { rentalId: rental.id, daysBefore: days });
-      continue;
-    }
-
-    const template = await prisma.messageTemplate.findUnique({ where: { key: TEMPLATE_KEYS[days] } });
-    const body = renderTemplate(template?.body || DEFAULT_TEMPLATE_BODY[days] || "{urzadzenie}", rental);
-    const phone = rental.contactPhoneCache ? normalizePolishPhone(rental.contactPhoneCache) : null;
-
-    if (!phone) {
-      const errorMessage = "Brak poprawnego numeru telefonu kontaktu.";
-      await prisma.$transaction([
-        prisma.reminderRule.update({ where: { id: rule.id }, data: { status: "FAILED", errorMessage, messageBody: body } }),
-        prisma.message.create({
-          data: { rentalId: rental.id, channel: "SMS", recipient: rental.contactPhoneCache || "", body, status: "FAILED", errorMessage },
-        }),
-      ]);
-      failed++;
-      logError("reminder_send_failed", new Error(errorMessage), { rentalId: rental.id, daysBefore: days });
-      continue;
-    }
-
-    const result = await sendSms(phone, body);
-    if (result.ok) {
-      await prisma.$transaction([
-        prisma.reminderRule.update({ where: { id: rule.id }, data: { status: "SENT", sentAt: new Date(), messageBody: body } }),
-        prisma.message.create({
-          data: {
-            rentalId: rental.id,
-            channel: "SMS",
-            recipient: phone,
-            body,
-            status: "SENT",
-            providerMessageId: result.providerMessageId,
-          },
-        }),
-      ]);
-      sent++;
-      logInfo("reminder_sent", { rentalId: rental.id, daysBefore: days, phone });
-    } else {
-      await prisma.$transaction([
-        prisma.reminderRule.update({ where: { id: rule.id }, data: { status: "FAILED", errorMessage: result.message, messageBody: body } }),
-        prisma.message.create({
-          data: { rentalId: rental.id, channel: "SMS", recipient: phone, body, status: "FAILED", errorMessage: result.message },
-        }),
-      ]);
-      failed++;
-      logError("reminder_send_failed", new Error(result.message), { rentalId: rental.id, daysBefore: days });
-    }
-  }
+  const result = await processQueuedSends();
 
   await prisma.reminderCheckLog.create({
-    data: { rentalsChecked, dueCount: due, sentCount: sent, failedCount: failed, source },
+    data: {
+      rentalsChecked: result.rentalsChecked,
+      dueCount: result.due,
+      sentCount: result.sent,
+      failedCount: result.failed,
+      queuedCount: 0,
+      source,
+    },
   });
+  logDebug("reminder_daily_send_cycle", result);
 
-  logDebug("reminder_check_run", { rentalsChecked, dueCount: due, sentCount: sent, failedCount: failed });
+  return { checked: result.checked, sent: result.sent, failed: result.failed };
+}
 
-  return { checked: dueRules.length, sent, failed };
+// Cancels a not-yet-sent reminder from the "Nadchodzące powiadomienia do
+// wysłania" review UI. Works on QUEUED items (the common case) and on
+// SCHEDULED ones (not yet promoted into the queue), but never touches
+// SENT/FAILED/CANCELLED rules.
+export async function cancelQueuedReminder(id: string): Promise<boolean> {
+  const rule = await prisma.reminderRule.findUnique({ where: { id } });
+  if (!rule || (rule.status !== "QUEUED" && rule.status !== "SCHEDULED")) return false;
+
+  await prisma.reminderRule.update({ where: { id }, data: { status: "CANCELLED" } });
+  return true;
+}
+
+export type UpcomingQueueItemDto = {
+  id: string;
+  rentalId: string;
+  rentalTitle: string;
+  deviceName: string;
+  clientName: string | null;
+  phone: string | null;
+  daysBefore: ReminderDays;
+  scheduledFor: string;
+  messageBody: string;
+};
+
+// Powers the "Nadchodzące powiadomienia do wysłania" section: everything
+// currently QUEUED, with the message body rendered from the *current*
+// template (matching what will actually be sent, not the stale snapshot
+// captured when the rule was created).
+export async function getUpcomingQueue(): Promise<UpcomingQueueItemDto[]> {
+  const [rules, templates] = await Promise.all([
+    prisma.reminderRule.findMany({
+      where: { status: "QUEUED", channel: "SMS" },
+      orderBy: { scheduledFor: "asc" },
+      include: { rental: { include: { device: true } } },
+    }),
+    prisma.messageTemplate.findMany({ where: { key: { in: Object.values(TEMPLATE_KEYS) } } }),
+  ]);
+
+  return rules.map((rule) => {
+    const days = rule.daysBefore as ReminderDays;
+    const template = templates.find((t) => t.key === TEMPLATE_KEYS[days]);
+    return {
+      id: rule.id,
+      rentalId: rule.rentalId,
+      rentalTitle: rule.rental.title,
+      deviceName: rule.rental.device.name,
+      clientName: rule.rental.contactNameCache,
+      phone: rule.rental.contactPhoneCache,
+      daysBefore: days,
+      scheduledFor: rule.scheduledFor.toISOString(),
+      messageBody: renderTemplate(template?.body || DEFAULT_TEMPLATE_BODY[days], rule.rental),
+    };
+  });
 }
 
 export type ReminderCheckLogDto = {
@@ -406,6 +524,7 @@ export type ReminderCheckLogDto = {
   dueCount: number;
   sentCount: number;
   failedCount: number;
+  queuedCount: number;
   source: ReminderCheckSource;
   createdAt: Date;
 };

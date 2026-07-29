@@ -4,19 +4,25 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { BASE_PATH } from "@/lib/base-path";
+import { applySmsPlaceholders } from "@/lib/sms-template";
 
 export type Device = { id: string; name: string; shortName: string; color: string; active: boolean };
 
 export type ReminderDays = 1 | 3 | 7;
-// 0 = one-off "reservation confirmation" message, sent immediately instead
-// of counting down days before the rental starts (see ReminderSection).
-const CONFIRMATION_OFFSET = 0 as const;
-export type ReminderOffset = typeof CONFIRMATION_OFFSET | ReminderDays;
+// 0 = one-off "reservation confirmation" offset. Historically sent via the
+// same scheduled ReminderRule/cron pipeline as day-before reminders — now
+// superseded by the manual composer below (see ClientMessageComposer) — but
+// the offset/template machinery around it (TEMPLATE_KEYS, DEFAULT_TEMPLATE_BODY
+// in reminders.ts) is left in place since old SENT/SCHEDULED rules and the
+// "reservation_confirmation" template itself are still relied upon.
+export type ReminderOffset = 0 | ReminderDays;
+
+export type SmsTemplateOption = { id: string; key: string; label: string; body: string };
 
 export type ReminderRuleSummary = {
   id: string;
   daysBefore: ReminderOffset;
-  status: "SCHEDULED" | "SENT" | "FAILED" | "CANCELLED";
+  status: "SCHEDULED" | "QUEUED" | "SENT" | "FAILED" | "CANCELLED";
   sentAt: string | null;
   errorMessage: string | null;
 };
@@ -134,40 +140,23 @@ function ReminderOptionRow({
 function ReminderSection({
   rental,
   startsAt,
-  confirmationChecked,
-  onToggleConfirmation,
   selectedDays,
   onToggleDay,
   templates,
 }: {
   rental: Rental | null;
   startsAt: string;
-  confirmationChecked: boolean;
-  onToggleConfirmation: () => void;
   selectedDays: Set<ReminderDays>;
   onToggleDay: (days: ReminderDays) => void;
   templates: ReminderTemplatePreview[];
 }) {
   const remaining = daysUntilStart(startsAt);
   const templateFor = (offset: ReminderOffset) => templates.find((t) => t.offset === offset);
-  const confirmationRule = rental?.reminderRules?.find((r) => r.daysBefore === CONFIRMATION_OFFSET);
-  const confirmationSent = confirmationRule?.status === "SENT";
 
   return (
     <div className="flex flex-col gap-1.5 text-sm text-gray-700">
-      Wiadomości SMS dla klienta
+      Przypomnienia SMS
       <div className="flex flex-col gap-2">
-        <ReminderOptionRow
-          label="Potwierdzenie rezerwacji"
-          checked={confirmationSent ? true : confirmationChecked}
-          disabled={confirmationSent}
-          sent={Boolean(confirmationSent)}
-          sentAt={confirmationRule?.sentAt ?? null}
-          failedMessage={confirmationRule?.status === "FAILED" ? confirmationRule.errorMessage || "nieznany błąd" : null}
-          impossibleReason={null}
-          onToggle={onToggleConfirmation}
-          template={templateFor(CONFIRMATION_OFFSET)}
-        />
         {REMINDER_OPTIONS.map(({ days, label }) => {
           const rule = rental?.reminderRules?.find((r) => r.daysBefore === days);
           const sent = rule?.status === "SENT";
@@ -191,6 +180,95 @@ function ReminderSection({
             />
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// Mini SMS composer scoped to this rental: pick a template (defaults to the
+// reservation-confirmation one) or write free text, with rental-context
+// placeholders ({rezerwacja_*}) pre-filled, and send immediately — unlike
+// ReminderSection above, this never schedules anything, it sends on click.
+function ClientMessageComposer({ rental, device, templates }: { rental: Rental; device: Device | undefined; templates: SmsTemplateOption[] }) {
+  const router = useRouter();
+  const defaultTemplate = templates.find((t) => t.key === "reservation_confirmation") ?? null;
+  const placeholderCtx = {
+    clientName: rental.contactNameCache,
+    deviceName: device?.name,
+    startsAt: rental.startsAt,
+    endsAt: rental.endsAt,
+  };
+
+  const [templateId, setTemplateId] = useState(defaultTemplate?.id ?? "");
+  const [phone, setPhone] = useState(rental.contactPhoneCache ?? "");
+  const [message, setMessage] = useState(() => (defaultTemplate ? applySmsPlaceholders(defaultTemplate.body, placeholderCtx) : ""));
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendSuccess, setSendSuccess] = useState(false);
+
+  function applyTemplate(id: string) {
+    setTemplateId(id);
+    const template = templates.find((t) => t.id === id);
+    setMessage(template ? applySmsPlaceholders(template.body, placeholderCtx) : "");
+  }
+
+  async function handleSend() {
+    setIsSending(true);
+    setSendError(null);
+    setSendSuccess(false);
+    const { ok, data } = await api("/api/sms/send", {
+      method: "POST",
+      body: JSON.stringify({ phone, message, rentalId: rental.id }),
+    });
+    setIsSending(false);
+    if (!ok) {
+      setSendError(data?.message || "Nie udało się wysłać wiadomości.");
+      return;
+    }
+    setSendSuccess(true);
+    router.refresh();
+  }
+
+  const canSend = phone.trim().length > 0 && message.trim().length > 0 && !isSending;
+
+  return (
+    <div className="flex flex-col gap-1.5 text-sm text-gray-700">
+      Wiadomość do klienta
+      <div className="flex flex-col gap-2 rounded-md border border-gray-200 bg-white p-2.5">
+        <select
+          value={templateId}
+          onChange={(e) => applyTemplate(e.target.value)}
+          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+        >
+          <option value="">— własna wiadomość —</option>
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="Numer telefonu"
+          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+        />
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          rows={4}
+          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+        />
+        {sendError && <p className="text-xs text-red-700">{sendError}</p>}
+        {sendSuccess && <p className="text-xs text-green-700">Wysłano.</p>}
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={!canSend}
+          className="self-start rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+        >
+          {isSending ? "Wysyłanie…" : "Wyślij SMS"}
+        </button>
       </div>
     </div>
   );
@@ -507,6 +585,7 @@ export function RentalForm({
   defaultDeviceId,
   defaultDateIso,
   reminderTemplates,
+  smsTemplates = [],
   backHref,
 }: {
   devices: Device[];
@@ -514,6 +593,7 @@ export function RentalForm({
   defaultDeviceId?: string;
   defaultDateIso?: string;
   reminderTemplates: ReminderTemplatePreview[];
+  smsTemplates?: SmsTemplateOption[];
   backHref: string;
 }) {
   const router = useRouter();
@@ -533,18 +613,11 @@ export function RentalForm({
   const [reminderDays, setReminderDays] = useState<Set<ReminderDays>>(() => {
     if (!rental) return new Set([1, 3, 7]);
     const checked = rental.reminderRules
-      ?.filter((r) => r.status === "SENT" || r.status === "SCHEDULED")
+      ?.filter((r) => r.status === "SENT" || r.status === "SCHEDULED" || r.status === "QUEUED")
       .map((r) => r.daysBefore)
       .filter((d): d is ReminderDays => d === 1 || d === 3 || d === 7);
     return new Set(checked ?? []);
   });
-  const [sendConfirmation, setSendConfirmation] = useState(() => {
-    if (!rental) return true;
-    return rental.reminderRules?.some(
-      (r) => r.daysBefore === CONFIRMATION_OFFSET && (r.status === "SENT" || r.status === "SCHEDULED"),
-    ) ?? false;
-  });
-
   const device = devices.find((d) => d.id === deviceId);
 
   function goBack() {
@@ -567,7 +640,7 @@ export function RentalForm({
 
     const remaining = daysUntilStart(startsAt);
     const sentDays = new Set(
-      rental?.reminderRules?.filter((r) => r.status === "SENT").map((r) => r.daysBefore) ?? [],
+      rental?.reminderRules?.filter((r) => r.status === "SENT" || r.status === "QUEUED").map((r) => r.daysBefore) ?? [],
     );
     const effectiveReminderDays = Array.from(reminderDays).filter((d) => sentDays.has(d) || remaining >= d);
 
@@ -579,7 +652,6 @@ export function RentalForm({
       startsAt: new Date(startsAt).toISOString(),
       endsAt: new Date(endsAt).toISOString(),
       reminderDays: effectiveReminderDays,
-      sendConfirmation,
     };
     if (!isEditing && pendingContact) {
       body.contactId = pendingContact.id;
@@ -722,12 +794,16 @@ export function RentalForm({
               />
             </div>
 
+            {isEditing && (
+              <div className="rounded-lg border border-gray-200 bg-white p-5">
+                <ClientMessageComposer rental={rental!} device={device} templates={smsTemplates} />
+              </div>
+            )}
+
             <div className="rounded-lg border border-gray-200 bg-white p-5">
               <ReminderSection
                 rental={rental}
                 startsAt={startsAt}
-                confirmationChecked={sendConfirmation}
-                onToggleConfirmation={() => setSendConfirmation((v) => !v)}
                 selectedDays={reminderDays}
                 onToggleDay={toggleReminderDay}
                 templates={reminderTemplates}

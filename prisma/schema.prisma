@@ -19,6 +19,7 @@ enum Channel {
 
 enum ReminderStatus {
   SCHEDULED
+  QUEUED
   SENT
   FAILED
   CANCELLED
@@ -191,6 +192,7 @@ model ReminderCheckLog {
   dueCount       Int
   sentCount      Int
   failedCount    Int
+  queuedCount    Int                 @default(0)
   source         ReminderCheckSource @default(CRON)
   createdAt      DateTime            @default(now())
 

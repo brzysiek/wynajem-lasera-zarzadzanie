@@ -224,11 +224,13 @@ export function SmsTemplatesPanel({ initialTemplates }: { initialTemplates: SmsT
     <div className="rounded-lg border border-gray-200 bg-white p-6">
       <h2 className="mb-1 text-lg font-semibold text-gray-900">Szablony SMS</h2>
       <p className="mb-4 text-sm text-gray-500">
-        Szablony przypomnień (wbudowane) oraz dowolne własne szablony dostępne przy ręcznej wysyłce SMS. Dostępne
-        znaczniki: <code className="rounded bg-gray-100 px-1 py-0.5">{"{klient}"}</code>{" "}
-        <code className="rounded bg-gray-100 px-1 py-0.5">{"{urzadzenie}"}</code>{" "}
-        <code className="rounded bg-gray-100 px-1 py-0.5">{"{data_start}"}</code>{" "}
-        <code className="rounded bg-gray-100 px-1 py-0.5">{"{data_koniec}"}</code>{" "}
+        Szablony przypomnień (wbudowane) oraz dowolne własne szablony dostępne przy ręcznej wysyłce SMS. Znaczniki z
+        przedrostkiem <code className="rounded bg-gray-100 px-1 py-0.5">rezerwacja_</code> wymagają kontekstu
+        konkretnej rezerwacji, aby się podstawić — pozostałe działają zawsze. Dostępne znaczniki:{" "}
+        <code className="rounded bg-gray-100 px-1 py-0.5">{"{rezerwacja_klient}"}</code>{" "}
+        <code className="rounded bg-gray-100 px-1 py-0.5">{"{rezerwacja_urzadzenie}"}</code>{" "}
+        <code className="rounded bg-gray-100 px-1 py-0.5">{"{rezerwacja_data_start}"}</code>{" "}
+        <code className="rounded bg-gray-100 px-1 py-0.5">{"{rezerwacja_data_koniec}"}</code>{" "}
         <code className="rounded bg-gray-100 px-1 py-0.5">{"{telefon_obslugi}"}</code>
       </p>
       <div className="flex flex-col gap-3">

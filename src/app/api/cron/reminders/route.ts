@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sendDueReminders } from "@/lib/reminders";
+import { runHourlyReminderCycle } from "@/lib/reminders";
 import { logWarn, logError } from "@/lib/logger";
 
-// Internal-only endpoint. This host (cPanel/LiteSpeed lsnode) has no real
-// cron — server.js runs a setInterval loop that calls this route on its own
-// loopback address with a per-process secret, since that's the only
-// persistent, always-on piece of the deployment. Never exposed/linked from
-// the UI; a mismatched or missing secret is treated as an outside caller.
+// Internal-only endpoint, hit by a real cPanel Cron Job on a fixed schedule
+// (currently every 5 minutes) on the public domain — this host's Node
+// process isn't guaranteed to stay alive between requests, so an in-process
+// scheduler wasn't reliable. Never exposed/linked from the UI; a mismatched
+// or missing secret is treated as an outside caller.
+//
+// This is the "hourly" half of the two-stage reminder pipeline: it sends
+// any overdue reservation confirmations (legacy — confirmations are now
+// sent manually) and promotes SCHEDULED 1/3/7-day reminders into QUEUED
+// once they're within the lookahead window. The actual queued sends happen
+// on a separate daily schedule — see /api/cron/reminders/send.
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-cron-secret");
   if (!secret || secret !== process.env.CRON_SECRET) {
@@ -15,7 +21,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await sendDueReminders("CRON");
+    const result = await runHourlyReminderCycle("CRON");
     return NextResponse.json(result);
   } catch (err) {
     logError("reminder_cron_failed", err);

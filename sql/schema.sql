@@ -73,7 +73,7 @@ CREATE TABLE `reminder_rules` (
     `daysBefore` INTEGER NOT NULL,
     `channel` ENUM('SMS', 'EMAIL') NOT NULL,
     `messageBody` TEXT NOT NULL,
-    `status` ENUM('SCHEDULED', 'SENT', 'FAILED', 'CANCELLED') NOT NULL DEFAULT 'SCHEDULED',
+    `status` ENUM('SCHEDULED', 'QUEUED', 'SENT', 'FAILED', 'CANCELLED') NOT NULL DEFAULT 'SCHEDULED',
     `scheduledFor` DATETIME(3) NOT NULL,
     `sentAt` DATETIME(3) NULL,
     `errorMessage` TEXT NULL,
@@ -139,6 +139,7 @@ CREATE TABLE `reminder_check_logs` (
     `dueCount` INTEGER NOT NULL,
     `sentCount` INTEGER NOT NULL,
     `failedCount` INTEGER NOT NULL,
+    `queuedCount` INTEGER NOT NULL DEFAULT 0,
     `source` ENUM('CRON', 'MANUAL') NOT NULL DEFAULT 'CRON',
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 

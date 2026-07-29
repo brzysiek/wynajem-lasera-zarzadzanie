@@ -21,7 +21,9 @@ export function ReminderRunNowButton() {
         setError(data?.message || "Nie udało się uruchomić wysyłki.");
         return;
       }
-      setResult(`Sprawdzono: ${data.checked}, wysłano: ${data.sent}, błędy: ${data.failed}.`);
+      setResult(
+        `Sprawdzono: ${data.checked}, wysłano: ${data.sent}, błędy: ${data.failed}, nowo w kolejce: ${data.queued}.`,
+      );
       router.refresh();
     } finally {
       setIsRunning(false);
