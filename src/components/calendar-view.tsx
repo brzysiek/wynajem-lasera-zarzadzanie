@@ -41,6 +41,20 @@ function isPastDay(day: Date): boolean {
   return day < startOfToday();
 }
 
+// WCAG relative luminance: picks black or white text, whichever contrasts
+// better against a given device color — pastel swatches need dark text,
+// saturated ones need white.
+function readableTextColor(hex: string): string {
+  const match = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex);
+  if (!match) return "#ffffff";
+  const [r, g, b] = match.slice(1).map((c) => {
+    const channel = parseInt(c, 16) / 255;
+    return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
+  });
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance > 0.55 ? "#1f2937" : "#ffffff";
+}
+
 function monthGridDays(reference: Date): Date[] {
   const firstOfMonth = new Date(reference.getFullYear(), reference.getMonth(), 1);
   const gridStart = startOfWeek(firstOfMonth);
@@ -195,13 +209,14 @@ function CalendarWeekRow({
               e.stopPropagation();
               onOpenEdit(s.rental);
             }}
-            className="pointer-events-auto absolute flex items-center gap-1 overflow-hidden rounded px-1.5 text-left text-xs text-white shadow-sm"
+            className="pointer-events-auto absolute flex items-center gap-1 overflow-hidden rounded px-1.5 text-left text-xs shadow-sm"
             style={{
               left: `calc(${(s.startCol / 7) * 100}% + 2px)`,
               width: `calc(${(s.span / 7) * 100}% - 4px)`,
               top: s.lane * (WEEK_ROW_BAR_HEIGHT + WEEK_ROW_BAR_GAP),
               height: WEEK_ROW_BAR_HEIGHT,
               backgroundColor: s.rental.device.color,
+              color: readableTextColor(s.rental.device.color),
             }}
             title={s.rental.title}
           >
