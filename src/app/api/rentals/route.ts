@@ -5,6 +5,7 @@ import { insertCalendarEvent } from "@/lib/integrations/google-calendar";
 import { getHubspotContact, formatHubspotAddress } from "@/lib/integrations/hubspot";
 import { logInfo, logWarn, logError } from "@/lib/logger";
 import { REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
+import { withDeliveryTimePrefix } from "@/lib/rental-title";
 
 const RENTAL_INCLUDE = {
   device: true,
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { id: googleEventId } = await insertCalendarEvent(device.googleCalendarId, {
-      title,
+      title: withDeliveryTimePrefix(title, deliveryAt),
       description: description || null,
       startsAt,
       endsAt,

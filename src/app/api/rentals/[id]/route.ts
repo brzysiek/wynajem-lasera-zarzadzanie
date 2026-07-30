@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { updateCalendarEvent, deleteCalendarEvent, moveCalendarEvent } from "@/lib/integrations/google-calendar";
 import { logInfo, logWarn, logError } from "@/lib/logger";
 import { CONFIRMATION_OFFSET, REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
+import { withDeliveryTimePrefix } from "@/lib/rental-title";
 
 const RENTAL_INCLUDE = {
   device: true,
@@ -84,7 +85,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await moveCalendarEvent(rental.googleCalendarId, rental.googleEventId, targetCalendarId);
     }
     await updateCalendarEvent(targetCalendarId, rental.googleEventId, {
-      title,
+      title: withDeliveryTimePrefix(title, deliveryAt),
       description: description || null,
       startsAt,
       endsAt,

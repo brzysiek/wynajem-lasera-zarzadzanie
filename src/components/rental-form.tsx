@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { applySmsPlaceholders } from "@/lib/sms-template";
+import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { QueueCancelBadge } from "@/components/queue-cancel-badge";
 
 export type Device = { id: string; name: string; shortName: string; color: string; active: boolean };
@@ -895,6 +896,12 @@ export function RentalForm({
                 />
               </label>
             </div>
+            {deliveryAt && (
+              <p className="text-xs text-gray-500">
+                Godzina dostawy zostanie dodana jako prefiks do nazwy wydarzenia w kalendarzu: „
+                {withDeliveryTimePrefix(title || "(bez tytułu)", deliveryAt)}”
+              </p>
+            )}
           </div>
           </div>
 
