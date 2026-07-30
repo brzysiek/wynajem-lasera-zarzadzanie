@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation";
 import type { Device, Rental } from "@/components/rental-form";
 import { BASE_PATH } from "@/lib/base-path";
+import { withDeliveryTimePrefix } from "@/lib/rental-title";
 
 type RawRental = Rental & { device: Device };
 
@@ -218,13 +219,13 @@ function CalendarWeekRow({
               backgroundColor: s.rental.device.color,
               color: readableTextColor(s.rental.device.color),
             }}
-            title={s.rental.title}
+            title={withDeliveryTimePrefix(s.rental.title, s.rental.deliveryTime)}
           >
             {s.rental.hubspotContactId && <ContactBadge />}
             <span className="truncate">
               {variant === "week" && !s.rental.allDay
-                ? `${formatTime(s.rental.startsAt)}–${formatTime(s.rental.endsAt)} ${s.rental.title}`
-                : s.rental.title}
+                ? `${formatTime(s.rental.startsAt)}–${formatTime(s.rental.endsAt)} ${withDeliveryTimePrefix(s.rental.title, s.rental.deliveryTime)}`
+                : withDeliveryTimePrefix(s.rental.title, s.rental.deliveryTime)}
             </span>
           </button>
         ))}

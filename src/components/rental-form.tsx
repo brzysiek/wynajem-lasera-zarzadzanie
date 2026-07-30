@@ -752,8 +752,8 @@ export function RentalForm({
       endsAt: new Date(endsAt).toISOString(),
       reminderDays: effectiveReminderDays,
       deliveryAddress,
-      deliveryTime: deliveryTime || null,
-      pickupTime: pickupTime || null,
+      deliveryTime,
+      pickupTime,
     };
     if (!isEditing && pendingContact) {
       body.contactId = pendingContact.id;
