@@ -98,13 +98,20 @@ export type GoogleEvent = {
   updatedAt: Date;
 };
 
+// Uses local (server TZ, i.e. Europe/Warsaw) calendar-date components, not
+// UTC — startsAt/endsAt represent local midnight, which during CEST is
+// 22:00 UTC the previous day, so slicing the UTC ISO string would shift
+// all-day dates back by one.
 function toDateOnly(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function addDays(date: Date, days: number): Date {
   const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() + days);
+  next.setDate(next.getDate() + days);
   return next;
 }
 
