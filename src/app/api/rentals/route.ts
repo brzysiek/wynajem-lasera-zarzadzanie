@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  if (endsAt <= startsAt) {
+  if (endsAt < startsAt) {
     logWarn("rental_create_rejected", { userId: session.user.id, reason: "invalid_date_range" });
     return NextResponse.json({ message: "Termin zakończenia musi być późniejszy niż rozpoczęcia." }, { status: 400 });
   }

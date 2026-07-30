@@ -102,9 +102,19 @@ function toDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
 function toGoogleEventBody(input: GoogleEventInput) {
+  // Google's all-day end.date is exclusive (the event runs up to but not
+  // including that day), while startsAt/endsAt in this app are both the
+  // inclusive first/last day of the rental — so a 1-day rental has
+  // startsAt === endsAt and needs end.date one day past endsAt.
   const start = input.allDay ? { date: toDateOnly(input.startsAt) } : { dateTime: input.startsAt.toISOString() };
-  const end = input.allDay ? { date: toDateOnly(input.endsAt) } : { dateTime: input.endsAt.toISOString() };
+  const end = input.allDay ? { date: toDateOnly(addDays(input.endsAt, 1)) } : { dateTime: input.endsAt.toISOString() };
 
   return {
     summary: input.title,
@@ -114,9 +124,16 @@ function toGoogleEventBody(input: GoogleEventInput) {
   };
 }
 
-function parseGoogleDateTime(value: { dateTime?: string; date?: string }): { date: Date; allDay: boolean } {
+// `isExclusiveEnd` un-does Google's exclusive all-day end.date (see
+// toGoogleEventBody) so the parsed date matches this app's inclusive
+// startsAt/endsAt convention.
+function parseGoogleDateTime(
+  value: { dateTime?: string; date?: string },
+  isExclusiveEnd = false,
+): { date: Date; allDay: boolean } {
   if (value.date) {
-    return { date: new Date(`${value.date}T00:00:00.000Z`), allDay: true };
+    const date = new Date(`${value.date}T00:00:00.000Z`);
+    return { date: isExclusiveEnd ? addDays(date, -1) : date, allDay: true };
   }
   return { date: new Date(value.dateTime!), allDay: false };
 }
@@ -178,7 +195,7 @@ export async function listCalendarEvents(calendarId: string, timeMin: Date, time
     for (const item of body.items ?? []) {
       if (item.status === "cancelled") continue;
       const start = parseGoogleDateTime(item.start);
-      const end = parseGoogleDateTime(item.end);
+      const end = parseGoogleDateTime(item.end, true);
       events.push({
         id: item.id,
         title: item.summary ?? "(bez tytułu)",

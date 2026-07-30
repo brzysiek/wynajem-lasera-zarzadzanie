@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     logWarn("rental_update_rejected", { userId: session.user.id, rentalId: id, reason: "invalid_input" });
     return NextResponse.json({ message: "Uzupełnij tytuł i poprawny termin." }, { status: 400 });
   }
-  if (endsAt <= startsAt) {
+  if (endsAt < startsAt) {
     logWarn("rental_update_rejected", { userId: session.user.id, rentalId: id, reason: "invalid_date_range" });
     return NextResponse.json({ message: "Termin zakończenia musi być późniejszy niż rozpoczęcia." }, { status: 400 });
   }
