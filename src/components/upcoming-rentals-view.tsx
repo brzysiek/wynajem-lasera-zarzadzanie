@@ -30,10 +30,6 @@ function formatRentalDate(iso: string, allDay: boolean): string {
     : date.toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
 }
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
-}
-
 function formatWeekLabel(weekStart: Date): string {
   const weekEnd = addDays(weekStart, 6);
   const startStr = weekStart.toLocaleDateString("pl-PL", { day: "numeric", month: "short" });
@@ -53,8 +49,8 @@ function RentalsTable({ rentals, onOpenEdit }: { rentals: RawRental[]; onOpenEdi
             <th className="px-3 py-2">Kontakt</th>
             <th className="px-3 py-2">Firma</th>
             <th className="px-3 py-2">Adres dostawy</th>
-            <th className="px-3 py-2">Data dostawy</th>
-            <th className="px-3 py-2">Data odbioru</th>
+            <th className="px-3 py-2">Godzina dostawy</th>
+            <th className="px-3 py-2">Godzina odbioru</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -76,12 +72,8 @@ function RentalsTable({ rentals, onOpenEdit }: { rentals: RawRental[]; onOpenEdi
               <td className="px-3 py-2 text-gray-700">{rental.contactNameCache || "—"}</td>
               <td className="px-3 py-2 text-gray-700">{rental.contactCompanyCache || "—"}</td>
               <td className="px-3 py-2 text-gray-700">{rental.deliveryAddress || "—"}</td>
-              <td className="whitespace-nowrap px-3 py-2 text-gray-700">
-                {rental.deliveryAt ? formatDateTime(rental.deliveryAt) : "—"}
-              </td>
-              <td className="whitespace-nowrap px-3 py-2 text-gray-700">
-                {rental.pickupAt ? formatDateTime(rental.pickupAt) : "—"}
-              </td>
+              <td className="whitespace-nowrap px-3 py-2 text-gray-700">{rental.deliveryTime || "—"}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-gray-700">{rental.pickupTime || "—"}</td>
             </tr>
           ))}
         </tbody>

@@ -31,9 +31,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const startsAt = typeof body?.startsAt === "string" ? new Date(body.startsAt) : rental.startsAt;
   const endsAt = typeof body?.endsAt === "string" ? new Date(body.endsAt) : rental.endsAt;
   const deliveryAddress = typeof body?.deliveryAddress === "string" ? body.deliveryAddress.trim() : rental.deliveryAddress ?? "";
-  const deliveryAt =
-    typeof body?.deliveryAt === "string" ? (body.deliveryAt ? new Date(body.deliveryAt) : null) : rental.deliveryAt;
-  const pickupAt = typeof body?.pickupAt === "string" ? (body.pickupAt ? new Date(body.pickupAt) : null) : rental.pickupAt;
+  const deliveryTime =
+    typeof body?.deliveryTime === "string" ? (body.deliveryTime || null) : rental.deliveryTime;
+  const pickupTime = typeof body?.pickupTime === "string" ? (body.pickupTime || null) : rental.pickupTime;
 
   if (!title || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
     logWarn("rental_update_rejected", { userId: session.user.id, rentalId: id, reason: "invalid_input" });
@@ -85,7 +85,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await moveCalendarEvent(rental.googleCalendarId, rental.googleEventId, targetCalendarId);
     }
     await updateCalendarEvent(targetCalendarId, rental.googleEventId, {
-      title: withDeliveryTimePrefix(title, deliveryAt),
+      title: withDeliveryTimePrefix(title, deliveryTime),
       description: description || null,
       startsAt,
       endsAt,
@@ -103,8 +103,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         deviceId: requestedDeviceId,
         googleCalendarId: targetCalendarId,
         deliveryAddress: deliveryAddress || null,
-        deliveryAt,
-        pickupAt,
+        deliveryTime,
+        pickupTime,
         lastSyncedAt: new Date(),
       },
     });

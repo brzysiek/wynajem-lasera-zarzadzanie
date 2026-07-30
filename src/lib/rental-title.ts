@@ -8,11 +8,8 @@ const TIME_PREFIX_RE = /^\d{2}:\d{2} /;
 // The calendar event's name gets the delivery time prefixed onto the
 // rental's title (e.g. "14:30 Wesele Kowalskich") whenever a delivery time
 // is set, so the crew can see the delivery hour without opening the event.
-export function withDeliveryTimePrefix(title: string, deliveryAt: Date | string | null | undefined): string {
+export function withDeliveryTimePrefix(title: string, deliveryTime: string | null | undefined): string {
   const bareTitle = title.replace(TIME_PREFIX_RE, "");
-  if (!deliveryAt) return bareTitle;
-  const date = typeof deliveryAt === "string" ? new Date(deliveryAt) : deliveryAt;
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm} ${bareTitle}`;
+  if (!deliveryTime) return bareTitle;
+  return `${deliveryTime} ${bareTitle}`;
 }

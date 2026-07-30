@@ -101,8 +101,8 @@ model Rental {
   contactCompanyCache String?
   contactAddressCache String?   @db.Text
   deliveryAddress     String?   @db.Text
-  deliveryAt          DateTime?
-  pickupAt            DateTime?
+  deliveryTime        String?
+  pickupTime          String?
   internalNotes       String?   @db.Text
   lastSyncedAt        DateTime?
   deletedInGoogle     Boolean   @default(false)

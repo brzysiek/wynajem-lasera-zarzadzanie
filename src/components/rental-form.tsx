@@ -56,8 +56,8 @@ export type Rental = {
   contactCompanyCache?: string | null;
   contactAddressCache?: string | null;
   deliveryAddress?: string | null;
-  deliveryAt?: string | null;
-  pickupAt?: string | null;
+  deliveryTime?: string | null;
+  pickupTime?: string | null;
   reminderRules?: ReminderRuleSummary[];
   messages?: MessageSummary[];
 };
@@ -682,8 +682,8 @@ export function RentalForm({
   const [error, setError] = useState<string | null>(null);
   const [pendingContact, setPendingContact] = useState<AssignedContact | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState(rental?.deliveryAddress ?? rental?.contactAddressCache ?? "");
-  const [deliveryAt, setDeliveryAt] = useState(rental?.deliveryAt ? toLocalInputValue(rental.deliveryAt) : "");
-  const [pickupAt, setPickupAt] = useState(rental?.pickupAt ? toLocalInputValue(rental.pickupAt) : "");
+  const [deliveryTime, setDeliveryTime] = useState(rental?.deliveryTime ?? "");
+  const [pickupTime, setPickupTime] = useState(rental?.pickupTime ?? "");
   const [reminderDays, setReminderDays] = useState<Set<ReminderDays>>(() => {
     if (!rental) return new Set([1, 3, 7]);
     const checked = rental.reminderRules
@@ -742,8 +742,8 @@ export function RentalForm({
       endsAt: new Date(endsAt).toISOString(),
       reminderDays: effectiveReminderDays,
       deliveryAddress,
-      deliveryAt: deliveryAt ? new Date(deliveryAt).toISOString() : null,
-      pickupAt: pickupAt ? new Date(pickupAt).toISOString() : null,
+      deliveryTime: deliveryTime || null,
+      pickupTime: pickupTime || null,
     };
     if (!isEditing && pendingContact) {
       body.contactId = pendingContact.id;
@@ -878,28 +878,28 @@ export function RentalForm({
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm text-gray-700">
-                Data dostawy
+                Godzina dostawy
                 <input
-                  type="datetime-local"
-                  value={deliveryAt}
-                  onChange={(e) => setDeliveryAt(e.target.value)}
+                  type="time"
+                  value={deliveryTime}
+                  onChange={(e) => setDeliveryTime(e.target.value)}
                   className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm text-gray-700">
-                Data odbioru
+                Godzina odbioru
                 <input
-                  type="datetime-local"
-                  value={pickupAt}
-                  onChange={(e) => setPickupAt(e.target.value)}
+                  type="time"
+                  value={pickupTime}
+                  onChange={(e) => setPickupTime(e.target.value)}
                   className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
                 />
               </label>
             </div>
-            {deliveryAt && (
+            {deliveryTime && (
               <p className="text-xs text-gray-500">
                 Godzina dostawy zostanie dodana jako prefiks do nazwy wydarzenia w kalendarzu: „
-                {withDeliveryTimePrefix(title || "(bez tytułu)", deliveryAt)}”
+                {withDeliveryTimePrefix(title || "(bez tytułu)", deliveryTime)}”
               </p>
             )}
           </div>
