@@ -671,11 +671,21 @@ export function RentalForm({
   const [title, setTitle] = useState(rental?.title ?? "");
   const [description, setDescription] = useState(rental?.description ?? "");
   // Reservation dates are always whole days — no time-of-day picker for
-  // startsAt/endsAt (unlike delivery/pickup, which do carry a time).
+  // startsAt/endsAt (unlike delivery/pickup, which do carry a time). Both
+  // are normalized to midnight right away (not just on change), otherwise
+  // a rental whose stored time predates the all-day switch keeps a hidden
+  // hour/minute that only the untouched field carries — invisible in the
+  // date-only input, but enough to make endsAt < startsAt even when both
+  // inputs display the same day.
   const allDay = true;
-  const initialStart = rental ? toLocalInputValue(rental.startsAt) : defaultStart(defaultDateIso ? new Date(defaultDateIso) : undefined);
+  const toDateOnlyValue = (value: string) => `${value.slice(0, 10)}T00:00`;
+  const initialStart = toDateOnlyValue(
+    rental ? toLocalInputValue(rental.startsAt) : defaultStart(defaultDateIso ? new Date(defaultDateIso) : undefined),
+  );
   const [startsAt, setStartsAt] = useState(initialStart);
-  const [endsAt, setEndsAt] = useState(rental ? toLocalInputValue(rental.endsAt) : defaultEnd(initialStart));
+  const [endsAt, setEndsAt] = useState(
+    toDateOnlyValue(rental ? toLocalInputValue(rental.endsAt) : defaultEnd(initialStart)),
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
