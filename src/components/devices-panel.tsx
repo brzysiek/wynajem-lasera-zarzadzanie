@@ -349,26 +349,48 @@ function DeviceRow({ device, isAdmin, onChanged }: { device: Device; isAdmin: bo
 
 export function DevicesPanel({ devices, isAdmin }: { devices: Device[]; isAdmin: boolean }) {
   const [isAdding, setIsAdding] = useState(false);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [syncAllMessage, setSyncAllMessage] = useState<string | null>(null);
   const router = useRouter();
 
   function reload() {
     router.refresh();
   }
 
+  async function handleSyncAll() {
+    setIsSyncingAll(true);
+    setSyncAllMessage(null);
+    const { ok, data } = await api("/api/devices/sync-all", { method: "POST" });
+    setIsSyncingAll(false);
+    setSyncAllMessage(data?.message || (ok ? "Zsynchronizowano." : "Błąd synchronizacji."));
+    if (ok) reload();
+  }
+
   return (
     <div className="mb-8 rounded-lg border border-gray-200 bg-white p-6">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-gray-900">Urządzenia ({devices.length})</h2>
-        {isAdmin && !isAdding && (
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setIsAdding(true)}
-            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
+            onClick={handleSyncAll}
+            disabled={isSyncingAll}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
-            Dodaj urządzenie
+            {isSyncingAll ? "Synchronizowanie…" : "Synchronizuj wszystkie urządzenia"}
           </button>
-        )}
+          {isAdmin && !isAdding && (
+            <button
+              type="button"
+              onClick={() => setIsAdding(true)}
+              className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
+            >
+              Dodaj urządzenie
+            </button>
+          )}
+        </div>
       </div>
+      {syncAllMessage && <p className="mb-3 text-xs text-gray-500">{syncAllMessage}</p>}
 
       {isAdding && (
         <div className="mb-4">
