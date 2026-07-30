@@ -669,7 +669,9 @@ export function RentalForm({
   const [deviceId, setDeviceId] = useState(rental?.deviceId ?? defaultDeviceId ?? devices[0]?.id ?? "");
   const [title, setTitle] = useState(rental?.title ?? "");
   const [description, setDescription] = useState(rental?.description ?? "");
-  const [allDay, setAllDay] = useState(rental?.allDay ?? false);
+  // Reservation dates are always whole days — no time-of-day picker for
+  // startsAt/endsAt (unlike delivery/pickup, which do carry a time).
+  const allDay = true;
   const initialStart = rental ? toLocalInputValue(rental.startsAt) : defaultStart(defaultDateIso ? new Date(defaultDateIso) : undefined);
   const [startsAt, setStartsAt] = useState(initialStart);
   const [endsAt, setEndsAt] = useState(rental ? toLocalInputValue(rental.endsAt) : defaultEnd(initialStart));
@@ -837,18 +839,13 @@ export function RentalForm({
               />
             </label>
 
-            <label className="flex items-center gap-2 text-sm text-gray-700">
-              <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
-              Cały dzień
-            </label>
-
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm text-gray-700">
                 Początek
                 <input
-                  type={allDay ? "date" : "datetime-local"}
-                  value={allDay ? startsAt.slice(0, 10) : startsAt}
-                  onChange={(e) => setStartsAt(allDay ? `${e.target.value}T00:00` : e.target.value)}
+                  type="date"
+                  value={startsAt.slice(0, 10)}
+                  onChange={(e) => setStartsAt(`${e.target.value}T00:00`)}
                   required
                   className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
                 />
@@ -856,9 +853,9 @@ export function RentalForm({
               <label className="flex flex-col gap-1 text-sm text-gray-700">
                 Koniec
                 <input
-                  type={allDay ? "date" : "datetime-local"}
-                  value={allDay ? endsAt.slice(0, 10) : endsAt}
-                  onChange={(e) => setEndsAt(allDay ? `${e.target.value}T00:00` : e.target.value)}
+                  type="date"
+                  value={endsAt.slice(0, 10)}
+                  onChange={(e) => setEndsAt(`${e.target.value}T00:00`)}
                   required
                   className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
                 />
