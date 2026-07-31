@@ -175,22 +175,20 @@ function CalendarWeekRow({
             key={day.toISOString()}
             onClick={() => onOpenCreate(day)}
             title="Nowa rezerwacja"
-            className={`cursor-pointer border-b border-r border-gray-100 p-1.5 pt-1 hover:bg-gray-50 ${
+            className={`cursor-pointer border-b border-r border-gray-300 p-1.5 pt-1 hover:bg-gray-50 ${
               isOver
                 ? "bg-blue-50"
                 : isToday
                   ? "bg-amber-50"
                   : isPastDay(day)
-                    ? "bg-gray-100"
+                    ? "bg-gray-200"
                     : !inMonth
                       ? "bg-gray-50"
                       : ""
             }`}
             style={{ minHeight: cellMinHeight }}
           >
-            <span
-              className={`text-xs ${isToday ? "font-bold text-gray-900" : isPastDay(day) ? "text-gray-300" : "text-gray-400"}`}
-            >
+            <span className={`text-xs ${isToday ? "font-bold text-gray-900" : "text-gray-400"}`}>
               {variant === "week" ? `${WEEKDAY_LABELS[(day.getDay() + 6) % 7]} ${day.getDate()}` : day.getDate()}
             </span>
           </div>
