@@ -349,130 +349,156 @@ export function CalendarView({ devices }: { devices: Device[] }) {
     refreshQuietly();
   }
 
-  return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurrent(new Date())}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Dziś
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(1)}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            →
-          </button>
-          <h2 className="ml-2 text-lg font-semibold text-gray-900">
-            {mode === "month"
-              ? `${MONTH_LABELS[current.getMonth()]} ${current.getFullYear()}`
-              : `Tydzień od ${startOfWeek(current).toLocaleDateString("pl-PL")}`}
-          </h2>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-md border border-gray-300 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setMode("month")}
-              className={`px-3 py-2 text-sm font-medium ${mode === "month" ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
-            >
-              Miesiąc
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("week")}
-              className={`px-3 py-2 text-sm font-medium ${mode === "week" ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
-            >
-              Tydzień
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => openCreate()}
-            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
-          >
-            Nowa rezerwacja
-          </button>
-        </div>
-      </div>
-
-      <div className="mb-4 flex flex-wrap gap-3 rounded-lg border border-gray-200 bg-white p-3">
-        {devices.map((device) => (
-          <label key={device.id} className="flex items-center gap-1.5 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={checkedDeviceIds.has(device.id)}
-              onChange={() => toggleDevice(device.id)}
-            />
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: device.color }} />
-            {device.name}
-            {!device.active && <span className="text-xs text-gray-400">(wycofane)</span>}
-          </label>
-        ))}
-      </div>
-
-      {isLoading && <p className="mb-2 text-sm text-gray-400">Ładowanie…</p>}
-      {dragError && (
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          <span>{dragError}</span>
-          <button type="button" onClick={() => setDragError(null)} className="text-red-500 hover:text-red-700">
-            ✕
-          </button>
-        </div>
-      )}
-
-      {mode === "month" ? (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500">
-            {WEEKDAY_LABELS.map((label) => (
-              <div key={label} className="px-2 py-2">
-                {label}
-              </div>
-            ))}
-          </div>
-          {weeksOf(monthGridDays(current)).map((weekDays) => (
-            <CalendarWeekRow
-              key={weekDays[0].toISOString()}
-              weekDays={weekDays}
-              rentals={visibleRentals.filter((r) => weekDays.some((d) => rentalTouchesDay(r, d)))}
-              monthContext={current}
-              variant="month"
-              dragOverDay={dragOverDay}
-              onDragOverDay={(day) => setDragOverDay(day.toISOString())}
-              onDragLeaveRow={() => setDragOverDay(null)}
-              onDropDay={handleDropOnDay}
-              onOpenCreate={openCreate}
-              onOpenEdit={openEdit}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <CalendarWeekRow
-            weekDays={Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(current), i))}
-            rentals={visibleRentals}
-            variant="week"
-            dragOverDay={dragOverDay}
-            onDragOverDay={(day) => setDragOverDay(day.toISOString())}
-            onDragLeaveRow={() => setDragOverDay(null)}
-            onDropDay={handleDropOnDay}
-            onOpenCreate={openCreate}
-            onOpenEdit={openEdit}
+  const deviceList = (
+    <>
+      {devices.map((device) => (
+        <label key={device.id} className="flex items-center gap-1.5 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={checkedDeviceIds.has(device.id)}
+            onChange={() => toggleDevice(device.id)}
           />
+          <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: device.color }} />
+          <span className="truncate">{device.name}</span>
+          {!device.active && <span className="flex-none text-xs text-gray-400">(wycofane)</span>}
+        </label>
+      ))}
+    </>
+  );
+
+  return (
+    <div className="flex flex-1 flex-col lg:flex-row">
+      {/* Desktop sidebar — Google Calendar-style device list */}
+      <aside className="hidden w-60 flex-none flex-col gap-4 border-r border-gray-200 bg-white p-4 lg:flex">
+        <button
+          type="button"
+          onClick={() => openCreate()}
+          className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
+        >
+          + Nowa rezerwacja
+        </button>
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Urządzenia</p>
+          {deviceList}
         </div>
-      )}
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => setCurrent(new Date())}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Dziś
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(1)}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              →
+            </button>
+            <h2 className="ml-2 text-lg font-semibold text-gray-900">
+              {mode === "month"
+                ? `${MONTH_LABELS[current.getMonth()]} ${current.getFullYear()}`
+                : `Tydzień od ${startOfWeek(current).toLocaleDateString("pl-PL")}`}
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-md border border-gray-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setMode("month")}
+                className={`px-3 py-2 text-sm font-medium ${mode === "month" ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+              >
+                Miesiąc
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("week")}
+                className={`px-3 py-2 text-sm font-medium ${mode === "week" ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+              >
+                Tydzień
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => openCreate()}
+              className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 lg:hidden"
+            >
+              Nowa rezerwacja
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile/tablet device filter — sidebar takes over on lg+ */}
+        <div className="flex flex-wrap gap-3 border-b border-gray-200 bg-white p-3 lg:hidden">{deviceList}</div>
+
+        <div className="flex-1 overflow-x-auto p-3">
+          {isLoading && <p className="mb-2 text-sm text-gray-400">Ładowanie…</p>}
+          {dragError && (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <span>{dragError}</span>
+              <button type="button" onClick={() => setDragError(null)} className="text-red-500 hover:text-red-700">
+                ✕
+              </button>
+            </div>
+          )}
+
+          <div className="min-w-[640px]">
+            {mode === "month" ? (
+              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500">
+                  {WEEKDAY_LABELS.map((label) => (
+                    <div key={label} className="px-2 py-2">
+                      {label}
+                    </div>
+                  ))}
+                </div>
+                {weeksOf(monthGridDays(current)).map((weekDays) => (
+                  <CalendarWeekRow
+                    key={weekDays[0].toISOString()}
+                    weekDays={weekDays}
+                    rentals={visibleRentals.filter((r) => weekDays.some((d) => rentalTouchesDay(r, d)))}
+                    monthContext={current}
+                    variant="month"
+                    dragOverDay={dragOverDay}
+                    onDragOverDay={(day) => setDragOverDay(day.toISOString())}
+                    onDragLeaveRow={() => setDragOverDay(null)}
+                    onDropDay={handleDropOnDay}
+                    onOpenCreate={openCreate}
+                    onOpenEdit={openEdit}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                <CalendarWeekRow
+                  weekDays={Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(current), i))}
+                  rentals={visibleRentals}
+                  variant="week"
+                  dragOverDay={dragOverDay}
+                  onDragOverDay={(day) => setDragOverDay(day.toISOString())}
+                  onDragLeaveRow={() => setDragOverDay(null)}
+                  onDropDay={handleDropOnDay}
+                  onOpenCreate={openCreate}
+                  onOpenEdit={openEdit}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

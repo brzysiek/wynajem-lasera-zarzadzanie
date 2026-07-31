@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { TopNav } from "@/components/top-nav";
+import { AppShell } from "@/components/app-shell";
 
 export default async function AppLayout({
   children,
@@ -13,10 +13,5 @@ export default async function AppLayout({
     redirect("/login");
   }
 
-  return (
-    <div className="flex flex-1 flex-col">
-      <TopNav userName={session.user.name ?? session.user.email ?? "Użytkownik"} />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>
-    </div>
-  );
+  return <AppShell userName={session.user.name ?? session.user.email ?? "Użytkownik"}>{children}</AppShell>;
 }
