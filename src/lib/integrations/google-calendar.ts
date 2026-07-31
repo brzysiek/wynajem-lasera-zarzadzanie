@@ -120,8 +120,20 @@ function toGoogleEventBody(input: GoogleEventInput) {
   // including that day), while startsAt/endsAt in this app are both the
   // inclusive first/last day of the rental — so a 1-day rental has
   // startsAt === endsAt and needs end.date one day past endsAt.
-  const start = input.allDay ? { date: toDateOnly(input.startsAt) } : { dateTime: input.startsAt.toISOString() };
-  const end = input.allDay ? { date: toDateOnly(addDays(input.endsAt, 1)) } : { dateTime: input.endsAt.toISOString() };
+  //
+  // PATCH on this API merges fields into the stored event rather than
+  // replacing start/end wholesale, so an event that was originally created
+  // as timed (dateTime + timeZone) still has those fields server-side after
+  // we PATCH in a `date` for the all-day switch — Google then sees both
+  // `date` and `dateTime` set and rejects the request with "Invalid start
+  // time." Explicitly nulling the sibling fields clears them instead of
+  // leaving them stale.
+  const start = input.allDay
+    ? { date: toDateOnly(input.startsAt), dateTime: null, timeZone: null }
+    : { dateTime: input.startsAt.toISOString(), date: null };
+  const end = input.allDay
+    ? { date: toDateOnly(addDays(input.endsAt, 1)), dateTime: null, timeZone: null }
+    : { dateTime: input.endsAt.toISOString(), date: null };
 
   return {
     summary: input.title,
