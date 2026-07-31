@@ -246,6 +246,23 @@ function ContactBadge() {
   );
 }
 
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className={`h-4 w-4 flex-none transition-transform ${open ? "rotate-180" : ""}`}
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
 export function CalendarView({ devices }: { devices: Device[] }) {
   const router = useRouter();
   const [mode, setMode] = useState<"month" | "week">("month");
@@ -255,6 +272,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
   const [isLoading, startLoading] = useTransition();
   const [dragOverDay, setDragOverDay] = useState<string | null>(null);
   const [dragError, setDragError] = useState<string | null>(null);
+  const [mobileDeviceFilterOpen, setMobileDeviceFilterOpen] = useState(false);
 
   const rangeStart = useMemo(
     () => (mode === "month" ? monthGridDays(current)[0] : startOfWeek(current)),
@@ -442,7 +460,20 @@ export function CalendarView({ devices }: { devices: Device[] }) {
         </div>
 
         {/* Mobile/tablet device filter — sidebar takes over on lg+ */}
-        <div className="flex flex-wrap gap-3 border-b border-gray-200 bg-white p-3 lg:hidden">{deviceList}</div>
+        <div className="border-b border-gray-200 bg-white lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileDeviceFilterOpen((v) => !v)}
+            aria-expanded={mobileDeviceFilterOpen}
+            className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700"
+          >
+            Filtruj urządzenia
+            <ChevronIcon open={mobileDeviceFilterOpen} />
+          </button>
+          {mobileDeviceFilterOpen && (
+            <div className="flex flex-wrap gap-3 border-t border-gray-200 p-3">{deviceList}</div>
+          )}
+        </div>
 
         <div className="flex-1 overflow-x-auto p-3">
           {isLoading && <p className="mb-2 text-sm text-gray-400">Ładowanie…</p>}
