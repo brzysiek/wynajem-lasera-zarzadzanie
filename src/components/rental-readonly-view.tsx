@@ -12,6 +12,7 @@ export type ReadonlyRental = {
   deliveryAddress: string | null;
   deliveryTime: string | null;
   pickupTime: string | null;
+  transportPrice: string | null;
   contactNameCache: string | null;
   contactPhoneCache: string | null;
   contactCompanyCache: string | null;
@@ -82,6 +83,7 @@ export function RentalReadonlyView({ rental }: { rental: ReadonlyRental }) {
         <Row label="Adres dostawy" value={rental.deliveryAddress} />
         <Row label="Godzina dostawy" value={rental.deliveryTime} />
         <Row label="Godzina odbioru" value={rental.pickupTime} />
+        <Row label="Ustalona cena transportu" value={rental.transportPrice} />
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white p-5">

@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
   const deliveryAddress = typeof body?.deliveryAddress === "string" ? body.deliveryAddress.trim() : "";
   const deliveryTime = typeof body?.deliveryTime === "string" && body.deliveryTime ? body.deliveryTime : null;
   const pickupTime = typeof body?.pickupTime === "string" && body.pickupTime ? body.pickupTime : null;
+  const transportPrice = typeof body?.transportPrice === "string" ? body.transportPrice.trim() : "";
 
   if (!deviceId || !title || !startsAt || !endsAt || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
     logWarn("rental_create_rejected", { userId: session.user.id, reason: "invalid_input" });
@@ -114,6 +115,7 @@ export async function POST(req: NextRequest) {
         deliveryAddress: deliveryAddress || null,
         deliveryTime,
         pickupTime,
+        transportPrice: transportPrice || null,
         driverId,
         lastSyncedAt: new Date(),
       },
@@ -138,6 +140,9 @@ export async function POST(req: NextRequest) {
             contactEmailCache: contact.email,
             contactCompanyCache: contact.company,
             contactAddressCache: formatHubspotAddress(contact),
+            contactTransportPriceCache: contact.transportPrice,
+            // Backfill the rental's own field only if nothing was typed on the form.
+            ...(transportPrice ? {} : { transportPrice: contact.transportPrice }),
           },
         });
       } catch (err) {

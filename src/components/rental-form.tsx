@@ -59,9 +59,11 @@ export type Rental = {
   contactEmailCache?: string | null;
   contactCompanyCache?: string | null;
   contactAddressCache?: string | null;
+  contactTransportPriceCache?: string | null;
   deliveryAddress?: string | null;
   deliveryTime?: string | null;
   pickupTime?: string | null;
+  transportPrice?: string | null;
   reminderRules?: ReminderRuleSummary[];
   messages?: MessageSummary[];
 };
@@ -389,6 +391,7 @@ type AssignedContact = {
   email: string | null;
   company: string | null;
   address: string | null;
+  transportPrice: string | null;
   url: string | null;
 };
 
@@ -433,6 +436,7 @@ function contactFromRental(rental: Rental | null): AssignedContact | null {
     email: rental.contactEmailCache ?? null,
     company: rental.contactCompanyCache ?? null,
     address: rental.contactAddressCache ?? null,
+    transportPrice: rental.contactTransportPriceCache ?? null,
     url: null,
   };
 }
@@ -502,6 +506,9 @@ function ContactSection({
         email: c.email,
         company: c.company,
         address: null,
+        // Not in the search summary — the server fills it in on save from
+        // the full contact fetch (like the address).
+        transportPrice: null,
         url: null,
       };
       setContact(next);
@@ -532,6 +539,7 @@ function ContactSection({
       email: r.contactEmailCache,
       company: r.contactCompanyCache,
       address: r.contactAddressCache,
+      transportPrice: r.contactTransportPriceCache ?? null,
       url: data.contactUrl ?? null,
     };
     setContact(next);
@@ -570,6 +578,9 @@ function ContactSection({
             {contact.phone && <p className="text-gray-600">{contact.phone}</p>}
             {contact.email && <p className="text-gray-600">{contact.email}</p>}
             {contact.address && <p className="text-gray-500">{contact.address}</p>}
+            {contact.transportPrice && (
+              <p className="text-gray-500">Ustalona cena transportu: {contact.transportPrice}</p>
+            )}
             {contact.url && (
               <a
                 href={contact.url}
@@ -703,6 +714,9 @@ export function RentalForm({
   const [deliveryAddress, setDeliveryAddress] = useState(rental?.deliveryAddress ?? rental?.contactAddressCache ?? "");
   const [deliveryTime, setDeliveryTime] = useState(rental?.deliveryTime ?? "");
   const [pickupTime, setPickupTime] = useState(rental?.pickupTime ?? "");
+  const [transportPrice, setTransportPrice] = useState(
+    rental?.transportPrice ?? rental?.contactTransportPriceCache ?? "",
+  );
   const [driverId, setDriverId] = useState(rental?.driverId ?? "");
   const [reminderDays, setReminderDays] = useState<Set<ReminderDays>>(() => {
     if (!rental) return new Set([1, 3, 7]);
@@ -747,6 +761,9 @@ export function RentalForm({
     if (contact?.address && !deliveryAddress.trim()) {
       setDeliveryAddress(contact.address);
     }
+    if (contact?.transportPrice && !transportPrice.trim()) {
+      setTransportPrice(contact.transportPrice);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -771,6 +788,7 @@ export function RentalForm({
       deliveryAddress,
       deliveryTime,
       pickupTime,
+      transportPrice,
     };
     if (canManageDrivers) {
       body.driverId = driverId || null;
@@ -903,6 +921,15 @@ export function RentalForm({
                 onChange={(e) => setDeliveryAddress(e.target.value)}
                 rows={2}
                 placeholder="Uzupełnia się automatycznie z adresu klienta, jeśli jest dostępny"
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm text-gray-700">
+              Ustalona cena transportu
+              <input
+                value={transportPrice}
+                onChange={(e) => setTransportPrice(e.target.value)}
+                placeholder="Uzupełnia się automatycznie z kontaktu HubSpot, jeśli jest ustalona"
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
               />
             </label>

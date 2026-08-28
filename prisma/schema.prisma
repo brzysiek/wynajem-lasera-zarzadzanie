@@ -102,9 +102,13 @@ model Rental {
   contactEmailCache   String?
   contactCompanyCache String?
   contactAddressCache String?   @db.Text
+  // raw "ustalona_cena_transportu" from the HubSpot contact, refreshed on assign
+  contactTransportPriceCache String?
   deliveryAddress     String?   @db.Text
   deliveryTime        String?
   pickupTime          String?
+  // editable per-rental; prefilled from contactTransportPriceCache when empty
+  transportPrice      String?
   internalNotes       String?   @db.Text
   driverId            String?
   lastSyncedAt        DateTime?

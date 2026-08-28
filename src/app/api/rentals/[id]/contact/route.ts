@@ -35,6 +35,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         contactEmailCache: contact.email,
         contactCompanyCache: contact.company,
         contactAddressCache: formatHubspotAddress(contact),
+        contactTransportPriceCache: contact.transportPrice,
+        // Fill the rental's own transport-price field only if it's still empty.
+        ...(rental.transportPrice ? {} : { transportPrice: contact.transportPrice }),
       },
       include: { device: true },
     });
@@ -70,6 +73,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       contactEmailCache: null,
       contactCompanyCache: null,
       contactAddressCache: null,
+      contactTransportPriceCache: null,
     },
     include: { device: true },
   });

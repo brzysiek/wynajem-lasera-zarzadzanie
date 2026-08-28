@@ -36,6 +36,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const deliveryTime =
     typeof body?.deliveryTime === "string" ? (body.deliveryTime || null) : rental.deliveryTime;
   const pickupTime = typeof body?.pickupTime === "string" ? (body.pickupTime || null) : rental.pickupTime;
+  const transportPrice =
+    typeof body?.transportPrice === "string" ? body.transportPrice.trim() : rental.transportPrice ?? "";
 
   // Only an admin may (re)assign or clear the driver; other roles never
   // send the field and a STAFF request that does is ignored.
@@ -116,6 +118,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         deliveryAddress: deliveryAddress || null,
         deliveryTime,
         pickupTime,
+        transportPrice: transportPrice || null,
         driverId,
         lastSyncedAt: new Date(),
       },

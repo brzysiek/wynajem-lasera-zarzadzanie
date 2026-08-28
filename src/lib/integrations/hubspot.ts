@@ -16,7 +16,11 @@ export type HubspotContactDetail = HubspotContactSummary & {
   city: string | null;
   zip: string | null;
   country: string | null;
+  transportPrice: string | null;
 };
+
+// Custom contact property holding the agreed transport price for this client.
+const TRANSPORT_PRICE_PROPERTY = "ustalona_cena_transportu";
 
 export function getHubspotConfigStatus(): { configured: boolean } {
   return { configured: Boolean(process.env.HUBSPOT_ACCESS_TOKEN) };
@@ -74,7 +78,7 @@ export async function searchHubspotContacts(query: string): Promise<HubspotConta
 
 export async function getHubspotContact(id: string): Promise<HubspotContactDetail> {
   const token = requireToken();
-  const properties = "firstname,lastname,email,phone,company,address,city,zip,country";
+  const properties = `firstname,lastname,email,phone,company,address,city,zip,country,${TRANSPORT_PRICE_PROPERTY}`;
 
   const res = await fetch(
     `https://api.hubapi.com/crm/v3/objects/contacts/${encodeURIComponent(id)}?properties=${properties}`,
@@ -99,6 +103,7 @@ export async function getHubspotContact(id: string): Promise<HubspotContactDetai
     city: p.city ?? null,
     zip: p.zip ?? null,
     country: p.country ?? null,
+    transportPrice: p[TRANSPORT_PRICE_PROPERTY] ?? null,
   };
 }
 
