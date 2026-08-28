@@ -39,3 +39,20 @@ export async function requireStaffSession() {
 
   return session;
 }
+
+// Punktowe rozszczelnienie roli KIEROWCA (moduł finansowy, spec 5): dopuszcza
+// KIEROWCĘ do edycji wąskiej listy pól finansowych — patrz
+// PATCH /api/rentals/[id]/finance/driver, które DODATKOWO sprawdza, że
+// rental.driverId === session.user.id oraz waliduje whitelistę pól w body.
+// ADMIN/STAFF też przechodzą (biuro poprawia dane po kierowcy).
+export async function requireDriverFinanceSession() {
+  const session = await auth();
+  const role = session?.user.role;
+
+  if (role !== "ADMIN" && role !== "STAFF" && role !== "KIEROWCA") {
+    logWarn("driver_finance_api_access_denied", { userId: session?.user.id ?? null });
+    return null;
+  }
+
+  return session;
+}
