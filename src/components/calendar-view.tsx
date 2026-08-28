@@ -237,7 +237,7 @@ function CalendarWeekRow({
             }}
             title={withDeliveryTimePrefix(s.rental.title, s.rental.deliveryTime)}
           >
-            {s.rental.hubspotContactId && <ContactBadge />}
+            {s.rental.hubspotContactId && <ContactBadge name={s.rental.contactNameCache} />}
             {s.rental.driver && <DriverBadge name={s.rental.driver.name} />}
             <span className="truncate">
               {variant === "week" && !s.rental.allDay
@@ -251,15 +251,10 @@ function CalendarWeekRow({
   );
 }
 
-function ContactBadge() {
+function ContactBadge({ name }: { name?: string | null }) {
   return (
-    <svg
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      className="h-3 w-3 flex-none"
-      aria-hidden="true"
-    >
-      <title>Przypisany kontakt</title>
+    <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3 flex-none">
+      <title>{name?.trim() ? `Kontakt: ${name.trim()}` : "Przypisany kontakt"}</title>
       <path d="M10 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-3.31 0-6 2.24-6 5v1h12v-1c0-2.76-2.69-5-6-5Z" />
     </svg>
   );
