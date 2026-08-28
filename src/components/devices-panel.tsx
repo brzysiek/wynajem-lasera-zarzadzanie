@@ -2,7 +2,14 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import type { DevicePricingCategory } from "@prisma/client";
 import { BASE_PATH } from "@/lib/base-path";
+import {
+  PRICING_CATEGORY_LABELS,
+  PRICING_CATEGORY_VALUES,
+  VARIANT_OPTIONS_BY_CATEGORY,
+  categoryHasVariants,
+} from "@/lib/pricing/variants";
 
 type UpcomingRental = {
   id: string;
@@ -21,10 +28,17 @@ type Device = {
   color: string;
   googleCalendarId: string;
   active: boolean;
+  pricingCategory: DevicePricingCategory | null;
+  variantOptions: string[];
   rentalCount: number;
   lastSync: { status: "OK" | "ERROR"; createdAt: string } | null;
   upcomingRentals: UpcomingRental[];
 };
+
+function googleCalendarUrl(calendarId: string): string {
+  // "u/0" = pierwsze konto zalogowane w przeglądarce; cid to base64 ID kalendarza.
+  return `https://calendar.google.com/calendar/u/0/r?cid=${btoa(calendarId)}`;
+}
 
 type GoogleCalendarOption = { id: string; summary: string };
 
@@ -77,6 +91,8 @@ function DeviceForm({
   const [shortName, setShortName] = useState(device?.shortName ?? "");
   const [color, setColor] = useState(device?.color ?? "#2563eb");
   const [googleCalendarId, setGoogleCalendarId] = useState(device?.googleCalendarId ?? "");
+  const [pricingCategory, setPricingCategory] = useState<DevicePricingCategory | "">(device?.pricingCategory ?? "");
+  const [variantOptions, setVariantOptions] = useState<Set<string>>(() => new Set(device?.variantOptions ?? []));
   const [calendars, setCalendars] = useState<GoogleCalendarOption[] | null>(null);
   const [calendarsError, setCalendarsError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -99,7 +115,15 @@ function DeviceForm({
     setIsSaving(true);
     setError(null);
 
-    const body = { name, shortName, color, googleCalendarId };
+    const withVariants = pricingCategory !== "" && categoryHasVariants(pricingCategory);
+    const body = {
+      name,
+      shortName,
+      color,
+      googleCalendarId,
+      pricingCategory: pricingCategory === "" ? null : pricingCategory,
+      variantOptions: withVariants ? [...variantOptions] : null,
+    };
     const { ok, data } = device
       ? await api(`/api/devices/${device.id}`, { method: "PATCH", body: JSON.stringify(body) })
       : await api("/api/devices", { method: "POST", body: JSON.stringify(body) });
@@ -171,6 +195,58 @@ function DeviceForm({
           )}
           {calendarsError && <span className="text-xs text-amber-700">{calendarsError}</span>}
         </label>
+      </div>
+
+      <div className="mt-4 border-t border-gray-200 pt-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Cennik</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-sm text-gray-700">
+            Kategoria cennika
+            <select
+              value={pricingCategory}
+              onChange={(e) => {
+                setPricingCategory(e.target.value as DevicePricingCategory | "");
+                setVariantOptions(new Set());
+              }}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+            >
+              <option value="">— nieskonfigurowana —</option>
+              {PRICING_CATEGORY_VALUES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {PRICING_CATEGORY_LABELS[cat]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {pricingCategory !== "" && categoryHasVariants(pricingCategory) && (
+            <fieldset className="flex flex-col gap-1 text-sm text-gray-700">
+              <legend className="mb-1">Dostępne warianty głowicy</legend>
+              <div className="flex flex-col gap-1.5">
+                {VARIANT_OPTIONS_BY_CATEGORY[pricingCategory].map((opt) => (
+                  <label key={opt.value} className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={variantOptions.has(opt.value)}
+                      onChange={(e) => {
+                        setVariantOptions((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(opt.value);
+                          else next.delete(opt.value);
+                          return next;
+                        });
+                      }}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+              <span className="mt-1 text-xs text-gray-400">
+                Zaznacz tylko te, które ten egzemplarz fizycznie ma (np. LIGHT nigdy nie ma podwójnej głowicy).
+              </span>
+            </fieldset>
+          )}
+        </div>
       </div>
 
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
@@ -290,7 +366,26 @@ function DeviceRow({ device, isAdmin, onChanged }: { device: Device; isAdmin: bo
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs text-gray-600">
                   <p>
-                    Kalendarz Google: <span className="font-mono">{device.googleCalendarId}</span>
+                    Kalendarz Google: <span className="font-mono">{device.googleCalendarId}</span>{" "}
+                    <a
+                      href={googleCalendarUrl(device.googleCalendarId)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-blue-600 hover:underline"
+                    >
+                      otwórz ↗
+                    </a>
+                  </p>
+                  <p>
+                    Cennik:{" "}
+                    {device.pricingCategory ? (
+                      <span className="text-gray-800">
+                        {PRICING_CATEGORY_LABELS[device.pricingCategory]}
+                        {device.variantOptions.length > 0 && ` · ${device.variantOptions.length} wariant(y)`}
+                      </span>
+                    ) : (
+                      <span className="font-medium text-amber-700">nieskonfigurowany</span>
+                    )}
                   </p>
                   {device.lastSync ? (
                     <span className={device.lastSync.status === "OK" ? "text-green-700" : "text-red-700"}>
@@ -391,6 +486,13 @@ export function DevicesPanel({ devices, isAdmin }: { devices: Device[]; isAdmin:
         </div>
       </div>
       {syncAllMessage && <p className="mb-3 text-xs text-gray-500">{syncAllMessage}</p>}
+
+      {isAdmin && devices.some((d) => d.pricingCategory === null) && (
+        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Niektóre urządzenia nie mają skonfigurowanego cennika — wynajem takiego urządzenia będzie wymagał
+          ręcznego wpisania ceny. Rozwiń urządzenie i uzupełnij „Kategorię cennika”.
+        </p>
+      )}
 
       {isAdding && (
         <div className="mb-4">

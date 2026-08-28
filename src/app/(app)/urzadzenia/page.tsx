@@ -47,6 +47,10 @@ export default async function DevicesPage() {
     color: device.color,
     googleCalendarId: device.googleCalendarId,
     active: device.active,
+    pricingCategory: device.pricingCategory,
+    variantOptions: Array.isArray(device.variantOptions)
+      ? (device.variantOptions as unknown[]).filter((v): v is string => typeof v === "string")
+      : [],
     rentalCount: device._count.rentals,
     lastSync: device.syncLogs[0]
       ? { status: device.syncLogs[0].status, createdAt: device.syncLogs[0].createdAt.toISOString() }

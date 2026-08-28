@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { type DevicePricingCategory } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
 import { logInfo, logWarn } from "@/lib/logger";
+import { PRICING_CATEGORY_VALUES, categoryHasVariants, isAllowedVariant } from "@/lib/pricing/variants";
 
 const COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
@@ -36,8 +38,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  let pricingCategory: DevicePricingCategory | null = null;
+  if (typeof body?.pricingCategory === "string" && (PRICING_CATEGORY_VALUES as string[]).includes(body.pricingCategory)) {
+    pricingCategory = body.pricingCategory as DevicePricingCategory;
+  }
+  let variantOptions: string[] | undefined;
+  if (
+    pricingCategory &&
+    categoryHasVariants(pricingCategory) &&
+    Array.isArray(body?.variantOptions) &&
+    body.variantOptions.every((v: unknown) => typeof v === "string" && isAllowedVariant(pricingCategory as DevicePricingCategory, v))
+  ) {
+    const unique = [...new Set(body.variantOptions as string[])];
+    if (unique.length > 0) variantOptions = unique;
+  }
+
   const device = await prisma.device.create({
-    data: { name, shortName, color, googleCalendarId, active: true },
+    data: { name, shortName, color, googleCalendarId, active: true, pricingCategory, variantOptions },
   });
 
   logInfo("device_created", { userId: session.user.id, deviceId: device.id });
