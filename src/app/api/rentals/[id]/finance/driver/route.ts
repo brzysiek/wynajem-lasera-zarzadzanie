@@ -34,7 +34,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   for (const key of Object.keys(body)) {
     if (!(DRIVER_EDITABLE_FIELDS as readonly string[]).includes(key)) {
-      return bad(`Pole „${key}" jest poza zakresem edycji kierowcy.`);
+      return bad(`Pole „${key}” jest poza zakresem edycji kierowcy.`);
     }
   }
 
@@ -56,11 +56,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let driverNotes: string | null | undefined;
 
   if ("capUsedHS" in body) {
-    if (body.capUsedHS !== null && typeof body.capUsedHS !== "boolean") return bad("Nieprawidłowa wartość pola „nakładka HS".");
+    if (body.capUsedHS !== null && typeof body.capUsedHS !== "boolean") return bad("Nieprawidłowa wartość pola „nakładka HS”.");
     capUsedHS = body.capUsedHS;
   }
   if ("cashCollected" in body) {
-    if (body.cashCollected !== null && typeof body.cashCollected !== "boolean") return bad("Nieprawidłowa wartość pola „gotówka odebrana".");
+    if (body.cashCollected !== null && typeof body.cashCollected !== "boolean") return bad("Nieprawidłowa wartość pola „gotówka odebrana”.");
     cashCollected = body.cashCollected;
   }
   for (const field of ["pulseCounterStart", "pulseCounterEnd"] as const) {
