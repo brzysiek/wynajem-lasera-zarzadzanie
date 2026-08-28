@@ -47,11 +47,19 @@ function Row({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-// Read-only rental card shown to a KIEROWCA (driver) — no inputs, no actions,
-// no SMS/reminders. Just the trip details a driver needs on the road.
-export function RentalReadonlyView({ rental }: { rental: ReadonlyRental }) {
+// Read-only rental card shown to a KIEROWCA (driver). Trip details are
+// read-only; the finance panel (`financeSlot`, rendered first) is the one
+// place a driver can edit — payment confirmation, HS cap, pulse counters,
+// driver notes.
+export function RentalReadonlyView({
+  rental,
+  financeSlot,
+}: {
+  rental: ReadonlyRental;
+  financeSlot?: React.ReactNode;
+}) {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mx-auto flex max-w-md flex-col gap-5">
       <div className="flex items-center gap-3">
         <Link
           href="/kalendarz"
@@ -71,6 +79,8 @@ export function RentalReadonlyView({ rental }: { rental: ReadonlyRental }) {
           </p>
         </div>
       </div>
+
+      {financeSlot}
 
       <div className="rounded-lg border border-gray-200 bg-white p-5">
         <p className="mb-2 text-sm font-medium text-gray-700">Termin</p>

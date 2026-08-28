@@ -5,7 +5,9 @@ import { getAllReminderTemplates } from "@/lib/reminders";
 import { listSmsTemplates } from "@/lib/message-templates";
 import { RentalForm, type Rental, type ReminderOffset } from "@/components/rental-form";
 import { RentalReadonlyView } from "@/components/rental-readonly-view";
+import { DriverFinancePanel } from "@/components/driver-finance-panel";
 import { financeDto, loadFinanceFormContext } from "@/lib/finance";
+import { rentalDurationDays } from "@/lib/pricing/duration";
 
 const DEVICE_SELECT = {
   id: true,
@@ -50,7 +52,10 @@ export default async function RentalDetailPage({
 
   // A driver gets a read-only card, and only for rentals assigned to them.
   if (role === "KIEROWCA") {
-    const rental = await prisma.rental.findUnique({ where: { id }, include: { device: true, driver: true } });
+    const [rental, financeCtx] = await Promise.all([
+      prisma.rental.findUnique({ where: { id }, include: { device: true, driver: true, finance: true } }),
+      loadFinanceFormContext(),
+    ]);
     if (!rental || rental.driverId !== session!.user.id) {
       notFound();
     }
@@ -74,6 +79,20 @@ export default async function RentalDetailPage({
           contactCompanyCache: rental.contactCompanyCache,
           contactAddressCache: rental.contactAddressCache,
         }}
+        financeSlot={
+          <DriverFinancePanel
+            rentalId={rental.id}
+            eventType={rental.eventType}
+            pricingCategory={rental.device.pricingCategory}
+            finance={financeDto(rental.finance)}
+            initialDriverNotes={rental.driverNotes ?? ""}
+            previewCtx={{ priceRules: financeCtx.previewPriceRules, pulseTiers: financeCtx.previewPulseTiers }}
+            durationDays={rentalDurationDays(rental.startsAt, rental.endsAt)}
+            transportPrice={rental.transportPrice}
+            capFeeHsNet={financeCtx.capFeeHsNet}
+            almaPulseRateNet={financeCtx.almaPulseRateNet}
+          />
+        }
       />
     );
   }

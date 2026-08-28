@@ -98,6 +98,8 @@ export async function loadFinanceFormContext(): Promise<{
   previewPriceRules: PreviewPriceRule[];
   previewPulseTiers: PreviewPulseTier[];
   defaultVatRate: number;
+  capFeeHsNet: number;
+  almaPulseRateNet: number;
 }> {
   const [rules, tiers, settings] = await Promise.all([
     prisma.priceRule.findMany(),
@@ -105,6 +107,8 @@ export async function loadFinanceFormContext(): Promise<{
     loadPricingSettings(),
   ]);
   return {
+    capFeeHsNet: settings.capFeeHsNet.toNumber(),
+    almaPulseRateNet: settings.almaPulseRateNet.toNumber(),
     previewPriceRules: rules.map(
       (r): PreviewPriceRule => ({
         pricingCategory: r.pricingCategory,
