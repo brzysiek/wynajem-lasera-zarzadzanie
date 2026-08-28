@@ -7,6 +7,7 @@ const ALL_TABS = [
   { href: "/ustawienia/integracje", label: "Integracje", adminOnly: true },
   { href: "/ustawienia/przypomnienia-sms", label: "Przypomnienia SMS", adminOnly: false },
   { href: "/ustawienia/szablony-sms", label: "Szablony SMS", adminOnly: false },
+  { href: "/ustawienia/cennik", label: "Cennik", adminOnly: true },
   { href: "/ustawienia/uzytkownicy", label: "Użytkownicy", adminOnly: true },
 ];
 
