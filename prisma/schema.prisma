@@ -41,6 +41,38 @@ enum SyncStatus {
   ERROR
 }
 
+// --- Moduł finansowy wydarzeń (patrz docs/finanse-wynajmu/) ---
+
+enum DevicePricingCategory {
+  LIGHTSHEER_VARIANT // DESIRE, LIGHT, QUATTRO — wspólna tabela cen wariantów głowicy
+  LIGHTSHEER_ET400_FLAT // ET400 — cena stała, bez wariantów, bez impulsów
+  ALMA_HARMONY // Alma Harmony XL Pro — wariant głowicy + zawsze dopłata za impulsy
+  COOLTECH_FLAT
+  RESURFX_FLAT
+  OBSERV_FLAT
+}
+
+enum RentalEventType {
+  WYNAJEM
+  SZKOLENIE
+}
+
+enum PriceSource {
+  PRICE_LIST // z tabeli PriceRule
+  MANUAL // wpisana ręcznie (nadpisanie albo brak reguły)
+  PULSE_CALCULATED // wyliczona z licznika impulsów (LightSheer wariant elastyczny)
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+}
+
+enum PulseCalculationStatus {
+  PENDING // liczniki nieodczytane — kwota tymczasowa
+  CALCULATED // liczniki wpisane, kwota faktycznie wyliczona
+}
+
 model User {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -80,6 +112,13 @@ model Device {
   active           Boolean  @default(true)
   createdAt        DateTime @default(now())
 
+  // Konfiguracja cennika — uzupełniana ręcznie przez ADMINA na /urzadzenia po
+  // wdrożeniu (migracja świadomie nie zgaduje tego z nazwy urządzenia).
+  pricingCategory DevicePricingCategory?
+  // Dozwolone warianty głowicy dla tego egzemplarza, np. ["single_standard","single_flex","double"]
+  // (LightSheer) lub ["dye_vl","dye_vl_ipixel"] (Alma). null / [] dla kategorii *_FLAT.
+  variantOptions  Json?
+
   rentals  Rental[]
   syncLogs SyncLog[]
 
@@ -111,6 +150,9 @@ model Rental {
   transportPrice      String?
   internalNotes       String?   @db.Text
   driverId            String?
+  eventType           RentalEventType @default(WYNAJEM)
+  // Uwagi wpisywane przez rolę KIEROWCA — osobne od internalNotes (biuro).
+  driverNotes         String?   @db.Text
   lastSyncedAt        DateTime?
   deletedInGoogle     Boolean   @default(false)
   createdAt           DateTime  @default(now())
@@ -120,6 +162,7 @@ model Rental {
   driver        User?          @relation("RentalDriver", fields: [driverId], references: [id])
   reminderRules ReminderRule[]
   messages      Message[]
+  finance       RentalFinance?
 
   @@unique([googleCalendarId, googleEventId])
   @@map("rentals")
@@ -209,4 +252,86 @@ model ReminderCheckLog {
   createdAt      DateTime            @default(now())
 
   @@map("reminder_check_logs")
+}
+
+// --- Moduł finansowy wydarzeń ---
+// Reguły biznesowe: docs/finanse-wynajmu/prompt-claude-code-finanse-wynajmu.md
+// Cała logika liczenia: src/lib/pricing/ (suma zawsze przeliczana server-side).
+
+model RentalFinance {
+  id       String @id @default(cuid())
+  rentalId String @unique
+  rental   Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  // --- cena bazowa (wynajem LUB szkolenie) ---
+  baseRentalPriceNet         Decimal     @db.Decimal(10, 2)
+  baseRentalPriceSource      PriceSource
+  baseRentalPriceOverrideNote String?    @db.Text
+
+  // --- wariant głowicy wybrany przy wynajmie (odzwierciedla Device.variantOptions) ---
+  deviceVariant String? // np. "single_flex", "double", "dye_vl_ipixel" — null dla *_FLAT i SZKOLENIA
+
+  // --- liczniki impulsów (LightSheer "single_flex" ORAZ Alma Harmony zawsze) ---
+  pulseCounterStart      Int?
+  pulseCounterEnd        Int?
+  pulseCalculationStatus PulseCalculationStatus?
+
+  // --- dopłata za impulsy Alma Harmony (DODATKOWA do baseRentalPriceNet) ---
+  // Dla LightSheer flex impulsy określają baseRentalPriceNet bezpośrednio — tu zostaje null.
+  pulseSurchargeNet Decimal? @db.Decimal(10, 2)
+
+  // --- nakładka HS (tylko LightSheer wariant "double") ---
+  capUsedHS Boolean?
+  capFeeNet Decimal? @db.Decimal(10, 2) // snapshot z PricingSetting w momencie zaznaczenia
+
+  // --- VAT ---
+  vatApplicable Boolean @default(false)
+  vatRate       Decimal @default(23) @db.Decimal(5, 2) // per-wydarzenie, na wypadek zmiany stawki
+
+  // --- suma — przeliczana i zapisywana po każdej zmianie, NIE ufać wartości z klienta ---
+  totalNet   Decimal @db.Decimal(10, 2)
+  totalGross Decimal @db.Decimal(10, 2)
+
+  // --- płatność ---
+  paymentMethod PaymentMethod
+  cashCollected Boolean? // potwierdzenie odbioru gotówki przez kierowcę
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("rental_finance")
+}
+
+model PriceRule {
+  id              String                @id @default(cuid())
+  pricingCategory DevicePricingCategory
+  variant         String? // null dla kategorii *_FLAT
+  durationDays    Int
+  priceNet        Decimal               @db.Decimal(10, 2)
+
+  @@unique([pricingCategory, variant, durationDays])
+  @@map("price_rules")
+}
+
+model PulseTier {
+  id                   String                @id @default(cuid())
+  pricingCategory      DevicePricingCategory // dziś realnie tylko LIGHTSHEER_VARIANT
+  durationDays         Int
+  order                Int // kolejność progu w ramach danego durationDays, rosnąco
+  maxPulses            Int? // null = ostatni / otwarty próg
+  priceNet             Decimal               @db.Decimal(10, 2)
+  isOverflowTier       Boolean               @default(false)
+  overflowStepPulses   Int? // tylko gdy isOverflowTier
+  overflowStepPriceNet Decimal?              @db.Decimal(10, 2) // tylko gdy isOverflowTier
+
+  @@unique([pricingCategory, durationDays, order])
+  @@map("pulse_tiers")
+}
+
+model PricingSetting {
+  id    String  @id @default(cuid())
+  key   String  @unique // "cap_fee_hs_net" | "vat_rate_default" | "alma_pulse_rate_net"
+  value Decimal @db.Decimal(12, 4)
+
+  @@map("pricing_settings")
 }

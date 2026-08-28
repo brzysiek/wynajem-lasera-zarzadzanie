@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — moduł finansowy wydarzeń</title>
+<style>
+  :root{
+    --bg: #F1F3F6;
+    --surface: #FFFFFF;
+    --border: #E2E6EC;
+    --text: #171A21;
+    --text-muted: #6B7280;
+    --text-faint: #9CA3AF;
+    --brand: #2F6FD1;
+    --brand-soft: #EAF1FC;
+    --cash: #E15A2B;
+    --cash-soft: #FDEEE7;
+    --cash-deep: #9C3D1B;
+    --transfer: #1E9E6B;
+    --transfer-soft: #E7F7F0;
+    --badge-list: #2F6FD1;
+    --badge-list-soft: #EAF1FC;
+    --badge-manual: #B5851E;
+    --badge-manual-soft: #FBF3E1;
+    --badge-pending: #6B7280;
+    --badge-pending-soft: #EEF0F3;
+    --radius: 14px;
+    --radius-sm: 9px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    padding: 40px 24px 80px;
+  }
+  .intro{
+    max-width: 1180px;
+    margin: 0 auto 36px;
+  }
+  .intro .eyebrow{
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--brand);
+    margin-bottom: 6px;
+  }
+  .intro h1{
+    font-size: 22px;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  .intro p{
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 14px;
+    max-width: 640px;
+    line-height: 1.5;
+  }
+
+  .panels{
+    max-width: 1180px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 40px;
+    align-items: start;
+  }
+  @media (max-width: 900px){
+    .panels{ grid-template-columns: 1fr; }
+  }
+
+  .panel-label{
+    display:flex;
+    align-items:center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .panel-label .dot{
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .panel-label h2{
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0;
+  }
+  .panel-label span.sub{
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+
+  /* ---------- PHONE ---------- */
+  .phone-shell{
+    background: #14161C;
+    border-radius: 44px;
+    padding: 14px;
+    width: 375px;
+    max-width: 100%;
+    box-shadow: 0 24px 48px -16px rgba(20,22,28,.35);
+  }
+  .phone-screen{
+    background: var(--bg);
+    border-radius: 30px;
+    overflow: hidden;
+    min-height: 720px;
+    display: flex;
+    flex-direction: column;
+  }
+  .status-bar{
+    height: 30px;
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    padding: 0 22px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .app-header{
+    padding: 4px 18px 14px;
+    background: var(--bg);
+  }
+  .app-header .back{
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+  .app-header h3{
+    margin: 0;
+    font-size: 17px;
+    letter-spacing: -0.01em;
+  }
+  .app-header .dates{
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .card{
+    background: var(--surface);
+    margin: 0 14px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .pay-banner{
+    margin: 4px 14px 12px;
+    border-radius: var(--radius);
+    padding: 18px 20px 20px;
+    background: linear-gradient(155deg, var(--cash) 0%, var(--cash-deep) 100%);
+    color: white;
+    text-align: center;
+    box-shadow: 0 10px 24px -10px rgba(225,90,43,.55);
+  }
+  .pay-banner .method{
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    opacity: .92;
+    display:flex; gap:6px; align-items:center; justify-content:center;
+  }
+  .pay-banner .amount{
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 6px 0 0;
+  }
+  .pay-banner .amount .pending-note{
+    display:block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    opacity: .85;
+    margin-top: 4px;
+  }
+  .pay-banner .caption{
+    font-size: 12.5px;
+    opacity: .85;
+    margin-top: 2px;
+  }
+  .pay-banner .collect-row{
+    margin-top: 14px;
+    background: rgba(255,255,255,.14);
+    border: 1px solid rgba(255,255,255,.28);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .card .card-pad{ padding: 14px 16px; }
+  .field-label{
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 6px;
+  }
+  .client-name{ font-size: 15px; font-weight: 700; }
+  .client-row{
+    display:flex; align-items:center; gap: 6px;
+    font-size: 13.5px; color: var(--text-muted); margin-top: 6px;
+  }
+
+  details.breakdown{
+    border: none;
+  }
+  details.breakdown summary{
+    list-style: none;
+    padding: 13px 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    display:flex; align-items:center; gap:6px;
+    cursor: pointer;
+  }
+  details.breakdown summary::-webkit-details-marker{ display:none; }
+  details.breakdown summary .chev{ transition: transform .15s; font-size:10px; }
+  details.breakdown[open] summary .chev{ transform: rotate(90deg); }
+  .breakdown-rows{ padding: 0 16px 14px; }
+  .breakdown-rows .row{
+    display:flex; justify-content:space-between;
+    font-size: 13.5px; padding: 5px 0; color: var(--text);
+  }
+  .breakdown-rows .row span:last-child{ font-weight: 600; }
+  .breakdown-rows .row.total{
+    border-top: 1px solid var(--border);
+    margin-top: 4px; padding-top: 9px; font-weight: 700;
+  }
+
+  .checkbox-row{
+    display:flex; align-items:center; gap: 10px;
+    font-size: 14px; font-weight: 600;
+  }
+  .checkbox-row input{ width: 19px; height: 19px; accent-color: var(--brand); }
+
+  .pulse-grid{
+    display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;
+  }
+  .pulse-grid label{
+    font-size: 11px; color: var(--text-faint); font-weight: 700;
+    text-transform: uppercase; letter-spacing: .03em; display:block; margin-bottom: 4px;
+  }
+  .pulse-grid input{
+    width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 9px 10px; font-size: 14px; font-family: inherit; background: var(--bg);
+  }
+
+  textarea.notes{
+    width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px; font-size: 13.5px; font-family: inherit; resize: none; height: 56px;
+    background: var(--bg);
+  }
+
+  .phone-footer{
+    margin-top: auto;
+    padding: 14px 16px 20px;
+  }
+  .btn-save{
+    width: 100%; background: var(--text); color: white; border: none;
+    border-radius: var(--radius-sm); padding: 13px; font-size: 15px; font-weight: 700;
+    font-family: inherit;
+  }
+
+  /* ---------- OFFICE PANEL ---------- */
+  .office-card{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .office-card .section-title{
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .office-card .section-body{
+    padding: 20px 22px 6px;
+  }
+  .field{ margin-bottom: 18px; }
+  .field .label{
+    font-size: 12px; font-weight: 700; color: var(--text-muted);
+    margin-bottom: 8px; display:block;
+  }
+  .segmented{
+    display:inline-flex; background: var(--bg); border-radius: 999px; padding: 3px;
+    border: 1px solid var(--border);
+  }
+  .segmented .seg{
+    padding: 7px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    color: var(--text-muted); cursor: default;
+  }
+  .segmented .seg.active{
+    background: var(--surface); color: var(--text);
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  }
+  .two-col{ display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .select-mock{
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 10px 12px; font-size: 14px; background: var(--surface);
+    display:flex; justify-content:space-between; align-items:center; color: var(--text);
+  }
+  .select-mock .chev{ color: var(--text-faint); font-size: 11px; }
+
+  .price-box{
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 14px 16px; display:flex; align-items:center; justify-content:space-between;
+    background: var(--bg);
+  }
+  .price-box .amount{ font-size: 20px; font-weight: 800; }
+  .badge{
+    font-size: 11.5px; font-weight: 700; padding: 4px 9px; border-radius: 999px;
+    display:inline-flex; align-items:center; gap:4px;
+  }
+  .badge.list{ background: var(--badge-list-soft); color: var(--badge-list); }
+  .badge.manual{ background: var(--badge-manual-soft); color: var(--badge-manual); }
+  .badge.pending{ background: var(--badge-pending-soft); color: var(--badge-pending); }
+  .link-btn{
+    background:none; border:none; color: var(--brand); font-size: 13px; font-weight: 700;
+    padding: 0; font-family: inherit; cursor: default;
+  }
+
+  .checkbox-inline{ display:flex; align-items:center; gap:8px; font-size: 14px; font-weight: 600; }
+  .checkbox-inline input{ width:18px; height:18px; accent-color: var(--brand); }
+
+  .sticky-total{
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    padding: 16px 22px;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .sticky-total .rows{ font-size: 13px; color: var(--text-muted); }
+  .sticky-total .rows .big{ font-size: 20px; font-weight: 800; color: var(--text); display:block; }
+  .btn-primary{
+    background: var(--text); color: white; border:none; border-radius: var(--radius-sm);
+    padding: 11px 20px; font-size: 14px; font-weight: 700; font-family: inherit;
+  }
+
+  .legend{
+    margin-top: 18px;
+    display:flex; gap: 18px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--text-muted);
+  }
+  .legend .item{ display:flex; align-items:center; gap:7px; }
+
+  .note-box{
+    margin-top: 22px;
+    background: var(--brand-soft);
+    border: 1px solid #CFE0F8;
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    font-size: 12.5px;
+    color: #1F4B8A;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+  <div class="intro">
+    <div class="eyebrow">WynajemLasera.pl · panel.wynajemlasera.pl</div>
+    <h1>Moduł finansowy wydarzeń — mockup koncepcyjny</h1>
+    <p>Dwa widoki tego samego mechanizmu: kierowca w terenie (odczyt w 2 sekundy) i biuro przy tworzeniu rezerwacji (przewidywalne wypełnianie). Interaktywne elementy (checkboxy, rozwijana sekcja) działają — to statyczny mockup, nie docelowy kod.</p>
+  </div>
+
+  <div class="panels">
+
+    <!-- ================= PHONE / DRIVER VIEW ================= -->
+    <div>
+      <div class="panel-label">
+        <span class="dot" style="background:var(--cash)"></span>
+        <h2>Widok kierowcy</h2>
+        <span class="sub">mobile · rola KIEROWCA</span>
+      </div>
+
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="status-bar">
+            <span>9:41</span>
+            <span>●●●●  📶  🔋</span>
+          </div>
+
+          <div class="app-header">
+            <div class="back">← Wynajem</div>
+            <h3>LightSheer DESIRE</h3>
+            <div class="dates">28 sie – 30 sie · 3 dni · podwójna głowica</div>
+          </div>
+
+          <div class="pay-banner">
+            <div class="method">💵 Gotówka</div>
+            <div class="amount">1 720 zł</div>
+            <div class="caption">do odebrania od klientki</div>
+            <div class="collect-row">
+              <input type="checkbox" />
+              Gotówka odebrana
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-pad">
+              <div class="field-label">Klientka</div>
+              <div class="client-name">Anna Kowalska</div>
+              <div class="client-row">📞 501 234 567</div>
+              <div class="client-row">📍 ul. Kwiatowa 12, Kraków</div>
+              <div class="client-row">🕘 dostawa 9:00 · odbiór 17:00</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <details class="breakdown">
+              <summary><span class="chev">▸</span> Rozbicie kwoty</summary>
+              <div class="breakdown-rows">
+                <div class="row"><span>Wynajem</span><span>1 500 zł</span></div>
+                <div class="row"><span>Transport</span><span>150 zł</span></div>
+                <div class="row"><span>Nakładka HS</span><span>70 zł</span></div>
+                <div class="row total"><span>Razem netto</span><span>1 720 zł</span></div>
+              </div>
+            </details>
+          </div>
+
+          <div class="card">
+            <div class="card-pad">
+              <div class="field-label">Nakładka HS</div>
+              <div class="checkbox-row">
+                <input type="checkbox" checked />
+                Zużyta podczas zabiegu
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-pad">
+              <div class="field-label">Uwagi kierowcy</div>
+              <textarea class="notes" placeholder="np. utrudniony dojazd, klientka prosiła o kontakt przed odbiorem…"></textarea>
+            </div>
+          </div>
+
+          <div class="phone-footer">
+            <button class="btn-save">Zapisz</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- alternate state: pulse counters -->
+      <div style="margin-top:22px;">
+        <div class="panel-label">
+          <span class="dot" style="background:var(--badge-pending)"></span>
+          <h2 style="font-size:12.5px;">Wariant alternatywny — liczniki impulsów</h2>
+        </div>
+        <div class="card" style="margin:0; max-width:375px;">
+          <div class="card-pad">
+            <div class="field-label">Alma Harmony XL Pro — Dye-VL</div>
+            <span class="badge pending">⏳ kwota tymczasowa — uzupełnij liczniki</span>
+            <div class="pulse-grid">
+              <div>
+                <label>Licznik początkowy</label>
+                <input type="text" placeholder="np. 4200" />
+              </div>
+              <div>
+                <label>Licznik końcowy</label>
+                <input type="text" placeholder="np. 9800" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= OFFICE VIEW ================= -->
+    <div>
+      <div class="panel-label">
+        <span class="dot" style="background:var(--brand)"></span>
+        <h2>Widok biura</h2>
+        <span class="sub">desktop · sekcja „Finanse” w formularzu wynajmu</span>
+      </div>
+
+      <div class="office-card">
+        <div class="section-title">Finanse</div>
+        <div class="section-body">
+
+          <div class="field">
+            <span class="label">Typ wydarzenia</span>
+            <div class="segmented">
+              <span class="seg active">Wynajem</span>
+              <span class="seg">Szkolenie</span>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="field">
+              <span class="label">Urządzenie</span>
+              <div class="select-mock"><span>LightSheer DESIRE</span><span class="chev">▾</span></div>
+            </div>
+            <div class="field">
+              <span class="label">Wariant</span>
+              <div class="select-mock"><span>Podwójna głowica</span><span class="chev">▾</span></div>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="label">Cena wynajmu (netto)</span>
+            <div class="price-box">
+              <span class="amount">1 500 zł</span>
+              <span class="badge list">🏷 z cennika</span>
+            </div>
+            <div style="margin-top:8px;">
+              <button class="link-btn">Zmień ręcznie →</button>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="field">
+              <span class="label">VAT</span>
+              <label class="checkbox-inline">
+                <input type="checkbox" />
+                Doliczyć VAT (23%)
+              </label>
+            </div>
+            <div class="field">
+              <span class="label">Sposób płatności</span>
+              <div class="segmented">
+                <span class="seg active">Gotówka</span>
+                <span class="seg">Przelew</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="legend">
+            <div class="item"><span class="badge list">🏷 z cennika</span> wartość domyślna</div>
+            <div class="item"><span class="badge manual">✎ ręcznie</span> nadpisana przez biuro</div>
+            <div class="item"><span class="badge pending">⏳ tymczasowo</span> czeka na liczniki</div>
+          </div>
+
+          <div class="note-box">
+            Wybrany wariant nie wymaga liczników impulsów — pole nakładki HS pojawi się automatycznie
+            w widoku kierowcy po stronie odbioru sprzętu.
+          </div>
+
+        </div>
+
+        <div class="sticky-total">
+          <div class="rows">
+            Razem netto <span class="big">1 720 zł</span>
+          </div>
+          <button class="btn-primary">Zapisz wynajem</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

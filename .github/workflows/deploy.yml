@@ -11,6 +11,30 @@ on:
         default: false
 
 jobs:
+  # Unit tests for the pricing module (src/lib/pricing/ — reguły cenowe
+  # modułu finansowego). Both build jobs depend on this, so a broken price
+  # calculation blocks the deploy instead of shipping wrong money numbers.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client
+        # src/lib/pricing uses Prisma.Decimal from the generated client.
+        run: npx prisma generate
+        env:
+          DATABASE_URL: mysql://user:pass@localhost:3306/placeholder
+
+      - name: Run tests
+        run: npm test
+
   # Server 1 is served under the /wynajem path of its domain. Next.js bakes
   # basePath into the build at compile time (see next.config.ts /
   # src/lib/base-path.ts), so server 2 — served at its own domain's root —
@@ -18,6 +42,7 @@ jobs:
   # a different deploy target. That's why there are two build jobs instead
   # of one shared between both deploys.
   build-server-1:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +94,7 @@ jobs:
   # dispatch with the checkbox ticked) — building it on every push would
   # burn CI minutes for a server that isn't being updated most of the time.
   build-server-2:
+    needs: test
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_server_2 == true }}
     runs-on: ubuntu-latest
     steps:

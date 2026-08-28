@@ -102,6 +102,7 @@ Trzecia rola (obok `ADMIN` i `STAFF`), pomyślana jako dostęp „tylko do wglą
 - `prisma/schema.prisma` — źródło prawdy dla modelu danych.
 - `prisma/migrations/` — migracje Prisma (na deployu aplikowane przez `deploy/migrate.mjs`, patrz sekcja Deploy → „Migracje bazy”).
 - `sql/seed.sql` — konto startowe administratora, wgrywane ręcznie po założeniu schematu.
+- `src/lib/pricing/` — logika cenowa modułu finansowego (reguły z `docs/finanse-wynajmu/`): czyste funkcje na `Prisma.Decimal`, z testami jednostkowymi Vitest (`*.test.ts` obok). `npm test` uruchamia `vitest run`; CI (`deploy.yml`, job `test`) blokuje deploy, jeśli testy nie przejdą.
 - `src/auth.ts` — konfiguracja NextAuth (Credentials provider).
 - `src/proxy.ts` — ochrona tras (odpowiednik `middleware.ts` w Next.js 16).
 - `src/app/(app)` — strony wymagające zalogowania, wspólny layout z nawigacją.
