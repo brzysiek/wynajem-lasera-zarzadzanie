@@ -10,6 +10,8 @@ import { QueueCancelBadge } from "@/components/queue-cancel-badge";
 
 export type Device = { id: string; name: string; shortName: string; color: string; active: boolean };
 
+export type DriverOption = { id: string; name: string };
+
 export type ReminderDays = 1 | 3 | 7;
 // 0 = one-off "reservation confirmation" offset. Historically sent via the
 // same scheduled ReminderRule/cron pipeline as day-before reminders — now
@@ -50,6 +52,8 @@ export type Rental = {
   endsAt: string;
   allDay: boolean;
   hubspotContactId?: string | null;
+  driverId?: string | null;
+  driver?: DriverOption | null;
   contactNameCache?: string | null;
   contactPhoneCache?: string | null;
   contactEmailCache?: string | null;
@@ -655,6 +659,8 @@ export function RentalForm({
   defaultDateIso,
   reminderTemplates,
   smsTemplates = [],
+  drivers = [],
+  canManageDrivers = false,
   backHref,
 }: {
   devices: Device[];
@@ -663,6 +669,9 @@ export function RentalForm({
   defaultDateIso?: string;
   reminderTemplates: ReminderTemplatePreview[];
   smsTemplates?: SmsTemplateOption[];
+  drivers?: DriverOption[];
+  // Only an admin sees/edits the driver field (assignment is admin-only).
+  canManageDrivers?: boolean;
   backHref: string;
 }) {
   const router = useRouter();
@@ -694,6 +703,7 @@ export function RentalForm({
   const [deliveryAddress, setDeliveryAddress] = useState(rental?.deliveryAddress ?? rental?.contactAddressCache ?? "");
   const [deliveryTime, setDeliveryTime] = useState(rental?.deliveryTime ?? "");
   const [pickupTime, setPickupTime] = useState(rental?.pickupTime ?? "");
+  const [driverId, setDriverId] = useState(rental?.driverId ?? "");
   const [reminderDays, setReminderDays] = useState<Set<ReminderDays>>(() => {
     if (!rental) return new Set([1, 3, 7]);
     const checked = rental.reminderRules
@@ -703,6 +713,13 @@ export function RentalForm({
     return new Set(checked ?? []);
   });
   const device = devices.find((d) => d.id === deviceId);
+
+  // Keep the currently-assigned driver selectable even if they've since been
+  // dropped from the drivers list (role changed / renamed), so saving the
+  // form doesn't silently wipe the assignment.
+  const assignedDriver = rental?.driver ?? null;
+  const driverOptions: DriverOption[] =
+    assignedDriver && !drivers.some((d) => d.id === assignedDriver.id) ? [assignedDriver, ...drivers] : drivers;
 
   function goBack() {
     router.push(backHref);
@@ -755,6 +772,9 @@ export function RentalForm({
       deliveryTime,
       pickupTime,
     };
+    if (canManageDrivers) {
+      body.driverId = driverId || null;
+    }
     if (!isEditing && pendingContact) {
       body.contactId = pendingContact.id;
     }
@@ -924,6 +944,29 @@ export function RentalForm({
                 onContactChange={handleContactChange}
               />
             </div>
+
+            {canManageDrivers && (
+              <div className="rounded-lg border border-gray-200 bg-white p-5">
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  Kierowca
+                  <select
+                    value={driverId}
+                    onChange={(e) => setDriverId(e.target.value)}
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                  >
+                    <option value="">— brak —</option>
+                    {driverOptions.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-400">
+                    Przypisany kierowca widzi ten wynajem w swoim kalendarzu (tylko podgląd).
+                  </span>
+                </label>
+              </div>
+            )}
 
             {isEditing && (
               <div className="rounded-lg border border-gray-200 bg-white p-5">

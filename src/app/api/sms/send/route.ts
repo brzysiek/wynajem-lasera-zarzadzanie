@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/integrations/szybkisms";
 import { normalizePolishPhone } from "@/lib/reminders";
 import { logInfo, logWarn, logError } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await requireStaffSession();
+  if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 

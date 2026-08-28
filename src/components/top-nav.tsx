@@ -13,6 +13,9 @@ const NAV_ITEMS = [
   { href: "/ustawienia/przypomnienia-sms", label: "Ustawienia", match: "/ustawienia" },
 ];
 
+// A driver only ever has the read-only calendar.
+const DRIVER_NAV_ITEMS = NAV_ITEMS.filter((item) => item.href === "/kalendarz");
+
 function HamburgerIcon({ open }: { open: boolean }) {
   return (
     <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden="true">
@@ -29,9 +32,10 @@ function HamburgerIcon({ open }: { open: boolean }) {
   );
 }
 
-export function TopNav({ userName }: { userName: string }) {
+export function TopNav({ userName, role }: { userName: string; role?: "ADMIN" | "STAFF" | "KIEROWCA" }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const navItems = role === "KIEROWCA" ? DRIVER_NAV_ITEMS : NAV_ITEMS;
 
   // Route changes (including a nav-link click) should close the mobile
   // menu — adjusted during render (React's recommended pattern) rather
@@ -56,7 +60,7 @@ export function TopNav({ userName }: { userName: string }) {
             <HamburgerIcon open={menuOpen} />
           </button>
           <nav className="hidden items-center gap-1 md:flex">
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const isActive = pathname.startsWith(item.match ?? item.href);
               return (
                 <Link
@@ -84,7 +88,7 @@ export function TopNav({ userName }: { userName: string }) {
       {menuOpen && (
         <div className="border-t border-gray-200 px-4 py-3 md:hidden">
           <nav className="flex flex-col gap-1">
-            {NAV_ITEMS.map((item) => {
+            {navItems.map((item) => {
               const isActive = pathname.startsWith(item.match ?? item.href);
               return (
                 <Link

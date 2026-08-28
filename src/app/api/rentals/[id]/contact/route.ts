@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { getHubspotContact, getHubspotContactUrl, formatHubspotAddress } from "@/lib/integrations/hubspot";
 import { logInfo, logError } from "@/lib/logger";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await requireStaffSession();
+  if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 
@@ -50,8 +50,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await requireStaffSession();
+  if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 

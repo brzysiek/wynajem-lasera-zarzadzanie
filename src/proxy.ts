@@ -9,6 +9,13 @@ import { BASE_PATH } from "@/lib/base-path";
 
 const PUBLIC_ROUTES = [`${BASE_PATH}/login`, `${BASE_PATH}/forgot-password`, `${BASE_PATH}/reset-password`];
 
+// The KIEROWCA (driver) role only gets the read-only calendar and the
+// read-only detail of a rental it's assigned to. Everything else — creating
+// a rental, devices, upcoming list, SMS, settings — is redirected back to
+// the calendar, so pages don't each need their own role guard.
+const DRIVER_ALLOWED_PREFIXES = [`${BASE_PATH}/kalendarz`];
+const DRIVER_BLOCKED_PATHS = [`${BASE_PATH}/kalendarz/wynajem/nowy`];
+
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   const isLoggedIn = !!req.auth;
@@ -22,6 +29,15 @@ export default auth((req) => {
 
   if (isLoggedIn && isPublicRoute) {
     return NextResponse.redirect(new URL(`${BASE_PATH}/kalendarz`, req.nextUrl));
+  }
+
+  if (isLoggedIn && req.auth?.user?.role === "KIEROWCA" && !isPublicRoute) {
+    const allowed =
+      DRIVER_ALLOWED_PREFIXES.some((prefix) => pathname.startsWith(prefix)) &&
+      !DRIVER_BLOCKED_PATHS.some((blocked) => pathname === blocked || pathname.startsWith(`${blocked}/`));
+    if (!allowed) {
+      return NextResponse.redirect(new URL(`${BASE_PATH}/kalendarz`, req.nextUrl));
+    }
   }
 
   return NextResponse.next();

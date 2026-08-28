@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   ADMIN
   STAFF
+  KIEROWCA
 }
 
 enum Channel {
@@ -52,6 +53,7 @@ model User {
 
   messages            Message[]
   passwordResetTokens PasswordResetToken[]
+  assignedRentals     Rental[]             @relation("RentalDriver")
 
   @@map("users")
 }
@@ -104,12 +106,14 @@ model Rental {
   deliveryTime        String?
   pickupTime          String?
   internalNotes       String?   @db.Text
+  driverId            String?
   lastSyncedAt        DateTime?
   deletedInGoogle     Boolean   @default(false)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
   device        Device         @relation(fields: [deviceId], references: [id])
+  driver        User?          @relation("RentalDriver", fields: [driverId], references: [id])
   reminderRules ReminderRule[]
   messages      Message[]
 

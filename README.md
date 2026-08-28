@@ -38,19 +38,23 @@ Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · MySQL ·
 
    Pozostałe zmienne (Google, HubSpot, SMS) dotyczą kolejnych etapów integracji i mogą na razie zostać puste.
 
-3. Załóż bazę danych **ręcznie**, uruchamiając kolejno pliki SQL z katalogu `sql/`:
+3. Załóż schemat bazy danych migracjami Prisma (tworzy wszystkie tabele, enumy i klucze obce z `prisma/migrations/`):
 
    ```bash
-   mysql -u UZYTKOWNIK -p NAZWA_BAZY < sql/schema.sql
+   npx prisma migrate deploy
+   ```
+
+   Następnie wgraj konto startowe administratora:
+
+   ```bash
    mysql -u UZYTKOWNIK -p NAZWA_BAZY < sql/seed.sql
    ```
 
-   - `sql/schema.sql` — pełny schemat (tabele, enumy, klucze obce) wygenerowany z `prisma/schema.prisma`.
    - `sql/seed.sql` — konto startowe administratora:
      - login: `lukasz@wynajemlasera.pl`
      - hasło: `12345678`
 
-   Prisma Client łączy się z bazą przez `DATABASE_URL` z `.env` — nie jest wymagane uruchamianie `prisma migrate`/`prisma db push`, bo schemat zakłada się ręcznie przez powyższe pliki SQL.
+   Źródłem prawdy dla schematu jest `prisma/schema.prisma` + katalog `prisma/migrations/`. Na deployu `deploy/deploy-finish.sh` uruchamia `prisma migrate deploy` automatycznie (patrz sekcja Deploy → „Migracje bazy”).
 
 4. Wygeneruj Prisma Client (wymagane do działania `@/lib/prisma`):
 
@@ -83,10 +87,21 @@ Wszystkie strony poza `/login`, `/forgot-password` i `/reset-password` są chron
 
 Dostęp do stron `ADMIN`-only jest sprawdzany po stronie serwera (`requireAdmin()` w `src/lib/auth-guards.ts`), zgodnie z zasadą ze specyfikacji, że rola `STAFF` nie może uzyskać dostępu nawet przy znajomości adresu URL.
 
+### Rola `KIEROWCA`
+
+Trzecia rola (obok `ADMIN` i `STAFF`), pomyślana jako dostęp „tylko do wglądu" dla kierowcy realizującego dostawy:
+
+- Po zalogowaniu widzi wyłącznie `/kalendarz` w trybie podglądu — bez tworzenia, edycji i przeciągania rezerwacji (`proxy.ts` przekierowuje z pozostałych tras na `/kalendarz`).
+- W kalendarzu widzi tylko wynajmy, do których został przypisany przez administratora (`GET /api/rentals` filtruje po `rentals.driverId`).
+- Kliknięcie kafelka otwiera `RentalReadonlyView` — urządzenie, termin, adres i godziny dostawy/odbioru oraz dane kontaktu, bez żadnych akcji.
+- Kierowcę przypisuje **tylko `ADMIN`** — pole „Kierowca" w formularzu wynajmu (`RentalForm`, `canManageDrivers`); zapisy `POST/PATCH /api/rentals` z rolą `KIEROWCA` zwracają 403 (`requireStaffSession()`).
+- Na kafelku w kalendarzu obok ikony kontaktu HubSpot pojawia się ikona kierownicy z natywnym tooltipem `Kierowca: <imię>`.
+
 ## Struktura projektu
 
 - `prisma/schema.prisma` — źródło prawdy dla modelu danych.
-- `sql/schema.sql`, `sql/seed.sql` — statyczny SQL wygenerowany z modelu Prisma (bez połączenia z żywą bazą), do ręcznego zastosowania.
+- `prisma/migrations/` — migracje Prisma (aplikowane przez `prisma migrate deploy`, patrz sekcja Deploy → „Migracje bazy”).
+- `sql/seed.sql` — konto startowe administratora, wgrywane ręcznie po założeniu schematu.
 - `src/auth.ts` — konfiguracja NextAuth (Credentials provider).
 - `src/proxy.ts` — ochrona tras (odpowiednik `middleware.ts` w Next.js 16).
 - `src/app/(app)` — strony wymagające zalogowania, wspólny layout z nawigacją.
@@ -188,13 +203,16 @@ loginem konta, np. `twojuser_wynajem`). Connection string do `.env`:
 DATABASE_URL=mysql://twojuser_wynajem:HASLO@localhost:3306/twojuser_wynajem
 ```
 
-Zastosuj schemat (jeśli `mysql` jest dostępny po SSH — sprawdź `which mysql`;
-jeśli nie, użyj narzędzia SQL z panelu, np. phpMyAdmin, jeśli jest dostępne):
+Zastosuj schemat migracjami Prisma (po SSH, w katalogu aplikacji), a konto
+startowe wgraj `mysql`-em lub przez phpMyAdmin z panelu:
 
 ```bash
-mysql -u twojuser_wynajem -p twojuser_wynajem < sql/schema.sql
+npx prisma migrate deploy
 mysql -u twojuser_wynajem -p twojuser_wynajem < sql/seed.sql
 ```
+
+Na kolejnych deployach `deploy/deploy-finish.sh` uruchamia `prisma migrate deploy`
+sam — patrz „Migracje bazy” niżej.
 
 Konto startowe z `sql/seed.sql`: login `lukasz@wynajemlasera.pl`, hasło `12345678` — zmień je po pierwszym logowaniu przez „Nie pamiętam hasła” na `/login` (wymaga skonfigurowanego `RESEND_API_KEY`/`EMAIL_FROM`, patrz sekcja Konfiguracja). Zmiana hasła z poziomu zalogowanego konta (bez maila) to kolejny etap prac.
 
@@ -266,7 +284,7 @@ każdym push.
 
 1. Powtórz **Krok 1–4** wyżej na nowym koncie cyberfolks (nowa aplikacja
    Node.js w panelu, `git init` + checkout repo, własna baza MySQL +
-   `sql/schema.sql`/`sql/seed.sql`, własny `.env` z osobnym
+   `npx prisma migrate deploy` i `sql/seed.sql`, własny `.env` z osobnym
    `NEXTAUTH_SECRET` i `NEXTAUTH_URL` wskazującym na nową domenę — bez
    `/wynajem` na końcu, tak samo jak dla serwera 1, patrz ostrzeżenie na
    górze tego pliku — oraz `deploy/generate-actions-key.sh` — da nowy,
@@ -301,8 +319,37 @@ każdym push.
    właściwym `basePath`) i wdroży aplikacja na oba serwery równolegle,
    widoczne jako osobne joby w zakładce **Actions**.
 
+### Migracje bazy
+
+Migracje bazy są **automatyczne**. `deploy/deploy-finish.sh` uruchamia na
+serwerze `npx prisma migrate deploy` (po `npm install` / `prisma generate`,
+przed restartem Passengera), więc każda nowa migracja z `prisma/migrations/`
+aplikuje się razem z deployem — na serwer 1 przy każdym push do `main`, na
+serwer 2 przy ręcznym uruchomieniu workflow.
+
+Tworzenie nowej migracji (bez lokalnej bazy):
+
+1. Zmień `prisma/schema.prisma`.
+2. Wygeneruj SQL migracji z samego schematu (nie wymaga połączenia z bazą):
+
+   ```bash
+   npx prisma migrate diff \
+     --from-migrations ./prisma/migrations \
+     --to-schema-datamodel ./prisma/schema.prisma \
+     --script > prisma/migrations/$(date +%Y%m%d%H%M%S)_nazwa/migration.sql
+   ```
+
+   (katalog migracji utwórz wcześniej; nazwa = `YYYYMMDDHHMMSS_krotki_opis`).
+3. Commit + push. Deploy sam wykona `prisma migrate deploy`.
+
+Baseline istniejących baz (jednorazowo, obsłużone w skrypcie): bazy powstały
+ze starego `sql/schema.sql`, więc przy pierwszym `migrate deploy`
+`deploy-finish.sh` oznacza migrację `0_init` jako już zastosowaną
+(`prisma migrate resolve --applied 0_init`), zamiast próbować odtworzyć
+istniejący schemat. Na kolejnych deployach i na pustej bazie ten krok jest
+no-opem.
+
 ### Co zostaje poza automatem
 
-- Zmiany w `prisma/schema.prisma` **nie** są automatycznie aplikowane do bazy — trzeba ręcznie przygotować i uruchomić SQL migracyjny na serwerze (np. `sql/2026-07-26_add_password_reset_tokens.sql` dla resetu hasła — uruchom go ręcznie na produkcyjnej bazie po tym deployu, `sql/schema.sql` służy tylko do zakładania bazy od zera).
 - Sekrety integracji (Google, HubSpot, SMS, e-mail) uzupełnia się bezpośrednio w `.env` na serwerze — nie trzymamy ich w repo ani w Actions.
 - Sama aplikacja Node.js w panelu (Krok 1) zakłada się tylko raz, ręcznie — deploy automatyczny aktualizuje już istniejącą aplikację, nie tworzy nowej.

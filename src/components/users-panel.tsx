@@ -4,14 +4,22 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
 
+type Role = "ADMIN" | "STAFF" | "KIEROWCA";
+
 type User = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "STAFF";
+  role: Role;
   invitedAt: string | null;
   activatedAt: string | null;
   createdAt: string;
+};
+
+const ROLE_LABELS: Record<Role, string> = {
+  ADMIN: "Administrator",
+  STAFF: "Pracownik",
+  KIEROWCA: "Kierowca",
 };
 
 async function api(url: string, init?: RequestInit) {
@@ -40,7 +48,7 @@ function InviteForm({
 }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "STAFF">("STAFF");
+  const [role, setRole] = useState<Role>("STAFF");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,11 +100,12 @@ function InviteForm({
           Rola
           <select
             value={role}
-            onChange={(e) => setRole(e.target.value as "ADMIN" | "STAFF")}
+            onChange={(e) => setRole(e.target.value as Role)}
             className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
           >
             <option value="STAFF">Pracownik</option>
             <option value="ADMIN">Administrator</option>
+            <option value="KIEROWCA">Kierowca</option>
           </select>
         </label>
       </div>
@@ -159,7 +168,7 @@ function EditForm({
     }
 
     setIsSaving(true);
-    const body: { name?: string; email?: string; password?: string; role?: "ADMIN" | "STAFF" } = {};
+    const body: { name?: string; email?: string; password?: string; role?: Role } = {};
     if (name !== user.name) body.name = name;
     if (email !== user.email) body.email = email;
     if (!isSelf && role !== user.role) body.role = role;
@@ -204,12 +213,13 @@ function EditForm({
           Rola
           <select
             value={role}
-            onChange={(e) => setRole(e.target.value as "ADMIN" | "STAFF")}
+            onChange={(e) => setRole(e.target.value as Role)}
             disabled={isSelf}
             className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
           >
             <option value="STAFF">Pracownik</option>
             <option value="ADMIN">Administrator</option>
+            <option value="KIEROWCA">Kierowca</option>
           </select>
           {isSelf && <span className="text-xs text-gray-400">Nie możesz zmienić własnej roli.</span>}
         </label>
@@ -333,7 +343,7 @@ function UserRow({
           {user.name}
           {isSelf && <span className="ml-2 text-xs text-gray-400">(Ty)</span>}
           <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
-            {user.role === "ADMIN" ? "Administrator" : "Pracownik"}
+            {ROLE_LABELS[user.role]}
           </span>
           {pending && (
             <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">

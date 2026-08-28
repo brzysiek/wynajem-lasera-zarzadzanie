@@ -117,6 +117,7 @@ function CalendarWeekRow({
   rentals,
   monthContext,
   variant,
+  canEdit,
   dragOverDay,
   onDragOverDay,
   onDragLeaveRow,
@@ -128,6 +129,7 @@ function CalendarWeekRow({
   rentals: RawRental[];
   monthContext?: Date;
   variant: "month" | "week";
+  canEdit: boolean;
   dragOverDay: string | null;
   onDragOverDay: (day: Date) => void;
   onDragLeaveRow: () => void;
@@ -153,18 +155,30 @@ function CalendarWeekRow({
   return (
     <div
       className="relative grid grid-cols-7"
-      onDragOver={(e) => {
-        e.preventDefault();
-        onDragOverDay(resolveDay(e));
-      }}
-      onDragLeave={(e) => {
-        const related = e.relatedTarget as Node | null;
-        if (!related || !e.currentTarget.contains(related)) onDragLeaveRow();
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDropDay(resolveDay(e), e);
-      }}
+      onDragOver={
+        canEdit
+          ? (e) => {
+              e.preventDefault();
+              onDragOverDay(resolveDay(e));
+            }
+          : undefined
+      }
+      onDragLeave={
+        canEdit
+          ? (e) => {
+              const related = e.relatedTarget as Node | null;
+              if (!related || !e.currentTarget.contains(related)) onDragLeaveRow();
+            }
+          : undefined
+      }
+      onDrop={
+        canEdit
+          ? (e) => {
+              e.preventDefault();
+              onDropDay(resolveDay(e), e);
+            }
+          : undefined
+      }
     >
       {weekDays.map((day) => {
         const inMonth = monthContext ? day.getMonth() === monthContext.getMonth() : true;
@@ -173,9 +187,9 @@ function CalendarWeekRow({
         return (
           <div
             key={day.toISOString()}
-            onClick={() => onOpenCreate(day)}
-            title="Nowa rezerwacja"
-            className={`cursor-pointer border-b border-r border-gray-300 p-1.5 pt-1 hover:bg-gray-50 ${
+            onClick={canEdit ? () => onOpenCreate(day) : undefined}
+            title={canEdit ? "Nowa rezerwacja" : undefined}
+            className={`border-b border-r border-gray-300 p-1.5 pt-1 ${canEdit ? "cursor-pointer hover:bg-gray-50" : ""} ${
               isOver
                 ? "bg-blue-50"
                 : isToday
@@ -199,11 +213,15 @@ function CalendarWeekRow({
           <button
             key={s.rental.id}
             type="button"
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("text/plain", s.rental.id);
-              e.dataTransfer.effectAllowed = "move";
-            }}
+            draggable={canEdit}
+            onDragStart={
+              canEdit
+                ? (e) => {
+                    e.dataTransfer.setData("text/plain", s.rental.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }
+                : undefined
+            }
             onClick={(e) => {
               e.stopPropagation();
               onOpenEdit(s.rental);
@@ -220,6 +238,7 @@ function CalendarWeekRow({
             title={withDeliveryTimePrefix(s.rental.title, s.rental.deliveryTime)}
           >
             {s.rental.hubspotContactId && <ContactBadge />}
+            {s.rental.driver && <DriverBadge name={s.rental.driver.name} />}
             <span className="truncate">
               {variant === "week" && !s.rental.allDay
                 ? `${formatTime(s.rental.startsAt)}–${formatTime(s.rental.endsAt)} ${withDeliveryTimePrefix(s.rental.title, s.rental.deliveryTime)}`
@@ -246,6 +265,21 @@ function ContactBadge() {
   );
 }
 
+// Steering-wheel icon; the SVG <title> is the hover tooltip (same native
+// mechanism as ContactBadge) and names the assigned driver.
+function DriverBadge({ name }: { name: string }) {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3 flex-none">
+      <title>{`Kierowca: ${name}`}</title>
+      <path
+        fillRule="evenodd"
+        d="M10 1.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17ZM3.06 9.25a7 7 0 0 1 13.88 0h-3.2a3.75 3.75 0 0 0-7.48 0h-3.2Zm6.19 1.5a3.75 3.75 0 0 0 .75 1.9v3.28a7 7 0 0 1-5.6-5.18h4.85Zm1.5 5.18v-3.28a3.75 3.75 0 0 0 .75-1.9h4.85a7 7 0 0 1-5.6 5.18ZM10 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -263,7 +297,7 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
-export function CalendarView({ devices }: { devices: Device[] }) {
+export function CalendarView({ devices, canEdit = true }: { devices: Device[]; canEdit?: boolean }) {
   const router = useRouter();
   const [mode, setMode] = useState<"month" | "week">("month");
   const [current, setCurrent] = useState(() => new Date());
@@ -388,13 +422,15 @@ export function CalendarView({ devices }: { devices: Device[] }) {
     <div className="flex flex-1 flex-col lg:flex-row">
       {/* Desktop sidebar — Google Calendar-style device list */}
       <aside className="hidden w-60 flex-none flex-col gap-4 border-r border-gray-200 bg-white p-4 lg:flex">
-        <button
-          type="button"
-          onClick={() => openCreate()}
-          className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
-        >
-          + Nowa rezerwacja
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => openCreate()}
+            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
+          >
+            + Nowa rezerwacja
+          </button>
+        )}
         <div className="flex flex-col gap-2">
           <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Urządzenia</p>
           {deviceList}
@@ -449,13 +485,15 @@ export function CalendarView({ devices }: { devices: Device[] }) {
                 Tydzień
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => openCreate()}
-              className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 lg:hidden"
-            >
-              Nowa rezerwacja
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => openCreate()}
+                className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 lg:hidden"
+              >
+                Nowa rezerwacja
+              </button>
+            )}
           </div>
         </div>
 
@@ -503,6 +541,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
                     rentals={visibleRentals.filter((r) => weekDays.some((d) => rentalTouchesDay(r, d)))}
                     monthContext={current}
                     variant="month"
+                    canEdit={canEdit}
                     dragOverDay={dragOverDay}
                     onDragOverDay={(day) => setDragOverDay(day.toISOString())}
                     onDragLeaveRow={() => setDragOverDay(null)}
@@ -518,6 +557,7 @@ export function CalendarView({ devices }: { devices: Device[] }) {
                   weekDays={Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(current), i))}
                   rentals={visibleRentals}
                   variant="week"
+                  canEdit={canEdit}
                   dragOverDay={dragOverDay}
                   onDragOverDay={(day) => setDragOverDay(day.toISOString())}
                   onDragLeaveRow={() => setDragOverDay(null)}

@@ -7,13 +7,21 @@ import { TopNav } from "@/components/top-nav";
 // sidebar + full-width grid), while every other page keeps the centered
 // max-w-6xl reading column — so the width constraint lives here, keyed off
 // the route, rather than duplicated per-page.
-export function AppShell({ userName, children }: { userName: string; children: React.ReactNode }) {
+export function AppShell({
+  userName,
+  role,
+  children,
+}: {
+  userName: string;
+  role?: "ADMIN" | "STAFF" | "KIEROWCA";
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
   const isFullWidth = pathname === "/kalendarz";
 
   return (
     <div className="flex flex-1 flex-col">
-      <TopNav userName={userName} />
+      <TopNav userName={userName} role={role} />
       <main className={isFullWidth ? "flex w-full flex-1 flex-col" : "mx-auto w-full max-w-6xl flex-1 px-4 py-6"}>
         {children}
       </main>

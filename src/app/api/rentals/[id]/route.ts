@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { updateCalendarEvent, deleteCalendarEvent, moveCalendarEvent } from "@/lib/integrations/google-calendar";
 import { logInfo, logWarn, logError } from "@/lib/logger";
 import { CONFIRMATION_OFFSET, REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
+import { resolveDriverId } from "@/lib/rental-driver";
 
 const RENTAL_INCLUDE = {
   device: true,
+  driver: { select: { id: true, name: true } },
   reminderRules: { orderBy: { daysBefore: "asc" as const } },
   messages: { orderBy: { sentAt: "desc" as const } },
 };
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await requireStaffSession();
+  if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 
@@ -34,6 +36,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const deliveryTime =
     typeof body?.deliveryTime === "string" ? (body.deliveryTime || null) : rental.deliveryTime;
   const pickupTime = typeof body?.pickupTime === "string" ? (body.pickupTime || null) : rental.pickupTime;
+
+  // Only an admin may (re)assign or clear the driver; other roles never
+  // send the field and a STAFF request that does is ignored.
+  let driverId = rental.driverId;
+  if (session.user.role === "ADMIN" && body && "driverId" in body) {
+    const resolved = await resolveDriverId(body.driverId);
+    if (!resolved.ok) return resolved.response;
+    driverId = resolved.driverId;
+  }
 
   if (!title || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
     logWarn("rental_update_rejected", { userId: session.user.id, rentalId: id, reason: "invalid_input" });
@@ -105,6 +116,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         deliveryAddress: deliveryAddress || null,
         deliveryTime,
         pickupTime,
+        driverId,
         lastSyncedAt: new Date(),
       },
     });
@@ -123,8 +135,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await requireStaffSession();
+  if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 

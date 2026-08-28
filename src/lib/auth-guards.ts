@@ -25,3 +25,17 @@ export async function requireAdminSession() {
 
   return session;
 }
+
+// Office-staff gate for API route handlers: ADMIN or STAFF may pass, the
+// read-only KIEROWCA (driver) role may not — it blocks drivers from every
+// rental/contact/SMS write endpoint. Callers respond with their own 403 JSON.
+export async function requireStaffSession() {
+  const session = await auth();
+
+  if (session?.user.role !== "ADMIN" && session?.user.role !== "STAFF") {
+    logWarn("staff_api_access_denied", { userId: session?.user.id ?? null });
+    return null;
+  }
+
+  return session;
+}

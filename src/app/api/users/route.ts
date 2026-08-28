@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
-  const role = body?.role === "ADMIN" ? "ADMIN" : "STAFF";
+  const role = body?.role === "ADMIN" ? "ADMIN" : body?.role === "KIEROWCA" ? "KIEROWCA" : "STAFF";
 
   if (!name || !EMAIL_PATTERN.test(email)) {
     logWarn("user_invite_rejected", { userId: session.user.id, reason: "invalid_input" });

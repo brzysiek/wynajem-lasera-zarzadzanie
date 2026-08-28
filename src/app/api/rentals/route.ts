@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { insertCalendarEvent } from "@/lib/integrations/google-calendar";
 import { getHubspotContact, formatHubspotAddress } from "@/lib/integrations/hubspot";
 import { logInfo, logWarn, logError } from "@/lib/logger";
 import { REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
+import { resolveDriverId } from "@/lib/rental-driver";
 
 const RENTAL_INCLUDE = {
   device: true,
+  driver: { select: { id: true, name: true } },
   reminderRules: { orderBy: { daysBefore: "asc" as const } },
   messages: { orderBy: { sentAt: "desc" as const } },
 };
@@ -37,6 +40,8 @@ export async function GET(req: NextRequest) {
       deletedInGoogle: false,
       startsAt: { lte: new Date(to) },
       endsAt: { gte: new Date(from) },
+      // Drivers only ever see the rentals an admin assigned to them.
+      ...(session.user.role === "KIEROWCA" ? { driverId: session.user.id } : {}),
     },
     include: RENTAL_INCLUDE,
     orderBy: { startsAt: "asc" },
@@ -46,8 +51,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await requireStaffSession();
+  if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 
@@ -79,6 +84,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Nie znaleziono urządzenia." }, { status: 404 });
   }
 
+  // Only an admin may assign a driver; a STAFF request silently ignores the field.
+  let driverId: string | null = null;
+  if (session.user.role === "ADMIN" && body && "driverId" in body) {
+    const resolved = await resolveDriverId(body.driverId);
+    if (!resolved.ok) return resolved.response;
+    driverId = resolved.driverId;
+  }
+
   try {
     const { id: googleEventId } = await insertCalendarEvent(device.googleCalendarId, {
       title: withDeliveryTimePrefix(title, deliveryTime),
@@ -101,6 +114,7 @@ export async function POST(req: NextRequest) {
         deliveryAddress: deliveryAddress || null,
         deliveryTime,
         pickupTime,
+        driverId,
         lastSyncedAt: new Date(),
       },
     });
