@@ -98,21 +98,22 @@ export type GoogleEvent = {
   updatedAt: Date;
 };
 
-// Uses local (server TZ, i.e. Europe/Warsaw) calendar-date components, not
-// UTC — startsAt/endsAt represent local midnight, which during CEST is
-// 22:00 UTC the previous day, so slicing the UTC ISO string would shift
-// all-day dates back by one.
+// Explicitly resolves the calendar date in Europe/Warsaw regardless of the
+// Node process's own TZ (never guaranteed to match on shared hosting — see
+// logger.ts's todayStr, which uses the same pattern for the same reason).
+// Using date.getFullYear()/getMonth()/getDate() here previously read the
+// *server process's* local date instead, which silently shifted all-day
+// events by a day whenever the host's TZ wasn't actually Warsaw.
 function toDateOnly(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return date.toLocaleDateString("en-CA", { timeZone: "Europe/Warsaw" });
 }
 
+// Millisecond arithmetic rather than setDate()/getDate() so this doesn't
+// depend on the runtime's local TZ either (see toDateOnly above) — a plain
+// ±24h shift is safe for the noon-UTC-anchored instants this module works
+// with, which never sit close enough to a DST boundary for the hour to matter.
 function addDays(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
+  return new Date(date.getTime() + days * 86_400_000);
 }
 
 function toGoogleEventBody(input: GoogleEventInput) {
@@ -151,7 +152,14 @@ function parseGoogleDateTime(
   isExclusiveEnd = false,
 ): { date: Date; allDay: boolean } {
   if (value.date) {
-    const date = new Date(`${value.date}T00:00:00.000Z`);
+    // Anchored at noon UTC rather than midnight UTC: midnight-UTC sits right
+    // on Warsaw's local calendar-day boundary (00:00-02:00 local, depending
+    // on DST), so reading it back with anything other than an exact
+    // Europe/Warsaw offset — including the server process's own ambient TZ,
+    // which is what toDateOnly used to do — could resolve to the wrong day.
+    // Noon UTC has hours of margin on both sides for any realistic TZ this
+    // value gets read back in.
+    const date = new Date(`${value.date}T12:00:00.000Z`);
     return { date: isExclusiveEnd ? addDays(date, -1) : date, allDay: true };
   }
   return { date: new Date(value.dateTime!), allDay: false };
