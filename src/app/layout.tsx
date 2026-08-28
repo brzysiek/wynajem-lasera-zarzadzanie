@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { AppFooter } from "@/components/app-footer";
+import { BASE_PATH } from "@/lib/base-path";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,6 +18,27 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "WynajemLasera.pl — Panel",
   description: "Zarządzanie wynajmem urządzeń — WynajemLasera.pl",
+  // BASE_PATH is baked in per build (server 1 = /wynajem, server 2 = "");
+  // the manifest itself uses relative URLs so it works under either prefix.
+  manifest: `${BASE_PATH}/manifest.webmanifest`,
+  icons: {
+    apple: `${BASE_PATH}/icons/apple-touch-icon.png`,
+  },
+  // Launch standalone (no Safari chrome) from the iOS Home Screen.
+  appleWebApp: {
+    capable: true,
+    title: "WynajemLasera",
+    statusBarStyle: "default",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#111827",
 };
 
 export default function RootLayout({

@@ -9,6 +9,15 @@ import { BASE_PATH } from "@/lib/base-path";
 
 const PUBLIC_ROUTES = [`${BASE_PATH}/login`, `${BASE_PATH}/forgot-password`, `${BASE_PATH}/reset-password`];
 
+// Assets the browser (and iOS "Add to Home Screen") must be able to fetch
+// while logged out — otherwise the redirect-to-login turns the PWA manifest
+// and its icons into HTML and the install/home-screen icon breaks.
+const PUBLIC_ASSETS = [
+  `${BASE_PATH}/manifest.webmanifest`,
+  `${BASE_PATH}/icons/`,
+  `${BASE_PATH}/favicon.ico`,
+];
+
 // The KIEROWCA (driver) role only gets the read-only calendar and the
 // read-only detail of a rental it's assigned to. Everything else — creating
 // a rental, devices, upcoming list, SMS, settings — is redirected back to
@@ -18,6 +27,11 @@ const DRIVER_BLOCKED_PATHS = [`${BASE_PATH}/kalendarz/wynajem/nowy`];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
+
+  if (PUBLIC_ASSETS.some((asset) => pathname === asset || pathname.startsWith(asset))) {
+    return NextResponse.next();
+  }
+
   const isLoggedIn = !!req.auth;
   const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
 
