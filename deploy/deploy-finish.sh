@@ -28,22 +28,14 @@ npm install
 echo "==> Generating Prisma client"
 npx prisma generate
 
-echo "==> Applying database migrations (prisma migrate deploy)"
-# Prisma CLI auto-loads DATABASE_URL from ./.env (we're in APP_DIR).
-#
-# One-time baseline: these databases predate Prisma Migrate — their tables
-# were created from the old hand-written sql/schema.sql, so the very first
-# `migrate deploy` would otherwise try to re-run 0_init (the full schema)
-# and fail on "table already exists". If the schema is already present
-# (users table exists) but 0_init hasn't been recorded yet, mark it applied
-# without running it. This is a genuine no-op on every later deploy (the
-# row already exists → the command exits non-zero → `|| true`) and is
-# correctly skipped on a truly empty database (no users table → 0_init runs
-# normally via migrate deploy below).
-if npx prisma db execute --schema prisma/schema.prisma --stdin <<<'SELECT 1 FROM `users` LIMIT 1;' >/dev/null 2>&1; then
-  npx prisma migrate resolve --applied 0_init >/dev/null 2>&1 || true
-fi
-npx prisma migrate deploy
+echo "==> Applying database migrations"
+# NOT `prisma migrate deploy`: it spawns the Rust schema engine, which hangs
+# under this account's CloudLinux LVE limits (same reason next build runs in
+# CI and the app uses the mariadb driver adapter). deploy/migrate.mjs applies
+# prisma/migrations/*/migration.sql with the plain-JS mariadb driver and
+# records them in _prisma_migrations in Prisma's own format. It self-baselines
+# a pre-existing database (0_init marked applied, not executed) on first run.
+node deploy/migrate.mjs
 
 echo "==> Restarting app (Passenger restart trigger)"
 mkdir -p tmp

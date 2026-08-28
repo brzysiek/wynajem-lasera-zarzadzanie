@@ -54,7 +54,7 @@ Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Prisma 6 · MySQL ·
      - login: `lukasz@wynajemlasera.pl`
      - hasło: `12345678`
 
-   Źródłem prawdy dla schematu jest `prisma/schema.prisma` + katalog `prisma/migrations/`. Na deployu `deploy/deploy-finish.sh` uruchamia `prisma migrate deploy` automatycznie (patrz sekcja Deploy → „Migracje bazy”).
+   Źródłem prawdy dla schematu jest `prisma/schema.prisma` + katalog `prisma/migrations/`. Na deployu `deploy/deploy-finish.sh` aplikuje migracje automatycznie przez `node deploy/migrate.mjs` (nie `prisma migrate deploy` — patrz sekcja Deploy → „Migracje bazy”).
 
 4. Wygeneruj Prisma Client (wymagane do działania `@/lib/prisma`):
 
@@ -100,7 +100,7 @@ Trzecia rola (obok `ADMIN` i `STAFF`), pomyślana jako dostęp „tylko do wglą
 ## Struktura projektu
 
 - `prisma/schema.prisma` — źródło prawdy dla modelu danych.
-- `prisma/migrations/` — migracje Prisma (aplikowane przez `prisma migrate deploy`, patrz sekcja Deploy → „Migracje bazy”).
+- `prisma/migrations/` — migracje Prisma (na deployu aplikowane przez `deploy/migrate.mjs`, patrz sekcja Deploy → „Migracje bazy”).
 - `sql/seed.sql` — konto startowe administratora, wgrywane ręcznie po założeniu schematu.
 - `src/auth.ts` — konfiguracja NextAuth (Credentials provider).
 - `src/proxy.ts` — ochrona tras (odpowiednik `middleware.ts` w Next.js 16).
@@ -109,7 +109,8 @@ Trzecia rola (obok `ADMIN` i `STAFF`), pomyślana jako dostęp „tylko do wglą
 - `src/app/forgot-password`, `src/app/reset-password` — reset hasła (publiczne, patrz „Struktura stron”).
 - `src/app/api/auth/forgot-password`, `src/app/api/auth/reset-password` — endpointy resetu hasła; `src/lib/password-reset.ts` (generowanie/haszowanie tokenu) i `src/lib/email.ts` (wysyłka przez SMTP) zawierają logikę.
 - `deploy/deploy-pull.sh` — synchronizuje kod źródłowy na serwerze (git fetch/reset).
-- `deploy/deploy-finish.sh` — na serwerze: `npm install`, `prisma generate`, restart Passengera (bez builda — patrz niżej, dlaczego).
+- `deploy/deploy-finish.sh` — na serwerze: `npm install`, `prisma generate`, migracje bazy (`node deploy/migrate.mjs`), restart Passengera (bez builda — patrz niżej, dlaczego).
+- `deploy/migrate.mjs` — runner migracji: wykonuje `prisma/migrations/*/migration.sql` sterownikiem `mariadb` (bez silnika Rust Prismy), śledzi je w `_prisma_migrations`.
 - `deploy/generate-actions-key.sh` — jednorazowy generator klucza SSH dla GitHub Actions.
 - `.github/workflows/deploy.yml` — automatyczny deploy po pushu do `main`.
 - `server.js` — custom server wymagany przez Passenger (Node.js Selector w cPanel); `npm start` uruchamia ten plik zamiast `next start`.
@@ -136,8 +137,9 @@ Ciągłe wdrażanie działa tak: każdy push do `main` uruchamia
    fetch/reset).
 3. Wysyła gotowy zbudowany katalog `.next/` na serwer przez `rsync`.
 4. Na serwerze uruchamia `deploy/deploy-finish.sh` (`npm install`,
-   `prisma generate` — to lekkie operacje, działają bez problemu lokalnie
-   na koncie — i restart aplikacji przez Passengera).
+   `prisma generate`, migracje bazy przez `node deploy/migrate.mjs` — to
+   lekkie operacje, działają bez problemu lokalnie na koncie — i restart
+   aplikacji przez Passengera).
 
 ### Krok 1 — załóż aplikację Node.js w panelu cyberfolks
 
@@ -203,16 +205,18 @@ loginem konta, np. `twojuser_wynajem`). Connection string do `.env`:
 DATABASE_URL=mysql://twojuser_wynajem:HASLO@localhost:3306/twojuser_wynajem
 ```
 
-Zastosuj schemat migracjami Prisma (po SSH, w katalogu aplikacji), a konto
-startowe wgraj `mysql`-em lub przez phpMyAdmin z panelu:
+Zastosuj schemat (po SSH, w katalogu aplikacji), a konto startowe wgraj
+`mysql`-em lub przez phpMyAdmin z panelu:
 
 ```bash
-npx prisma migrate deploy
+node deploy/migrate.mjs
 mysql -u twojuser_wynajem -p twojuser_wynajem < sql/seed.sql
 ```
 
-Na kolejnych deployach `deploy/deploy-finish.sh` uruchamia `prisma migrate deploy`
-sam — patrz „Migracje bazy” niżej.
+`deploy/migrate.mjs` na pustej bazie wykona wszystkie migracje z
+`prisma/migrations/` po kolei. Na kolejnych deployach `deploy/deploy-finish.sh`
+uruchamia go sam — patrz „Migracje bazy” niżej. (`prisma migrate deploy` na
+tym koncie się zawiesza — silnik Rust vs limity LVE.)
 
 Konto startowe z `sql/seed.sql`: login `lukasz@wynajemlasera.pl`, hasło `12345678` — zmień je po pierwszym logowaniu przez „Nie pamiętam hasła” na `/login` (wymaga skonfigurowanego `RESEND_API_KEY`/`EMAIL_FROM`, patrz sekcja Konfiguracja). Zmiana hasła z poziomu zalogowanego konta (bez maila) to kolejny etap prac.
 
@@ -284,7 +288,7 @@ każdym push.
 
 1. Powtórz **Krok 1–4** wyżej na nowym koncie cyberfolks (nowa aplikacja
    Node.js w panelu, `git init` + checkout repo, własna baza MySQL +
-   `npx prisma migrate deploy` i `sql/seed.sql`, własny `.env` z osobnym
+   `node deploy/migrate.mjs` i `sql/seed.sql`, własny `.env` z osobnym
    `NEXTAUTH_SECRET` i `NEXTAUTH_URL` wskazującym na nową domenę — bez
    `/wynajem` na końcu, tak samo jak dla serwera 1, patrz ostrzeżenie na
    górze tego pliku — oraz `deploy/generate-actions-key.sh` — da nowy,
@@ -322,10 +326,21 @@ każdym push.
 ### Migracje bazy
 
 Migracje bazy są **automatyczne**. `deploy/deploy-finish.sh` uruchamia na
-serwerze `npx prisma migrate deploy` (po `npm install` / `prisma generate`,
+serwerze `node deploy/migrate.mjs` (po `npm install` / `prisma generate`,
 przed restartem Passengera), więc każda nowa migracja z `prisma/migrations/`
 aplikuje się razem z deployem — na serwer 1 przy każdym push do `main`, na
 serwer 2 przy ręcznym uruchomieniu workflow.
+
+**Dlaczego nie `prisma migrate deploy`:** ta komenda uruchamia silnik
+schematu Prisma (binarka Rust), która na tym koncie zawiesza się pod
+limitami CloudLinux LVE — dokładnie ten sam powód, dla którego `next build`
+robi się w CI, a aplikacja używa adaptera `mariadb` zamiast natywnego
+silnika Prisma. `deploy/migrate.mjs` wykonuje pliki
+`prisma/migrations/*/migration.sql` tym samym sterownikiem JS `mariadb` i
+zapisuje je w tabeli `_prisma_migrations` w formacie Prismy — dzięki czemu
+`prisma migrate status` / `prisma migrate diff` dalej działają lokalnie.
+`prisma migrate deploy` można nadal odpalić ręcznie na normalnej maszynie
+(dev, zakładanie bazy od zera).
 
 Tworzenie nowej migracji (bez lokalnej bazy):
 
@@ -340,14 +355,14 @@ Tworzenie nowej migracji (bez lokalnej bazy):
    ```
 
    (katalog migracji utwórz wcześniej; nazwa = `YYYYMMDDHHMMSS_krotki_opis`).
-3. Commit + push. Deploy sam wykona `prisma migrate deploy`.
+3. Commit + push. `deploy/migrate.mjs` zastosuje ją na deployu.
 
 Baseline istniejących baz (jednorazowo, obsłużone w skrypcie): bazy powstały
-ze starego `sql/schema.sql`, więc przy pierwszym `migrate deploy`
-`deploy-finish.sh` oznacza migrację `0_init` jako już zastosowaną
-(`prisma migrate resolve --applied 0_init`), zamiast próbować odtworzyć
-istniejący schemat. Na kolejnych deployach i na pustej bazie ten krok jest
-no-opem.
+ze starego `sql/schema.sql`, więc przy pierwszym uruchomieniu
+`deploy/migrate.mjs` — jeśli tabela `_prisma_migrations` jest pusta, a
+tabela `users` już istnieje — zapisuje migrację `0_init` jako zastosowaną
+**bez jej wykonywania**, po czym aplikuje resztę (`20260828120000_add_driver_role_and_rental_driver`).
+Na kolejnych deployach i na pustej bazie ten krok jest no-opem.
 
 ### Co zostaje poza automatem
 
