@@ -8,10 +8,12 @@ import { logInfo, logWarn, logError } from "@/lib/logger";
 import { REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { resolveDriverId } from "@/lib/rental-driver";
+import { saveRentalFinance } from "@/lib/finance";
 
 const RENTAL_INCLUDE = {
   device: true,
   driver: { select: { id: true, name: true } },
+  finance: true,
   reminderRules: { orderBy: { daysBefore: "asc" as const } },
   messages: { orderBy: { sentAt: "desc" as const } },
 };
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest) {
   const deliveryTime = typeof body?.deliveryTime === "string" && body.deliveryTime ? body.deliveryTime : null;
   const pickupTime = typeof body?.pickupTime === "string" && body.pickupTime ? body.pickupTime : null;
   const transportPrice = typeof body?.transportPrice === "string" ? body.transportPrice.trim() : "";
+  const eventType = body?.eventType === "SZKOLENIE" ? "SZKOLENIE" : "WYNAJEM";
 
   if (!deviceId || !title || !startsAt || !endsAt || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
     logWarn("rental_create_rejected", { userId: session.user.id, reason: "invalid_input" });
@@ -117,6 +120,7 @@ export async function POST(req: NextRequest) {
         pickupTime,
         transportPrice: transportPrice || null,
         driverId,
+        eventType,
         lastSyncedAt: new Date(),
       },
     });
@@ -152,8 +156,31 @@ export async function POST(req: NextRequest) {
 
     logInfo("rental_created", { userId: session.user.id, rentalId: rental.id, deviceId: device.id });
 
+    // Finanse — best-effort jak przypisanie kontaktu: wynajem i event w
+    // kalendarzu już istnieją, brak ceny w cenniku nie może wywalić całości.
+    let financeError: string | null = null;
+    if (body?.finance && typeof body.finance === "object") {
+      const current = await prisma.rental.findUniqueOrThrow({
+        where: { id: rental.id },
+        select: { transportPrice: true },
+      });
+      const result = await saveRentalFinance(
+        {
+          id: rental.id,
+          eventType,
+          startsAt,
+          endsAt,
+          transportPrice: current.transportPrice,
+          device: { pricingCategory: device.pricingCategory },
+          finance: null,
+        },
+        body.finance,
+      );
+      if (!result.ok) financeError = result.message;
+    }
+
     const withRelations = await prisma.rental.findUniqueOrThrow({ where: { id: rental.id }, include: RENTAL_INCLUDE });
-    return NextResponse.json({ rental: withRelations });
+    return NextResponse.json({ rental: withRelations, ...(financeError ? { financeError } : {}) });
   } catch (err) {
     logError("rental_create_failed", err, { userId: session.user.id, deviceId: device.id });
     const message = err instanceof Error ? err.message : String(err);

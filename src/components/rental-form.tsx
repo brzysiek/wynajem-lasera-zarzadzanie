@@ -2,13 +2,28 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import type { DevicePricingCategory, RentalEventType } from "@prisma/client";
 import { BASE_PATH } from "@/lib/base-path";
 import { applySmsPlaceholders } from "@/lib/sms-template";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { QueueCancelBadge } from "@/components/queue-cancel-badge";
+import { RentalFinanceSection, type FinancePayload } from "@/components/rental-finance-section";
+import type { PreviewPriceRule, PreviewPulseTier } from "@/lib/pricing/preview";
+import type { RentalFinanceDto } from "@/lib/finance";
+import { rentalDurationDays } from "@/lib/pricing/duration";
 
-export type Device = { id: string; name: string; shortName: string; color: string; active: boolean };
+export type Device = {
+  id: string;
+  name: string;
+  shortName: string;
+  color: string;
+  active: boolean;
+  // Obecne tylko w formularzu wynajmu (sekcja Finanse) — kalendarz/nadchodzące
+  // ładują urządzenia bez tych pól.
+  pricingCategory?: DevicePricingCategory | null;
+  variantOptions?: string[];
+};
 
 export type DriverOption = { id: string; name: string };
 
@@ -51,6 +66,8 @@ export type Rental = {
   startsAt: string;
   endsAt: string;
   allDay: boolean;
+  eventType?: RentalEventType;
+  finance?: RentalFinanceDto | null;
   hubspotContactId?: string | null;
   driverId?: string | null;
   driver?: DriverOption | null;
@@ -672,6 +689,10 @@ export function RentalForm({
   smsTemplates = [],
   drivers = [],
   canManageDrivers = false,
+  canManageFinance = false,
+  previewPriceRules = [],
+  previewPulseTiers = [],
+  defaultVatRate = 23,
   backHref,
 }: {
   devices: Device[];
@@ -683,6 +704,11 @@ export function RentalForm({
   drivers?: DriverOption[];
   // Only an admin sees/edits the driver field (assignment is admin-only).
   canManageDrivers?: boolean;
+  // ADMIN/STAFF widzą sekcję „Finanse".
+  canManageFinance?: boolean;
+  previewPriceRules?: PreviewPriceRule[];
+  previewPulseTiers?: PreviewPulseTier[];
+  defaultVatRate?: number;
   backHref: string;
 }) {
   const router = useRouter();
@@ -718,6 +744,13 @@ export function RentalForm({
     rental?.transportPrice ?? rental?.contactTransportPriceCache ?? "",
   );
   const [driverId, setDriverId] = useState(rental?.driverId ?? "");
+  const [eventType, setEventType] = useState<RentalEventType>(rental?.eventType ?? "WYNAJEM");
+  const financeRef = useRef<FinancePayload | null>(null);
+  const handleFinanceChange = useCallback((p: FinancePayload) => {
+    financeRef.current = p;
+  }, []);
+  const isSzkolenie = eventType === "SZKOLENIE";
+  const durationDays = rentalDurationDays(new Date(startsAt), new Date(endsAt));
   const [reminderDays, setReminderDays] = useState<Set<ReminderDays>>(() => {
     if (!rental) return new Set([1, 3, 7]);
     const checked = rental.reminderRules
@@ -785,13 +818,17 @@ export function RentalForm({
       startsAt: new Date(startsAt).toISOString(),
       endsAt: new Date(endsAt).toISOString(),
       reminderDays: effectiveReminderDays,
-      deliveryAddress,
-      deliveryTime,
-      pickupTime,
-      transportPrice,
+      deliveryAddress: isSzkolenie ? "" : deliveryAddress,
+      deliveryTime: isSzkolenie ? "" : deliveryTime,
+      pickupTime: isSzkolenie ? "" : pickupTime,
+      transportPrice: isSzkolenie ? "" : transportPrice,
+      eventType,
     };
     if (canManageDrivers) {
       body.driverId = driverId || null;
+    }
+    if (canManageFinance && financeRef.current) {
+      body.finance = financeRef.current;
     }
     if (!isEditing && pendingContact) {
       body.contactId = pendingContact.id;
@@ -804,6 +841,12 @@ export function RentalForm({
     setIsSaving(false);
     if (!ok) {
       setError(data?.message || "Nie udało się zapisać rezerwacji.");
+      return;
+    }
+    if (data?.financeError) {
+      // Wynajem zapisany, ale finanse wymagają uzupełnienia ceny — zostajemy
+      // na formularzu z komunikatem zamiast wychodzić.
+      setError(`Zapisano wynajem, ale: ${data.financeError}`);
       return;
     }
     goBack();
@@ -845,6 +888,27 @@ export function RentalForm({
           <div className="flex flex-col gap-6 lg:col-span-2">
           <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5">
             <p className="mb-2 text-sm text-gray-700">Dane rezerwacji</p>
+
+            {canManageFinance && (
+              <div className="flex items-center gap-2 text-sm text-gray-700">
+                <span>Typ wydarzenia:</span>
+                <div className="flex overflow-hidden rounded-md border border-gray-300">
+                  {(["WYNAJEM", "SZKOLENIE"] as RentalEventType[]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setEventType(t)}
+                      className={`px-3 py-1.5 text-sm font-medium ${
+                        eventType === t ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {t === "WYNAJEM" ? "Wynajem" : "Szkolenie"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <label className="flex flex-col gap-1 text-sm text-gray-700">
               Urządzenie
               <select
@@ -912,6 +976,7 @@ export function RentalForm({
             </div>
           </div>
 
+          {!isSzkolenie && (
           <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5">
             <p className="mb-2 text-sm text-gray-700">Dostawa</p>
             <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -960,9 +1025,24 @@ export function RentalForm({
               </p>
             )}
           </div>
+          )}
           </div>
 
           <div className="flex flex-col gap-4">
+            {canManageFinance && (
+              <RentalFinanceSection
+                eventType={eventType}
+                pricingCategory={device?.pricingCategory ?? null}
+                deviceVariantOptions={device?.variantOptions ?? []}
+                durationDays={durationDays}
+                transportPrice={transportPrice}
+                previewPriceRules={previewPriceRules}
+                previewPulseTiers={previewPulseTiers}
+                defaultVatRate={defaultVatRate}
+                initialFinance={rental?.finance ?? null}
+                onChange={handleFinanceChange}
+              />
+            )}
             <div className="rounded-lg border border-gray-200 bg-white p-5">
               <p className="mb-2 text-sm text-gray-700">Klient (HubSpot)</p>
               <ContactSection

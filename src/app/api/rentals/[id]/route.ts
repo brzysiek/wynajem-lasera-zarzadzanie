@@ -6,10 +6,12 @@ import { logInfo, logWarn, logError } from "@/lib/logger";
 import { CONFIRMATION_OFFSET, REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { resolveDriverId } from "@/lib/rental-driver";
+import { saveRentalFinance } from "@/lib/finance";
 
 const RENTAL_INCLUDE = {
   device: true,
   driver: { select: { id: true, name: true } },
+  finance: true,
   reminderRules: { orderBy: { daysBefore: "asc" as const } },
   messages: { orderBy: { sentAt: "desc" as const } },
 };
@@ -38,6 +40,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const pickupTime = typeof body?.pickupTime === "string" ? (body.pickupTime || null) : rental.pickupTime;
   const transportPrice =
     typeof body?.transportPrice === "string" ? body.transportPrice.trim() : rental.transportPrice ?? "";
+  const eventType =
+    body?.eventType === "SZKOLENIE" ? "SZKOLENIE" : body?.eventType === "WYNAJEM" ? "WYNAJEM" : rental.eventType;
 
   // Only an admin may (re)assign or clear the driver; other roles never
   // send the field and a STAFF request that does is ignored.
@@ -120,6 +124,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         pickupTime,
         transportPrice: transportPrice || null,
         driverId,
+        eventType,
         lastSyncedAt: new Date(),
       },
     });
@@ -127,6 +132,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await syncReminderRules(updated, selectedDays, confirmationSelected);
 
     logInfo("rental_updated", { userId: session.user.id, rentalId: id, deviceChanged });
+
+    if (body?.finance && typeof body.finance === "object") {
+      const forFinance = await prisma.rental.findUniqueOrThrow({
+        where: { id },
+        select: {
+          id: true,
+          eventType: true,
+          startsAt: true,
+          endsAt: true,
+          transportPrice: true,
+          device: { select: { pricingCategory: true } },
+          finance: true,
+        },
+      });
+      const result = await saveRentalFinance(forFinance, body.finance);
+      if (!result.ok) {
+        // Rdzeń wynajmu (termin/urządzenie/kalendarz) jest już zapisany —
+        // biuro poprawia cenę i zapisuje ponownie.
+        return NextResponse.json({ message: result.message }, { status: 400 });
+      }
+    }
 
     const withRelations = await prisma.rental.findUniqueOrThrow({ where: { id }, include: RENTAL_INCLUDE });
     return NextResponse.json({ rental: withRelations });

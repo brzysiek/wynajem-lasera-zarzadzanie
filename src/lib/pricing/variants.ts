@@ -4,6 +4,11 @@
 // komponentach klienckich (żadnego runtime'u Prismy w bundlu przeglądarki).
 import type { DevicePricingCategory } from "@prisma/client";
 
+// Klucze wariantów głowicy używane w kodzie (Device.variantOptions,
+// RentalFinance.deviceVariant). Trzymane tu, w module client-safe.
+export const FLEX_VARIANT = "single_flex";
+export const DOUBLE_VARIANT = "double";
+
 export const PRICING_CATEGORY_LABELS: Record<DevicePricingCategory, string> = {
   LIGHTSHEER_VARIANT: "LightSheer (DESIRE / LIGHT / QUATTRO)",
   LIGHTSHEER_ET400_FLAT: "LightSheer ET400 (cena stała)",

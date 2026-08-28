@@ -5,10 +5,31 @@ import { getAllReminderTemplates } from "@/lib/reminders";
 import { listSmsTemplates } from "@/lib/message-templates";
 import { RentalForm, type Rental, type ReminderOffset } from "@/components/rental-form";
 import { RentalReadonlyView } from "@/components/rental-readonly-view";
+import { financeDto, loadFinanceFormContext } from "@/lib/finance";
+
+const DEVICE_SELECT = {
+  id: true,
+  name: true,
+  shortName: true,
+  color: true,
+  active: true,
+  pricingCategory: true,
+  variantOptions: true,
+} as const;
+
+function deviceDto<T extends { variantOptions: unknown }>(d: T) {
+  return {
+    ...d,
+    variantOptions: Array.isArray(d.variantOptions)
+      ? (d.variantOptions as unknown[]).filter((v): v is string => typeof v === "string")
+      : [],
+  };
+}
 
 const RENTAL_INCLUDE = {
   device: true,
   driver: { select: { id: true, name: true } },
+  finance: true,
   reminderRules: { orderBy: { daysBefore: "asc" as const } },
   messages: { orderBy: { sentAt: "desc" as const } },
 };
@@ -59,17 +80,15 @@ export default async function RentalDetailPage({
 
   const isAdmin = role === "ADMIN";
 
-  const [devices, rental, reminderTemplates, smsTemplates, drivers] = await Promise.all([
-    prisma.device.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, shortName: true, color: true, active: true },
-    }),
+  const [devices, rental, reminderTemplates, smsTemplates, drivers, financeCtx] = await Promise.all([
+    prisma.device.findMany({ orderBy: { name: "asc" }, select: DEVICE_SELECT }),
     prisma.rental.findUnique({ where: { id }, include: RENTAL_INCLUDE }),
     getAllReminderTemplates(),
     listSmsTemplates(),
     isAdmin
       ? prisma.user.findMany({ where: { role: "KIEROWCA" }, orderBy: { name: "asc" }, select: { id: true, name: true } })
       : Promise.resolve([]),
+    loadFinanceFormContext(),
   ]);
 
   if (!rental) {
@@ -84,6 +103,8 @@ export default async function RentalDetailPage({
     startsAt: rental.startsAt.toISOString(),
     endsAt: rental.endsAt.toISOString(),
     allDay: rental.allDay,
+    eventType: rental.eventType,
+    finance: financeDto(rental.finance),
     hubspotContactId: rental.hubspotContactId,
     driverId: rental.driverId,
     driver: rental.driver,
@@ -119,12 +140,16 @@ export default async function RentalDetailPage({
 
   return (
     <RentalForm
-      devices={devices}
+      devices={devices.map(deviceDto)}
       rental={rentalDto}
       reminderTemplates={reminderTemplates}
       smsTemplates={smsTemplates}
       drivers={drivers}
       canManageDrivers={isAdmin}
+      canManageFinance
+      previewPriceRules={financeCtx.previewPriceRules}
+      previewPulseTiers={financeCtx.previewPulseTiers}
+      defaultVatRate={financeCtx.defaultVatRate}
       backHref={from && ALLOWED_FROM.has(from) ? from : "/kalendarz"}
     />
   );

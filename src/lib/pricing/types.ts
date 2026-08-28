@@ -74,5 +74,4 @@ export type ComputedFinance = {
   totalGross: Prisma.Decimal;
 };
 
-export const FLEX_VARIANT = "single_flex";
-export const DOUBLE_VARIANT = "double";
+export { FLEX_VARIANT, DOUBLE_VARIANT } from "./variants";
