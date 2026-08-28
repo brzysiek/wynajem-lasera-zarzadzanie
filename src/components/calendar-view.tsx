@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Device, Rental } from "@/components/rental-form";
 import { BASE_PATH } from "@/lib/base-path";
@@ -154,7 +154,7 @@ function CalendarWeekRow({
 
   return (
     <div
-      className="relative grid grid-cols-7"
+      className="relative grid flex-1 grid-cols-7"
       onDragOver={
         canEdit
           ? (e) => {
@@ -297,10 +297,43 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+// Remembers the month/week the calendar was showing so that opening a rental
+// and coming back (Anuluj, Zapisz, browser back) returns to the same place
+// instead of snapping to today. Per-tab, cleared when the tab closes.
+const VIEW_STATE_KEY = "kalendarz:view";
+
 export function CalendarView({ devices, canEdit = true }: { devices: Device[]; canEdit?: boolean }) {
   const router = useRouter();
   const [mode, setMode] = useState<"month" | "week">("month");
   const [current, setCurrent] = useState(() => new Date());
+  const viewStateRestored = useRef(false);
+
+  // Restore once on mount (not in a lazy initializer — that would diverge
+  // from the server-rendered markup and warn about a hydration mismatch).
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(VIEW_STATE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { mode?: unknown; current?: unknown };
+        if (saved.mode === "month" || saved.mode === "week") setMode(saved.mode);
+        if (typeof saved.current === "number" && Number.isFinite(saved.current)) {
+          setCurrent(new Date(saved.current));
+        }
+      }
+    } catch {
+      // sessionStorage unavailable or malformed — fall back to defaults.
+    }
+    viewStateRestored.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!viewStateRestored.current) return;
+    try {
+      sessionStorage.setItem(VIEW_STATE_KEY, JSON.stringify({ mode, current: current.getTime() }));
+    } catch {
+      // Ignore (private mode, quota, etc.) — navigation still works.
+    }
+  }, [mode, current]);
   const [checkedDeviceIds, setCheckedDeviceIds] = useState<Set<string>>(() => new Set(devices.map((d) => d.id)));
   const [rentals, setRentals] = useState<RawRental[]>([]);
   const [isLoading, startLoading] = useTransition();
@@ -419,7 +452,7 @@ export function CalendarView({ devices, canEdit = true }: { devices: Device[]; c
   );
 
   return (
-    <div className="flex flex-1 flex-col lg:flex-row">
+    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       {/* Desktop sidebar — Google Calendar-style device list */}
       <aside className="hidden w-60 flex-none flex-col gap-4 border-r border-gray-200 bg-white p-4 lg:flex">
         {canEdit && (
@@ -437,7 +470,7 @@ export function CalendarView({ devices, canEdit = true }: { devices: Device[]; c
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
           <div className="flex items-center gap-2">
             <button
@@ -513,7 +546,7 @@ export function CalendarView({ devices, canEdit = true }: { devices: Device[]; c
           )}
         </div>
 
-        <div className="flex-1 overflow-x-auto p-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
           {isLoading && <p className="mb-2 text-sm text-gray-400">Ładowanie…</p>}
           {dragError && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -524,9 +557,9 @@ export function CalendarView({ devices, canEdit = true }: { devices: Device[]; c
             </div>
           )}
 
-          <div className="min-w-[640px]">
+          <div className="flex min-h-0 min-w-[640px] flex-1 flex-col">
             {mode === "month" ? (
-              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
                 <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500">
                   {WEEKDAY_LABELS.map((label) => (
                     <div key={label} className="px-2 py-2">
@@ -534,25 +567,27 @@ export function CalendarView({ devices, canEdit = true }: { devices: Device[]; c
                     </div>
                   ))}
                 </div>
-                {weeksOf(monthGridDays(current)).map((weekDays) => (
-                  <CalendarWeekRow
-                    key={weekDays[0].toISOString()}
-                    weekDays={weekDays}
-                    rentals={visibleRentals.filter((r) => weekDays.some((d) => rentalTouchesDay(r, d)))}
-                    monthContext={current}
-                    variant="month"
-                    canEdit={canEdit}
-                    dragOverDay={dragOverDay}
-                    onDragOverDay={(day) => setDragOverDay(day.toISOString())}
-                    onDragLeaveRow={() => setDragOverDay(null)}
-                    onDropDay={handleDropOnDay}
-                    onOpenCreate={openCreate}
-                    onOpenEdit={openEdit}
-                  />
-                ))}
+                <div className="flex flex-1 flex-col">
+                  {weeksOf(monthGridDays(current)).map((weekDays) => (
+                    <CalendarWeekRow
+                      key={weekDays[0].toISOString()}
+                      weekDays={weekDays}
+                      rentals={visibleRentals.filter((r) => weekDays.some((d) => rentalTouchesDay(r, d)))}
+                      monthContext={current}
+                      variant="month"
+                      canEdit={canEdit}
+                      dragOverDay={dragOverDay}
+                      onDragOverDay={(day) => setDragOverDay(day.toISOString())}
+                      onDragLeaveRow={() => setDragOverDay(null)}
+                      onDropDay={handleDropOnDay}
+                      onOpenCreate={openCreate}
+                      onOpenEdit={openEdit}
+                    />
+                  ))}
+                </div>
               </div>
             ) : (
-              <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
                 <CalendarWeekRow
                   weekDays={Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(current), i))}
                   rentals={visibleRentals}
