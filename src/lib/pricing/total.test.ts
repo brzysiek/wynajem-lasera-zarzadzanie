@@ -21,6 +21,21 @@ describe("computeTotals", () => {
     expect(n(r.totalGross)).toBe(1720);
   });
 
+  it("2 nakładki HS: capFeeNet * count (1500 + 70*2 = 1640)", () => {
+    const r = computeTotals({
+      eventType: "WYNAJEM",
+      baseRentalPriceNet: D(1500),
+      pulseSurchargeNet: null,
+      transportPrice: D(0),
+      capUsedHS: true,
+      capCountHS: 2,
+      capFeeNet: D(70),
+      vatApplicable: false,
+      vatRate: D(23),
+    });
+    expect(n(r.totalNet)).toBe(1640);
+  });
+
   it("nakładka niezaznaczona → capFeeNet pomijane", () => {
     const r = computeTotals({
       eventType: "WYNAJEM",

@@ -155,6 +155,7 @@ export type RentalFinanceDto = {
   pulseCalculationStatus: PulseCalculationStatus | null;
   pulseSurchargeNet: string | null;
   capUsedHS: boolean | null;
+  capCountHS: number;
   capFeeNet: string | null;
   vatApplicable: boolean;
   vatRate: string;
@@ -176,6 +177,7 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
     pulseCalculationStatus: row.pulseCalculationStatus,
     pulseSurchargeNet: row.pulseSurchargeNet ? row.pulseSurchargeNet.toString() : null,
     capUsedHS: row.capUsedHS,
+    capCountHS: row.capCountHS,
     capFeeNet: row.capFeeNet ? row.capFeeNet.toString() : null,
     vatApplicable: row.vatApplicable,
     vatRate: row.vatRate.toString(),
@@ -270,6 +272,7 @@ export async function saveRentalFinance(
   const pulseCounterStart = needsCounters ? existing?.pulseCounterStart ?? null : null;
   const pulseCounterEnd = needsCounters ? existing?.pulseCounterEnd ?? null : null;
   const capUsedHS = isDouble ? existing?.capUsedHS ?? null : null;
+  const capCountHS = isDouble ? existing?.capCountHS ?? 1 : 1;
   const capFeeNet = isDouble ? existing?.capFeeNet ?? null : null;
 
   const computed = recalculateFinance(
@@ -280,6 +283,7 @@ export async function saveRentalFinance(
       pulseCounterStart,
       pulseCounterEnd,
       capUsedHS,
+      capCountHS,
       capFeeNet,
       vatApplicable: Boolean(input.vatApplicable),
       vatRate,
@@ -297,6 +301,7 @@ export async function saveRentalFinance(
     pulseCalculationStatus: computed.pulseCalculationStatus,
     pulseSurchargeNet: computed.pulseSurchargeNet,
     capUsedHS,
+    capCountHS,
     capFeeNet,
     vatApplicable: Boolean(input.vatApplicable),
     vatRate,

@@ -284,8 +284,9 @@ model RentalFinance {
   pulseSurchargeNet Decimal? @db.Decimal(10, 2)
 
   // --- nakładka HS (tylko LightSheer wariant "double") ---
-  capUsedHS Boolean?
-  capFeeNet Decimal? @db.Decimal(10, 2) // snapshot z PricingSetting w momencie zaznaczenia
+  capUsedHS  Boolean?
+  capCountHS Int      @default(1) // ile nakładek HS zużyto (gdy capUsedHS); kierowca może zmienić z 1 na 2+
+  capFeeNet  Decimal? @db.Decimal(10, 2) // snapshot z PricingSetting w momencie zaznaczenia (za 1 szt.)
 
   // --- VAT ---
   vatApplicable Boolean @default(false)

@@ -56,6 +56,7 @@ export type FinanceState = {
   pulseCounterStart: number | null;
   pulseCounterEnd: number | null;
   capUsedHS: boolean | null;
+  capCountHS?: number | null; // domyślnie 1 gdy pominięte
   capFeeNet: Prisma.Decimal | null;
   vatApplicable: boolean;
   vatRate: Prisma.Decimal;

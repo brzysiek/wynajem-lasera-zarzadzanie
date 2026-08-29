@@ -6,6 +6,7 @@ export type TotalsInput = {
   pulseSurchargeNet: Prisma.Decimal | null; // tylko Alma
   transportPrice: Prisma.Decimal | null; // pomijany dla SZKOLENIE (spec 3.6)
   capUsedHS: boolean | null; // nakładka HS, tylko LightSheer "double"
+  capCountHS?: number | null; // ile nakładek (domyślnie 1); suma = capFeeNet * count
   capFeeNet: Prisma.Decimal | null;
   vatApplicable: boolean;
   vatRate: Prisma.Decimal; // w procentach, np. 23
@@ -23,8 +24,9 @@ export function computeTotals(input: TotalsInput): {
   if (input.eventType !== "SZKOLENIE") {
     net = net.plus(input.transportPrice ?? 0);
   }
-  if (input.capUsedHS) {
-    net = net.plus(input.capFeeNet ?? 0);
+  if (input.capUsedHS && input.capFeeNet) {
+    const count = Math.max(1, Math.trunc(input.capCountHS ?? 1));
+    net = net.plus(input.capFeeNet.times(count));
   }
 
   const totalNet = round2(net);

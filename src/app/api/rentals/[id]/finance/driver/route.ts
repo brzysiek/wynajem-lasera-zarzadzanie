@@ -12,11 +12,14 @@ import { loadPricingContext, loadPricingSettings, parseTransportPrice } from "@/
 // uprawnień po stronie klienta).
 const DRIVER_EDITABLE_FIELDS = [
   "capUsedHS",
+  "capCountHS",
   "pulseCounterStart",
   "pulseCounterEnd",
   "cashCollected",
   "driverNotes",
 ] as const;
+
+const MAX_CAP_COUNT = 20;
 
 function bad(message: string, status = 400) {
   return NextResponse.json({ message }, { status });
@@ -50,6 +53,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   // --- walidacja i normalizacja pól z body ---
   let capUsedHS: boolean | null | undefined;
+  let capCountHS: number | undefined;
   let cashCollected: boolean | null | undefined;
   let pulseCounterStart: number | null | undefined;
   let pulseCounterEnd: number | null | undefined;
@@ -58,6 +62,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ("capUsedHS" in body) {
     if (body.capUsedHS !== null && typeof body.capUsedHS !== "boolean") return bad("Nieprawidłowa wartość pola „nakładka HS”.");
     capUsedHS = body.capUsedHS;
+  }
+  if ("capCountHS" in body) {
+    const num = typeof body.capCountHS === "number" ? body.capCountHS : Number(body.capCountHS);
+    if (!Number.isInteger(num) || num < 1 || num > MAX_CAP_COUNT) {
+      return bad(`Liczba nakładek HS musi być liczbą całkowitą od 1 do ${MAX_CAP_COUNT}.`);
+    }
+    capCountHS = num;
   }
   if ("cashCollected" in body) {
     if (body.cashCollected !== null && typeof body.cashCollected !== "boolean") return bad("Nieprawidłowa wartość pola „gotówka odebrana”.");
@@ -87,6 +98,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Stan efektywny = to, co przyszło w patchu, w brakujących miejscach
   // dotychczasowa wartość z bazy.
   const effCapUsed = capUsedHS !== undefined ? capUsedHS : existing?.capUsedHS ?? null;
+  const effCapCount = effCapUsed ? (capCountHS !== undefined ? capCountHS : existing?.capCountHS ?? 1) : 1;
   const effStart = pulseCounterStart !== undefined ? pulseCounterStart : existing?.pulseCounterStart ?? null;
   const effEnd = pulseCounterEnd !== undefined ? pulseCounterEnd : existing?.pulseCounterEnd ?? null;
   const effCash = cashCollected !== undefined ? cashCollected : existing?.cashCollected ?? null;
@@ -140,6 +152,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       pulseCounterStart: effStart,
       pulseCounterEnd: effEnd,
       capUsedHS: effCapUsed,
+      capCountHS: effCapCount,
       capFeeNet,
       vatApplicable,
       vatRate,
@@ -158,6 +171,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     pulseCalculationStatus: computed.pulseCalculationStatus,
     pulseSurchargeNet: computed.pulseSurchargeNet,
     capUsedHS: effCapUsed,
+    capCountHS: effCapCount,
     capFeeNet,
     cashCollected: effCash,
     totalNet: computed.totalNet,

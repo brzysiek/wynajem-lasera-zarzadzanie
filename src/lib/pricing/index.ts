@@ -70,6 +70,7 @@ export function recalculateFinance(ctx: PricingContext, state: FinanceState): Co
     pulseSurchargeNet: surcharge,
     transportPrice: state.transportPrice,
     capUsedHS: state.capUsedHS,
+    capCountHS: state.capCountHS ?? 1,
     capFeeNet: state.capFeeNet,
     vatApplicable: state.vatApplicable,
     vatRate: state.vatRate,

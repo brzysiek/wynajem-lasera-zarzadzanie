@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DevicePricingCategory, RentalEventType } from "@prisma/client";
 import { BASE_PATH } from "@/lib/base-path";
@@ -21,6 +21,8 @@ function fmt(n: number): string {
     maximumFractionDigits: 2,
   }).format(n);
 }
+
+const MAX_CAP_COUNT = 20;
 
 export function DriverFinancePanel({
   rentalId,
@@ -51,11 +53,13 @@ export function DriverFinancePanel({
   const [start, setStart] = useState(finance?.pulseCounterStart != null ? String(finance.pulseCounterStart) : "");
   const [end, setEnd] = useState(finance?.pulseCounterEnd != null ? String(finance.pulseCounterEnd) : "");
   const [capUsed, setCapUsed] = useState<boolean>(finance?.capUsedHS ?? false);
+  const [capCount, setCapCount] = useState<number>(finance?.capCountHS ?? 1);
   const [cashCollected, setCashCollected] = useState<boolean>(finance?.cashCollected ?? false);
   const [notes, setNotes] = useState(initialDriverNotes);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(initialDriverNotes.trim() !== "");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const lastSentKey = useRef<string | null>(null);
 
   const variant = finance?.deviceVariant ?? null;
   const isFlex = !isSzkolenie && pricingCategory === "LIGHTSHEER_VARIANT" && variant === FLEX_VARIANT;
@@ -71,13 +75,70 @@ export function DriverFinancePanel({
   const startValid = startN == null || (Number.isInteger(startN) && startN >= 0);
   const endValid = endN == null || (Number.isInteger(endN) && endN >= 0);
   const orderValid = startN == null || endN == null || endN >= startN;
-  // Twardy błąd (blokuje zapis) tylko przy sprzecznych danych. Sam licznik
-  // początkowy bez końcowego to normalna sytuacja: kierowca wpisuje początkowy
-  // przy dostarczeniu urządzenia rano, końcowy przy odbiorze wieczorem.
+  // Twardy błąd tylko przy sprzecznych danych. Sam licznik początkowy bez
+  // końcowego to normalna sytuacja: kierowca wpisuje początkowy przy
+  // dostarczeniu urządzenia rano, końcowy przy odbiorze wieczorem.
   const countersError = needsCounters && (!startValid || !endValid || !orderValid);
   const pulsesUsed =
     needsCounters && startN != null && endN != null && orderValid ? (endN as number) - (startN as number) : null;
   const awaitingEnd = needsCounters && startN != null && endN == null;
+
+  const savedStart = finance?.pulseCounterStart ?? null;
+  const savedEnd = finance?.pulseCounterEnd ?? null;
+  const savedNotes = initialDriverNotes.trim();
+  const countersDirty =
+    needsCounters &&
+    !countersError &&
+    ((startRaw === "" ? null : Number(startRaw)) !== savedStart || (endRaw === "" ? null : Number(endRaw)) !== savedEnd);
+
+  // Autozapis — brak przycisku „Zapisz". Wołane po wyjściu z pola (liczniki,
+  // uwagi) i od razu po każdym przełączniku (nakładka, liczba nakładek,
+  // gotówka). Wysyła komplet pól kierowcy; API scala je z resztą rekordu.
+  async function save(ov?: { capUsed?: boolean; capCount?: number; cashCollected?: boolean }) {
+    const capUsedNow = ov?.capUsed ?? capUsed;
+    const capCountNow = ov?.capCount ?? capCount;
+    const cashNow = ov?.cashCollected ?? cashCollected;
+
+    const payload: Record<string, unknown> = {
+      driverNotes: notes.trim() || null,
+      cashCollected: cashNow,
+    };
+    if (isDouble) {
+      payload.capUsedHS = capUsedNow;
+      if (capUsedNow) payload.capCountHS = capCountNow;
+    }
+    if (needsCounters && !countersError) {
+      payload.pulseCounterStart = startRaw === "" ? null : Number(startRaw);
+      payload.pulseCounterEnd = endRaw === "" ? null : Number(endRaw);
+    }
+
+    const key = JSON.stringify(payload);
+    if (key === lastSentKey.current) return;
+    lastSentKey.current = key;
+
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}/finance/driver`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        lastSentKey.current = null;
+        setSaveError(data?.message ?? "Nie udało się zapisać.");
+        setSaveState("error");
+        return;
+      }
+      setSaveState("saved");
+      router.refresh();
+    } catch {
+      lastSentKey.current = null;
+      setSaveError("Brak połączenia z serwerem.");
+      setSaveState("error");
+    }
+  }
 
   const { net, gross, rows, pending } = useMemo(() => {
     if (!finance) return { net: 0, gross: 0, rows: [] as { label: string; value: number }[], pending: false };
@@ -98,6 +159,7 @@ export function DriverFinancePanel({
       : 0;
 
     const capFee = Number(finance.capFeeNet ?? capFeeHsNet) || 0;
+    const capCountEff = capUsed ? Math.max(1, capCount) : 1;
     const transportN = isSzkolenie ? null : parseAmount(transportPrice);
     const vatApplicable = finance.vatApplicable;
     const vatRate = Number(finance.vatRate) || 0;
@@ -108,6 +170,7 @@ export function DriverFinancePanel({
       transportNet: transportN,
       capFeeNet: capFee,
       capUsed,
+      capCount: capCountEff,
       vatApplicable,
       vatRate,
       isSzkolenie,
@@ -124,7 +187,12 @@ export function DriverFinancePanel({
     if (surcharge) {
       r.push({ label: `Dopłata za impulsy${pulsesUsed != null ? ` (${pulsesUsed})` : ""}`, value: surcharge });
     }
-    if (capUsed && capFee) r.push({ label: "Nakładka HS", value: capFee });
+    if (capUsed && capFee) {
+      r.push({
+        label: capCountEff > 1 ? `Nakładka HS ×${capCountEff}` : "Nakładka HS",
+        value: round2(capFee * capCountEff),
+      });
+    }
     if (vatApplicable) r.push({ label: `VAT ${vatRate}%`, value: round2(t.gross - t.net) });
 
     const isPending = needsCounters && pulsesUsed == null;
@@ -140,36 +208,46 @@ export function DriverFinancePanel({
     almaPulseRateNet,
     capFeeHsNet,
     capUsed,
+    capCount,
     transportPrice,
     needsCounters,
   ]);
 
-  async function handleSave() {
-    setIsSaving(true);
-    setError(null);
-    setSaved(false);
+  const statusLine = (
+    <div className="min-h-[1rem] text-center text-xs">
+      {saveState === "saving" && <span className="text-gray-500">Zapisywanie…</span>}
+      {saveState === "saved" && <span className="text-emerald-600">Zapisano ✓</span>}
+      {saveState === "error" && (
+        <button type="button" onClick={() => void save()} className="font-medium text-red-600 underline">
+          {saveError ?? "Nie zapisano"} — dotknij, aby ponowić
+        </button>
+      )}
+    </div>
+  );
 
-    const payload: Record<string, unknown> = { driverNotes: notes.trim() || null, cashCollected };
-    if (isDouble) payload.capUsedHS = capUsed;
-    if (needsCounters) {
-      payload.pulseCounterStart = startRaw === "" ? null : Number(startRaw);
-      payload.pulseCounterEnd = endRaw === "" ? null : Number(endRaw);
-    }
-
-    const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}/finance/driver`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json().catch(() => null);
-    setIsSaving(false);
-    if (!res.ok) {
-      setError(data?.message || "Nie udało się zapisać.");
-      return;
-    }
-    setSaved(true);
-    router.refresh();
-  }
+  const notesCard = notesOpen ? (
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Uwagi kierowcy</p>
+      <textarea
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        onBlur={() => {
+          if (notes.trim() !== savedNotes) void save();
+        }}
+        rows={3}
+        placeholder="np. utrudniony dojazd, klientka prosiła o kontakt przed odbiorem…"
+        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+      />
+    </div>
+  ) : (
+    <button
+      type="button"
+      onClick={() => setNotesOpen(true)}
+      className="self-start text-sm font-medium text-gray-500 underline"
+    >
+      ＋ dodaj uwagę
+    </button>
+  );
 
   // Brak rozliczenia przygotowanego przez biuro — kierowca może zostawić tylko uwagi.
   if (!finance) {
@@ -183,25 +261,20 @@ export function DriverFinancePanel({
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
+            onBlur={() => {
+              if (notes.trim() !== savedNotes) void save();
+            }}
             rows={3}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
           />
         </div>
-        {error && <p className="text-sm text-red-700">{error}</p>}
-        {saved && <p className="text-sm text-green-700">Zapisano.</p>}
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isSaving}
-          className="rounded-md bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-50"
-        >
-          {isSaving ? "Zapisywanie…" : "Zapisz"}
-        </button>
+        {statusLine}
       </div>
     );
   }
 
   const isCash = finance.paymentMethod === "CASH";
+  const cashDone = isCash && cashCollected;
   const displayAmount = gross;
 
   return (
@@ -209,33 +282,54 @@ export function DriverFinancePanel({
       {/* Banner płatności */}
       <div
         className={`rounded-xl px-5 py-5 text-center ${
-          isCash ? "bg-gradient-to-b from-orange-500 to-orange-700 text-white shadow-lg shadow-orange-500/30" : "bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200"
+          cashDone
+            ? "bg-gradient-to-b from-emerald-500 to-emerald-700 text-white shadow-lg shadow-emerald-500/30"
+            : isCash
+              ? "bg-gradient-to-b from-orange-500 to-orange-700 text-white shadow-lg shadow-orange-500/30"
+              : "bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200"
         }`}
       >
         <div className="text-xs font-bold uppercase tracking-wider opacity-90">
-          {isCash ? "💵 Gotówka" : "🏦 Przelew"}
+          {cashDone ? "✅ Gotówka odebrana" : isCash ? "💵 Gotówka" : "🏦 Przelew"}
         </div>
         <div className="mt-1 text-4xl font-extrabold tabular-nums">{fmt(displayAmount)} zł</div>
         <div className="mt-1 text-sm opacity-80">
-          {isCash ? "do odebrania od klientki" : "klientka płaci przelewem — nie pobieraj gotówki"}
+          {isCash
+            ? cashDone
+              ? "rozliczone"
+              : "do odebrania od klientki"
+            : "klientka płaci przelewem — nie pobieraj gotówki"}
         </div>
         {pending && (
           <div className="mt-1 text-xs opacity-80">kwota tymczasowa — uzupełnij liczniki impulsów poniżej</div>
         )}
-        {isCash && (
-          <label className="mt-3 flex items-center justify-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-sm font-semibold ring-1 ring-white/25">
-            <input type="checkbox" checked={cashCollected} onChange={(e) => setCashCollected(e.target.checked)} />
-            Gotówka odebrana
-          </label>
+        {isCash && !cashCollected && (
+          <button
+            type="button"
+            onClick={() => {
+              setCashCollected(true);
+              void save({ cashCollected: true });
+            }}
+            className="mt-4 w-full rounded-lg bg-white px-4 py-3 text-base font-bold text-orange-700 shadow active:translate-y-px"
+          >
+            Potwierdź odbiór gotówki
+          </button>
+        )}
+        {isCash && cashCollected && (
+          <button
+            type="button"
+            onClick={() => {
+              setCashCollected(false);
+              void save({ cashCollected: false });
+            }}
+            className="mt-3 text-xs font-medium text-white/90 underline"
+          >
+            cofnij potwierdzenie
+          </button>
         )}
       </div>
 
-      {!isCash && (
-        <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700">
-          <input type="checkbox" checked={cashCollected} onChange={(e) => setCashCollected(e.target.checked)} />
-          Płatność potwierdzona
-        </label>
-      )}
+      {statusLine}
 
       {/* Rozbicie kwoty — domyślnie zwinięte */}
       <details className="rounded-lg border border-gray-200 bg-white">
@@ -256,10 +350,56 @@ export function DriverFinancePanel({
 
       {/* Nakładka HS — tylko podwójna głowica */}
       {isDouble && (
-        <label className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700">
-          <input type="checkbox" checked={capUsed} onChange={(e) => setCapUsed(e.target.checked)} />
-          Nakładka HS zużyta podczas zabiegu
-        </label>
+        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              checked={capUsed}
+              onChange={(e) => {
+                const v = e.target.checked;
+                setCapUsed(v);
+                if (!v) setCapCount(1);
+                void save({ capUsed: v, capCount: v ? capCount : 1 });
+              }}
+            />
+            Nakładka HS zużyta podczas zabiegu
+          </label>
+          {capUsed && (
+            <div className="mt-3 flex items-center gap-3">
+              <span className="text-sm text-gray-600">Ile nakładek?</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="mniej"
+                  disabled={capCount <= 1}
+                  onClick={() => {
+                    const v = Math.max(1, capCount - 1);
+                    setCapCount(v);
+                    void save({ capCount: v });
+                  }}
+                  className="h-8 w-8 rounded-md border border-gray-300 text-lg font-semibold leading-none text-gray-700 disabled:opacity-40"
+                >
+                  −
+                </button>
+                <span className="w-6 text-center text-sm font-semibold tabular-nums">{capCount}</span>
+                <button
+                  type="button"
+                  aria-label="więcej"
+                  disabled={capCount >= MAX_CAP_COUNT}
+                  onClick={() => {
+                    const v = Math.min(MAX_CAP_COUNT, capCount + 1);
+                    setCapCount(v);
+                    void save({ capCount: v });
+                  }}
+                  className="h-8 w-8 rounded-md border border-gray-300 text-lg font-semibold leading-none text-gray-700 disabled:opacity-40"
+                >
+                  +
+                </button>
+              </div>
+              <span className="text-xs text-gray-400">zwykle 1</span>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Liczniki impulsów */}
@@ -267,7 +407,7 @@ export function DriverFinancePanel({
         <div className="rounded-lg border border-gray-200 bg-white p-4">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Liczniki impulsów</p>
           <p className="mb-3 text-xs text-gray-500">
-            Początkowy wpisz przy dostarczeniu urządzenia, końcowy przy odbiorze. Sam początkowy też możesz zapisać.
+            Początkowy wpisz przy dostarczeniu urządzenia, końcowy przy odbiorze. Zapisują się automatycznie.
           </p>
           <div className="grid grid-cols-2 gap-3">
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -275,6 +415,9 @@ export function DriverFinancePanel({
               <input
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
+                onBlur={() => {
+                  if (countersDirty) void save();
+                }}
                 inputMode="numeric"
                 className={`mt-1 w-full rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none ${
                   startValid ? "border-gray-300 focus:border-gray-500" : "border-red-400 focus:border-red-500"
@@ -286,6 +429,9 @@ export function DriverFinancePanel({
               <input
                 value={end}
                 onChange={(e) => setEnd(e.target.value)}
+                onBlur={() => {
+                  if (countersDirty) void save();
+                }}
                 inputMode="numeric"
                 className={`mt-1 w-full rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none ${
                   endValid && orderValid ? "border-gray-300 focus:border-gray-500" : "border-red-400 focus:border-red-500"
@@ -306,35 +452,13 @@ export function DriverFinancePanel({
           )}
           {awaitingEnd && (
             <p className="mt-2 text-xs text-gray-500">
-              Zapiszę sam licznik początkowy. Końcowy uzupełnij przy odbiorze — wtedy wyliczy się ostateczna kwota.
+              Końcowy uzupełnisz przy odbiorze — wtedy wyliczy się ostateczna kwota.
             </p>
           )}
         </div>
       )}
 
-      {/* Uwagi kierowcy */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Uwagi kierowcy</p>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={3}
-          placeholder="np. utrudniony dojazd, klientka prosiła o kontakt przed odbiorem…"
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
-        />
-      </div>
-
-      {error && <p className="text-sm text-red-700">{error}</p>}
-      {saved && <p className="text-sm text-green-700">Zapisano.</p>}
-
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={isSaving || countersError}
-        className="rounded-md bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-50"
-      >
-        {isSaving ? "Zapisywanie…" : "Zapisz"}
-      </button>
+      {notesCard}
     </div>
   );
 }

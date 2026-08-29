@@ -84,6 +84,7 @@ export function previewTotals(input: {
   transportNet: number | null;
   capFeeNet: number | null;
   capUsed: boolean;
+  capCount?: number; // ile nakładek HS (domyślnie 1)
   vatApplicable: boolean;
   vatRate: number;
   isSzkolenie: boolean;
@@ -91,7 +92,7 @@ export function previewTotals(input: {
   let net = input.baseNet;
   net += input.pulseSurchargeNet ?? 0;
   if (!input.isSzkolenie) net += input.transportNet ?? 0;
-  if (input.capUsed) net += input.capFeeNet ?? 0;
+  if (input.capUsed) net += (input.capFeeNet ?? 0) * Math.max(1, Math.trunc(input.capCount ?? 1));
   net = round2(net);
   const gross = input.vatApplicable ? round2(net * (1 + input.vatRate / 100)) : net;
   return { net, gross };
