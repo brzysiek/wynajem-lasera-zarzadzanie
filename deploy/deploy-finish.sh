@@ -26,7 +26,26 @@ echo "==> Installing dependencies"
 npm install
 
 echo "==> Generating Prisma client"
-npx prisma generate
+# Prisma's CLI spawns a detached "checkpoint" child on every invocation to
+# phone home for a version check. Under this account's CloudLinux LVE process
+# cap that extra fork intermittently fails with `spawn ... EAGAIN` and takes
+# the whole deploy down (it has nothing to do with codegen itself). These
+# vars make checkpoint-client a no-op so `generate` never forks it. Retry a
+# couple of times regardless, in case the LVE budget is momentarily used up
+# by another process on the account.
+export CHECKPOINT_DISABLE=1
+export PRISMA_HIDE_UPDATE_MESSAGE=1
+for attempt in 1 2 3; do
+  if npx prisma generate; then
+    break
+  fi
+  if [[ "$attempt" -eq 3 ]]; then
+    echo "prisma generate failed after $attempt attempts" >&2
+    exit 1
+  fi
+  echo "prisma generate attempt $attempt failed; retrying in 10s..." >&2
+  sleep 10
+done
 
 echo "==> Applying database migrations"
 # NOT `prisma migrate deploy`: it spawns the Rust schema engine, which hangs
