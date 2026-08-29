@@ -6,7 +6,13 @@ import type { DevicePricingCategory, RentalEventType } from "@prisma/client";
 import { BASE_PATH } from "@/lib/base-path";
 import type { RentalFinanceDto } from "@/lib/finance";
 import { DOUBLE_VARIANT, FLEX_VARIANT } from "@/lib/pricing/variants";
-import { parseAmount, previewFlexPrice, previewTotals, type PreviewContext } from "@/lib/pricing/preview";
+import {
+  parseAmount,
+  previewFlexPlaceholder,
+  previewFlexPrice,
+  previewTotals,
+  type PreviewContext,
+} from "@/lib/pricing/preview";
 
 function fmt(n: number): string {
   return new Intl.NumberFormat("pl-PL", {
@@ -57,20 +63,33 @@ export function DriverFinancePanel({
   const isAlma = !isSzkolenie && pricingCategory === "ALMA_HARMONY";
   const needsCounters = isFlex || isAlma;
 
-  const startN = start === "" ? null : Number(start);
-  const endN = end === "" ? null : Number(end);
-  const countersFilled = startN != null && endN != null;
-  const countersValid =
-    !needsCounters ||
-    (start === "" && end === "") ||
-    (countersFilled && Number.isInteger(startN) && Number.isInteger(endN) && startN >= 0 && endN >= startN);
-  const pulsesUsed = countersFilled && countersValid ? (endN as number) - (startN as number) : null;
+  const startRaw = start.trim();
+  const endRaw = end.trim();
+  const startN = startRaw === "" ? null : Number(startRaw);
+  const endN = endRaw === "" ? null : Number(endRaw);
+
+  const startValid = startN == null || (Number.isInteger(startN) && startN >= 0);
+  const endValid = endN == null || (Number.isInteger(endN) && endN >= 0);
+  const orderValid = startN == null || endN == null || endN >= startN;
+  // Twardy błąd (blokuje zapis) tylko przy sprzecznych danych. Sam licznik
+  // początkowy bez końcowego to normalna sytuacja: kierowca wpisuje początkowy
+  // przy dostarczeniu urządzenia rano, końcowy przy odbiorze wieczorem.
+  const countersError = needsCounters && (!startValid || !endValid || !orderValid);
+  const pulsesUsed =
+    needsCounters && startN != null && endN != null && orderValid ? (endN as number) - (startN as number) : null;
+  const awaitingEnd = needsCounters && startN != null && endN == null;
 
   const { net, gross, rows, pending } = useMemo(() => {
     if (!finance) return { net: 0, gross: 0, rows: [] as { label: string; value: number }[], pending: false };
 
     const baseFromFinance = Number(finance.baseRentalPriceNet) || 0;
-    const baseNet = isFlex && pulsesUsed != null ? previewFlexPrice(previewCtx, durationDays, pulsesUsed) ?? baseFromFinance : baseFromFinance;
+    const flexMin = isFlex ? previewFlexPlaceholder(previewCtx, durationDays) : 0;
+    const flexActual =
+      isFlex && pulsesUsed != null
+        ? previewFlexPrice(previewCtx, durationDays, pulsesUsed) ?? baseFromFinance
+        : baseFromFinance;
+    const baseNet = isFlex && pulsesUsed != null ? flexActual : baseFromFinance;
+    const flexPulseAddon = isFlex && pulsesUsed != null ? round2(flexActual - flexMin) : 0;
 
     const surcharge = isAlma
       ? pulsesUsed != null
@@ -94,9 +113,17 @@ export function DriverFinancePanel({
       isSzkolenie,
     });
 
-    const r: { label: string; value: number }[] = [{ label: isSzkolenie ? "Szkolenie" : "Wynajem", value: baseNet }];
+    const r: { label: string; value: number }[] = [];
+    if (isFlex && pulsesUsed != null) {
+      r.push({ label: "Wynajem (podstawa)", value: flexMin });
+      r.push({ label: `Doliczenie za impulsy (${pulsesUsed})`, value: flexPulseAddon });
+    } else {
+      r.push({ label: isSzkolenie ? "Szkolenie" : "Wynajem", value: baseNet });
+    }
     if (!isSzkolenie && transportN) r.push({ label: "Transport", value: transportN });
-    if (surcharge) r.push({ label: "Dopłata za impulsy", value: surcharge });
+    if (surcharge) {
+      r.push({ label: `Dopłata za impulsy${pulsesUsed != null ? ` (${pulsesUsed})` : ""}`, value: surcharge });
+    }
     if (capUsed && capFee) r.push({ label: "Nakładka HS", value: capFee });
     if (vatApplicable) r.push({ label: `VAT ${vatRate}%`, value: round2(t.gross - t.net) });
 
@@ -125,8 +152,8 @@ export function DriverFinancePanel({
     const payload: Record<string, unknown> = { driverNotes: notes.trim() || null, cashCollected };
     if (isDouble) payload.capUsedHS = capUsed;
     if (needsCounters) {
-      payload.pulseCounterStart = start === "" ? null : Number(start);
-      payload.pulseCounterEnd = end === "" ? null : Number(end);
+      payload.pulseCounterStart = startRaw === "" ? null : Number(startRaw);
+      payload.pulseCounterEnd = endRaw === "" ? null : Number(endRaw);
     }
 
     const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}/finance/driver`, {
@@ -238,7 +265,10 @@ export function DriverFinancePanel({
       {/* Liczniki impulsów */}
       {needsCounters && (
         <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Liczniki impulsów</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Liczniki impulsów</p>
+          <p className="mb-3 text-xs text-gray-500">
+            Początkowy wpisz przy dostarczeniu urządzenia, końcowy przy odbiorze. Sam początkowy też możesz zapisać.
+          </p>
           <div className="grid grid-cols-2 gap-3">
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-400">
               Początkowy
@@ -246,7 +276,9 @@ export function DriverFinancePanel({
                 value={start}
                 onChange={(e) => setStart(e.target.value)}
                 inputMode="numeric"
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                className={`mt-1 w-full rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none ${
+                  startValid ? "border-gray-300 focus:border-gray-500" : "border-red-400 focus:border-red-500"
+                }`}
               />
             </label>
             <label className="text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -256,13 +288,26 @@ export function DriverFinancePanel({
                 onChange={(e) => setEnd(e.target.value)}
                 inputMode="numeric"
                 className={`mt-1 w-full rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none ${
-                  countersValid ? "border-gray-300 focus:border-gray-500" : "border-red-400 focus:border-red-500"
+                  endValid && orderValid ? "border-gray-300 focus:border-gray-500" : "border-red-400 focus:border-red-500"
                 }`}
               />
             </label>
           </div>
-          {!countersValid && (
-            <p className="mt-1 text-xs text-red-600">Licznik końcowy nie może być mniejszy niż początkowy.</p>
+          {(!startValid || !endValid) && (
+            <p className="mt-2 text-xs text-red-600">Liczniki podaj jako nieujemne liczby całkowite.</p>
+          )}
+          {startValid && endValid && !orderValid && (
+            <p className="mt-2 text-xs text-red-600">Licznik końcowy nie może być mniejszy niż początkowy.</p>
+          )}
+          {pulsesUsed != null && (
+            <p className="mt-2 text-sm font-semibold text-gray-800">
+              Zużyto impulsów: <span className="tabular-nums">{pulsesUsed}</span>
+            </p>
+          )}
+          {awaitingEnd && (
+            <p className="mt-2 text-xs text-gray-500">
+              Zapiszę sam licznik początkowy. Końcowy uzupełnij przy odbiorze — wtedy wyliczy się ostateczna kwota.
+            </p>
           )}
         </div>
       )}
@@ -285,7 +330,7 @@ export function DriverFinancePanel({
       <button
         type="button"
         onClick={handleSave}
-        disabled={isSaving || !countersValid}
+        disabled={isSaving || countersError}
         className="rounded-md bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-50"
       >
         {isSaving ? "Zapisywanie…" : "Zapisz"}
