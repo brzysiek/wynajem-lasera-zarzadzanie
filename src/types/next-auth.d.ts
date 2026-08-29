@@ -7,16 +7,19 @@ declare module "next-auth" {
     user: {
       id: string;
       role: AppRole;
+      canActAsDriver: boolean;
     } & DefaultSession["user"];
   }
 
   interface User {
     role: AppRole;
+    canActAsDriver: boolean;
   }
 }
 
 declare module "@auth/core/jwt" {
   interface JWT {
     role?: AppRole;
+    canActAsDriver?: boolean;
   }
 }

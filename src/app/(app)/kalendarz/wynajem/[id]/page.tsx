@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { VIEW_COOKIE, actsAsDriver, isDriverPreview } from "@/lib/effective-role";
 import { getAllReminderTemplates } from "@/lib/reminders";
 import { listSmsTemplates } from "@/lib/message-templates";
 import { RentalForm, type Rental, type ReminderOffset } from "@/components/rental-form";
@@ -49,14 +51,19 @@ export default async function RentalDetailPage({
   const { from } = await searchParams;
   const session = await auth();
   const role = session?.user.role;
+  const viewCookie = (await cookies()).get(VIEW_COOKIE)?.value;
+  const driverMode = actsAsDriver(role, session?.user.canActAsDriver, viewCookie);
+  const preview = isDriverPreview(role, session?.user.canActAsDriver, viewCookie);
 
-  // A driver gets a read-only card, and only for rentals assigned to them.
-  if (role === "KIEROWCA") {
+  // Driver (real or ADMIN/STAFF preview) gets the read-only card + finance
+  // panel. A real KIEROWCA only sees rentals assigned to them; a preview
+  // opens any rental.
+  if (driverMode) {
     const [rental, financeCtx] = await Promise.all([
       prisma.rental.findUnique({ where: { id }, include: { device: true, driver: true, finance: true } }),
       loadFinanceFormContext(),
     ]);
-    if (!rental || rental.driverId !== session!.user.id) {
+    if (!rental || (!preview && rental.driverId !== session!.user.id)) {
       notFound();
     }
 

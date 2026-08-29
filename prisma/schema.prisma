@@ -79,6 +79,9 @@ model User {
   passwordHash String
   name         String
   role         Role      @default(STAFF)
+  // ADMIN/STAFF z tą flagą mogą przełączyć aplikację w „podgląd kierowcy"
+  // (rola efektywna, bez zmiany roli w bazie) — patrz src/lib/effective-role.ts.
+  canActAsDriver Boolean @default(false)
   invitedAt    DateTime?
   activatedAt  DateTime?
   createdAt    DateTime  @default(now())

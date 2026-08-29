@@ -54,6 +54,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           name: user.name,
           role: user.role,
+          canActAsDriver: user.canActAsDriver,
         };
       },
     }),
@@ -62,6 +63,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     jwt: async ({ token, user }) => {
       if (user) {
         token.role = user.role;
+        token.canActAsDriver = user.canActAsDriver;
       }
       return token;
     },
@@ -69,6 +71,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user && token.sub) {
         session.user.id = token.sub;
         session.user.role = token.role ?? "STAFF";
+        session.user.canActAsDriver = token.canActAsDriver ?? false;
       }
       return session;
     },

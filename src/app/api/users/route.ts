@@ -22,6 +22,7 @@ export async function GET() {
       name: true,
       email: true,
       role: true,
+      canActAsDriver: true,
       invitedAt: true,
       activatedAt: true,
       createdAt: true,
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   const role = body?.role === "ADMIN" ? "ADMIN" : body?.role === "KIEROWCA" ? "KIEROWCA" : "STAFF";
+  const canActAsDriver = role !== "KIEROWCA" && body?.canActAsDriver === true;
 
   if (!name || !EMAIL_PATTERN.test(email)) {
     logWarn("user_invite_rejected", { userId: session.user.id, reason: "invalid_input" });
@@ -58,7 +60,7 @@ export async function POST(req: NextRequest) {
   const placeholderHash = await bcrypt.hash(randomBytes(32).toString("hex"), 10);
 
   const user = await prisma.user.create({
-    data: { name, email, role, passwordHash: placeholderHash, invitedAt: new Date() },
+    data: { name, email, role, canActAsDriver, passwordHash: placeholderHash, invitedAt: new Date() },
   });
 
   logInfo("user_invited", { userId: session.user.id, invitedUserId: user.id, email });
@@ -78,6 +80,7 @@ export async function POST(req: NextRequest) {
       name: user.name,
       email: user.email,
       role: user.role,
+      canActAsDriver: user.canActAsDriver,
       invitedAt: user.invitedAt,
       activatedAt: user.activatedAt,
       createdAt: user.createdAt,

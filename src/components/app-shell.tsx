@@ -13,10 +13,14 @@ import { TopNav } from "@/components/top-nav";
 export function AppShell({
   userName,
   role,
+  canActAsDriver = false,
+  driverPreview = false,
   children,
 }: {
   userName: string;
   role?: "ADMIN" | "STAFF" | "KIEROWCA";
+  canActAsDriver?: boolean;
+  driverPreview?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -24,7 +28,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <TopNav userName={userName} role={role} />
+      <TopNav userName={userName} role={role} canActAsDriver={canActAsDriver} driverPreview={driverPreview} />
       <main
         className={
           isFullWidth

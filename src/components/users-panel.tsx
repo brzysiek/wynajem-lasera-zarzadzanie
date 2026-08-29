@@ -11,10 +11,13 @@ type User = {
   name: string;
   email: string;
   role: Role;
+  canActAsDriver: boolean;
   invitedAt: string | null;
   activatedAt: string | null;
   createdAt: string;
 };
+
+const DRIVER_VIEW_HINT = "Może w aplikacji (telefon) przełączyć się na „podgląd kierowcy” — kalendarz i wynajmy tylko do odczytu.";
 
 const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Administrator",
@@ -49,6 +52,7 @@ function InviteForm({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("STAFF");
+  const [canActAsDriver, setCanActAsDriver] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,7 +63,7 @@ function InviteForm({
 
     const { ok, data } = await api("/api/users", {
       method: "POST",
-      body: JSON.stringify({ name, email, role }),
+      body: JSON.stringify({ name, email, role, canActAsDriver: role !== "KIEROWCA" && canActAsDriver }),
     });
 
     setIsSaving(false);
@@ -110,6 +114,21 @@ function InviteForm({
         </label>
       </div>
 
+      {role !== "KIEROWCA" && (
+        <label className="mt-3 flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={canActAsDriver}
+            onChange={(e) => setCanActAsDriver(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            Podgląd kierowcy
+            <span className="block text-xs text-gray-400">{DRIVER_VIEW_HINT}</span>
+          </span>
+        </label>
+      )}
+
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
 
       <div className="mt-4 flex gap-2">
@@ -146,6 +165,7 @@ function EditForm({
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [role, setRole] = useState(user.role);
+  const [canActAsDriver, setCanActAsDriver] = useState(user.canActAsDriver);
   const [changingPassword, setChangingPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -168,10 +188,12 @@ function EditForm({
     }
 
     setIsSaving(true);
-    const body: { name?: string; email?: string; password?: string; role?: Role } = {};
+    const body: { name?: string; email?: string; password?: string; role?: Role; canActAsDriver?: boolean } = {};
     if (name !== user.name) body.name = name;
     if (email !== user.email) body.email = email;
     if (!isSelf && role !== user.role) body.role = role;
+    const effectiveCanDrive = role !== "KIEROWCA" && canActAsDriver;
+    if (effectiveCanDrive !== user.canActAsDriver) body.canActAsDriver = effectiveCanDrive;
     if (changingPassword) body.password = password;
 
     const { ok, data } = await api(`/api/users/${user.id}`, {
@@ -224,6 +246,26 @@ function EditForm({
           {isSelf && <span className="text-xs text-gray-400">Nie możesz zmienić własnej roli.</span>}
         </label>
       </div>
+
+      {role !== "KIEROWCA" && (
+        <label className="mt-3 flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={canActAsDriver}
+            onChange={(e) => setCanActAsDriver(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            Podgląd kierowcy
+            <span className="block text-xs text-gray-400">{DRIVER_VIEW_HINT}</span>
+            {isSelf && (
+              <span className="block text-xs text-amber-700">
+                Zmiana zadziała dopiero po Twoim ponownym zalogowaniu.
+              </span>
+            )}
+          </span>
+        </label>
+      )}
 
       <div className="mt-3">
         {changingPassword ? (
@@ -348,6 +390,14 @@ function UserRow({
           {pending && (
             <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
               zaproszenie oczekujące
+            </span>
+          )}
+          {user.canActAsDriver && user.role !== "KIEROWCA" && (
+            <span
+              className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700"
+              title={DRIVER_VIEW_HINT}
+            >
+              podgląd kierowcy
             </span>
           )}
         </p>

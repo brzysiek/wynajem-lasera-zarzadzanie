@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { BASE_PATH } from "@/lib/base-path";
+import { VIEW_COOKIE, actsAsDriver } from "@/lib/effective-role";
 
 // Must match `basePath` in next.config.ts. In this custom-server (Passenger)
 // setup, req.nextUrl.basePath comes back empty in middleware even though
@@ -45,7 +46,12 @@ export default auth((req) => {
     return NextResponse.redirect(new URL(`${BASE_PATH}/kalendarz`, req.nextUrl));
   }
 
-  if (isLoggedIn && req.auth?.user?.role === "KIEROWCA" && !isPublicRoute) {
+  const driverMode = actsAsDriver(
+    req.auth?.user?.role,
+    req.auth?.user?.canActAsDriver,
+    req.cookies.get(VIEW_COOKIE)?.value,
+  );
+  if (isLoggedIn && driverMode && !isPublicRoute) {
     const allowed =
       DRIVER_ALLOWED_PREFIXES.some((prefix) => pathname.startsWith(prefix)) &&
       !DRIVER_BLOCKED_PATHS.some((blocked) => pathname === blocked || pathname.startsWith(`${blocked}/`));

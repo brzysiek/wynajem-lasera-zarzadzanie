@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { BASE_PATH } from "@/lib/base-path";
 import { LogoutButton } from "@/components/logout-button";
 
 const NAV_ITEMS = [
@@ -32,7 +33,36 @@ function HamburgerIcon({ open }: { open: boolean }) {
   );
 }
 
-export function TopNav({ userName, role }: { userName: string; role?: "ADMIN" | "STAFF" | "KIEROWCA" }) {
+function ViewSwitchButton({ toDriver, className }: { toDriver: boolean; className: string }) {
+  const [busy, setBusy] = useState(false);
+  async function switchView() {
+    setBusy(true);
+    await fetch(`${BASE_PATH}/api/view`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: toDriver ? "driver" : "panel" }),
+    }).catch(() => {});
+    // Pełne przeładowanie — middleware musi przeliczyć rolę efektywną.
+    window.location.assign(`${BASE_PATH}/kalendarz`);
+  }
+  return (
+    <button type="button" onClick={switchView} disabled={busy} className={className}>
+      {toDriver ? "Widok kierowcy" : "Wróć do panelu"}
+    </button>
+  );
+}
+
+export function TopNav({
+  userName,
+  role,
+  canActAsDriver = false,
+  driverPreview = false,
+}: {
+  userName: string;
+  role?: "ADMIN" | "STAFF" | "KIEROWCA";
+  canActAsDriver?: boolean;
+  driverPreview?: boolean;
+}) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const navItems = role === "KIEROWCA" ? DRIVER_NAV_ITEMS : NAV_ITEMS;
@@ -80,10 +110,26 @@ export function TopNav({ userName, role }: { userName: string; role?: "ADMIN" | 
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
+          {canActAsDriver && (
+            <ViewSwitchButton
+              toDriver={!driverPreview}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            />
+          )}
           <span className="text-sm text-gray-600">{userName}</span>
           <LogoutButton />
         </div>
       </div>
+
+      {driverPreview && (
+        <div className="flex items-center justify-between gap-3 border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <span className="font-medium">🚚 Podgląd kierowcy — działasz jak KIEROWCA (tylko odczyt)</span>
+          <ViewSwitchButton
+            toDriver={false}
+            className="flex-none rounded-md bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
+          />
+        </div>
+      )}
 
       {menuOpen && (
         <div className="border-t border-gray-200 px-4 py-3 md:hidden">
@@ -105,6 +151,14 @@ export function TopNav({ userName, role }: { userName: string; role?: "ADMIN" | 
               );
             })}
           </nav>
+          {canActAsDriver && (
+            <div className="mt-2">
+              <ViewSwitchButton
+                toDriver={!driverPreview}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              />
+            </div>
+          )}
           <div className="mt-3 flex items-center justify-between border-t border-gray-200 pt-3">
             <span className="text-sm text-gray-600">{userName}</span>
             <LogoutButton />
