@@ -212,20 +212,20 @@ export function RentalFinanceSection({
         )}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="flex flex-col gap-3">
         <label className="flex items-center gap-2 text-sm text-gray-700">
           <input type="checkbox" checked={vatApplicable} onChange={(e) => setVatApplicable(e.target.checked)} />
           Doliczyć VAT ({vatRate}%)
         </label>
-        <div className="flex items-center gap-2 text-sm text-gray-700">
-          <span>Płatność:</span>
-          <div className="flex overflow-hidden rounded-md border border-gray-300">
+        <div className="flex flex-col gap-1 text-sm text-gray-700">
+          Sposób płatności
+          <div className="flex w-full overflow-hidden rounded-md border border-gray-300">
             {(["CASH", "TRANSFER"] as PaymentMethod[]).map((m) => (
               <button
                 key={m}
                 type="button"
                 onClick={() => setPaymentMethod(m)}
-                className={`px-3 py-1.5 text-sm font-medium ${
+                className={`flex-1 px-3 py-1.5 text-center text-sm font-medium ${
                   paymentMethod === m ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"
                 }`}
               >
