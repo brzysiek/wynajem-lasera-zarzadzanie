@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PricingError } from "./errors";
-import { computeAlmaPulseSurcharge, computeFlexBasePrice, pulsesUsed } from "./pulse";
+import { computeAlmaPulseSurcharge, computeFlexBasePrice, flexPlaceholderNet, pulsesUsed } from "./pulse";
 import { PULSE_TIERS, SETTINGS } from "./fixtures";
 
 const n = (x: { toNumber(): number }) => x.toNumber();
@@ -56,6 +56,17 @@ describe("computeFlexBasePrice — durationDays = 3 (z nadwyżką od 26 000)", (
   });
   it("nadwyżka: 29 000 → 2000 + 2*100 = 2200", () => {
     expect(n(computeFlexBasePrice(PULSE_TIERS, 3, 29000))).toBe(2200);
+  });
+});
+
+describe("flexPlaceholderNet — najniższy próg dla okresu", () => {
+  it("1 dzień → 750, 2 dni → 1300, 3 dni → 1600", () => {
+    expect(flexPlaceholderNet(PULSE_TIERS, 1).toNumber()).toBe(750);
+    expect(flexPlaceholderNet(PULSE_TIERS, 2).toNumber()).toBe(1300);
+    expect(flexPlaceholderNet(PULSE_TIERS, 3).toNumber()).toBe(1600);
+  });
+  it("brak progów dla okresu → fallback 750", () => {
+    expect(flexPlaceholderNet(PULSE_TIERS, 5).toNumber()).toBe(750);
   });
 });
 

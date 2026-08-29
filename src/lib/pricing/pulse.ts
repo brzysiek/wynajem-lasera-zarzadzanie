@@ -1,11 +1,21 @@
 import { PricingError } from "./errors";
 import { Prisma, type PulseTierRow } from "./types";
 
-// Placeholder ceny bazowej dla LightSheer taryfa elastyczna (single_flex),
-// pokazywany zanim kierowca odczyta liczniki. Świadomie stała 750 zł
-// niezależnie od liczby dni — nie próba zgadnięcia z tabeli 2/3-dniowej
-// (spec 3.2).
+// Awaryjna cena bazowa dla LightSheer taryfa elastyczna, gdy dla danej
+// liczby dni nie ma skonfigurowanych progów impulsów.
 export const FLEX_PLACEHOLDER_NET = new Prisma.Decimal(750);
+
+// Placeholder ceny bazowej dla LightSheer taryfa elastyczna (single_flex),
+// pokazywany zanim kierowca odczyta liczniki: NAJNIŻSZY próg z cennika dla
+// danej liczby dni (1 dzień → 750, 2 dni → 1300, 3 dni → 1600). Dokładna
+// kwota wylicza się po odczycie liczników przez computeFlexBasePrice.
+export function flexPlaceholderNet(tiers: PulseTierRow[], durationDays: number): Prisma.Decimal {
+  const relevant = tiers.filter(
+    (t) => t.pricingCategory === "LIGHTSHEER_VARIANT" && t.durationDays === durationDays && !t.isOverflowTier,
+  );
+  if (relevant.length === 0) return FLEX_PLACEHOLDER_NET;
+  return relevant.reduce((min, t) => (t.priceNet.lessThan(min) ? t.priceNet : min), relevant[0].priceNet);
+}
 
 // Zużyte impulsy z pary liczników. Waliduje wejście — komunikaty pod
 // wyświetlenie kierowcy.

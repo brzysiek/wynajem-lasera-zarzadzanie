@@ -33,6 +33,14 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// Placeholder ceny flex przed odczytem liczników: najniższy próg z cennika
+// dla danej liczby dni (fallback 750).
+export function previewFlexPlaceholder(ctx: PreviewContext, durationDays: number): number {
+  const relevant = ctx.pulseTiers.filter((t) => t.durationDays === durationDays && !t.isOverflowTier);
+  if (relevant.length === 0) return FLEX_PLACEHOLDER_NET_NUMBER;
+  return relevant.reduce((min, t) => (t.priceNet < min ? t.priceNet : min), relevant[0].priceNet);
+}
+
 // null = brak reguły w cenniku (biuro wpisze ręcznie).
 export function previewBasePrice(
   ctx: PreviewContext,
@@ -41,7 +49,7 @@ export function previewBasePrice(
   durationDays: number,
 ): { priceNet: number | null; fromList: boolean; flexPlaceholder: boolean } {
   if (category === "LIGHTSHEER_VARIANT" && variant === FLEX_VARIANT) {
-    return { priceNet: FLEX_PLACEHOLDER_NET_NUMBER, fromList: false, flexPlaceholder: true };
+    return { priceNet: previewFlexPlaceholder(ctx, durationDays), fromList: false, flexPlaceholder: true };
   }
   if (!category) return { priceNet: null, fromList: false, flexPlaceholder: false };
   const rule = ctx.priceRules.find(

@@ -13,8 +13,8 @@ import {
 import { prisma } from "@/lib/prisma";
 import {
   DOUBLE_VARIANT,
-  FLEX_PLACEHOLDER_NET,
   FLEX_VARIANT,
+  flexPlaceholderNet,
   rentalDurationDays,
   recalculateFinance,
   resolveBasePrice,
@@ -239,7 +239,7 @@ export async function saveRentalFinance(
   if (isFlex) {
     // Taryfa elastyczna — cena bazowa zawsze z placeholdera/liczników, biuro
     // nie może jej nadpisać. recalculateFinance ją finalizuje.
-    baseRentalPriceNet = FLEX_PLACEHOLDER_NET;
+    baseRentalPriceNet = flexPlaceholderNet(ctx.pulseTiers, ctx.durationDays);
     baseRentalPriceSource = "MANUAL";
   } else if (manual != null) {
     baseRentalPriceNet = manual;

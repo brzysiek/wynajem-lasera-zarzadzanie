@@ -5,7 +5,7 @@ import {
   type PricingContext,
 } from "./types";
 import { variantNeedsPulseCounters } from "./base-price";
-import { FLEX_PLACEHOLDER_NET, computeAlmaPulseSurcharge, computeFlexBasePrice, pulsesUsed } from "./pulse";
+import { computeAlmaPulseSurcharge, computeFlexBasePrice, flexPlaceholderNet, pulsesUsed } from "./pulse";
 import { computeTotals } from "./total";
 
 export * from "./types";
@@ -13,7 +13,7 @@ export { PricingError } from "./errors";
 export { rentalDurationDays } from "./duration";
 export { resolveBasePrice, variantNeedsPulseCounters } from "./base-price";
 export type { BasePriceContext, ResolvedBasePrice } from "./base-price";
-export { computeAlmaPulseSurcharge, computeFlexBasePrice, pulsesUsed, FLEX_PLACEHOLDER_NET } from "./pulse";
+export { computeAlmaPulseSurcharge, computeFlexBasePrice, flexPlaceholderNet, pulsesUsed, FLEX_PLACEHOLDER_NET } from "./pulse";
 export { computeTotals, round2 } from "./total";
 export type { TotalsInput } from "./total";
 export { formatPln } from "./format";
@@ -45,7 +45,7 @@ export function recalculateFinance(ctx: PricingContext, state: FinanceState): Co
         source = "PULSE_CALCULATED";
         status = "CALCULATED";
       } else {
-        base = FLEX_PLACEHOLDER_NET;
+        base = flexPlaceholderNet(ctx.pulseTiers, ctx.durationDays);
         source = "MANUAL";
         status = "PENDING";
       }

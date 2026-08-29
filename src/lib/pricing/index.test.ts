@@ -66,11 +66,18 @@ describe("recalculateFinance — LightSheer double (standard)", () => {
 describe("recalculateFinance — LightSheer single_flex (impulsy zastępują bazę)", () => {
   const flexCtx = ctx({ deviceVariant: "single_flex", durationDays: 2 });
 
-  it("bez liczników → placeholder 750, PENDING, źródło MANUAL", () => {
-    const r = recalculateFinance(flexCtx, state({ baseRentalPriceNet: D(750), baseRentalPriceSource: "MANUAL" }));
-    expect(r.baseRentalPriceNet.toNumber()).toBe(750);
+  it("bez liczników → placeholder = najniższy próg dla okresu (2 dni = 1300), PENDING, MANUAL", () => {
+    const r = recalculateFinance(flexCtx, state({ baseRentalPriceNet: D(999), baseRentalPriceSource: "MANUAL" }));
+    expect(r.baseRentalPriceNet.toNumber()).toBe(1300);
     expect(r.baseRentalPriceSource).toBe("MANUAL");
     expect(r.pulseCalculationStatus).toBe("PENDING");
+  });
+
+  it("placeholder dla 1 dnia = 750, dla 3 dni = 1600", () => {
+    const c1 = ctx({ deviceVariant: "single_flex", durationDays: 1 });
+    const c3 = ctx({ deviceVariant: "single_flex", durationDays: 3 });
+    expect(recalculateFinance(c1, state({})).baseRentalPriceNet.toNumber()).toBe(750);
+    expect(recalculateFinance(c3, state({})).baseRentalPriceNet.toNumber()).toBe(1600);
   });
 
   it("z licznikami → cena z progów, PULSE_CALCULATED, CALCULATED", () => {

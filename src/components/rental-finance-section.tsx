@@ -207,7 +207,7 @@ export function RentalFinanceSection({
         )}
         {isFlex && (
           <p className="mt-1 text-xs text-gray-500">
-            Kwota tymczasowa — zostanie wyliczona po odczycie liczników impulsów przez kierowcę.
+            Kwota minimalna dla tego okresu — dokładna wartość wyliczy się po odczycie liczników impulsów przez kierowcę.
           </p>
         )}
       </div>
