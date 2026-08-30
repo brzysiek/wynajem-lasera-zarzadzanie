@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { LogoutButton } from "@/components/logout-button";
 
@@ -33,7 +33,35 @@ function HamburgerIcon({ open }: { open: boolean }) {
   );
 }
 
-function ViewSwitchButton({ toDriver, className }: { toDriver: boolean; className: string }) {
+function SteeringWheelIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="1" />
+      <path d="M12 13v8" />
+      <path d="M12.87 12.4l7.13 2.6" />
+      <path d="M11.13 12.4 4 15" />
+    </svg>
+  );
+}
+
+function ViewSwitchButton({
+  toDriver,
+  className,
+  icon,
+}: {
+  toDriver: boolean;
+  className: string;
+  icon?: ReactNode;
+}) {
   const [busy, setBusy] = useState(false);
   async function switchView() {
     setBusy(true);
@@ -47,6 +75,7 @@ function ViewSwitchButton({ toDriver, className }: { toDriver: boolean; classNam
   }
   return (
     <button type="button" onClick={switchView} disabled={busy} className={className}>
+      {icon}
       {toDriver ? "Widok kierowcy" : "Wróć do panelu"}
     </button>
   );
@@ -109,15 +138,18 @@ export function TopNav({
           </nav>
         </div>
 
-        <div className="hidden items-center gap-3 md:flex">
-          {canActAsDriver && (
+        <div className="flex items-center gap-3">
+          {canActAsDriver && !driverPreview && (
             <ViewSwitchButton
-              toDriver={!driverPreview}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              toDriver
+              icon={<SteeringWheelIcon />}
+              className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
             />
           )}
-          <span className="text-sm text-gray-600">{userName}</span>
-          <LogoutButton />
+          <div className="hidden items-center gap-3 md:flex">
+            <span className="text-sm text-gray-600">{userName}</span>
+            <LogoutButton />
+          </div>
         </div>
       </div>
 
@@ -151,14 +183,6 @@ export function TopNav({
               );
             })}
           </nav>
-          {canActAsDriver && (
-            <div className="mt-2">
-              <ViewSwitchButton
-                toDriver={!driverPreview}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              />
-            </div>
-          )}
           <div className="mt-3 flex items-center justify-between border-t border-gray-200 pt-3">
             <span className="text-sm text-gray-600">{userName}</span>
             <LogoutButton />
