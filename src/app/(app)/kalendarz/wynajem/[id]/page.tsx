@@ -76,6 +76,7 @@ export default async function RentalDetailPage({
           endsAt: rental.endsAt.toISOString(),
           allDay: rental.allDay,
           device: { name: rental.device.name, color: rental.device.color },
+          deviceVariant: rental.finance?.deviceVariant ?? null,
           driverName: rental.driver?.name ?? null,
           deliveryAddress: rental.deliveryAddress,
           deliveryTime: rental.deliveryTime,

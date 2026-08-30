@@ -48,3 +48,20 @@ export function variantLabel(category: DevicePricingCategory | null, variant: st
   if (!category || !variant) return "";
   return VARIANT_OPTIONS_BY_CATEGORY[category].find((o) => o.value === variant)?.label ?? variant;
 }
+
+// Krótka etykieta wariantu wg samego klucza (klucze są globalnie unikalne
+// między kategoriami) — do nagłówków i podsumowań, gdzie nie mamy pod ręką
+// kategorii. Pusty string dla braku wariantu (ET400, Cooltech, ResurFX,
+// Observ), żeby wołający mógł po prostu pominąć fragment.
+export const VARIANT_LABELS: Record<string, string> = {
+  single_standard: "pojedyncza głowica",
+  single_flex: "pojedyncza głowica — elastyczna (impulsy)",
+  double: "podwójna głowica",
+  dye_vl: "Dye-VL",
+  dye_vl_ipixel: "Dye-VL + Er:YAG iPixel",
+};
+
+export function variantShortLabel(variant: string | null | undefined): string {
+  if (!variant) return "";
+  return VARIANT_LABELS[variant] ?? variant;
+}

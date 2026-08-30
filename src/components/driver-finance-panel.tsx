@@ -24,6 +24,11 @@ function fmt(n: number): string {
 
 const MAX_CAP_COUNT = 20;
 
+// Tokeny z docs/finanse-wynajmu/mockup-modul-finansowy.html (light only).
+const CARD = "rounded-[14px] border border-[#E2E6EC] bg-white px-4 py-3.5";
+const FIELD_LABEL = "text-[11px] font-bold uppercase tracking-[0.04em] text-[#6B7280]";
+const INPUT_BASE = "w-full rounded-[9px] border bg-[#F1F3F6] px-2.5 py-2 text-[14px] text-[#171A21] focus:outline-none";
+
 export function DriverFinancePanel({
   rentalId,
   eventType,
@@ -214,11 +219,11 @@ export function DriverFinancePanel({
   ]);
 
   const statusLine = (
-    <div className="min-h-[1rem] text-center text-xs">
-      {saveState === "saving" && <span className="text-gray-500">Zapisywanie…</span>}
-      {saveState === "saved" && <span className="text-emerald-600">Zapisano ✓</span>}
+    <div className="min-h-[1rem] text-center text-[11px]">
+      {saveState === "saving" && <span className="text-[#6B7280]">Zapisywanie…</span>}
+      {saveState === "saved" && <span className="text-[#1E9E6B]">Zapisano ✓</span>}
       {saveState === "error" && (
-        <button type="button" onClick={() => void save()} className="font-medium text-red-600 underline">
+        <button type="button" onClick={() => void save()} className="font-semibold text-[#E15A2B] underline">
           {saveError ?? "Nie zapisano"} — dotknij, aby ponowić
         </button>
       )}
@@ -226,8 +231,8 @@ export function DriverFinancePanel({
   );
 
   const notesCard = notesOpen ? (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Uwagi kierowcy</p>
+    <div className={CARD}>
+      <p className={`mb-2 ${FIELD_LABEL}`}>Uwagi kierowcy</p>
       <textarea
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
@@ -236,14 +241,14 @@ export function DriverFinancePanel({
         }}
         rows={3}
         placeholder="np. utrudniony dojazd, klientka prosiła o kontakt przed odbiorem…"
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+        className={`${INPUT_BASE} resize-none border-[#E2E6EC] focus:border-[#2F6FD1]`}
       />
     </div>
   ) : (
     <button
       type="button"
       onClick={() => setNotesOpen(true)}
-      className="self-start text-sm font-medium text-gray-500 underline"
+      className="self-start text-[13px] font-semibold text-[#2F6FD1]"
     >
       ＋ dodaj uwagę
     </button>
@@ -252,12 +257,12 @@ export function DriverFinancePanel({
   // Brak rozliczenia przygotowanego przez biuro — kierowca może zostawić tylko uwagi.
   if (!finance) {
     return (
-      <div className="flex flex-col gap-4">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      <div className="flex flex-col gap-3">
+        <div className="rounded-[14px] border border-[#F0DFB6] bg-[#FBF3E1] px-4 py-3 text-[13px] text-[#8A6A16]">
           Biuro nie przygotowało jeszcze rozliczenia tego wydarzenia.
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Uwagi kierowcy</p>
+        <div className={CARD}>
+          <p className={`mb-2 ${FIELD_LABEL}`}>Uwagi kierowcy</p>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -265,7 +270,7 @@ export function DriverFinancePanel({
               if (notes.trim() !== savedNotes) void save();
             }}
             rows={3}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+            className={`${INPUT_BASE} resize-none border-[#E2E6EC] focus:border-[#2F6FD1]`}
           />
         </div>
         {statusLine}
@@ -278,22 +283,24 @@ export function DriverFinancePanel({
   const displayAmount = gross;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Banner płatności */}
+    <div className="flex flex-col gap-3">
+      {/* Banner płatności — jedyny element z wyraźnym cieniem, „unosi się" nad resztą */}
       <div
-        className={`rounded-xl px-5 py-5 text-center ${
+        className={`rounded-[14px] px-5 py-[18px] text-center ${
           cashDone
-            ? "bg-gradient-to-b from-emerald-500 to-emerald-700 text-white shadow-lg shadow-emerald-500/30"
+            ? "bg-[linear-gradient(155deg,#1E9E6B_0%,#146C4C_100%)] text-white shadow-[0_10px_24px_-10px_rgba(30,158,107,0.5)]"
             : isCash
-              ? "bg-gradient-to-b from-orange-500 to-orange-700 text-white shadow-lg shadow-orange-500/30"
-              : "bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200"
+              ? "bg-[linear-gradient(155deg,#E15A2B_0%,#9C3D1B_100%)] text-white shadow-[0_10px_24px_-10px_rgba(225,90,43,0.55)]"
+              : "bg-[#E7F7F0] text-[#134E38] ring-1 ring-[#B7E6D3]"
         }`}
       >
-        <div className="text-xs font-bold uppercase tracking-wider opacity-90">
+        <div className="flex items-center justify-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.06em] opacity-90">
           {cashDone ? "✅ Gotówka odebrana" : isCash ? "💵 Gotówka" : "🏦 Przelew"}
         </div>
-        <div className="mt-1 text-4xl font-extrabold tabular-nums">{fmt(displayAmount)} zł</div>
-        <div className="mt-1 text-sm opacity-80">
+        <div className="mt-1.5 text-[40px] font-extrabold leading-none tracking-[-0.02em] tabular-nums">
+          {fmt(displayAmount)} zł
+        </div>
+        <div className="mt-1.5 text-[12.5px] opacity-85">
           {isCash
             ? cashDone
               ? "rozliczone"
@@ -301,7 +308,9 @@ export function DriverFinancePanel({
             : "klientka płaci przelewem — nie pobieraj gotówki"}
         </div>
         {pending && (
-          <div className="mt-1 text-xs opacity-80">kwota tymczasowa — uzupełnij liczniki impulsów poniżej</div>
+          <div className="mt-1 text-[11px] font-semibold opacity-85">
+            kwota tymczasowa — uzupełnij liczniki impulsów poniżej
+          </div>
         )}
         {isCash && !cashCollected && (
           <button
@@ -310,7 +319,7 @@ export function DriverFinancePanel({
               setCashCollected(true);
               void save({ cashCollected: true });
             }}
-            className="mt-4 w-full rounded-lg bg-white px-4 py-3 text-base font-bold text-orange-700 shadow active:translate-y-px"
+            className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-[9px] bg-white/[0.16] px-3 py-2.5 text-[14px] font-semibold ring-1 ring-white/[0.28] active:translate-y-px"
           >
             Potwierdź odbiór gotówki
           </button>
@@ -322,7 +331,7 @@ export function DriverFinancePanel({
               setCashCollected(false);
               void save({ cashCollected: false });
             }}
-            className="mt-3 text-xs font-medium text-white/90 underline"
+            className="mt-3 text-[11px] font-medium text-white/90 underline"
           >
             cofnij potwierdzenie
           </button>
@@ -332,16 +341,19 @@ export function DriverFinancePanel({
       {statusLine}
 
       {/* Rozbicie kwoty — domyślnie zwinięte */}
-      <details className="rounded-lg border border-gray-200 bg-white">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-gray-600">Rozbicie kwoty</summary>
-        <div className="border-t border-gray-100 px-4 py-3 text-sm">
+      <details className="group rounded-[14px] border border-[#E2E6EC] bg-white">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-3.5 text-[13.5px] font-semibold text-[#6B7280] [&::-webkit-details-marker]:hidden">
+          <span className="text-[10px] transition-transform group-open:rotate-90">▸</span>
+          Rozbicie kwoty
+        </summary>
+        <div className="px-4 pb-3.5 text-[13.5px]">
           {rows.map((r) => (
-            <div key={r.label} className="flex justify-between py-0.5 text-gray-700">
+            <div key={r.label} className="flex justify-between py-[5px] text-[#171A21]">
               <span>{r.label}</span>
-              <span className="font-medium tabular-nums">{fmt(r.value)} zł</span>
+              <span className="font-semibold tabular-nums">{fmt(r.value)} zł</span>
             </div>
           ))}
-          <div className="mt-1 flex justify-between border-t border-gray-200 pt-1 font-semibold text-gray-900">
+          <div className="mt-1 flex justify-between border-t border-[#E2E6EC] pt-2.5 font-bold text-[#171A21]">
             <span>{finance.vatApplicable ? "Razem brutto" : "Razem netto"}</span>
             <span className="tabular-nums">{fmt(finance.vatApplicable ? gross : net)} zł</span>
           </div>
@@ -350,10 +362,12 @@ export function DriverFinancePanel({
 
       {/* Nakładka HS — tylko podwójna głowica */}
       {isDouble && (
-        <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+        <div className={CARD}>
+          <p className={`mb-2 ${FIELD_LABEL}`}>Nakładka HS</p>
+          <label className="flex items-center gap-2.5 text-[14px] font-semibold text-[#171A21]">
             <input
               type="checkbox"
+              className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
               checked={capUsed}
               onChange={(e) => {
                 const v = e.target.checked;
@@ -362,11 +376,11 @@ export function DriverFinancePanel({
                 void save({ capUsed: v, capCount: v ? capCount : 1 });
               }}
             />
-            Nakładka HS zużyta podczas zabiegu
+            Zużyta podczas zabiegu
           </label>
           {capUsed && (
             <div className="mt-3 flex items-center gap-3">
-              <span className="text-sm text-gray-600">Ile nakładek?</span>
+              <span className="text-[13px] text-[#6B7280]">Ile nakładek?</span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -377,11 +391,11 @@ export function DriverFinancePanel({
                     setCapCount(v);
                     void save({ capCount: v });
                   }}
-                  className="h-8 w-8 rounded-md border border-gray-300 text-lg font-semibold leading-none text-gray-700 disabled:opacity-40"
+                  className="h-8 w-8 rounded-[9px] border border-[#E2E6EC] text-lg font-semibold leading-none text-[#171A21] disabled:opacity-40"
                 >
                   −
                 </button>
-                <span className="w-6 text-center text-sm font-semibold tabular-nums">{capCount}</span>
+                <span className="w-6 text-center text-[14px] font-semibold tabular-nums">{capCount}</span>
                 <button
                   type="button"
                   aria-label="więcej"
@@ -391,12 +405,12 @@ export function DriverFinancePanel({
                     setCapCount(v);
                     void save({ capCount: v });
                   }}
-                  className="h-8 w-8 rounded-md border border-gray-300 text-lg font-semibold leading-none text-gray-700 disabled:opacity-40"
+                  className="h-8 w-8 rounded-[9px] border border-[#E2E6EC] text-lg font-semibold leading-none text-[#171A21] disabled:opacity-40"
                 >
                   +
                 </button>
               </div>
-              <span className="text-xs text-gray-400">zwykle 1</span>
+              <span className="text-[11px] text-[#9CA3AF]">zwykle 1</span>
             </div>
           )}
         </div>
@@ -404,13 +418,13 @@ export function DriverFinancePanel({
 
       {/* Liczniki impulsów */}
       {needsCounters && (
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Liczniki impulsów</p>
-          <p className="mb-3 text-xs text-gray-500">
+        <div className={CARD}>
+          <p className={`mb-1 ${FIELD_LABEL}`}>Liczniki impulsów</p>
+          <p className="mb-3 text-[11px] text-[#9CA3AF]">
             Początkowy wpisz przy dostarczeniu urządzenia, końcowy przy odbiorze. Zapisują się automatycznie.
           </p>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <div className="grid grid-cols-2 gap-2.5">
+            <label className="text-[11px] font-bold uppercase tracking-[0.03em] text-[#9CA3AF]">
               Początkowy
               <input
                 value={start}
@@ -419,12 +433,12 @@ export function DriverFinancePanel({
                   if (countersDirty) void save();
                 }}
                 inputMode="numeric"
-                className={`mt-1 w-full rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none ${
-                  startValid ? "border-gray-300 focus:border-gray-500" : "border-red-400 focus:border-red-500"
+                className={`mt-1 ${INPUT_BASE} ${
+                  startValid ? "border-[#E2E6EC] focus:border-[#2F6FD1]" : "border-[#E15A2B]"
                 }`}
               />
             </label>
-            <label className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            <label className="text-[11px] font-bold uppercase tracking-[0.03em] text-[#9CA3AF]">
               Końcowy
               <input
                 value={end}
@@ -433,25 +447,25 @@ export function DriverFinancePanel({
                   if (countersDirty) void save();
                 }}
                 inputMode="numeric"
-                className={`mt-1 w-full rounded-md border px-3 py-2 text-sm text-gray-900 focus:outline-none ${
-                  endValid && orderValid ? "border-gray-300 focus:border-gray-500" : "border-red-400 focus:border-red-500"
+                className={`mt-1 ${INPUT_BASE} ${
+                  endValid && orderValid ? "border-[#E2E6EC] focus:border-[#2F6FD1]" : "border-[#E15A2B]"
                 }`}
               />
             </label>
           </div>
           {(!startValid || !endValid) && (
-            <p className="mt-2 text-xs text-red-600">Liczniki podaj jako nieujemne liczby całkowite.</p>
+            <p className="mt-2 text-[12px] text-[#E15A2B]">Liczniki podaj jako nieujemne liczby całkowite.</p>
           )}
           {startValid && endValid && !orderValid && (
-            <p className="mt-2 text-xs text-red-600">Licznik końcowy nie może być mniejszy niż początkowy.</p>
+            <p className="mt-2 text-[12px] text-[#E15A2B]">Licznik końcowy nie może być mniejszy niż początkowy.</p>
           )}
           {pulsesUsed != null && (
-            <p className="mt-2 text-sm font-semibold text-gray-800">
+            <p className="mt-2 text-[14px] font-semibold text-[#171A21]">
               Zużyto impulsów: <span className="tabular-nums">{pulsesUsed}</span>
             </p>
           )}
           {awaitingEnd && (
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-2 text-[12px] text-[#9CA3AF]">
               Końcowy uzupełnisz przy odbiorze — wtedy wyliczy się ostateczna kwota.
             </p>
           )}
