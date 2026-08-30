@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { type ReactNode, useState } from "react";
+import { useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { LogoutButton } from "@/components/logout-button";
 
@@ -33,15 +33,15 @@ function HamburgerIcon({ open }: { open: boolean }) {
   );
 }
 
-function SteeringWheelIcon() {
+function SteeringWheelIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="2.25"
       strokeLinecap="round"
-      className="h-4 w-4"
+      className={className}
       aria-hidden="true"
     >
       <circle cx="12" cy="12" r="9" />
@@ -53,31 +53,72 @@ function SteeringWheelIcon() {
   );
 }
 
-function ViewSwitchButton({
-  toDriver,
-  className,
-  icon,
-}: {
-  toDriver: boolean;
-  className: string;
-  icon?: ReactNode;
-}) {
+async function applyView(driver: boolean) {
+  await fetch(`${BASE_PATH}/api/view`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: driver ? "driver" : "panel" }),
+  }).catch(() => {});
+  // Pełne przeładowanie — middleware musi przeliczyć rolę efektywną.
+  window.location.assign(`${BASE_PATH}/kalendarz`);
+}
+
+function ViewSwitchButton({ toDriver, className }: { toDriver: boolean; className: string }) {
   const [busy, setBusy] = useState(false);
-  async function switchView() {
-    setBusy(true);
-    await fetch(`${BASE_PATH}/api/view`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: toDriver ? "driver" : "panel" }),
-    }).catch(() => {});
-    // Pełne przeładowanie — middleware musi przeliczyć rolę efektywną.
-    window.location.assign(`${BASE_PATH}/kalendarz`);
-  }
   return (
-    <button type="button" onClick={switchView} disabled={busy} className={className}>
-      {icon}
+    <button
+      type="button"
+      onClick={() => {
+        setBusy(true);
+        void applyView(toDriver);
+      }}
+      disabled={busy}
+      className={className}
+    >
       {toDriver ? "Widok kierowcy" : "Wróć do panelu"}
     </button>
+  );
+}
+
+// Suwak Panel ↔ Kierowca w prawym górnym rogu (widoczny w obu trybach).
+function ViewToggle({ driverActive }: { driverActive: boolean }) {
+  const [busy, setBusy] = useState(false);
+  function toggle() {
+    if (busy) return;
+    setBusy(true);
+    void applyView(!driverActive);
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`text-xs font-medium ${driverActive ? "text-gray-400" : "text-gray-800"}`}>Panel</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={driverActive}
+        aria-label="Przełącz między widokiem panelu a widokiem kierowcy"
+        onClick={toggle}
+        disabled={busy}
+        className={`relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors disabled:opacity-50 ${
+          driverActive ? "bg-blue-600" : "bg-gray-300"
+        }`}
+      >
+        <span
+          className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white text-blue-600 shadow transition-transform ${
+            driverActive ? "translate-x-[22px]" : "translate-x-0.5"
+          }`}
+        >
+          {driverActive && <SteeringWheelIcon className="h-3 w-3" />}
+        </span>
+      </button>
+      <span
+        className={`inline-flex items-center gap-1 text-xs font-medium ${
+          driverActive ? "text-blue-700" : "text-gray-400"
+        }`}
+      >
+        <SteeringWheelIcon className="h-3.5 w-3.5" />
+        Kierowca
+      </span>
+    </div>
   );
 }
 
@@ -139,13 +180,7 @@ export function TopNav({
         </div>
 
         <div className="flex items-center gap-3">
-          {canActAsDriver && !driverPreview && (
-            <ViewSwitchButton
-              toDriver
-              icon={<SteeringWheelIcon />}
-              className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
-            />
-          )}
+          {canActAsDriver && <ViewToggle driverActive={driverPreview} />}
           <div className="hidden items-center gap-3 md:flex">
             <span className="text-sm text-gray-600">{userName}</span>
             <LogoutButton />
