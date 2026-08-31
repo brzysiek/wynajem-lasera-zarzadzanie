@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Device, Rental } from "@/components/rental-form";
 import { BASE_PATH } from "@/lib/base-path";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
+import { CalendarAlerts } from "@/components/calendar-alerts";
+import type { RentalAlert } from "@/lib/rental-alerts";
 
 type RawRental = Rental & { device: Device };
 
@@ -115,6 +117,7 @@ const WEEK_ROW_BAR_GAP = 3;
 function CalendarWeekRow({
   weekDays,
   rentals,
+  alertIds,
   monthContext,
   variant,
   canEdit,
@@ -127,6 +130,7 @@ function CalendarWeekRow({
 }: {
   weekDays: Date[];
   rentals: RawRental[];
+  alertIds: Set<string>;
   monthContext?: Date;
   variant: "month" | "week";
   canEdit: boolean;
@@ -226,7 +230,9 @@ function CalendarWeekRow({
               e.stopPropagation();
               onOpenEdit(s.rental);
             }}
-            className="pointer-events-auto absolute flex items-center gap-1 overflow-hidden rounded px-1.5 text-left text-xs shadow-sm"
+            className={`pointer-events-auto absolute flex items-center gap-1 overflow-hidden rounded px-1.5 text-left text-xs shadow-sm ${
+              alertIds.has(s.rental.id) ? "outline outline-2 -outline-offset-1 outline-red-600" : ""
+            }`}
             style={{
               left: `calc(${(s.startCol / 7) * 100}% + 2px)`,
               width: `calc(${(s.span / 7) * 100}% - 4px)`,
@@ -297,8 +303,17 @@ function ChevronIcon({ open }: { open: boolean }) {
 // instead of snapping to today. Per-tab, cleared when the tab closes.
 const VIEW_STATE_KEY = "kalendarz:view";
 
-export function CalendarView({ devices, canEdit = true }: { devices: Device[]; canEdit?: boolean }) {
+export function CalendarView({
+  devices,
+  canEdit = true,
+  alerts = [],
+}: {
+  devices: Device[];
+  canEdit?: boolean;
+  alerts?: RentalAlert[];
+}) {
   const router = useRouter();
+  const alertIds = useMemo(() => new Set(alerts.map((a) => a.id)), [alerts]);
   const [mode, setMode] = useState<"month" | "week">("month");
   const [current, setCurrent] = useState(() => new Date());
   const viewStateRestored = useRef(false);
@@ -542,6 +557,7 @@ export function CalendarView({ devices, canEdit = true }: { devices: Device[]; c
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
+          <CalendarAlerts alerts={alerts} />
           {isLoading && <p className="mb-2 text-sm text-gray-400">Ładowanie…</p>}
           {dragError && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -568,6 +584,7 @@ export function CalendarView({ devices, canEdit = true }: { devices: Device[]; c
                       key={weekDays[0].toISOString()}
                       weekDays={weekDays}
                       rentals={visibleRentals.filter((r) => weekDays.some((d) => rentalTouchesDay(r, d)))}
+                      alertIds={alertIds}
                       monthContext={current}
                       variant="month"
                       canEdit={canEdit}
@@ -586,6 +603,7 @@ export function CalendarView({ devices, canEdit = true }: { devices: Device[]; c
                 <CalendarWeekRow
                   weekDays={Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(current), i))}
                   rentals={visibleRentals}
+                  alertIds={alertIds}
                   variant="week"
                   canEdit={canEdit}
                   dragOverDay={dragOverDay}
