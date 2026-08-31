@@ -1,5 +1,12 @@
 generator client {
   provider = "prisma-client-js"
+  // The client is generated in CI (Ubuntu) and rsynced to the cyberfolks
+  // boxes (CloudLinux / RHEL) — `prisma generate` can't run there under the
+  // LVE thread cap. "native" covers CI's own `next build`; the rhel targets
+  // bundle the query-engine binary the servers need. (The app talks to the
+  // DB via @prisma/adapter-mariadb so the native engine is normally unused,
+  // but the client still probes for a matching binary at init.)
+  binaryTargets = ["native", "rhel-openssl-1.1.x", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

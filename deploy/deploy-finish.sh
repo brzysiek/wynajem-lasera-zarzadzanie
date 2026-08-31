@@ -73,6 +73,24 @@ echo "==> Applying database migrations"
 # a pre-existing database (0_init marked applied, not executed) on first run.
 node deploy/migrate.mjs
 
+echo "==> Boot self-test (node server.js, 15s cap)"
+# Surfaces a start-up crash (bad Prisma client, missing env, …) directly in
+# the GitHub Actions deploy log instead of only in a server-side file the
+# operator can't easily reach. Never fails the deploy — informational only.
+set +e
+timeout 15 node server.js > /tmp/wl-boot-selftest.log 2>&1
+selftest_code=$?
+set -e
+if [[ "$selftest_code" -eq 124 ]]; then
+  echo "    server.js still running after 15s — no immediate crash (good)"
+else
+  echo "    server.js exited on its own (code $selftest_code) — likely a boot crash:"
+  echo "    ----------------------------------------------------------------"
+  tail -n 60 /tmp/wl-boot-selftest.log | sed 's/^/    /'
+  echo "    ----------------------------------------------------------------"
+fi
+rm -f /tmp/wl-boot-selftest.log
+
 echo "==> Restarting app (Passenger restart trigger)"
 mkdir -p tmp
 touch tmp/restart.txt
