@@ -15,6 +15,10 @@
 
 # next.js
 /.next/
+
+# CI-generated Prisma client tarball, rsynced to the server at deploy time
+# (see .github/workflows/deploy.yml + deploy/deploy-finish.sh)
+/prisma-client.tgz
 /out/
 
 # production

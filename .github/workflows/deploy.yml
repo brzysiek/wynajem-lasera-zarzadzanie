@@ -68,6 +68,20 @@ jobs:
           # on the server, from its own .env.
           DATABASE_URL: mysql://user:pass@localhost:3306/placeholder
 
+      - name: Package Prisma client
+        # `prisma generate` can't run on the cyberfolks box (CloudLinux LVE
+        # thread cap kills codegen with pthread_create EAGAIN), so ship the
+        # client generated here. Contents: node_modules/.prisma.
+        run: tar czf prisma-client.tgz -C node_modules .prisma
+
+      - name: Upload Prisma client artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prisma-client-1
+          path: prisma-client.tgz
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Build
         run: npm run build
         env:
@@ -112,6 +126,18 @@ jobs:
         env:
           DATABASE_URL: mysql://user:pass@localhost:3306/placeholder
 
+      - name: Package Prisma client
+        # See build-server-1 — the cyberfolks box can't run `prisma generate`.
+        run: tar czf prisma-client.tgz -C node_modules .prisma
+
+      - name: Upload Prisma client artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prisma-client-2
+          path: prisma-client.tgz
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Build
         run: npm run build
         env:
@@ -138,6 +164,12 @@ jobs:
         with:
           name: next-build-1
           path: .next
+
+      - name: Download Prisma client artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prisma-client-1
+          path: .
 
       - name: Sync source on server
         uses: appleboy/ssh-action@v1.2.0
@@ -172,6 +204,9 @@ jobs:
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.DEPLOY_SSH_PORT }}" \
             .next/ "${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_HOST }}:${{ vars.APP_DIR }}/.next/"
+          rsync -avz \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.DEPLOY_SSH_PORT }}" \
+            prisma-client.tgz "${{ secrets.DEPLOY_SSH_USER }}@${{ secrets.DEPLOY_SSH_HOST }}:${{ vars.APP_DIR }}/prisma-client.tgz"
 
       - name: Install deps and restart app on server
         uses: appleboy/ssh-action@v1.2.0
@@ -208,6 +243,12 @@ jobs:
           name: next-build-2
           path: .next
 
+      - name: Download Prisma client artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prisma-client-2
+          path: .
+
       - name: Sync source on server
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -242,6 +283,9 @@ jobs:
           rsync -avz --delete \
             -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.DEPLOY2_SSH_PORT }}" \
             .next/ "${{ secrets.DEPLOY2_SSH_USER }}@${{ secrets.DEPLOY2_SSH_HOST }}:${{ vars.APP_DIR_2 }}/.next/"
+          rsync -avz \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.DEPLOY2_SSH_PORT }}" \
+            prisma-client.tgz "${{ secrets.DEPLOY2_SSH_USER }}@${{ secrets.DEPLOY2_SSH_HOST }}:${{ vars.APP_DIR_2 }}/prisma-client.tgz"
 
       - name: Install deps and restart app on server
         uses: appleboy/ssh-action@v1.2.0
