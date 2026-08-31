@@ -58,6 +58,56 @@ function Row({ label, value }: { label: string; value: string | null }) {
 const CARD = "rounded-[14px] border border-[#E2E6EC] bg-white px-4 py-3.5";
 const CARD_LABEL = "mb-2 text-[11px] font-bold uppercase tracking-[0.04em] text-[#6B7280]";
 
+// Karta „Klientka" wg docs/finanse-wynajmu/mockup-modul-finansowy.html:
+// duża nazwa + wiersze z ikonami. Telefon jako tel: — kierowca dzwoni jednym
+// tapnięciem. Puste pola pomijamy (bez „—").
+function ClientCard({ rental }: { rental: ReadonlyRental }) {
+  const phone = rental.contactPhoneCache?.trim();
+  const company = rental.contactCompanyCache?.trim();
+  const address = rental.contactAddressCache?.trim();
+  const times = [
+    rental.deliveryTime?.trim() && `dostawa ${rental.deliveryTime.trim()}`,
+    rental.pickupTime?.trim() && `odbiór ${rental.pickupTime.trim()}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className={CARD}>
+      <p className={CARD_LABEL}>Klientka</p>
+      <p className="text-[15px] font-bold text-[#171A21]">{rental.contactNameCache?.trim() || "—"}</p>
+      <div className="mt-1.5 flex flex-col gap-1.5 text-[13.5px] text-[#6B7280]">
+        {phone && (
+          <div className="flex items-center gap-1.5">
+            <span aria-hidden>📞</span>
+            <a href={`tel:${phone.replace(/\s+/g, "")}`} className="font-medium text-[#2F6FD1]">
+              {phone}
+            </a>
+          </div>
+        )}
+        {company && (
+          <div className="flex items-center gap-1.5">
+            <span aria-hidden>🏢</span>
+            {company}
+          </div>
+        )}
+        {address && (
+          <div className="flex items-start gap-1.5">
+            <span aria-hidden>📍</span>
+            {address}
+          </div>
+        )}
+        {times && (
+          <div className="flex items-center gap-1.5">
+            <span aria-hidden>🕘</span>
+            {times}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Read-only rental card shown to a KIEROWCA (driver). Trip details are
 // read-only; the finance panel (`financeSlot`, rendered first) is the one
 // place a driver can edit — payment confirmation, HS cap, pulse counters,
@@ -88,26 +138,18 @@ export function RentalReadonlyView({
 
         {financeSlot}
 
-        <div className={CARD}>
-          <p className={CARD_LABEL}>Termin</p>
-          <Row label="Początek" value={formatDate(rental.startsAt, rental.allDay)} />
-          <Row label="Koniec" value={formatDate(rental.endsAt, rental.allDay)} />
-        </div>
+        <ClientCard rental={rental} />
 
         <div className={CARD}>
           <p className={CARD_LABEL}>Dostawa</p>
           <Row label="Adres dostawy" value={rental.deliveryAddress} />
-          <Row label="Godzina dostawy" value={rental.deliveryTime} />
-          <Row label="Godzina odbioru" value={rental.pickupTime} />
           <Row label="Ustalona cena transportu" value={rental.transportPrice} />
         </div>
 
         <div className={CARD}>
-          <p className={CARD_LABEL}>Kontakt</p>
-          <Row label="Osoba" value={rental.contactNameCache} />
-          <Row label="Telefon" value={rental.contactPhoneCache} />
-          <Row label="Firma" value={rental.contactCompanyCache} />
-          <Row label="Adres" value={rental.contactAddressCache} />
+          <p className={CARD_LABEL}>Termin</p>
+          <Row label="Początek" value={formatDate(rental.startsAt, rental.allDay)} />
+          <Row label="Koniec" value={formatDate(rental.endsAt, rental.allDay)} />
         </div>
 
         <div className={CARD}>

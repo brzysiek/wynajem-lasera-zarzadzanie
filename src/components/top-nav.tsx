@@ -53,44 +53,29 @@ function SteeringWheelIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
-async function applyView(driver: boolean) {
-  await fetch(`${BASE_PATH}/api/view`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode: driver ? "driver" : "panel" }),
-  }).catch(() => {});
-  // Pełne przeładowanie — middleware musi przeliczyć rolę efektywną.
-  window.location.assign(`${BASE_PATH}/kalendarz`);
-}
-
-function ViewSwitchButton({ toDriver, className }: { toDriver: boolean; className: string }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        setBusy(true);
-        void applyView(toDriver);
-      }}
-      disabled={busy}
-      className={className}
-    >
-      {toDriver ? "Widok kierowcy" : "Wróć do panelu"}
-    </button>
-  );
-}
-
-// Suwak Panel ↔ Kierowca w prawym górnym rogu (widoczny w obu trybach).
+// Suwak Panel ↔ Kierowca w prawym górnym rogu (widoczny w obu trybach) —
+// zastępuje w całości baner „podgląd kierowcy" i przycisk powrotu.
 function ViewToggle({ driverActive }: { driverActive: boolean }) {
   const [busy, setBusy] = useState(false);
   function toggle() {
     if (busy) return;
     setBusy(true);
-    void applyView(!driverActive);
+    void fetch(`${BASE_PATH}/api/view`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: driverActive ? "panel" : "driver" }),
+    })
+      .catch(() => {})
+      // Pełne przeładowanie — middleware musi przeliczyć rolę efektywną.
+      .finally(() => window.location.assign(`${BASE_PATH}/kalendarz`));
   }
   return (
     <div className="flex items-center gap-2">
-      <span className={`text-xs font-medium ${driverActive ? "text-gray-400" : "text-gray-800"}`}>Panel</span>
+      <span
+        className={`text-xs font-medium ${driverActive ? "text-gray-400" : "font-semibold text-[#8a5a2b]"}`}
+      >
+        Panel
+      </span>
       <button
         type="button"
         role="switch"
@@ -99,20 +84,20 @@ function ViewToggle({ driverActive }: { driverActive: boolean }) {
         onClick={toggle}
         disabled={busy}
         className={`relative inline-flex h-6 w-11 flex-none items-center rounded-full transition-colors disabled:opacity-50 ${
-          driverActive ? "bg-blue-600" : "bg-gray-300"
+          driverActive ? "bg-blue-600" : "bg-[#8a5a2b]"
         }`}
       >
         <span
-          className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white text-blue-600 shadow transition-transform ${
-            driverActive ? "translate-x-[22px]" : "translate-x-0.5"
+          className={`inline-flex h-5 w-5 transform items-center justify-center rounded-full bg-white shadow transition-transform ${
+            driverActive ? "translate-x-[22px] text-blue-600" : "translate-x-0.5 text-[#8a5a2b]"
           }`}
         >
-          {driverActive && <SteeringWheelIcon className="h-3 w-3" />}
+          <SteeringWheelIcon className="h-3 w-3" />
         </span>
       </button>
       <span
         className={`inline-flex items-center gap-1 text-xs font-medium ${
-          driverActive ? "text-blue-700" : "text-gray-400"
+          driverActive ? "font-semibold text-blue-700" : "text-gray-400"
         }`}
       >
         <SteeringWheelIcon className="h-3.5 w-3.5" />
@@ -187,16 +172,6 @@ export function TopNav({
           </div>
         </div>
       </div>
-
-      {driverPreview && (
-        <div className="flex items-center justify-between gap-3 border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-          <span className="font-medium">🚚 Podgląd kierowcy — działasz jak KIEROWCA (tylko odczyt)</span>
-          <ViewSwitchButton
-            toDriver={false}
-            className="flex-none rounded-md bg-amber-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
-          />
-        </div>
-      )}
 
       {menuOpen && (
         <div className="border-t border-gray-200 px-4 py-3 md:hidden">
