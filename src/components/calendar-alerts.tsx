@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ALERT_FIELD_LABEL, ALERT_WINDOW_DAYS, pluralWynajem, type RentalAlert } from "@/lib/rental-alerts";
+import {
+  ALERT_FIELD_LABEL,
+  ALERT_FIELD_ORDER,
+  ALERT_FIELD_SHORT,
+  ALERT_WINDOW_DAYS,
+  pluralWynajem,
+  type RentalAlert,
+} from "@/lib/rental-alerts";
 
 // Czerwone powiadomienie nad siatką kalendarza (tylko admin): wynajmy z
 // najbliższych dni bez kierowcy / kontaktu / telefonu. Zwinięte domyślnie —
@@ -12,6 +19,10 @@ export function CalendarAlerts({ alerts }: { alerts: RentalAlert[] }) {
   if (alerts.length === 0) return null;
 
   const n = alerts.length;
+  // Tylko te kategorie braków, które faktycznie występują wśród wynajmów.
+  const presentGaps = ALERT_FIELD_ORDER.filter((f) => alerts.some((a) => a.missing.includes(f)))
+    .map((f) => ALERT_FIELD_SHORT[f])
+    .join(", ");
 
   return (
     <div className="mb-2 rounded-md border border-red-300 bg-red-50 text-red-800">
@@ -22,7 +33,7 @@ export function CalendarAlerts({ alerts }: { alerts: RentalAlert[] }) {
         className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm font-semibold"
       >
         <span>
-          ⚠ {n} {pluralWynajem(n)} w ciągu {ALERT_WINDOW_DAYS} dni bez kompletu danych — kierowca / kontakt / telefon
+          ⚠ {n} {pluralWynajem(n)} w ciągu {ALERT_WINDOW_DAYS} dni bez: {presentGaps}
         </span>
         <span className={`flex-none text-xs transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
       </button>

@@ -22,6 +22,15 @@ export const ALERT_FIELD_LABEL: Record<RentalAlertField, string> = {
   phone: "brak telefonu",
 };
 
+// Krótka forma do nagłówka zbiorczego („… bez: kierowca, telefon").
+export const ALERT_FIELD_SHORT: Record<RentalAlertField, string> = {
+  driver: "kierowca",
+  contact: "kontakt",
+  phone: "telefon",
+};
+
+export const ALERT_FIELD_ORDER: RentalAlertField[] = ["driver", "contact", "phone"];
+
 // „1 wynajem", „2 wynajmy", „5 wynajmów" — polska liczba mnoga.
 export function pluralWynajem(n: number): string {
   if (n === 1) return "wynajem";
