@@ -12,10 +12,11 @@ import {
 } from "@/lib/rental-alerts";
 
 // Czerwone powiadomienie nad siatką kalendarza (tylko admin): wynajmy z
-// najbliższych dni bez kierowcy / kontaktu / telefonu. Lista rozwinięta
-// domyślnie — od razu widać KTÓRE wynajmy; można ją zwinąć.
+// najbliższych dni bez kierowcy / kontaktu / telefonu. Zwinięte domyślnie —
+// nagłówek z liczbą zawsze widoczny; lista rozwija się po kliknięciu. Które
+// wynajmy — od razu widać po czerwonej ramce i ⚠ na kafelkach w siatce.
 export function CalendarAlerts({ alerts }: { alerts: RentalAlert[] }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   if (alerts.length === 0) return null;
 
   const n = alerts.length;

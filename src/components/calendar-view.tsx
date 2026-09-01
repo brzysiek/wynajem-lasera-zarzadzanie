@@ -230,9 +230,7 @@ function CalendarWeekRow({
               e.stopPropagation();
               onOpenEdit(s.rental);
             }}
-            className={`pointer-events-auto absolute flex items-center gap-1 overflow-hidden rounded px-1.5 text-left text-xs shadow-sm ${
-              alertIds.has(s.rental.id) ? "ring-2 ring-inset ring-red-600" : ""
-            }`}
+            className="pointer-events-auto absolute flex items-center gap-1 overflow-hidden rounded px-1.5 text-left text-xs shadow-sm"
             style={{
               left: `calc(${(s.startCol / 7) * 100}% + 2px)`,
               width: `calc(${(s.span / 7) * 100}% - 4px)`,
@@ -240,6 +238,12 @@ function CalendarWeekRow({
               height: WEEK_ROW_BAR_HEIGHT,
               backgroundColor: s.rental.device.color,
               color: readableTextColor(s.rental.device.color),
+              // Inline (not a Tailwind ring/outline class) so it renders
+              // regardless of Tailwind version quirks and isn't clipped by
+              // the bar's own overflow-hidden — inset draws inside the box.
+              boxShadow: alertIds.has(s.rental.id)
+                ? "inset 0 0 0 2px #dc2626, 0 1px 2px 0 rgba(0,0,0,0.05)"
+                : undefined,
             }}
             title={withDeliveryTimePrefix(s.rental.title, s.rental.deliveryTime)}
           >
