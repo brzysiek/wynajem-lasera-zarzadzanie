@@ -85,10 +85,10 @@ function DueBadge({ dueDate, status }: { dueDate: string | null; status: TaskDto
   const c = CHIP[chip.kind];
   return (
     <span
-      className="rounded-full px-2 py-[3px] text-[11.5px] font-semibold"
+      className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[11.5px] font-semibold"
       style={{ background: c.bg, color: c.fg }}
     >
-      {chip.label}
+      📅 {chip.label}
     </span>
   );
 }
@@ -355,8 +355,8 @@ export function TasksPanel({
         style={{ borderLeft: `1px solid ${C.border}`, boxShadow: open ? "0 0 16px rgba(0,0,0,0.12)" : "none" }}
         aria-hidden={!open}
       >
-        <header className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
-          <h2 className="text-base font-medium" style={{ color: C.text }}>
+        <header className="flex items-center justify-between px-[18px] py-4" style={{ borderBottom: `1px solid ${C.border}` }}>
+          <h2 className="text-[17px] font-semibold" style={{ color: C.text }}>
             Zadania
           </h2>
           <div className="flex items-center gap-1">
@@ -380,21 +380,24 @@ export function TasksPanel({
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-2 py-2">
+        <div className="flex-1 overflow-y-auto">
           {!composing ? (
             <button
               type="button"
               onClick={() => setComposing(true)}
-              className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-sm hover:bg-[#f1f3f4]"
-              style={{ color: C.sub }}
+              className="flex w-full items-center gap-3 px-[18px] py-3.5 text-sm font-medium hover:bg-[#f8f9fa]"
+              style={{ color: C.blue, borderBottom: `1px solid ${C.border}` }}
             >
-              <span className="flex h-5 w-5 flex-none items-center justify-center text-lg leading-none" style={{ color: C.blue }}>
+              <span
+                className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full border-2 text-sm leading-none"
+                style={{ borderColor: C.blue }}
+              >
                 +
               </span>
               Dodaj zadanie
             </button>
           ) : (
-            <div className="rounded-[10px] p-3" style={{ background: C.field }}>
+            <div className="m-2 rounded-[10px] p-3" style={{ background: C.field }}>
               <input
                 autoFocus
                 value={newTitle}
@@ -449,17 +452,17 @@ export function TasksPanel({
           )}
 
           {error && (
-            <p className="px-2 py-1 text-xs" style={{ color: C.red }}>
+            <p className="px-[18px] py-1 text-xs" style={{ color: C.red }}>
               {error}
             </p>
           )}
           {loading && tasks.length === 0 && (
-            <p className="px-2 py-2 text-sm" style={{ color: C.sub }}>
+            <p className="px-[18px] py-2 text-sm" style={{ color: C.sub }}>
               Ładowanie…
             </p>
           )}
 
-          <div className="mt-1">
+          <div className="py-1">
             {openTasks.map((t) => (
               <TaskRow
                 key={t.id}
@@ -475,17 +478,17 @@ export function TasksPanel({
           </div>
 
           {openTasks.length === 0 && !loading && (
-            <p className="px-2 py-8 text-center text-sm" style={{ color: C.sub }}>
+            <p className="px-[18px] py-8 text-center text-sm" style={{ color: C.sub }}>
               Brak zadań. Miło.
             </p>
           )}
 
           {doneTasks.length > 0 && (
-            <div className="mt-3" style={{ borderTop: `1px solid ${C.border}` }}>
+            <div style={{ borderTop: `1px solid ${C.border}` }}>
               <button
                 type="button"
                 onClick={() => setShowDone((v) => !v)}
-                className="flex w-full items-center gap-1 px-2 py-2 text-sm font-medium"
+                className="flex w-full items-center gap-1.5 px-[18px] py-3 text-[13px] font-semibold"
                 style={{ color: C.sub }}
               >
                 <span className="text-xs">{showDone ? "▾" : "▸"}</span>
@@ -508,7 +511,7 @@ export function TasksPanel({
                   <button
                     type="button"
                     onClick={() => void clearCompleted()}
-                    className="mt-1 px-2 py-1.5 text-xs hover:underline"
+                    className="mb-2 px-[18px] py-1.5 text-xs hover:underline"
                     style={{ color: C.sub }}
                   >
                     Wyczyść ukończone
@@ -556,8 +559,8 @@ function TaskRow({
   const showCreator = task.author && (!task.assignee || task.assignee.id !== task.author.id);
 
   return (
-    <div className="rounded-lg transition-colors hover:bg-[#f1f3f4]">
-      <div className="flex items-start gap-3 px-2 py-2">
+    <div className="transition-colors hover:bg-[#f8f9fa]">
+      <div className="flex items-start gap-3 px-[18px] py-[11px]">
         <CheckCircle done={done} onClick={onComplete} />
         <button type="button" onClick={onToggleExpand} className="min-w-0 flex-1 text-left">
           <span
@@ -584,7 +587,7 @@ function TaskRow({
       </div>
 
       {expanded && (
-        <div className="mb-1 ml-8 mr-2 rounded-[10px] p-3" style={{ background: C.field }}>
+        <div className="mb-2 ml-[50px] mr-[18px] rounded-[10px] p-3" style={{ background: C.field }}>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}

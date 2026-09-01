@@ -113,13 +113,21 @@ function TasksButton({ count, onClick }: { count: number | null; onClick: () => 
       type="button"
       onClick={onClick}
       aria-label="Zadania"
-      className="relative rounded-md border border-gray-300 p-1.5 text-gray-600 hover:bg-gray-50"
+      className="relative flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-[#e1e3e8] bg-white text-[#1a73e8] hover:bg-gray-50"
     >
-      <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5" aria-hidden="true">
-        <path d="M7 3a2 2 0 0 0-2 2H4.5A1.5 1.5 0 0 0 3 6.5v9A1.5 1.5 0 0 0 4.5 17h11a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 15.5 5H15a2 2 0 0 0-2-2H7Zm0 1.5h6a.5.5 0 0 1 .5.5v.5a.5.5 0 0 1-.5.5H7a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5Zm-.28 5.03a.75.75 0 0 0-1.06 1.06l1.5 1.5a.75.75 0 0 0 1.06 0l3-3a.75.75 0 1 0-1.06-1.06L7.69 10.5l-.97-.97Z" />
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="4" y="3" width="16" height="18" rx="3" stroke="currentColor" strokeWidth="1.8" />
+        <path
+          d="M8 9.5l2 2 4-4.2"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path d="M8 14h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
       </svg>
       {count != null && count > 0 && (
-        <span className="absolute -right-1.5 -top-1.5 min-w-[1.1rem] rounded-full bg-red-600 px-1 text-center text-[11px] font-bold leading-[1.1rem] text-white">
+        <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border-2 border-white bg-[#d93025] px-0.5 text-[10px] font-bold text-white">
           {count > 99 ? "99+" : count}
         </span>
       )}
