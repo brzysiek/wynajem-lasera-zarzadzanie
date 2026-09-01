@@ -1,12 +1,16 @@
 generator client {
   provider = "prisma-client-js"
   // The client is generated in CI (Ubuntu) and rsynced to the cyberfolks
-  // boxes (CloudLinux / RHEL) — `prisma generate` can't run there under the
-  // LVE thread cap. "native" covers CI's own `next build`; the rhel targets
-  // bundle the query-engine binary the servers need. (The app talks to the
-  // DB via @prisma/adapter-mariadb so the native engine is normally unused,
-  // but the client still probes for a matching binary at init.)
-  binaryTargets = ["native", "rhel-openssl-1.1.x", "rhel-openssl-3.0.x"]
+  // boxes — `prisma generate` can't run there under the LVE thread cap.
+  // "native" covers CI's own `next build`. The two cyberfolks boxes turned
+  // out to run different distros/OpenSSL versions than assumed: server 2
+  // (wynajemlasera.pl) needs debian-openssl-1.1.x specifically (confirmed
+  // via a live PrismaClientInitializationError in its stderr.log — CI's
+  // "native" build only ships debian-openssl-3.0.x), and rhel-* is kept for
+  // server 1 in case it really is CloudLinux/RHEL. (The app talks to the DB
+  // via @prisma/adapter-mariadb so the native engine is normally unused, but
+  // the client still probes for a matching binary at init.)
+  binaryTargets = ["native", "debian-openssl-1.1.x", "rhel-openssl-1.1.x", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
