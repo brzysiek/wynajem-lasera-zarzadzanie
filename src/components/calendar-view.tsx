@@ -231,7 +231,7 @@ function CalendarWeekRow({
               onOpenEdit(s.rental);
             }}
             className={`pointer-events-auto absolute flex items-center gap-1 overflow-hidden rounded px-1.5 text-left text-xs shadow-sm ${
-              alertIds.has(s.rental.id) ? "outline outline-2 -outline-offset-1 outline-red-600" : ""
+              alertIds.has(s.rental.id) ? "ring-2 ring-inset ring-red-600" : ""
             }`}
             style={{
               left: `calc(${(s.startCol / 7) * 100}% + 2px)`,
@@ -243,6 +243,11 @@ function CalendarWeekRow({
             }}
             title={withDeliveryTimePrefix(s.rental.title, s.rental.deliveryTime)}
           >
+            {alertIds.has(s.rental.id) && (
+              <span className="flex-none font-bold" title="Brak kierowcy / kontaktu / telefonu">
+                ⚠
+              </span>
+            )}
             {s.rental.hubspotContactId && <ContactBadge name={s.rental.contactNameCache} />}
             {s.rental.driver && <DriverBadge name={s.rental.driver.name} />}
             <span className="truncate">
