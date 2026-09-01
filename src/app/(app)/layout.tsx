@@ -22,6 +22,7 @@ export default async function AppLayout({
   return (
     <AppShell
       userName={session.user.name ?? session.user.email ?? "Użytkownik"}
+      userId={session.user.id}
       role={driverMode ? "KIEROWCA" : session.user.role}
       canActAsDriver={session.user.canActAsDriver && session.user.role !== "KIEROWCA"}
       driverPreview={driverPreview}

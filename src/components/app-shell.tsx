@@ -14,12 +14,14 @@ import { TasksPanel } from "@/components/tasks-panel";
 // page.
 export function AppShell({
   userName,
+  userId,
   role,
   canActAsDriver = false,
   driverPreview = false,
   children,
 }: {
   userName: string;
+  userId: string;
   role?: "ADMIN" | "STAFF" | "KIEROWCA";
   canActAsDriver?: boolean;
   driverPreview?: boolean;
@@ -27,7 +29,8 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const isFullWidth = pathname === "/kalendarz";
-  const isAdmin = role === "ADMIN";
+  // Lista zadań: ADMIN i STAFF (biuro). Kierowca i podgląd kierowcy — nie.
+  const showTasks = role === "ADMIN" || role === "STAFF";
   const [tasksOpen, setTasksOpen] = useState(false);
   const [openTaskCount, setOpenTaskCount] = useState<number | null>(null);
 
@@ -38,7 +41,7 @@ export function AppShell({
         role={role}
         canActAsDriver={canActAsDriver}
         driverPreview={driverPreview}
-        showTasks={isAdmin}
+        showTasks={showTasks}
         openTaskCount={openTaskCount}
         onToggleTasks={() => setTasksOpen((v) => !v)}
       />
@@ -51,8 +54,13 @@ export function AppShell({
       >
         {children}
       </main>
-      {isAdmin && (
-        <TasksPanel open={tasksOpen} onClose={() => setTasksOpen(false)} onCountChange={setOpenTaskCount} />
+      {showTasks && (
+        <TasksPanel
+          open={tasksOpen}
+          onClose={() => setTasksOpen(false)}
+          currentUserId={userId}
+          onCountChange={setOpenTaskCount}
+        />
       )}
     </div>
   );

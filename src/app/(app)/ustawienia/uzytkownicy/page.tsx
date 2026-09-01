@@ -14,6 +14,7 @@ export default async function UsersSettingsPage() {
       email: true,
       role: true,
       canActAsDriver: true,
+      grammaticalGender: true,
       invitedAt: true,
       activatedAt: true,
       createdAt: true,

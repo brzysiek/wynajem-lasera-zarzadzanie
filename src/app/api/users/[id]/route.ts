@@ -27,6 +27,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     activatedAt?: Date;
     role?: "ADMIN" | "STAFF" | "KIEROWCA";
     canActAsDriver?: boolean;
+    grammaticalGender?: "M" | "F" | null;
   } = {};
 
   if (typeof body?.name === "string" && body.name.trim()) {
@@ -59,6 +60,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data.canActAsDriver = body.canActAsDriver;
   }
 
+  if (body?.grammaticalGender === "M" || body?.grammaticalGender === "F" || body?.grammaticalGender === null) {
+    data.grammaticalGender = body.grammaticalGender;
+  }
+
   if (typeof body?.password === "string" && body.password) {
     if (body.password.length < MIN_PASSWORD_LENGTH) {
       return NextResponse.json(
@@ -85,6 +90,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       email: updated.email,
       role: updated.role,
       canActAsDriver: updated.canActAsDriver,
+      grammaticalGender: updated.grammaticalGender,
       invitedAt: updated.invitedAt,
       activatedAt: updated.activatedAt,
       createdAt: updated.createdAt,

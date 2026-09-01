@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
 
 type Role = "ADMIN" | "STAFF" | "KIEROWCA";
+type Gender = "M" | "F";
 
 type User = {
   id: string;
@@ -12,12 +13,15 @@ type User = {
   email: string;
   role: Role;
   canActAsDriver: boolean;
+  grammaticalGender: Gender | null;
   invitedAt: string | null;
   activatedAt: string | null;
   createdAt: string;
 };
 
 const DRIVER_VIEW_HINT = "Może w aplikacji (telefon) przełączyć się na „podgląd kierowcy” — kalendarz i wynajmy tylko do odczytu.";
+
+const GENDER_HINT = "Potrzebna do poprawnej odmiany „zlecił / zleciła” w liście zadań.";
 
 const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Administrator",
@@ -53,6 +57,7 @@ function InviteForm({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("STAFF");
   const [canActAsDriver, setCanActAsDriver] = useState(false);
+  const [gender, setGender] = useState<Gender | "">("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,7 +68,13 @@ function InviteForm({
 
     const { ok, data } = await api("/api/users", {
       method: "POST",
-      body: JSON.stringify({ name, email, role, canActAsDriver: role !== "KIEROWCA" && canActAsDriver }),
+      body: JSON.stringify({
+        name,
+        email,
+        role,
+        canActAsDriver: role !== "KIEROWCA" && canActAsDriver,
+        grammaticalGender: gender || null,
+      }),
     });
 
     setIsSaving(false);
@@ -111,6 +122,19 @@ function InviteForm({
             <option value="ADMIN">Administrator</option>
             <option value="KIEROWCA">Kierowca</option>
           </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          Płeć gramatyczna
+          <select
+            value={gender}
+            onChange={(e) => setGender(e.target.value as Gender | "")}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+          >
+            <option value="">— nie ustawiono —</option>
+            <option value="F">Kobieta</option>
+            <option value="M">Mężczyzna</option>
+          </select>
+          <span className="text-xs text-gray-400">{GENDER_HINT}</span>
         </label>
       </div>
 
@@ -166,6 +190,7 @@ function EditForm({
   const [email, setEmail] = useState(user.email);
   const [role, setRole] = useState(user.role);
   const [canActAsDriver, setCanActAsDriver] = useState(user.canActAsDriver);
+  const [gender, setGender] = useState<Gender | "">(user.grammaticalGender ?? "");
   const [changingPassword, setChangingPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -188,12 +213,20 @@ function EditForm({
     }
 
     setIsSaving(true);
-    const body: { name?: string; email?: string; password?: string; role?: Role; canActAsDriver?: boolean } = {};
+    const body: {
+      name?: string;
+      email?: string;
+      password?: string;
+      role?: Role;
+      canActAsDriver?: boolean;
+      grammaticalGender?: Gender | null;
+    } = {};
     if (name !== user.name) body.name = name;
     if (email !== user.email) body.email = email;
     if (!isSelf && role !== user.role) body.role = role;
     const effectiveCanDrive = role !== "KIEROWCA" && canActAsDriver;
     if (effectiveCanDrive !== user.canActAsDriver) body.canActAsDriver = effectiveCanDrive;
+    if ((gender || null) !== (user.grammaticalGender ?? null)) body.grammaticalGender = gender || null;
     if (changingPassword) body.password = password;
 
     const { ok, data } = await api(`/api/users/${user.id}`, {
@@ -244,6 +277,19 @@ function EditForm({
             <option value="KIEROWCA">Kierowca</option>
           </select>
           {isSelf && <span className="text-xs text-gray-400">Nie możesz zmienić własnej roli.</span>}
+        </label>
+        <label className="flex flex-col gap-1 text-sm text-gray-700">
+          Płeć gramatyczna
+          <select
+            value={gender}
+            onChange={(e) => setGender(e.target.value as Gender | "")}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+          >
+            <option value="">— nie ustawiono —</option>
+            <option value="F">Kobieta</option>
+            <option value="M">Mężczyzna</option>
+          </select>
+          <span className="text-xs text-gray-400">{GENDER_HINT}</span>
         </label>
       </div>
 
@@ -474,8 +520,16 @@ export function UsersPanel({ users, currentUserId }: { users: User[]; currentUse
     router.refresh();
   }
 
+  const missingGender = users.filter((u) => u.grammaticalGender == null);
+
   return (
     <div className="mb-8 rounded-lg border border-gray-200 bg-white p-6">
+      {missingGender.length > 0 && (
+        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Uzupełnij płeć gramatyczną ({missingGender.map((u) => u.name).join(", ")}) — potrzebna do poprawnych
+          komunikatów w Zadaniach („zlecił / zleciła”).
+        </p>
+      )}
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">Użytkownicy ({users.length})</h2>
         {!isInviting && (

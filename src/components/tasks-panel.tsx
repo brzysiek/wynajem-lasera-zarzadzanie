@@ -1,32 +1,42 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
-import { isOverdue, type TaskDto } from "@/lib/tasks";
+import { avatarColor, avatarInitial } from "@/lib/avatar-color";
+import { dueChip, verbZlecil, type DueChipKind, type TaskDto } from "@/lib/tasks";
 
 type Person = { id: string; name: string };
 
-function fmtDue(due: string): string {
-  const d = new Date(`${due}T00:00:00`);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.round((d.getTime() - today.getTime()) / 86_400_000);
-  if (diff === 0) return "Dziś";
-  if (diff === 1) return "Jutro";
-  if (diff === -1) return "Wczoraj";
-  return d.toLocaleDateString("pl-PL", { day: "numeric", month: "short" });
-}
-
-// Kolory Google Tasks / Material.
+// Kolory Google Tasks / Material (docs/panel zadania sekcja 7).
 const C = {
   text: "#202124",
   sub: "#5f6368",
-  border: "#dadce0",
-  hover: "#f1f3f4",
+  faint: "#9aa0a6",
+  border: "#e8eaed",
+  fieldBorder: "#dadce0",
   field: "#f8f9fa",
+  hover: "#f1f3f4",
   blue: "#1a73e8",
+  bluePale: "#e8f0fe",
   red: "#d93025",
 };
+
+const CHIP: Record<Exclude<DueChipKind, "none">, { bg: string; fg: string }> = {
+  today: { bg: "#e8f0fe", fg: "#1a73e8" },
+  tomorrow: { bg: "#fef7e0", fg: "#b06000" },
+  overdue: { bg: "#fce8e6", fg: "#d93025" },
+  future: { bg: "#f1f3f4", fg: "#5f6368" },
+};
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function plusDaysISO(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function CheckCircle({ done, onClick }: { done: boolean; onClick: () => void }) {
   return (
@@ -35,7 +45,7 @@ function CheckCircle({ done, onClick }: { done: boolean; onClick: () => void }) 
       onClick={onClick}
       aria-label={done ? "Cofnij ukończenie" : "Oznacz jako ukończone"}
       className="group/cc mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full border-2 transition-colors"
-      style={{ borderColor: C.sub, backgroundColor: done ? C.sub : "transparent" }}
+      style={{ borderColor: done ? C.blue : C.fieldBorder, backgroundColor: done ? C.blue : "transparent" }}
     >
       <svg
         viewBox="0 0 20 20"
@@ -52,14 +62,140 @@ function CheckCircle({ done, onClick }: { done: boolean; onClick: () => void }) 
   );
 }
 
+function AssigneePill({ person }: { person: Person }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full py-0.5 pl-0.5 pr-2 text-xs"
+      style={{ background: C.field, border: `1px solid ${C.border}`, color: C.text }}
+    >
+      <span
+        className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[10px] font-bold text-white"
+        style={{ background: avatarColor(person.id) }}
+      >
+        {avatarInitial(person.name)}
+      </span>
+      {person.name}
+    </span>
+  );
+}
+
+function DueBadge({ dueDate, status }: { dueDate: string | null; status: TaskDto["status"] }) {
+  const chip = dueChip(dueDate, status);
+  if (chip.kind === "none") return null;
+  const c = CHIP[chip.kind];
+  return (
+    <span
+      className="rounded-full px-2 py-[3px] text-[11.5px] font-semibold"
+      style={{ background: c.bg, color: c.fg }}
+    >
+      {chip.label}
+    </span>
+  );
+}
+
+// Wybór terminu: chip (jeśli ustawiony) / „＋ Termin" jako trigger, po kliknięciu
+// popover z Dzisiaj / Jutro / Wybierz datę… / Usuń termin.
+function DuePicker({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const chip = dueChip(value, "OPEN");
+
+  return (
+    <div ref={wrapRef} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="rounded-full px-2 py-[3px] text-[11.5px] font-semibold"
+        style={
+          chip.kind === "none"
+            ? { border: `1px dashed ${C.fieldBorder}`, color: C.sub }
+            : { background: CHIP[chip.kind].bg, color: CHIP[chip.kind].fg }
+        }
+      >
+        {chip.kind === "none" ? "＋ Termin" : chip.label}
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 z-10 mt-1 w-40 rounded-lg bg-white py-1 text-sm shadow-lg"
+          style={{ border: `1px solid ${C.border}` }}
+        >
+          {[
+            { label: "Dzisiaj", v: todayISO() },
+            { label: "Jutro", v: plusDaysISO(1) },
+          ].map((o) => (
+            <button
+              key={o.label}
+              type="button"
+              onClick={() => {
+                onChange(o.v);
+                setOpen(false);
+              }}
+              className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f3f4]"
+              style={{ color: C.text }}
+            >
+              {o.label}
+            </button>
+          ))}
+          <label className="block px-3 py-1.5 text-left hover:bg-[#f1f3f4]" style={{ color: C.text }}>
+            Wybierz datę…
+            <input
+              type="date"
+              value={value ?? ""}
+              onChange={(e) => {
+                onChange(e.target.value || null);
+                setOpen(false);
+              }}
+              className="mt-1 block w-full rounded border px-1 py-0.5 text-xs"
+              style={{ borderColor: C.fieldBorder, color: C.sub }}
+            />
+          </label>
+          {value && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange(null);
+                setOpen(false);
+              }}
+              className="block w-full px-3 py-1.5 text-left hover:bg-[#f1f3f4]"
+              style={{ color: C.red }}
+            >
+              Usuń termin
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function sortOpen(a: TaskDto, b: TaskDto): number {
+  // z terminem przed bez terminu; wśród z terminem — rosnąco wg daty.
+  if (a.dueDate && b.dueDate) return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+  if (a.dueDate) return -1;
+  if (b.dueDate) return 1;
+  return a.createdAt < b.createdAt ? -1 : 1;
+}
+
 export function TasksPanel({
   open,
   onClose,
+  currentUserId,
   onCountChange,
 }: {
   open: boolean;
   onClose: () => void;
-  onCountChange?: (openCount: number) => void;
+  currentUserId: string;
+  onCountChange?: (myOpenCount: number) => void;
 }) {
   const [tasks, setTasks] = useState<TaskDto[]>([]);
   const [assignees, setAssignees] = useState<Person[]>([]);
@@ -69,7 +205,7 @@ export function TasksPanel({
   const [composing, setComposing] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newNotes, setNewNotes] = useState("");
-  const [newDue, setNewDue] = useState("");
+  const [newDue, setNewDue] = useState<string | null>(null);
   const [newAssignee, setNewAssignee] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -79,9 +215,9 @@ export function TasksPanel({
   const applyTasks = useCallback(
     (list: TaskDto[]) => {
       setTasks(list);
-      onCountChange?.(list.filter((t) => t.status === "OPEN").length);
+      onCountChange?.(list.filter((t) => t.status === "OPEN" && t.assignee?.id === currentUserId).length);
     },
-    [onCountChange],
+    [onCountChange, currentUserId],
   );
 
   const fetchTasks = useCallback(async () => {
@@ -139,7 +275,7 @@ export function TasksPanel({
       if (!res.ok) throw new Error(data?.message || "Nie udało się dodać zadania.");
       setNewTitle("");
       setNewNotes("");
-      setNewDue("");
+      setNewDue(null);
       setNewAssignee("");
       await fetchTasks();
     } catch (e) {
@@ -153,7 +289,7 @@ export function TasksPanel({
     setComposing(false);
     setNewTitle("");
     setNewNotes("");
-    setNewDue("");
+    setNewDue(null);
     setNewAssignee("");
   }
 
@@ -203,8 +339,10 @@ export function TasksPanel({
     void fetchTasks();
   }
 
-  const openTasks = tasks.filter((t) => t.status === "OPEN");
-  const doneTasks = tasks.filter((t) => t.status === "DONE");
+  const openTasks = tasks.filter((t) => t.status === "OPEN").sort(sortOpen);
+  const doneTasks = tasks
+    .filter((t) => t.status === "DONE")
+    .sort((a, b) => ((a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1));
 
   return (
     <>
@@ -217,10 +355,7 @@ export function TasksPanel({
         style={{ borderLeft: `1px solid ${C.border}`, boxShadow: open ? "0 0 16px rgba(0,0,0,0.12)" : "none" }}
         aria-hidden={!open}
       >
-        <header
-          className="flex items-center justify-between px-4 py-3"
-          style={{ borderBottom: `1px solid ${C.border}` }}
-        >
+        <header className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
           <h2 className="text-base font-medium" style={{ color: C.text }}>
             Zadania
           </h2>
@@ -246,7 +381,6 @@ export function TasksPanel({
         </header>
 
         <div className="flex-1 overflow-y-auto px-2 py-2">
-          {/* Dodaj zadanie */}
           {!composing ? (
             <button
               type="button"
@@ -260,7 +394,7 @@ export function TasksPanel({
               Dodaj zadanie
             </button>
           ) : (
-            <div className="rounded-lg p-3" style={{ background: C.field }}>
+            <div className="rounded-[10px] p-3" style={{ background: C.field }}>
               <input
                 autoFocus
                 value={newTitle}
@@ -270,7 +404,7 @@ export function TasksPanel({
                   if (e.key === "Escape") closeComposer();
                 }}
                 placeholder="Tytuł zadania"
-                className="w-full bg-transparent text-sm outline-none placeholder:text-[#5f6368]"
+                className="w-full bg-transparent text-sm outline-none"
                 style={{ color: C.text }}
               />
               <textarea
@@ -278,22 +412,16 @@ export function TasksPanel({
                 onChange={(e) => setNewNotes(e.target.value)}
                 rows={2}
                 placeholder="Szczegóły"
-                className="mt-2 w-full resize-none bg-transparent text-[13px] outline-none placeholder:text-[#5f6368]"
+                className="mt-2 w-full resize-none bg-transparent text-[13px] outline-none placeholder:text-[#9aa0a6]"
                 style={{ color: C.text }}
               />
-              <div className="mt-1 flex gap-2">
-                <input
-                  type="date"
-                  value={newDue}
-                  onChange={(e) => setNewDue(e.target.value)}
-                  className="flex-1 rounded border px-2 py-1 text-xs outline-none"
-                  style={{ borderColor: C.border, color: C.sub }}
-                />
+              <div className="mt-1 flex items-center gap-2">
+                <DuePicker value={newDue} onChange={setNewDue} />
                 <select
                   value={newAssignee}
                   onChange={(e) => setNewAssignee(e.target.value)}
                   className="flex-1 rounded border px-2 py-1 text-xs outline-none"
-                  style={{ borderColor: C.border, color: C.sub }}
+                  style={{ borderColor: C.fieldBorder, color: C.sub }}
                 >
                   <option value="">Odpowiedzialny…</option>
                   {assignees.map((p) => (
@@ -320,7 +448,11 @@ export function TasksPanel({
             </div>
           )}
 
-          {error && <p className="px-2 py-1 text-xs" style={{ color: C.red }}>{error}</p>}
+          {error && (
+            <p className="px-2 py-1 text-xs" style={{ color: C.red }}>
+              {error}
+            </p>
+          )}
           {loading && tasks.length === 0 && (
             <p className="px-2 py-2 text-sm" style={{ color: C.sub }}>
               Ładowanie…
@@ -420,10 +552,8 @@ function TaskRow({
     setNotes(task.notes ?? "");
   }
 
-  const metaBits: string[] = [];
-  if (task.assignee) metaBits.push(task.assignee.name);
-  if (task.author) metaBits.push(`zlecił: ${task.author.name}`);
-  const meta = metaBits.join(" · ");
+  // Linia „zlecił(a)" — tylko gdy zlecający ≠ odpowiedzialny (sekcja 2).
+  const showCreator = task.author && (!task.assignee || task.assignee.id !== task.author.id);
 
   return (
     <div className="rounded-lg transition-colors hover:bg-[#f1f3f4]">
@@ -441,21 +571,20 @@ function TaskRow({
               {task.notes}
             </span>
           )}
-          {(task.dueDate || meta) && (
-            <span className="mt-1 flex flex-wrap items-center gap-x-2 text-xs" style={{ color: C.sub }}>
-              {task.dueDate && (
-                <span style={isOverdue(task) ? { color: C.red, fontWeight: 500 } : undefined}>
-                  {fmtDue(task.dueDate)}
-                </span>
-              )}
-              {meta && <span>{meta}</span>}
-            </span>
-          )}
+          <span className="mt-1 flex flex-wrap items-center gap-2">
+            {!done && <DueBadge dueDate={task.dueDate} status={task.status} />}
+            {task.assignee && <AssigneePill person={task.assignee} />}
+            {showCreator && (
+              <span className="text-xs" style={{ color: C.sub }}>
+                {verbZlecil(task.author!.gender)}: {task.author!.name}
+              </span>
+            )}
+          </span>
         </button>
       </div>
 
       {expanded && (
-        <div className="mb-1 ml-8 mr-2 rounded-lg p-3" style={{ background: C.field }}>
+        <div className="mb-1 ml-8 mr-2 rounded-[10px] p-3" style={{ background: C.field }}>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -469,22 +598,16 @@ function TaskRow({
             onBlur={() => notes.trim() !== (task.notes ?? "") && onPatch({ notes: notes.trim() })}
             rows={2}
             placeholder="Szczegóły"
-            className="mt-2 w-full resize-none bg-transparent text-[13px] outline-none placeholder:text-[#5f6368]"
+            className="mt-2 w-full resize-none bg-transparent text-[13px] outline-none placeholder:text-[#9aa0a6]"
             style={{ color: C.text }}
           />
-          <div className="mt-1 flex gap-2">
-            <input
-              type="date"
-              value={task.dueDate ?? ""}
-              onChange={(e) => onPatch({ dueDate: e.target.value || null })}
-              className="flex-1 rounded border px-2 py-1 text-xs outline-none"
-              style={{ borderColor: C.border, color: C.sub }}
-            />
+          <div className="mt-1 flex items-center gap-2">
+            <DuePicker value={task.dueDate} onChange={(v) => onPatch({ dueDate: v })} />
             <select
               value={task.assignee?.id ?? ""}
               onChange={(e) => onPatch({ assigneeId: e.target.value || null })}
               className="flex-1 rounded border px-2 py-1 text-xs outline-none"
-              style={{ borderColor: C.border, color: C.sub }}
+              style={{ borderColor: C.fieldBorder, color: C.sub }}
             >
               <option value="">Odpowiedzialny…</option>
               {assignees.map((p) => (

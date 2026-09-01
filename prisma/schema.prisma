@@ -84,6 +84,11 @@ enum PulseCalculationStatus {
   CALCULATED // liczniki wpisane, kwota faktycznie wyliczona
 }
 
+enum GrammaticalGender {
+  M
+  F
+}
+
 model User {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -93,6 +98,8 @@ model User {
   // ADMIN/STAFF z tą flagą mogą przełączyć aplikację w „podgląd kierowcy"
   // (rola efektywna, bez zmiany roli w bazie) — patrz src/lib/effective-role.ts.
   canActAsDriver Boolean @default(false)
+  // Płeć gramatyczna — do odmiany „zlecił"/„zleciła" w liście zadań.
+  grammaticalGender GrammaticalGender?
   invitedAt    DateTime?
   activatedAt  DateTime?
   createdAt    DateTime  @default(now())

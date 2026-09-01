@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { logInfo } from "@/lib/logger";
 import { parseDueDate, taskDto } from "@/lib/tasks";
 
-const PERSON_SELECT = { select: { id: true, name: true } } as const;
-const TASK_INCLUDE = { author: PERSON_SELECT, assignee: PERSON_SELECT } as const;
+const TASK_INCLUDE = {
+  author: { select: { id: true, name: true, grammaticalGender: true } },
+  assignee: { select: { id: true, name: true } },
+} as const;
 
 async function assigneeIsAllowed(id: string): Promise<boolean> {
   const user = await prisma.user.findUnique({ where: { id }, select: { role: true } });
@@ -14,7 +16,7 @@ async function assigneeIsAllowed(id: string): Promise<boolean> {
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const { id } = await params;
@@ -74,7 +76,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const { id } = await params;

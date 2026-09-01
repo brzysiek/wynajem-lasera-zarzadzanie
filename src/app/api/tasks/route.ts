@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { logInfo } from "@/lib/logger";
 import { parseDueDate, taskDto } from "@/lib/tasks";
 
-const PERSON_SELECT = { select: { id: true, name: true } } as const;
-const TASK_INCLUDE = { author: PERSON_SELECT, assignee: PERSON_SELECT } as const;
+const TASK_INCLUDE = {
+  author: { select: { id: true, name: true, grammaticalGender: true } },
+  assignee: { select: { id: true, name: true } },
+} as const;
 
 // Odpowiedzialnym może być ADMIN lub STAFF (biuro). Kierowca nie.
 async function assigneeIsAllowed(id: string): Promise<boolean> {
@@ -14,7 +16,7 @@ async function assigneeIsAllowed(id: string): Promise<boolean> {
 }
 
 export async function GET(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const status = req.nextUrl.searchParams.get("status") ?? "all";
@@ -30,7 +32,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const body = await req.json().catch(() => null);
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
 // Kasuje wszystkie ukończone zadania („Wyczyść ukończone"). Wymaga ?status=done
 // jako zabezpieczenia przed przypadkowym wyczyszczeniem całej listy.
 export async function DELETE(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   if (req.nextUrl.searchParams.get("status") !== "done") {
