@@ -73,32 +73,11 @@ echo "==> Applying database migrations"
 # a pre-existing database (0_init marked applied, not executed) on first run.
 node deploy/migrate.mjs
 
-echo "==> Boot self-test (node server.js, 15s cap)"
-# Surfaces a start-up crash (bad Prisma client, missing env, …) directly in
-# the GitHub Actions deploy log instead of only in a server-side file the
-# operator can't easily reach. Never fails the deploy — informational only.
-#
-# Must go through node-wrapper.sh, not a bare `node` — that's what applies
-# ulimit -u/taskset (see the file itself) to cap how many OS threads Prisma's
-# Tokio runtime provisions. A bare `node server.js` here sees the host's full
-# CPU count instead of the pinned 2, over-provisions threads, and can blow
-# this account's CloudLinux LVE process cap hard enough to 503 the *live*
-# site running alongside it (Tokio worker threads failing to spawn, then a
-# burst of `fork: Resource temporarily unavailable` for everything else on
-# the account) — confirmed live on the brzychu.cfolks.pl test box.
-set +e
-timeout 15 ./node-wrapper.sh server.js > /tmp/wl-boot-selftest.log 2>&1
-selftest_code=$?
-set -e
-if [[ "$selftest_code" -eq 124 ]]; then
-  echo "    server.js still running after 15s — no immediate crash (good)"
-else
-  echo "    server.js exited on its own (code $selftest_code) — likely a boot crash:"
-  echo "    ----------------------------------------------------------------"
-  tail -n 60 /tmp/wl-boot-selftest.log | sed 's/^/    /'
-  echo "    ----------------------------------------------------------------"
-fi
-rm -f /tmp/wl-boot-selftest.log
+# NOTE: no on-server "boot self-test" here. Running a second `server.js`
+# (even via node-wrapper.sh) next to the live app doubles the process/thread
+# count and blows this account's CloudLinux LVE cap — it took production
+# down twice. Passenger restarts the real app below; check its own logs if
+# it fails to come up, don't spawn a probe instance from the deploy.
 
 echo "==> Restarting app (Passenger restart trigger)"
 mkdir -p tmp
