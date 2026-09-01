@@ -100,8 +100,38 @@ model User {
   messages            Message[]
   passwordResetTokens PasswordResetToken[]
   assignedRentals     Rental[]             @relation("RentalDriver")
+  authoredTasks       Task[]               @relation("TaskAuthor")
+  assignedTasks       Task[]               @relation("TaskAssignee")
 
   @@map("users")
+}
+
+enum TaskStatus {
+  OPEN
+  DONE
+}
+
+// Lista zadań zespołu — widoczna tylko w widoku admina (panel wysuwany).
+// Każde zadanie ma autora (kto utworzył) i odpowiedzialnego (kto ma zrobić).
+model Task {
+  id          String     @id @default(uuid())
+  title       String
+  notes       String?    @db.Text
+  status      TaskStatus @default(OPEN)
+  completedAt DateTime?
+  dueDate     DateTime?
+  authorId    String?
+  assigneeId  String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  author   User? @relation("TaskAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  assignee User? @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([authorId])
+  @@index([assigneeId])
+  @@map("tasks")
 }
 
 model PasswordResetToken {

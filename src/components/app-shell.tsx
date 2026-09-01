@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { TopNav } from "@/components/top-nav";
+import { TasksPanel } from "@/components/tasks-panel";
 
 // The calendar page wants to stretch edge-to-edge AND fill the viewport
 // height (Google Calendar-style: fixed chrome, the grid scrolls inside),
@@ -25,10 +27,21 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const isFullWidth = pathname === "/kalendarz";
+  const isAdmin = role === "ADMIN";
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [openTaskCount, setOpenTaskCount] = useState<number | null>(null);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <TopNav userName={userName} role={role} canActAsDriver={canActAsDriver} driverPreview={driverPreview} />
+      <TopNav
+        userName={userName}
+        role={role}
+        canActAsDriver={canActAsDriver}
+        driverPreview={driverPreview}
+        showTasks={isAdmin}
+        openTaskCount={openTaskCount}
+        onToggleTasks={() => setTasksOpen((v) => !v)}
+      />
       <main
         className={
           isFullWidth
@@ -38,6 +51,9 @@ export function AppShell({
       >
         {children}
       </main>
+      {isAdmin && (
+        <TasksPanel open={tasksOpen} onClose={() => setTasksOpen(false)} onCountChange={setOpenTaskCount} />
+      )}
     </div>
   );
 }
