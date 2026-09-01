@@ -46,11 +46,28 @@ function headerMeta(rental: ReadonlyRental): string {
   return parts.join(" · ");
 }
 
-function Row({ label, value }: { label: string; value: string | null }) {
+// Link do nawigacji Google Maps (otwiera apkę na telefonie).
+function mapsUrl(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address.trim())}`;
+}
+
+function Row({ label, value, map = false }: { label: string; value: string | null; map?: boolean }) {
+  const shown = value?.trim() ? value.trim() : null;
   return (
     <div className="flex flex-col gap-0.5 border-b border-[#EEF0F3] py-2 last:border-b-0 sm:flex-row sm:gap-4">
       <span className="w-40 flex-none text-[13px] text-[#6B7280]">{label}</span>
-      <span className="text-[13px] text-[#171A21]">{value?.trim() ? value : "—"}</span>
+      {shown && map ? (
+        <a
+          href={mapsUrl(shown)}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[13px] font-medium text-[#2F6FD1] underline-offset-2 hover:underline"
+        >
+          {shown}
+        </a>
+      ) : (
+        <span className="text-[13px] text-[#171A21]">{shown ?? "—"}</span>
+      )}
     </div>
   );
 }
@@ -94,7 +111,14 @@ function ClientCard({ rental }: { rental: ReadonlyRental }) {
         {address && (
           <div className="flex items-start gap-1.5">
             <span aria-hidden>📍</span>
-            {address}
+            <a
+              href={mapsUrl(address)}
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-[#2F6FD1] underline-offset-2 hover:underline"
+            >
+              {address}
+            </a>
           </div>
         )}
         {times && (
@@ -142,7 +166,7 @@ export function RentalReadonlyView({
 
         <div className={CARD}>
           <p className={CARD_LABEL}>Dostawa</p>
-          <Row label="Adres dostawy" value={rental.deliveryAddress} />
+          <Row label="Adres dostawy" value={rental.deliveryAddress} map />
           <Row label="Ustalona cena transportu" value={rental.transportPrice} />
         </div>
 
