@@ -7,7 +7,49 @@ import { isOverdue, type TaskDto } from "@/lib/tasks";
 type Person = { id: string; name: string };
 
 function fmtDue(due: string): string {
-  return new Date(`${due}T00:00:00`).toLocaleDateString("pl-PL", { day: "numeric", month: "short" });
+  const d = new Date(`${due}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+  if (diff === 0) return "Dziś";
+  if (diff === 1) return "Jutro";
+  if (diff === -1) return "Wczoraj";
+  return d.toLocaleDateString("pl-PL", { day: "numeric", month: "short" });
+}
+
+// Kolory Google Tasks / Material.
+const C = {
+  text: "#202124",
+  sub: "#5f6368",
+  border: "#dadce0",
+  hover: "#f1f3f4",
+  field: "#f8f9fa",
+  blue: "#1a73e8",
+  red: "#d93025",
+};
+
+function CheckCircle({ done, onClick }: { done: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={done ? "Cofnij ukończenie" : "Oznacz jako ukończone"}
+      className="group/cc mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full border-2 transition-colors"
+      style={{ borderColor: C.sub, backgroundColor: done ? C.sub : "transparent" }}
+    >
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={`h-3 w-3 ${done ? "text-white" : "text-[#5f6368] opacity-0 transition-opacity group-hover/cc:opacity-40"}`}
+      >
+        <path d="M4 10l4 4 8-9" />
+      </svg>
+    </button>
+  );
 }
 
 export function TasksPanel({
@@ -24,8 +66,8 @@ export function TasksPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [composing, setComposing] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [newOpen, setNewOpen] = useState(false);
   const [newNotes, setNewNotes] = useState("");
   const [newDue, setNewDue] = useState("");
   const [newAssignee, setNewAssignee] = useState("");
@@ -34,7 +76,6 @@ export function TasksPanel({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
 
-  // onCountChange z AppShell to setter useState — stabilna tożsamość.
   const applyTasks = useCallback(
     (list: TaskDto[]) => {
       setTasks(list);
@@ -58,19 +99,18 @@ export function TasksPanel({
     }
   }, [applyTasks]);
 
-  // Licznik w pasku ma być aktualny od wejścia na stronę — pobieramy raz na
-  // montaż, a potem odświeżamy przy każdym otwarciu panelu.
   useEffect(() => {
     void fetchTasks();
     fetch(`${BASE_PATH}/api/users`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        const list: Person[] = Array.isArray(d?.users)
-          ? d.users
-              .filter((u: { role?: string }) => u.role !== "KIEROWCA")
-              .map((u: { id: string; name: string }) => ({ id: u.id, name: u.name }))
-          : [];
-        setAssignees(list);
+        setAssignees(
+          Array.isArray(d?.users)
+            ? d.users
+                .filter((u: { role?: string }) => u.role !== "KIEROWCA")
+                .map((u: { id: string; name: string }) => ({ id: u.id, name: u.name }))
+            : [],
+        );
       })
       .catch(() => {});
   }, [fetchTasks]);
@@ -101,7 +141,6 @@ export function TasksPanel({
       setNewNotes("");
       setNewDue("");
       setNewAssignee("");
-      setNewOpen(false);
       await fetchTasks();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Błąd.");
@@ -110,8 +149,15 @@ export function TasksPanel({
     }
   }
 
+  function closeComposer() {
+    setComposing(false);
+    setNewTitle("");
+    setNewNotes("");
+    setNewDue("");
+    setNewAssignee("");
+  }
+
   async function patchTask(id: string, patch: Record<string, unknown>) {
-    // optymistycznie
     setTasks((prev) =>
       prev.map((t) =>
         t.id === id
@@ -131,10 +177,10 @@ export function TasksPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.message || "Nie udało się zapisać.");
-      applyTasks(tasks.map((t) => (t.id === id ? (data.task as TaskDto) : t)));
-      // pełny refetch dla porządku (sortowanie, nazwa odpowiedzialnego)
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || "Nie udało się zapisać.");
+      }
       void fetchTasks();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Błąd.");
@@ -152,7 +198,7 @@ export function TasksPanel({
   }
 
   async function clearCompleted() {
-    if (!confirm("Usunąć wszystkie ukończone zadania?")) return;
+    if (!window.confirm("Usunąć wszystkie ukończone zadania?")) return;
     await fetch(`${BASE_PATH}/api/tasks?status=done`, { method: "DELETE" });
     void fetchTasks();
   }
@@ -162,21 +208,27 @@ export function TasksPanel({
 
   return (
     <>
-      {open && <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} aria-hidden />}
+      {open && <div className="fixed inset-0 z-40 bg-black/10" onClick={onClose} aria-hidden />}
 
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col border-l border-gray-200 bg-white shadow-xl transition-transform duration-200 ${
+        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-white transition-transform duration-200 sm:w-[380px] ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
+        style={{ borderLeft: `1px solid ${C.border}`, boxShadow: open ? "0 0 16px rgba(0,0,0,0.12)" : "none" }}
         aria-hidden={!open}
       >
-        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-          <h2 className="text-sm font-semibold text-gray-900">Zadania</h2>
+        <header
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: `1px solid ${C.border}` }}
+        >
+          <h2 className="text-base font-medium" style={{ color: C.text }}>
+            Zadania
+          </h2>
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={() => void fetchTasks()}
-              className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
               title="Odśwież"
               aria-label="Odśwież"
             >
@@ -185,113 +237,127 @@ export function TasksPanel({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"
               aria-label="Zamknij"
             >
               ✕
             </button>
           </div>
-        </div>
+        </header>
 
-        {/* Dodawanie */}
-        <div className="border-b border-gray-200 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <input
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void addTask();
-              }}
-              placeholder="Nowe zadanie…"
-              className="min-w-0 flex-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-gray-500 focus:outline-none"
-            />
+        <div className="flex-1 overflow-y-auto px-2 py-2">
+          {/* Dodaj zadanie */}
+          {!composing ? (
             <button
               type="button"
-              onClick={() => setNewOpen((v) => !v)}
-              className="flex-none rounded-md border border-gray-300 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
-              aria-expanded={newOpen}
-              title="Więcej pól"
+              onClick={() => setComposing(true)}
+              className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-sm hover:bg-[#f1f3f4]"
+              style={{ color: C.sub }}
             >
-              {newOpen ? "▴" : "▾"}
+              <span className="flex h-5 w-5 flex-none items-center justify-center text-lg leading-none" style={{ color: C.blue }}>
+                +
+              </span>
+              Dodaj zadanie
             </button>
-            <button
-              type="button"
-              onClick={() => void addTask()}
-              disabled={!newTitle.trim() || adding}
-              className="flex-none rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-            >
-              Dodaj
-            </button>
-          </div>
-          {newOpen && (
-            <div className="mt-2 flex flex-col gap-2">
+          ) : (
+            <div className="rounded-lg p-3" style={{ background: C.field }}>
+              <input
+                autoFocus
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void addTask();
+                  if (e.key === "Escape") closeComposer();
+                }}
+                placeholder="Tytuł zadania"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-[#5f6368]"
+                style={{ color: C.text }}
+              />
               <textarea
                 value={newNotes}
                 onChange={(e) => setNewNotes(e.target.value)}
                 rows={2}
-                placeholder="Opis (opcjonalnie)"
-                className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-gray-500 focus:outline-none"
+                placeholder="Szczegóły"
+                className="mt-2 w-full resize-none bg-transparent text-[13px] outline-none placeholder:text-[#5f6368]"
+                style={{ color: C.text }}
               />
-              <div className="flex gap-2">
-                <label className="flex flex-1 flex-col text-xs text-gray-500">
-                  Termin
-                  <input
-                    type="date"
-                    value={newDue}
-                    onChange={(e) => setNewDue(e.target.value)}
-                    className="mt-0.5 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
-                  />
-                </label>
-                <label className="flex flex-1 flex-col text-xs text-gray-500">
-                  Odpowiedzialny
-                  <select
-                    value={newAssignee}
-                    onChange={(e) => setNewAssignee(e.target.value)}
-                    className="mt-0.5 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
-                  >
-                    <option value="">—</option>
-                    {assignees.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <div className="mt-1 flex gap-2">
+                <input
+                  type="date"
+                  value={newDue}
+                  onChange={(e) => setNewDue(e.target.value)}
+                  className="flex-1 rounded border px-2 py-1 text-xs outline-none"
+                  style={{ borderColor: C.border, color: C.sub }}
+                />
+                <select
+                  value={newAssignee}
+                  onChange={(e) => setNewAssignee(e.target.value)}
+                  className="flex-1 rounded border px-2 py-1 text-xs outline-none"
+                  style={{ borderColor: C.border, color: C.sub }}
+                >
+                  <option value="">Odpowiedzialny…</option>
+                  {assignees.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="mt-2 flex items-center justify-end gap-3">
+                <button type="button" onClick={closeComposer} className="text-xs" style={{ color: C.sub }}>
+                  Anuluj
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void addTask()}
+                  disabled={!newTitle.trim() || adding}
+                  className="rounded px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
+                  style={{ background: C.blue }}
+                >
+                  Dodaj
+                </button>
               </div>
             </div>
           )}
-        </div>
 
-        <div className="flex-1 overflow-y-auto px-2 py-2">
-          {error && <p className="px-2 py-1 text-xs text-red-600">{error}</p>}
-          {loading && tasks.length === 0 && <p className="px-2 py-2 text-sm text-gray-400">Ładowanie…</p>}
+          {error && <p className="px-2 py-1 text-xs" style={{ color: C.red }}>{error}</p>}
+          {loading && tasks.length === 0 && (
+            <p className="px-2 py-2 text-sm" style={{ color: C.sub }}>
+              Ładowanie…
+            </p>
+          )}
 
-          {openTasks.map((t) => (
-            <TaskRow
-              key={t.id}
-              task={t}
-              assignees={assignees}
-              expanded={expandedId === t.id}
-              onToggleExpand={() => setExpandedId((id) => (id === t.id ? null : t.id))}
-              onComplete={() => void patchTask(t.id, { status: "DONE" })}
-              onPatch={(p) => void patchTask(t.id, p)}
-              onDelete={() => void deleteTask(t.id)}
-            />
-          ))}
+          <div className="mt-1">
+            {openTasks.map((t) => (
+              <TaskRow
+                key={t.id}
+                task={t}
+                assignees={assignees}
+                expanded={expandedId === t.id}
+                onToggleExpand={() => setExpandedId((id) => (id === t.id ? null : t.id))}
+                onComplete={() => void patchTask(t.id, { status: "DONE" })}
+                onPatch={(p) => void patchTask(t.id, p)}
+                onDelete={() => void deleteTask(t.id)}
+              />
+            ))}
+          </div>
 
           {openTasks.length === 0 && !loading && (
-            <p className="px-2 py-6 text-center text-sm text-gray-400">Brak otwartych zadań.</p>
+            <p className="px-2 py-8 text-center text-sm" style={{ color: C.sub }}>
+              Brak zadań. Miło.
+            </p>
           )}
 
           {doneTasks.length > 0 && (
-            <div className="mt-2 border-t border-gray-200 pt-2">
+            <div className="mt-3" style={{ borderTop: `1px solid ${C.border}` }}>
               <button
                 type="button"
                 onClick={() => setShowDone((v) => !v)}
-                className="flex w-full items-center justify-between px-2 py-1 text-xs font-medium text-gray-500"
+                className="flex w-full items-center gap-1 px-2 py-2 text-sm font-medium"
+                style={{ color: C.sub }}
               >
-                <span>Ukończone ({doneTasks.length})</span>
-                <span>{showDone ? "▴" : "▾"}</span>
+                <span className="text-xs">{showDone ? "▾" : "▸"}</span>
+                Ukończone ({doneTasks.length})
               </button>
               {showDone && (
                 <>
@@ -310,7 +376,8 @@ export function TasksPanel({
                   <button
                     type="button"
                     onClick={() => void clearCompleted()}
-                    className="mt-1 px-2 py-1 text-xs text-red-600 hover:underline"
+                    className="mt-1 px-2 py-1.5 text-xs hover:underline"
+                    style={{ color: C.sub }}
                   >
                     Wyczyść ukończone
                   </button>
@@ -345,8 +412,7 @@ function TaskRow({
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes ?? "");
 
-  // Zsynchronizuj lokalne pola, gdy zadanie zmieni się z serwera — wzorzec
-  // „adjust state during render" (bez efektu), jak trackedPathname w top-nav.
+  // „adjust state during render" (bez efektu) — sync po zmianie z serwera.
   const [synced, setSynced] = useState({ title: task.title, notes: task.notes ?? "" });
   if (synced.title !== task.title || synced.notes !== (task.notes ?? "")) {
     setSynced({ title: task.title, notes: task.notes ?? "" });
@@ -354,82 +420,92 @@ function TaskRow({
     setNotes(task.notes ?? "");
   }
 
-  const meta: string[] = [];
-  if (task.assignee) meta.push(`→ ${task.assignee.name}`);
-  if (task.author) meta.push(`utw. ${task.author.name}`);
+  const metaBits: string[] = [];
+  if (task.assignee) metaBits.push(task.assignee.name);
+  if (task.author) metaBits.push(`zlecił: ${task.author.name}`);
+  const meta = metaBits.join(" · ");
 
   return (
-    <div className="rounded-md px-1 hover:bg-gray-50">
-      <div className="flex items-start gap-2 py-1.5">
-        <input
-          type="checkbox"
-          checked={done}
-          onChange={onComplete}
-          className="mt-0.5 h-4 w-4 flex-none accent-gray-900"
-          aria-label={done ? "Oznacz jako otwarte" : "Oznacz jako zrobione"}
-        />
+    <div className="rounded-lg transition-colors hover:bg-[#f1f3f4]">
+      <div className="flex items-start gap-3 px-2 py-2">
+        <CheckCircle done={done} onClick={onComplete} />
         <button type="button" onClick={onToggleExpand} className="min-w-0 flex-1 text-left">
-          <span className={`block text-sm ${done ? "text-gray-400 line-through" : "text-gray-900"}`}>
+          <span
+            className={`block text-sm leading-5 ${done ? "line-through" : ""}`}
+            style={{ color: done ? C.sub : C.text }}
+          >
             {task.title}
           </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-gray-400">
-            {task.dueDate && (
-              <span className={isOverdue(task) ? "font-medium text-red-600" : ""}>📅 {fmtDue(task.dueDate)}</span>
-            )}
-            {meta.join(" · ")}
-          </span>
+          {task.notes && !expanded && (
+            <span className="mt-0.5 block truncate text-xs" style={{ color: C.sub }}>
+              {task.notes}
+            </span>
+          )}
+          {(task.dueDate || meta) && (
+            <span className="mt-1 flex flex-wrap items-center gap-x-2 text-xs" style={{ color: C.sub }}>
+              {task.dueDate && (
+                <span style={isOverdue(task) ? { color: C.red, fontWeight: 500 } : undefined}>
+                  {fmtDue(task.dueDate)}
+                </span>
+              )}
+              {meta && <span>{meta}</span>}
+            </span>
+          )}
         </button>
       </div>
 
       {expanded && (
-        <div className="flex flex-col gap-2 pb-3 pl-6 pr-1">
+        <div className="mb-1 ml-8 mr-2 rounded-lg p-3" style={{ background: C.field }}>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={() => title.trim() && title.trim() !== task.title && onPatch({ title: title.trim() })}
-            className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
+            className="w-full bg-transparent text-sm outline-none"
+            style={{ color: C.text }}
           />
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             onBlur={() => notes.trim() !== (task.notes ?? "") && onPatch({ notes: notes.trim() })}
             rows={2}
-            placeholder="Opis"
-            className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
+            placeholder="Szczegóły"
+            className="mt-2 w-full resize-none bg-transparent text-[13px] outline-none placeholder:text-[#5f6368]"
+            style={{ color: C.text }}
           />
-          <div className="flex gap-2">
-            <label className="flex flex-1 flex-col text-xs text-gray-500">
-              Termin
-              <input
-                type="date"
-                value={task.dueDate ?? ""}
-                onChange={(e) => onPatch({ dueDate: e.target.value || null })}
-                className="mt-0.5 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
-              />
-            </label>
-            <label className="flex flex-1 flex-col text-xs text-gray-500">
-              Odpowiedzialny
-              <select
-                value={task.assignee?.id ?? ""}
-                onChange={(e) => onPatch({ assigneeId: e.target.value || null })}
-                className="mt-0.5 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-gray-500 focus:outline-none"
-              >
-                <option value="">—</option>
-                {assignees.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <div className="mt-1 flex gap-2">
+            <input
+              type="date"
+              value={task.dueDate ?? ""}
+              onChange={(e) => onPatch({ dueDate: e.target.value || null })}
+              className="flex-1 rounded border px-2 py-1 text-xs outline-none"
+              style={{ borderColor: C.border, color: C.sub }}
+            />
+            <select
+              value={task.assignee?.id ?? ""}
+              onChange={(e) => onPatch({ assigneeId: e.target.value || null })}
+              className="flex-1 rounded border px-2 py-1 text-xs outline-none"
+              style={{ borderColor: C.border, color: C.sub }}
+            >
+              <option value="">Odpowiedzialny…</option>
+              {assignees.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
           </div>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="self-start text-xs text-red-600 hover:underline"
-          >
-            Usuń zadanie
-          </button>
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={onDelete}
+              className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-black/5"
+              style={{ color: C.sub }}
+              aria-label="Usuń zadanie"
+              title="Usuń zadanie"
+            >
+              🗑
+            </button>
+          </div>
         </div>
       )}
     </div>
