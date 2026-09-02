@@ -1,31 +1,27 @@
 import Link from "next/link";
+import type { RentalEventType } from "@prisma/client";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { variantShortLabel } from "@/lib/pricing/variants";
 
 export type ReadonlyRental = {
-  title: string;
-  description: string | null;
   startsAt: string;
   endsAt: string;
-  allDay: boolean;
-  device: { name: string; color: string };
+  device: { name: string };
   deviceVariant: string | null;
-  driverName: string | null;
+  eventType: RentalEventType;
   deliveryAddress: string | null;
   deliveryTime: string | null;
   pickupTime: string | null;
-  transportPrice: string | null;
+  internalNotes: string | null;
   contactNameCache: string | null;
   contactPhoneCache: string | null;
   contactCompanyCache: string | null;
   contactAddressCache: string | null;
 };
 
-function formatDate(iso: string, allDay: boolean): string {
-  const date = new Date(iso);
-  return allDay
-    ? date.toLocaleDateString("pl-PL")
-    : date.toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
+// Link do nawigacji Google Maps (otwiera apkę na telefonie).
+function mapsUrl(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address.trim())}`;
 }
 
 // „28 sie – 30 sie · 3 dni · podwójna głowica" — zakres skrócony, liczba dni
@@ -46,96 +42,83 @@ function headerMeta(rental: ReadonlyRental): string {
   return parts.join(" · ");
 }
 
-// Link do nawigacji Google Maps (otwiera apkę na telefonie).
-function mapsUrl(address: string): string {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address.trim())}`;
-}
-
-function Row({ label, value, map = false }: { label: string; value: string | null; map?: boolean }) {
-  const shown = value?.trim() ? value.trim() : null;
-  return (
-    <div className="flex flex-col gap-0.5 border-b border-[#EEF0F3] py-2 last:border-b-0 sm:flex-row sm:gap-4">
-      <span className="w-40 flex-none text-[13px] text-[#6B7280]">{label}</span>
-      {shown && map ? (
-        <a
-          href={mapsUrl(shown)}
-          target="_blank"
-          rel="noreferrer"
-          className="text-[13px] font-medium text-[#2F6FD1] underline-offset-2 hover:underline"
-        >
-          {shown}
-        </a>
-      ) : (
-        <span className="text-[13px] text-[#171A21]">{shown ?? "—"}</span>
-      )}
-    </div>
-  );
-}
-
 const CARD = "rounded-[14px] border border-[#E2E6EC] bg-white px-4 py-3.5";
-const CARD_LABEL = "mb-2 text-[11px] font-bold uppercase tracking-[0.04em] text-[#6B7280]";
+const CARD_LABEL = "mb-1.5 text-[11px] font-bold uppercase tracking-[0.04em] text-[#9CA3AF]";
 
-// Karta „Klientka" wg docs/finanse-wynajmu/mockup-modul-finansowy.html:
-// duża nazwa + wiersze z ikonami. Telefon jako tel: — kierowca dzwoni jednym
-// tapnięciem. Puste pola pomijamy (bez „—").
-function ClientCard({ rental }: { rental: ReadonlyRental }) {
+// Karta „Klientka" + „Uwaga z biura" wg mockup-master-finanse-wynajmu.html
+// (widok kierowcy). Renderowana zaraz PO banerze płatności (patrz
+// DriverFinancePanel.tripInfoSlot), przed rozbiciem kwoty — dlatego jest
+// osobnym eksportem, nie częścią RentalReadonlyView.
+export function DriverTripInfo({ rental }: { rental: ReadonlyRental }) {
   const phone = rental.contactPhoneCache?.trim();
   const company = rental.contactCompanyCache?.trim();
-  const address = rental.contactAddressCache?.trim();
+  // Adres nawigacji: dostawy jeśli podany, inaczej z kontaktu HubSpot.
+  const address = rental.deliveryAddress?.trim() || rental.contactAddressCache?.trim();
   const times = [
     rental.deliveryTime?.trim() && `dostawa ${rental.deliveryTime.trim()}`,
     rental.pickupTime?.trim() && `odbiór ${rental.pickupTime.trim()}`,
   ]
     .filter(Boolean)
     .join(" · ");
+  const officeNote = rental.internalNotes?.trim();
 
   return (
-    <div className={CARD}>
-      <p className={CARD_LABEL}>Klientka</p>
-      <p className="text-[15px] font-bold text-[#171A21]">{rental.contactNameCache?.trim() || "—"}</p>
-      <div className="mt-1.5 flex flex-col gap-1.5 text-[13.5px] text-[#6B7280]">
-        {phone && (
-          <div className="flex items-center gap-1.5">
-            <span aria-hidden>📞</span>
-            <a href={`tel:${phone.replace(/\s+/g, "")}`} className="font-medium text-[#2F6FD1]">
+    <>
+      <div className={CARD}>
+        <p className={CARD_LABEL}>Klientka</p>
+        <p className="text-[15px] font-bold text-[#171A21]">{rental.contactNameCache?.trim() || "—"}</p>
+        <div className="mt-2 flex flex-col gap-2 text-[13.5px]">
+          {phone && (
+            <a
+              href={`tel:${phone.replace(/\s+/g, "")}`}
+              className="flex items-center gap-2 font-semibold text-[#2F6FD1]"
+            >
+              <span aria-hidden>📞</span>
               {phone}
             </a>
-          </div>
-        )}
-        {company && (
-          <div className="flex items-center gap-1.5">
-            <span aria-hidden>🏢</span>
-            {company}
-          </div>
-        )}
-        {address && (
-          <div className="flex items-start gap-1.5">
-            <span aria-hidden>📍</span>
+          )}
+          {address && (
             <a
               href={mapsUrl(address)}
               target="_blank"
               rel="noreferrer"
-              className="font-medium text-[#2F6FD1] underline-offset-2 hover:underline"
+              className="flex items-start gap-2 font-semibold text-[#2F6FD1]"
             >
+              <span aria-hidden>📍</span>
               {address}
             </a>
-          </div>
-        )}
-        {times && (
-          <div className="flex items-center gap-1.5">
-            <span aria-hidden>🕘</span>
-            {times}
-          </div>
-        )}
+          )}
+          {company && (
+            <div className="flex items-center gap-2 text-[#6B7280]">
+              <span aria-hidden>🏢</span>
+              {company}
+            </div>
+          )}
+          {times && (
+            <div className="flex items-center gap-2 text-[#6B7280]">
+              <span aria-hidden>🕘</span>
+              {times}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {officeNote && (
+        <div className="flex gap-2 rounded-[9px] border border-[#F0E0B8] bg-[#FBF3E1] px-3 py-2.5 text-[12.5px] text-[#7A5A0E]">
+          <span aria-hidden>💬</span>
+          <span>
+            <b className="font-bold">Uwaga z biura:</b> {officeNote}
+          </span>
+        </div>
+      )}
+    </>
   );
 }
 
-// Read-only rental card shown to a KIEROWCA (driver). Trip details are
-// read-only; the finance panel (`financeSlot`, rendered first) is the one
-// place a driver can edit — payment confirmation, HS cap, pulse counters,
-// driver notes. Styling follows docs/finanse-wynajmu/mockup-modul-finansowy.html.
+// Widok kierowcy: nagłówek (nazwa urządzenia + tag typu + zakres/dni/wariant)
+// i sekcja finansowa (`financeSlot` = DriverFinancePanel, który sam renderuje
+// baner, dane klienta przez tripInfoSlot, rozbicie, nakładkę, uwagi).
+// Layout wg docs/panel zadania/panel kierowcy mobile/mockup-master-finanse-wynajmu.html.
 export function RentalReadonlyView({
   rental,
   financeSlot,
@@ -143,44 +126,32 @@ export function RentalReadonlyView({
   rental: ReadonlyRental;
   financeSlot?: React.ReactNode;
 }) {
+  const eventTag = rental.eventType === "SZKOLENIE" ? "Szkolenie" : "Wynajem";
+
   return (
     <div className="-mx-4 -my-6 min-h-screen bg-[#F1F3F6] px-4 py-6">
       <div className="mx-auto flex max-w-md flex-col gap-3">
         <div>
-          <Link href="/kalendarz" className="text-[13px] text-[#6B7280] transition-colors hover:text-[#171A21]">
-            ← Wróć
+          <Link
+            href="/kalendarz"
+            aria-label="Wróć do kalendarza"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-[#E2E6EC] bg-white text-[14px] text-[#6B7280]"
+          >
+            ←
           </Link>
-          <h1 className="mt-1 flex items-center gap-2 text-[17px] font-bold tracking-[-0.01em] text-[#171A21]">
-            <span
-              className="h-2.5 w-2.5 flex-none rounded-full"
-              style={{ backgroundColor: rental.device.color }}
-            />
+          <span className="mt-2 inline-block rounded-full bg-[#EAF1FC] px-2.5 py-[3px] text-[10px] font-bold uppercase tracking-[0.05em] text-[#2F6FD1]">
+            {eventTag}
+          </span>
+          <h1 className="mt-1.5 text-[21px] font-extrabold leading-[1.15] tracking-[-0.01em] text-[#171A21]">
             {rental.device.name}
           </h1>
-          <p className="mt-1 text-[13px] text-[#6B7280]">{headerMeta(rental)}</p>
+          <p className="mt-1 flex items-center gap-1.5 text-[14px] font-medium text-[#6B7280]">
+            <span aria-hidden>📅</span>
+            {headerMeta(rental)}
+          </p>
         </div>
 
         {financeSlot}
-
-        <ClientCard rental={rental} />
-
-        <div className={CARD}>
-          <p className={CARD_LABEL}>Dostawa</p>
-          <Row label="Adres dostawy" value={rental.deliveryAddress} map />
-          <Row label="Ustalona cena transportu" value={rental.transportPrice} />
-        </div>
-
-        <div className={CARD}>
-          <p className={CARD_LABEL}>Termin</p>
-          <Row label="Początek" value={formatDate(rental.startsAt, rental.allDay)} />
-          <Row label="Koniec" value={formatDate(rental.endsAt, rental.allDay)} />
-        </div>
-
-        <div className={CARD}>
-          <p className={CARD_LABEL}>Pozostałe</p>
-          <Row label="Kierowca" value={rental.driverName} />
-          <Row label="Opis" value={rental.description} />
-        </div>
       </div>
     </div>
   );

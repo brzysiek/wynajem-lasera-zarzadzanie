@@ -6,7 +6,7 @@ import { VIEW_COOKIE, actsAsDriver, isDriverPreview } from "@/lib/effective-role
 import { getAllReminderTemplates } from "@/lib/reminders";
 import { listSmsTemplates } from "@/lib/message-templates";
 import { RentalForm, type Rental, type ReminderOffset } from "@/components/rental-form";
-import { RentalReadonlyView } from "@/components/rental-readonly-view";
+import { RentalReadonlyView, DriverTripInfo, type ReadonlyRental } from "@/components/rental-readonly-view";
 import { DriverFinancePanel } from "@/components/driver-finance-panel";
 import { financeDto, loadFinanceFormContext } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
@@ -67,26 +67,25 @@ export default async function RentalDetailPage({
       notFound();
     }
 
+    const tripRental: ReadonlyRental = {
+      startsAt: rental.startsAt.toISOString(),
+      endsAt: rental.endsAt.toISOString(),
+      device: { name: rental.device.name },
+      deviceVariant: rental.finance?.deviceVariant ?? null,
+      eventType: rental.eventType,
+      deliveryAddress: rental.deliveryAddress,
+      deliveryTime: rental.deliveryTime,
+      pickupTime: rental.pickupTime,
+      internalNotes: rental.internalNotes,
+      contactNameCache: rental.contactNameCache,
+      contactPhoneCache: rental.contactPhoneCache,
+      contactCompanyCache: rental.contactCompanyCache,
+      contactAddressCache: rental.contactAddressCache,
+    };
+
     return (
       <RentalReadonlyView
-        rental={{
-          title: rental.title,
-          description: rental.description,
-          startsAt: rental.startsAt.toISOString(),
-          endsAt: rental.endsAt.toISOString(),
-          allDay: rental.allDay,
-          device: { name: rental.device.name, color: rental.device.color },
-          deviceVariant: rental.finance?.deviceVariant ?? null,
-          driverName: rental.driver?.name ?? null,
-          deliveryAddress: rental.deliveryAddress,
-          deliveryTime: rental.deliveryTime,
-          pickupTime: rental.pickupTime,
-          transportPrice: rental.transportPrice,
-          contactNameCache: rental.contactNameCache,
-          contactPhoneCache: rental.contactPhoneCache,
-          contactCompanyCache: rental.contactCompanyCache,
-          contactAddressCache: rental.contactAddressCache,
-        }}
+        rental={tripRental}
         financeSlot={
           <DriverFinancePanel
             rentalId={rental.id}
@@ -99,6 +98,7 @@ export default async function RentalDetailPage({
             transportPrice={rental.transportPrice}
             capFeeHsNet={financeCtx.capFeeHsNet}
             almaPulseRateNet={financeCtx.almaPulseRateNet}
+            tripInfoSlot={<DriverTripInfo rental={tripRental} />}
           />
         }
       />

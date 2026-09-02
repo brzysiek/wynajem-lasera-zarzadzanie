@@ -40,6 +40,7 @@ export function DriverFinancePanel({
   transportPrice,
   capFeeHsNet,
   almaPulseRateNet,
+  tripInfoSlot,
 }: {
   rentalId: string;
   eventType: RentalEventType;
@@ -51,6 +52,9 @@ export function DriverFinancePanel({
   transportPrice: string | null;
   capFeeHsNet: number;
   almaPulseRateNet: number;
+  // Karta „Klientka" + „Uwaga z biura" — renderowane zaraz po banerze
+  // płatności (mockup-master), przed rozbiciem kwoty.
+  tripInfoSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const isSzkolenie = eventType === "SZKOLENIE";
@@ -194,7 +198,7 @@ export function DriverFinancePanel({
     }
     if (capUsed && capFee) {
       r.push({
-        label: capCountEff > 1 ? `Nakładka HS ×${capCountEff}` : "Nakładka HS",
+        label: capCountEff > 1 ? `Nakładki HS (${capCountEff} × ${fmt(capFee)} zł)` : "Nakładka HS",
         value: round2(capFee * capCountEff),
       });
     }
@@ -248,9 +252,12 @@ export function DriverFinancePanel({
     <button
       type="button"
       onClick={() => setNotesOpen(true)}
-      className="self-start text-[13px] font-semibold text-[#2F6FD1]"
+      className="flex items-center gap-2.5 rounded-[14px] border border-[#E2E6EC] bg-white px-4 py-3.5 text-[13.5px] font-semibold text-[#2F6FD1]"
     >
-      ＋ dodaj uwagę
+      <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full border-[1.5px] border-[#2F6FD1] text-[13px] leading-none">
+        +
+      </span>
+      Dodaj uwagę
     </button>
   );
 
@@ -261,6 +268,7 @@ export function DriverFinancePanel({
         <div className="rounded-[14px] border border-[#F0DFB6] bg-[#FBF3E1] px-4 py-3 text-[13px] text-[#8A6A16]">
           Biuro nie przygotowało jeszcze rozliczenia tego wydarzenia.
         </div>
+        {tripInfoSlot}
         <div className={CARD}>
           <p className={`mb-2 ${FIELD_LABEL}`}>Uwagi kierowcy</p>
           <textarea
@@ -279,64 +287,66 @@ export function DriverFinancePanel({
   }
 
   const isCash = finance.paymentMethod === "CASH";
-  const cashDone = isCash && cashCollected;
-  const displayAmount = gross;
+  const rentalValue = finance.vatApplicable ? gross : net;
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Banner płatności — jedyny element z wyraźnym cieniem, „unosi się" nad resztą */}
+      {/* Banner płatności — pierwsza rzecz, jaką widzi kierowca (mockup-master).
+          Kolor koduje info: pomarańcz = gotówka do odebrania, zieleń = przelew,
+          nic nie pobieraj. Jedyny element z wyraźnym cieniem. */}
       <div
-        className={`rounded-[14px] px-5 py-[18px] text-center ${
-          cashDone
-            ? "bg-[linear-gradient(155deg,#1E9E6B_0%,#146C4C_100%)] text-white shadow-[0_10px_24px_-10px_rgba(30,158,107,0.5)]"
-            : isCash
-              ? "bg-[linear-gradient(155deg,#E15A2B_0%,#9C3D1B_100%)] text-white shadow-[0_10px_24px_-10px_rgba(225,90,43,0.55)]"
-              : "bg-[#E7F7F0] text-[#134E38] ring-1 ring-[#B7E6D3]"
+        className={`rounded-[14px] px-5 py-[18px] text-center text-white ${
+          isCash
+            ? "bg-[linear-gradient(155deg,#E15A2B_0%,#9C3D1B_100%)] shadow-[0_10px_24px_-10px_rgba(225,90,43,0.5)]"
+            : "bg-[linear-gradient(155deg,#1E9E6B_0%,#12724F_100%)] shadow-[0_10px_24px_-10px_rgba(30,158,107,0.45)]"
         }`}
       >
         <div className="flex items-center justify-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.06em] opacity-90">
-          {cashDone ? "✅ Gotówka odebrana" : isCash ? "💵 Gotówka" : "🏦 Przelew"}
+          {isCash ? "💵 Gotówka" : "🏦 Przelew"}
         </div>
-        <div className="mt-1.5 text-[40px] font-extrabold leading-none tracking-[-0.02em] tabular-nums">
-          {fmt(displayAmount)} zł
-        </div>
-        <div className="mt-1.5 text-[12.5px] opacity-85">
-          {isCash
-            ? cashDone
-              ? "rozliczone"
-              : "do odebrania od klientki"
-            : "klientka płaci przelewem — nie pobieraj gotówki"}
-        </div>
-        {pending && (
-          <div className="mt-1 text-[11px] font-semibold opacity-85">
-            kwota tymczasowa — uzupełnij liczniki impulsów poniżej
-          </div>
-        )}
-        {isCash && !cashCollected && (
-          <button
-            type="button"
-            onClick={() => {
-              setCashCollected(true);
-              void save({ cashCollected: true });
-            }}
-            className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-[9px] bg-white/[0.16] px-3 py-2.5 text-[14px] font-semibold ring-1 ring-white/[0.28] active:translate-y-px"
-          >
-            Potwierdź odbiór gotówki
-          </button>
-        )}
-        {isCash && cashCollected && (
-          <button
-            type="button"
-            onClick={() => {
-              setCashCollected(false);
-              void save({ cashCollected: false });
-            }}
-            className="mt-3 text-[11px] font-medium text-white/90 underline"
-          >
-            cofnij potwierdzenie
-          </button>
+
+        {isCash ? (
+          <>
+            <div className="mt-1.5 text-[36px] font-extrabold leading-none tracking-[-0.02em] tabular-nums">
+              {fmt(rentalValue)} zł
+            </div>
+            <div className="mt-1.5 text-[12.5px] opacity-85">do odebrania od klientki</div>
+            {pending && (
+              <div className="mt-1 text-[11px] font-semibold opacity-85">
+                kwota tymczasowa — uzupełnij liczniki impulsów poniżej
+              </div>
+            )}
+            <label className="mt-3.5 flex items-center gap-2.5 rounded-[9px] border border-white/[0.28] bg-white/[0.14] px-3 py-2.5 text-left text-[13px] font-semibold">
+              <input
+                type="checkbox"
+                className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
+                checked={cashCollected}
+                onChange={(e) => {
+                  setCashCollected(e.target.checked);
+                  void save({ cashCollected: e.target.checked });
+                }}
+              />
+              Gotówka odebrana
+            </label>
+          </>
+        ) : (
+          <>
+            <div className="mt-2 text-[19px] font-extrabold leading-[1.3]">
+              Nie musisz pobierać gotówki
+            </div>
+            <div className="mt-2.5 border-t border-white/[0.25] pt-2.5 text-[13px] opacity-90">
+              Wartość wynajmu: <b className="font-bold">{fmt(rentalValue)} zł</b> — rozliczona przelewem
+            </div>
+            {pending && (
+              <div className="mt-1 text-[11px] font-semibold opacity-85">
+                kwota tymczasowa — uzupełnij liczniki impulsów poniżej
+              </div>
+            )}
+          </>
         )}
       </div>
+
+      {tripInfoSlot}
 
       {statusLine}
 
@@ -360,28 +370,28 @@ export function DriverFinancePanel({
         </div>
       </details>
 
-      {/* Nakładka HS — tylko podwójna głowica */}
+      {/* Nakładka HS — tylko podwójna głowica. Checkbox = główny przełącznik,
+          stepper obok (nie pod spodem) doprecyzowuje ilość, tylko gdy zaznaczone. */}
       {isDouble && (
         <div className={CARD}>
           <p className={`mb-2 ${FIELD_LABEL}`}>Nakładka HS</p>
-          <label className="flex items-center gap-2.5 text-[14px] font-semibold text-[#171A21]">
-            <input
-              type="checkbox"
-              className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
-              checked={capUsed}
-              onChange={(e) => {
-                const v = e.target.checked;
-                setCapUsed(v);
-                if (!v) setCapCount(1);
-                void save({ capUsed: v, capCount: v ? capCount : 1 });
-              }}
-            />
-            Zużyta podczas zabiegu
-          </label>
-          {capUsed && (
-            <div className="mt-3 flex items-center gap-3">
-              <span className="text-[13px] text-[#6B7280]">Ile nakładek?</span>
-              <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex items-center gap-2.5 text-[14px] font-semibold text-[#171A21]">
+              <input
+                type="checkbox"
+                className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
+                checked={capUsed}
+                onChange={(e) => {
+                  const v = e.target.checked;
+                  setCapUsed(v);
+                  if (!v) setCapCount(1);
+                  void save({ capUsed: v, capCount: v ? capCount : 1 });
+                }}
+              />
+              Zużyta
+            </label>
+            {capUsed && (
+              <div className="flex flex-none items-center gap-3">
                 <button
                   type="button"
                   aria-label="mniej"
@@ -391,11 +401,11 @@ export function DriverFinancePanel({
                     setCapCount(v);
                     void save({ capCount: v });
                   }}
-                  className="h-8 w-8 rounded-[9px] border border-[#E2E6EC] text-lg font-semibold leading-none text-[#171A21] disabled:opacity-40"
+                  className="flex h-7 w-7 items-center justify-center rounded-full border-[1.5px] border-[#E2E6EC] text-[15px] font-bold leading-none text-[#171A21] disabled:opacity-40"
                 >
                   −
                 </button>
-                <span className="w-6 text-center text-[14px] font-semibold tabular-nums">{capCount}</span>
+                <span className="min-w-[14px] text-center text-[16px] font-extrabold tabular-nums">{capCount}</span>
                 <button
                   type="button"
                   aria-label="więcej"
@@ -405,13 +415,15 @@ export function DriverFinancePanel({
                     setCapCount(v);
                     void save({ capCount: v });
                   }}
-                  className="h-8 w-8 rounded-[9px] border border-[#E2E6EC] text-lg font-semibold leading-none text-[#171A21] disabled:opacity-40"
+                  className="flex h-7 w-7 items-center justify-center rounded-full border-[1.5px] border-[#E2E6EC] text-[15px] font-bold leading-none text-[#171A21] disabled:opacity-40"
                 >
                   +
                 </button>
               </div>
-              <span className="text-[11px] text-[#9CA3AF]">zwykle 1</span>
-            </div>
+            )}
+          </div>
+          {capUsed && capCount >= 4 && (
+            <p className="mt-2 text-[12px] text-[#B5851E]">Nietypowo duża liczba — sprawdź przed zapisaniem.</p>
           )}
         </div>
       )}
