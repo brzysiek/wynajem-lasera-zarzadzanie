@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup nadrzędny — moduł finansowy wydarzeń</title>
+<style>
+  :root{
+    --bg:#F1F3F6; --surface:#FFFFFF; --border:#E2E6EC;
+    --text:#171A21; --text-muted:#6B7280; --text-faint:#9CA3AF;
+    --brand:#2F6FD1; --brand-soft:#EAF1FC;
+    --cash:#E15A2B; --cash-deep:#9C3D1B;
+    --transfer:#1E9E6B; --transfer-deep:#12724F;
+    --badge-list:#2F6FD1; --badge-list-soft:#EAF1FC;
+    --badge-manual:#B5851E; --badge-manual-soft:#FBF3E1;
+    --badge-pending:#6B7280; --badge-pending-soft:#EEF0F3;
+    --radius:14px; --radius-sm:9px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text); padding:40px 24px 90px; }
+
+  .intro{ max-width:1180px; margin:0 auto 12px; }
+  .intro .eyebrow{ font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--brand); margin-bottom:6px; }
+  .intro h1{ font-size:22px; margin:0 0 6px; letter-spacing:-0.01em; }
+  .intro p{ margin:0; color:var(--text-muted); font-size:14px; max-width:680px; line-height:1.5; }
+  .intro .authority{
+    margin-top:14px; background:var(--brand-soft); border:1px solid #CFE0F8; border-radius:var(--radius-sm);
+    padding:12px 16px; font-size:13px; color:#1F4B8A; max-width:680px; line-height:1.5;
+  }
+
+  .section{ max-width:1180px; margin:56px auto 0; }
+  .section-heading{ display:flex; align-items:baseline; gap:10px; margin-bottom:18px; }
+  .section-heading h2{ font-size:16px; margin:0; }
+  .section-heading .sub{ font-size:12.5px; color:var(--text-faint); }
+
+  .row{ display:flex; gap:48px; flex-wrap:wrap; justify-content:center; }
+  .col{ display:flex; flex-direction:column; align-items:center; }
+  .col .tag{ font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:14px; text-transform:uppercase; letter-spacing:.04em; }
+
+  /* ---------- PHONE ---------- */
+  .phone-shell{ background:#14161C; border-radius:44px; padding:14px; width:375px; max-width:100%; box-shadow:0 24px 48px -16px rgba(20,22,28,.35); }
+  .phone-screen{ background:var(--bg); border-radius:30px; overflow:hidden; height:660px; display:flex; flex-direction:column; position:relative; }
+  .status-bar{ height:30px; display:flex; align-items:center; justify-content:space-between; padding:0 22px; font-size:12px; font-weight:600; flex-shrink:0; }
+  .scroll-area{ flex:1; overflow-y:auto; }
+
+  .app-header{ padding:2px 16px 14px; }
+  .back-row{ display:flex; align-items:center; margin-bottom:8px; }
+  .back-btn{ width:28px; height:28px; border-radius:50%; background:var(--surface); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--text-muted); }
+  .event-tag{ display:inline-block; font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--brand); background:var(--brand-soft); padding:3px 9px; border-radius:999px; margin-bottom:6px; }
+  .device-name{ font-size:21px; font-weight:800; letter-spacing:-0.01em; line-height:1.15; }
+  .meta-line{ display:flex; align-items:center; gap:5px; font-size:14px; color:var(--text-muted); font-weight:500; margin-top:4px; }
+
+  .pay-banner{ margin:2px 14px 12px; border-radius:var(--radius); padding:18px 20px 20px; text-align:center; color:white; }
+  .pay-banner.cash{ background:linear-gradient(155deg, var(--cash) 0%, var(--cash-deep) 100%); box-shadow:0 10px 24px -10px rgba(225,90,43,.5); }
+  .pay-banner.transfer{ background:linear-gradient(155deg, var(--transfer) 0%, var(--transfer-deep) 100%); box-shadow:0 10px 24px -10px rgba(30,158,107,.45); }
+  .pay-banner .method{ font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; opacity:.92; display:flex; gap:6px; align-items:center; justify-content:center; }
+  .pay-banner .amount{ font-size:36px; font-weight:800; letter-spacing:-0.02em; margin:6px 0 0; }
+  .pay-banner .amount .pending-note{ display:block; font-size:11px; font-weight:600; text-transform:none; letter-spacing:0; opacity:.85; margin-top:4px; }
+  .pay-banner .caption{ font-size:12.5px; opacity:.85; margin-top:2px; }
+  .pay-banner .collect-row{ margin-top:14px; background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.28); border-radius:var(--radius-sm); padding:10px 12px; display:flex; align-items:center; gap:10px; font-size:13px; font-weight:600; text-align:left; }
+  .pay-banner .transfer-message{ font-size:19px; font-weight:800; margin:8px 0 4px; line-height:1.3; }
+  .pay-banner .transfer-sub{ font-size:13px; opacity:.9; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,.25); }
+  .pay-banner .transfer-sub b{ font-weight:700; }
+
+  .card{ background:var(--surface); margin:0 14px 12px; border-radius:var(--radius); border:1px solid var(--border); overflow:hidden; }
+  .card .card-pad{ padding:14px 16px; }
+  .field-label{ font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text-faint); margin-bottom:6px; }
+  .client-name{ font-size:15px; font-weight:700; }
+  .action-row{ display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--brand); font-weight:600; margin-top:8px; }
+  .plain-row{ display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--text-muted); margin-top:8px; }
+
+  .office-note{ margin:0 14px 12px; background:#FBF3E1; border:1px solid #F0E0B8; border-radius:var(--radius-sm); padding:10px 12px; font-size:12.5px; color:#7A5A0E; display:flex; gap:8px; }
+  .office-note b{ font-weight:700; }
+
+  details.breakdown{ border:none; }
+  details.breakdown summary{ list-style:none; padding:13px 16px; font-size:13.5px; font-weight:600; color:var(--text-muted); display:flex; align-items:center; gap:6px; cursor:pointer; }
+  details.breakdown summary::-webkit-details-marker{ display:none; }
+  details.breakdown summary .chev{ transition:transform .15s; font-size:10px; }
+  details.breakdown[open] summary .chev{ transform:rotate(90deg); }
+  .breakdown-rows{ padding:0 16px 14px; }
+  .breakdown-rows .row2{ display:flex; justify-content:space-between; font-size:13.5px; padding:5px 0; }
+  .breakdown-rows .row2 span:last-child{ font-weight:600; }
+  .breakdown-rows .row2.total{ border-top:1px solid var(--border); margin-top:4px; padding-top:9px; font-weight:700; }
+
+  .checkbox-row{ display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600; }
+  .checkbox-row input{ width:19px; height:19px; accent-color:var(--brand); }
+  .stepper{ display:flex; align-items:center; gap:18px; }
+  .stepper-btn{ width:36px; height:36px; border-radius:50%; border:1.5px solid var(--border); background:var(--surface); font-size:18px; font-weight:700; color:var(--text); display:flex; align-items:center; justify-content:center; font-family:inherit; }
+  .stepper-value{ font-size:20px; font-weight:800; min-width:20px; text-align:center; }
+  .checkbox-inline-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .stepper-compact{ gap:12px; }
+  .stepper-compact .stepper-btn{ width:28px; height:28px; font-size:15px; }
+  .stepper-compact .stepper-value{ font-size:16px; min-width:14px; }
+
+  .pulse-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+  .pulse-grid label{ font-size:11px; color:var(--text-faint); font-weight:700; text-transform:uppercase; letter-spacing:.03em; display:block; margin-bottom:4px; }
+  .pulse-grid input{ width:100%; border:1px solid var(--border); border-radius:var(--radius-sm); padding:9px 10px; font-size:14px; font-family:inherit; background:var(--bg); }
+
+  .add-note-row{ display:flex; align-items:center; gap:10px; padding:13px 16px; font-size:13.5px; font-weight:600; color:var(--brand); cursor:pointer; }
+  .add-note-row .plus{ width:20px; height:20px; border-radius:50%; border:1.5px solid var(--brand); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+
+  .bottom-spacer{ height:90px; }
+  .sticky-footer{ position:sticky; bottom:0; left:0; right:0; padding:14px 16px 18px; background:linear-gradient(to top, var(--bg) 60%, transparent); }
+  .btn-save{ width:100%; background:var(--text); color:white; border:none; border-radius:var(--radius-sm); padding:13px; font-size:15px; font-weight:700; font-family:inherit; box-shadow:0 8px 20px -6px rgba(23,26,33,.4); }
+
+  .note{ max-width:300px; text-align:center; font-size:12px; color:var(--text-muted); margin-top:14px; line-height:1.5; }
+
+  /* ---------- OFFICE PANEL ---------- */
+  .office-wrap{ max-width:600px; margin:0 auto; }
+  .office-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  .office-card .section-title{ padding:16px 22px; border-bottom:1px solid var(--border); font-size:14px; font-weight:700; }
+  .office-card .section-body{ padding:20px 22px 6px; }
+  .field{ margin-bottom:18px; }
+  .field .label{ font-size:12px; font-weight:700; color:var(--text-muted); margin-bottom:8px; display:block; }
+  .segmented{ display:inline-flex; background:var(--bg); border-radius:999px; padding:3px; border:1px solid var(--border); }
+  .segmented .seg{ padding:7px 16px; border-radius:999px; font-size:13px; font-weight:600; color:var(--text-muted); cursor:default; }
+  .segmented .seg.active{ background:var(--surface); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .two-col{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .select-mock{ border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 12px; font-size:14px; background:var(--surface); display:flex; justify-content:space-between; align-items:center; color:var(--text); }
+  .select-mock .chev{ color:var(--text-faint); font-size:11px; }
+  .price-box{ border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px 16px; display:flex; align-items:center; justify-content:space-between; background:var(--bg); }
+  .price-box .amount{ font-size:20px; font-weight:800; }
+  .badge{ font-size:11.5px; font-weight:700; padding:4px 9px; border-radius:999px; display:inline-flex; align-items:center; gap:4px; }
+  .badge.list{ background:var(--badge-list-soft); color:var(--badge-list); }
+  .badge.manual{ background:var(--badge-manual-soft); color:var(--badge-manual); }
+  .badge.pending{ background:var(--badge-pending-soft); color:var(--badge-pending); }
+  .link-btn{ background:none; border:none; color:var(--brand); font-size:13px; font-weight:700; padding:0; font-family:inherit; cursor:default; }
+  .checkbox-inline{ display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; }
+  .checkbox-inline input{ width:18px; height:18px; accent-color:var(--brand); }
+  .sticky-total{ border-top:1px solid var(--border); background:var(--bg); padding:16px 22px; display:flex; justify-content:space-between; align-items:center; }
+  .sticky-total .rows{ font-size:13px; color:var(--text-muted); }
+  .sticky-total .rows .big{ font-size:20px; font-weight:800; color:var(--text); display:block; }
+  .btn-primary{ background:var(--text); color:white; border:none; border-radius:var(--radius-sm); padding:11px 20px; font-size:14px; font-weight:700; font-family:inherit; }
+  .legend{ margin-top:18px; display:flex; gap:18px; flex-wrap:wrap; font-size:12.5px; color:var(--text-muted); }
+  .legend .item{ display:flex; align-items:center; gap:7px; }
+  .note-box{ margin-top:22px; background:var(--brand-soft); border:1px solid #CFE0F8; border-radius:var(--radius-sm); padding:12px 14px; font-size:12.5px; color:#1F4B8A; line-height:1.5; }
+</style>
+</head>
+<body>
+
+  <div class="intro">
+    <div class="eyebrow">WynajemLasera.pl · panel.wynajemlasera.pl</div>
+    <h1>Moduł finansowy wydarzeń — mockup nadrzędny (jedyne źródło prawdy wizualnej)</h1>
+    <p>Ten plik zastępuje wszystkie wcześniejsze wersje mockupów tej funkcji. Trzy stany: widok kierowcy przy płatności gotówką, widok kierowcy przy płatności przelewem, widok biura przy tworzeniu wynajmu.</p>
+    <div class="authority">
+      <b>Dla Claude Code:</b> ten plik HTML jest źródłem prawdy dla wyglądu (kolory, odstępy, typografia, dokładny layout). Towarzyszący plik <code>prompt-claude-code-finanse-wynajmu.md</code> jest źródłem prawdy dla modelu danych, logiki cenowej i zachowania — przy sprzeczności co do samego wyglądu, ten plik wygrywa.
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-heading"><h2>Widok kierowcy</h2><span class="sub">mobile · rola KIEROWCA — przewiń oba ekrany, mają stałą wysokość jak realny telefon</span></div>
+    <div class="row">
+
+      <div class="col">
+        <div class="tag">Gotówka</div>
+        <div class="phone-shell">
+          <div class="phone-screen">
+            <div class="status-bar"><span>9:41</span><span>●●●●  📶  🔋</span></div>
+            <div class="scroll-area">
+              <div class="app-header">
+                <div class="back-row"><div class="back-btn">←</div></div>
+                <div class="event-tag">Wynajem</div>
+                <div class="device-name">LightSheer DESIRE</div>
+                <div class="meta-line">📅 28 sie – 30 sie · 3 dni · podwójna głowica</div>
+              </div>
+
+              <div class="pay-banner cash">
+                <div class="method">💵 Gotówka</div>
+                <div class="amount">1 790 zł</div>
+                <div class="caption">do odebrania od klientki</div>
+                <div class="collect-row"><input type="checkbox" /> Gotówka odebrana</div>
+              </div>
+
+              <div class="card">
+                <div class="card-pad">
+                  <div class="field-label">Klientka</div>
+                  <div class="client-name">Anna Kowalska</div>
+                  <div class="action-row">📞 501 234 567</div>
+                  <div class="action-row">📍 ul. Kwiatowa 12, Kraków</div>
+                  <div class="plain-row">🕘 dostawa 9:00 · odbiór 17:00</div>
+                </div>
+              </div>
+
+              <div class="office-note"><span>💬</span><span><b>Uwaga z biura:</b> domofon nie działa, dzwonić na telefon po przyjeździe.</span></div>
+
+              <div class="card">
+                <details class="breakdown">
+                  <summary><span class="chev">▸</span> Rozbicie kwoty</summary>
+                  <div class="breakdown-rows">
+                    <div class="row2"><span>Wynajem</span><span>1 500 zł</span></div>
+                    <div class="row2"><span>Transport</span><span>150 zł</span></div>
+                    <div class="row2"><span>Nakładki HS (2 × 70 zł)</span><span>140 zł</span></div>
+                    <div class="row2 total"><span>Razem netto</span><span>1 790 zł</span></div>
+                  </div>
+                </details>
+              </div>
+
+              <div class="card">
+                <div class="card-pad">
+                  <div class="field-label">Nakładka HS</div>
+                  <div class="checkbox-inline-row">
+                    <label class="checkbox-row"><input type="checkbox" checked /> Zużyta</label>
+                    <div class="stepper stepper-compact">
+                      <button class="stepper-btn">−</button>
+                      <span class="stepper-value">2</span>
+                      <button class="stepper-btn">+</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card"><div class="add-note-row"><span class="plus">+</span> Dodaj uwagę</div></div>
+              <div class="bottom-spacer"></div>
+            </div>
+            <div class="sticky-footer"><button class="btn-save">Zapisz</button></div>
+          </div>
+        </div>
+        <div class="note">Checkbox = główny przełącznik, jak wcześniej. Stepper obok (nie pod spodem) doprecyzowuje ilość tylko gdy zaznaczone — domyślnie 1 szt., tu pokazane 2 szt., stąd 140 zł w rozbiciu i w sumie.</div>
+      </div>
+
+      <div class="col">
+        <div class="tag">Przelew</div>
+        <div class="phone-shell">
+          <div class="phone-screen">
+            <div class="status-bar"><span>9:41</span><span>●●●●  📶  🔋</span></div>
+            <div class="scroll-area">
+              <div class="app-header">
+                <div class="back-row"><div class="back-btn">←</div></div>
+                <div class="event-tag">Wynajem</div>
+                <div class="device-name">Alma Harmony XL Pro</div>
+                <div class="meta-line">📅 2 wrz – 3 wrz · 2 dni · Dye-VL</div>
+              </div>
+
+              <div class="pay-banner transfer">
+                <div class="method">🏦 Przelew</div>
+                <div class="transfer-message">Nie musisz pobierać<br/>gotówki</div>
+                <div class="transfer-sub">Wartość wynajmu: <b>2 340 zł</b> — rozliczona przelewem</div>
+              </div>
+
+              <div class="card">
+                <div class="card-pad">
+                  <div class="field-label">Klientka</div>
+                  <div class="client-name">Beauty Studio Julia</div>
+                  <div class="action-row">📞 512 908 771</div>
+                  <div class="action-row">📍 ul. Długa 4, Wieliczka</div>
+                  <div class="plain-row">🕘 dostawa 10:00 · odbiór 16:00</div>
+                </div>
+              </div>
+
+              <div class="card">
+                <details class="breakdown">
+                  <summary><span class="chev">▸</span> Rozbicie kwoty</summary>
+                  <div class="breakdown-rows">
+                    <div class="row2"><span>Wynajem</span><span>2 000 zł</span></div>
+                    <div class="row2"><span>Dopłata za impulsy</span><span>240 zł</span></div>
+                    <div class="row2"><span>Transport</span><span>100 zł</span></div>
+                    <div class="row2 total"><span>Razem netto</span><span>2 340 zł</span></div>
+                  </div>
+                </details>
+              </div>
+
+              <div class="card">
+                <div class="card-pad">
+                  <div class="field-label">Liczniki impulsów</div>
+                  <div class="pulse-grid">
+                    <div><label>Początkowy</label><input type="text" value="4200" /></div>
+                    <div><label>Końcowy</label><input type="text" value="8200" /></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card"><div class="add-note-row"><span class="plus">+</span> Dodaj uwagę</div></div>
+              <div class="bottom-spacer"></div>
+            </div>
+            <div class="sticky-footer"><button class="btn-save">Zapisz</button></div>
+          </div>
+        </div>
+        <div class="note">Baner zielony = „nic nie musisz robić z gotówką". Kwota zostaje widoczna, ale jako drugorzędna linia, nie jako główny nagłówek.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-heading"><h2>Widok biura</h2><span class="sub">desktop · sekcja „Finanse" w formularzu wynajmu</span></div>
+    <div class="office-wrap">
+      <div class="office-card">
+        <div class="section-title">Finanse</div>
+        <div class="section-body">
+
+          <div class="field">
+            <span class="label">Typ wydarzenia</span>
+            <div class="segmented"><span class="seg active">Wynajem</span><span class="seg">Szkolenie</span></div>
+          </div>
+
+          <div class="two-col">
+            <div class="field">
+              <span class="label">Urządzenie</span>
+              <div class="select-mock"><span>LightSheer DESIRE</span><span class="chev">▾</span></div>
+            </div>
+            <div class="field">
+              <span class="label">Wariant</span>
+              <div class="select-mock"><span>Podwójna głowica</span><span class="chev">▾</span></div>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="label">Cena wynajmu (netto)</span>
+            <div class="price-box">
+              <span class="amount">1 500 zł</span>
+              <span class="badge list">🏷 z cennika</span>
+            </div>
+            <div style="margin-top:8px;"><button class="link-btn">Zmień ręcznie →</button></div>
+          </div>
+
+          <div class="two-col">
+            <div class="field">
+              <span class="label">VAT</span>
+              <label class="checkbox-inline"><input type="checkbox" /> Doliczyć VAT (23%)</label>
+            </div>
+            <div class="field">
+              <span class="label">Sposób płatności</span>
+              <div class="segmented"><span class="seg active">Gotówka</span><span class="seg">Przelew</span></div>
+            </div>
+          </div>
+
+          <div class="legend">
+            <div class="item"><span class="badge list">🏷 z cennika</span> wartość domyślna</div>
+            <div class="item"><span class="badge manual">✎ ręcznie</span> nadpisana przez biuro</div>
+            <div class="item"><span class="badge pending">⏳ tymczasowo</span> czeka na liczniki</div>
+          </div>
+
+          <div class="note-box">
+            Wybrany wariant nie wymaga liczników impulsów — pole nakładki HS pojawi się automatycznie
+            w widoku kierowcy po stronie odbioru sprzętu.
+          </div>
+
+        </div>
+        <div class="sticky-total">
+          <div class="rows">Razem netto <span class="big">1 720 zł</span></div>
+          <button class="btn-primary">Zapisz wynajem</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

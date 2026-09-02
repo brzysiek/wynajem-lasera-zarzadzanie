@@ -234,9 +234,22 @@ export function DriverFinancePanel({
     </div>
   );
 
+  const noteText = notes.trim();
   const notesCard = notesOpen ? (
     <div className={CARD}>
-      <p className={`mb-2 ${FIELD_LABEL}`}>Uwagi kierowcy</p>
+      <div className="mb-2 flex items-center justify-between">
+        <p className={FIELD_LABEL}>Uwagi kierowcy</p>
+        <button
+          type="button"
+          onClick={() => {
+            if (noteText !== savedNotes) void save();
+            setNotesOpen(false);
+          }}
+          className="text-[13px] font-semibold text-[#2F6FD1]"
+        >
+          Gotowe
+        </button>
+      </div>
       <textarea
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
@@ -248,6 +261,11 @@ export function DriverFinancePanel({
         className={`${INPUT_BASE} resize-none border-[#E2E6EC] focus:border-[#2F6FD1]`}
       />
     </div>
+  ) : noteText ? (
+    <button type="button" onClick={() => setNotesOpen(true)} className={`${CARD} text-left`}>
+      <p className={`mb-1 ${FIELD_LABEL}`}>Uwagi kierowcy</p>
+      <p className="whitespace-pre-wrap text-[13.5px] text-[#171A21]">{noteText}</p>
+    </button>
   ) : (
     <button
       type="button"

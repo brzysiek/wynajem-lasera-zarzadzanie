@@ -77,6 +77,7 @@ export type Rental = {
   contactCompanyCache?: string | null;
   contactAddressCache?: string | null;
   contactTransportPriceCache?: string | null;
+  internalNotes?: string | null;
   deliveryAddress?: string | null;
   deliveryTime?: string | null;
   pickupTime?: string | null;
@@ -716,6 +717,7 @@ export function RentalForm({
   const [deviceId, setDeviceId] = useState(rental?.deviceId ?? defaultDeviceId ?? devices[0]?.id ?? "");
   const [title, setTitle] = useState(rental?.title ?? "");
   const [description, setDescription] = useState(rental?.description ?? "");
+  const [internalNotes, setInternalNotes] = useState(rental?.internalNotes ?? "");
   // Reservation dates are always whole days — no time-of-day picker for
   // startsAt/endsAt (unlike delivery/pickup, which do carry a time). Both
   // are normalized to midnight right away (not just on change), otherwise
@@ -814,6 +816,7 @@ export function RentalForm({
       deviceId,
       title,
       description,
+      internalNotes,
       allDay,
       startsAt: new Date(startsAt).toISOString(),
       endsAt: new Date(endsAt).toISOString(),
@@ -950,6 +953,18 @@ export function RentalForm({
                 rows={3}
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
               />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm text-gray-700">
+              Uwaga dla kierowcy
+              <textarea
+                value={internalNotes}
+                onChange={(e) => setInternalNotes(e.target.value)}
+                rows={2}
+                placeholder="np. domofon nie działa — dzwonić na telefon po przyjeździe"
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+              />
+              <span className="text-xs text-gray-400">Widoczna dla kierowcy jako „Uwaga z biura".</span>
             </label>
 
             <div className="grid gap-3 sm:grid-cols-2">

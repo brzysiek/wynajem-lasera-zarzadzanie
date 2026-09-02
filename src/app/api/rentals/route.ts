@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
   const deviceId = typeof body?.deviceId === "string" ? body.deviceId : "";
   const title = typeof body?.title === "string" ? body.title.trim() : "";
   const description = typeof body?.description === "string" ? body.description.trim() : "";
+  const internalNotes = typeof body?.internalNotes === "string" ? body.internalNotes.trim() : "";
   const allDay = Boolean(body?.allDay);
   const startsAt = typeof body?.startsAt === "string" ? new Date(body.startsAt) : null;
   const endsAt = typeof body?.endsAt === "string" ? new Date(body.endsAt) : null;
@@ -112,6 +113,7 @@ export async function POST(req: NextRequest) {
         googleCalendarId: device.googleCalendarId,
         title,
         description: description || null,
+        internalNotes: internalNotes || null,
         startsAt,
         endsAt,
         allDay,

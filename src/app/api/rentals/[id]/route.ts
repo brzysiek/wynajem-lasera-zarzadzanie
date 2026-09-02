@@ -31,6 +31,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json().catch(() => null);
   const title = typeof body?.title === "string" ? body.title.trim() : rental.title;
   const description = typeof body?.description === "string" ? body.description.trim() : rental.description ?? "";
+  const internalNotes =
+    typeof body?.internalNotes === "string" ? (body.internalNotes.trim() || null) : rental.internalNotes;
   const allDay = typeof body?.allDay === "boolean" ? body.allDay : rental.allDay;
   const startsAt = typeof body?.startsAt === "string" ? new Date(body.startsAt) : rental.startsAt;
   const endsAt = typeof body?.endsAt === "string" ? new Date(body.endsAt) : rental.endsAt;
@@ -114,6 +116,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data: {
         title,
         description: description || null,
+        internalNotes,
         startsAt,
         endsAt,
         allDay,

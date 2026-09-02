@@ -127,6 +127,7 @@ export default async function RentalDetailPage({
     deviceId: rental.deviceId,
     title: rental.title,
     description: rental.description,
+    internalNotes: rental.internalNotes,
     startsAt: rental.startsAt.toISOString(),
     endsAt: rental.endsAt.toISOString(),
     allDay: rental.allDay,
