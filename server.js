@@ -134,6 +134,23 @@ app.prepare().then(() => {
     console.log(`> Ready on port ${port} (${dev ? "development" : "production"})`);
   });
 
+  // Confirmed via crash.log: the clientError below fires with "Parse Error:
+  // Transfer-Encoding can't be present with Content-Length" — llhttp's
+  // request-smuggling guard rejecting what it read off the wire as a
+  // malformed request. That's not something a browser actually sends; it's
+  // the classic Node-behind-a-keep-alive-reverse-proxy race. Node's default
+  // keepAliveTimeout (5s) can be shorter than LiteSpeed's own keep-alive
+  // timeout to this backend, so LiteSpeed can start writing a new request on
+  // a pooled socket at the exact moment Node decides to close it. The tail
+  // of the old response and the head of the new request overlap on the
+  // wire, and llhttp reads the resulting garbage as one request with
+  // conflicting headers. Node's own docs recommend keepAliveTimeout be set
+  // higher than the front-end proxy's, with headersTimeout a little higher
+  // still (Node requires headersTimeout > keepAliveTimeout, and refuses to
+  // start otherwise).
+  server.keepAliveTimeout = 120000;
+  server.headersTimeout = 121000;
+
   // Node's http.Server has a default 'clientError' handler for a malformed
   // request (bad HTTP parsing — HPE_* codes, a truncated request line, a
   // keep-alive connection race with whatever's in front of us) that writes
