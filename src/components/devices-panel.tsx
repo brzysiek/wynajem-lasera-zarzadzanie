@@ -43,11 +43,31 @@ function googleCalendarUrl(calendarId: string): string {
 type GoogleCalendarOption = { id: string; summary: string };
 
 async function api(url: string, init?: RequestInit) {
-  const res = await fetch(`${BASE_PATH}${url}`, {
-    ...init,
-    headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
-  });
-  const data = await res.json().catch(() => null);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_PATH}${url}`, {
+      ...init,
+      headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
+    });
+  } catch (err) {
+    // fetch() itself throws on a network-level failure (connection reset,
+    // proxy drop) — without this, callers only ever saw a hardcoded "Błąd
+    // synchronizacji." with no way to tell that from an actual server error.
+    return { ok: false, data: { message: `Błąd sieci: ${err instanceof Error ? err.message : String(err)}` } };
+  }
+
+  const rawBody = await res.text();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches the shape callers already expect from res.json()
+  let data: any = null;
+  try {
+    data = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    // A response that isn't JSON (a LiteSpeed/Passenger timeout or error
+    // page, for instance) used to make `res.json().catch(() => null)`
+    // silently swallow everything, leaving only a blank generic message
+    // with no HTTP status or body to go on.
+    data = { message: `Serwer zwrócił nieoczekiwaną odpowiedź (HTTP ${res.status})${rawBody ? `: ${rawBody.slice(0, 200)}` : "."}` };
+  }
   return { ok: res.ok, data };
 }
 
