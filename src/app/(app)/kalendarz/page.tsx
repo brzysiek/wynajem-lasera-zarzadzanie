@@ -31,6 +31,10 @@ async function loadRentalAlerts(): Promise<RentalAlert[]> {
 
   const rows = await prisma.rental.findMany({
     where: {
+      // Wynajmy skasowane w Google Calendar zostają w bazie oznaczone
+      // deletedInGoogle=true (historia SMS/przypomnień) — nie licz ich do
+      // ostrzeżeń, tak samo jak nie pokazuje ich siatka kalendarza.
+      deletedInGoogle: false,
       startsAt: { gte: from, lte: to },
       OR: [
         { driverId: null },
