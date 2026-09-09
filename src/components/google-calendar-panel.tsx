@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 
-type TestResult = { ok: boolean; message: string };
+type DeviceCalendarCheck = { deviceId: string; deviceName: string; calendarId: string; ok: boolean; reason: string | null };
+type TestResult = { ok: boolean; message: string; calendars?: DeviceCalendarCheck[] };
 
 type GoogleStatus = {
   serviceAccountEmail: boolean;
@@ -26,9 +27,22 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
 
 function TestResultBox({ result }: { result: TestResult }) {
   return (
-    <p className={`rounded-md px-3 py-2 text-sm ${result.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
-      {result.message}
-    </p>
+    <div className={`rounded-md px-3 py-2 text-sm ${result.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
+      <p>{result.message}</p>
+      {result.calendars && result.calendars.length > 0 && (
+        <ul className="mt-2 space-y-1 border-t border-current/10 pt-2">
+          {result.calendars.map((c) => (
+            <li key={c.deviceId} className="flex items-start gap-1.5">
+              <span className={`mt-0.5 h-1.5 w-1.5 flex-none rounded-full ${c.ok ? "bg-green-600" : "bg-red-600"}`} />
+              <span>
+                <span className="font-medium">{c.deviceName}</span>
+                {c.ok ? " — OK" : ` — błąd: ${c.reason}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

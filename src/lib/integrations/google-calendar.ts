@@ -1,7 +1,16 @@
 import { createSign } from "crypto";
+import { prisma } from "@/lib/prisma";
 import { logDebug, logInfo } from "@/lib/logger";
 
-export type IntegrationTestResult = { ok: boolean; message: string };
+export type DeviceCalendarCheck = {
+  deviceId: string;
+  deviceName: string;
+  calendarId: string;
+  ok: boolean;
+  reason: string | null;
+};
+
+export type IntegrationTestResult = { ok: boolean; message: string; calendars?: DeviceCalendarCheck[] };
 
 export type GoogleCalendarConfigStatus = {
   serviceAccountEmail: boolean;
@@ -298,25 +307,64 @@ export async function deleteCalendarEvent(calendarId: string, eventId: string): 
   logInfo("google_calendar_event_deleted", { calendarId, eventId, alreadyGone: res.status === 410 || res.status === 404 });
 }
 
+// calendarList only reports calendars the impersonated user has "subscribed"
+// to in their own Google Calendar UI — a calendar can be directly shared
+// with the service account (and therefore fully readable/writable via
+// calendars/{id}/events, which is all listCalendarEvents/device-sync.ts
+// ever use) without showing up there. So the real "will this device's
+// calendar sync?" check is a direct metadata fetch per device, not
+// cross-referencing calendarList.
+async function checkDeviceCalendarAccess(
+  calendarId: string,
+  accessToken: string,
+): Promise<{ ok: boolean; reason: string | null }> {
+  try {
+    const { res, body } = await googleFetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}`,
+      accessToken,
+    );
+    if (res.ok) return { ok: true, reason: null };
+    if (res.status === 404) return { ok: false, reason: "kalendarz nie istnieje lub ID jest nieprawidłowe." };
+    if (res.status === 403) return { ok: false, reason: "kalendarz nie jest udostępniony kontu serwisowemu." };
+    if (res.status === 401) return { ok: false, reason: "błąd autoryzacji konta serwisowego." };
+    return { ok: false, reason: body?.error?.message || `Calendar API zwróciło błąd (HTTP ${res.status}).` };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function testGoogleCalendarConnection(): Promise<IntegrationTestResult> {
   try {
     const accessToken = await getAccessToken();
+    const visibleCalendars = await listGoogleCalendars();
 
-    const res = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=5", {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const devices = await prisma.device.findMany({
+      select: { id: true, name: true, googleCalendarId: true },
+      orderBy: { name: "asc" },
     });
 
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      throw new Error(body?.error?.message || `Calendar API zwróciło błąd (HTTP ${res.status}).`);
+    // Sequential, not Promise.all — same reasoning as syncAllDevices: keeps
+    // calls to the Calendar API gentle and results ordered/predictable.
+    const calendars: DeviceCalendarCheck[] = [];
+    for (const device of devices) {
+      const { ok, reason } = await checkDeviceCalendarAccess(device.googleCalendarId, accessToken);
+      calendars.push({ deviceId: device.id, deviceName: device.name, calendarId: device.googleCalendarId, ok, reason });
     }
 
-    const data = await res.json();
-    const count = Array.isArray(data.items) ? data.items.length : 0;
+    const failed = calendars.filter((c) => !c.ok);
+    const devicesSummary =
+      calendars.length === 0
+        ? "brak skonfigurowanych urządzeń."
+        : failed.length === 0
+          ? `wszystkie (${calendars.length}) zsynchronizowane poprawnie.`
+          : `${calendars.length - failed.length}/${calendars.length} OK. Błędy: ${failed
+              .map((c) => `${c.deviceName} — ${c.reason}`)
+              .join("; ")}`;
 
     return {
-      ok: true,
-      message: `Połączono jako ${process.env.GOOGLE_IMPERSONATED_USER} — widoczne kalendarze: ${count}.`,
+      ok: failed.length === 0,
+      message: `Połączono jako ${process.env.GOOGLE_IMPERSONATED_USER} — widoczne kalendarze konta: ${visibleCalendars.length}. Kalendarze urządzeń: ${devicesSummary}`,
+      calendars,
     };
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : String(err) };
