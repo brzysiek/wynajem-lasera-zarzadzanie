@@ -58,15 +58,25 @@ async function api(url: string, init?: RequestInit) {
 
   const rawBody = await res.text();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches the shape callers already expect from res.json()
-  let data: any = null;
-  try {
-    data = rawBody ? JSON.parse(rawBody) : null;
-  } catch {
-    // A response that isn't JSON (a LiteSpeed/Passenger timeout or error
-    // page, for instance) used to make `res.json().catch(() => null)`
-    // silently swallow everything, leaving only a blank generic message
-    // with no HTTP status or body to go on.
-    data = { message: `Serwer zwrócił nieoczekiwaną odpowiedź (HTTP ${res.status})${rawBody ? `: ${rawBody.slice(0, 200)}` : "."}` };
+  let data: any;
+  // An EMPTY body (not just an unparseable one) also needs this fallback —
+  // a proxy/LVE connection drop can produce a response with a status but no
+  // body at all, and `rawBody ? JSON.parse(rawBody) : null` previously left
+  // that case as a bare `null` with no status or content to go on, which is
+  // exactly the "Błąd synchronizacji." with nothing behind it that was
+  // reported after the first round of this fix.
+  if (!rawBody) {
+    data = res.ok ? null : { message: `Serwer zwrócił pustą odpowiedź (HTTP ${res.status}).` };
+  } else {
+    try {
+      data = JSON.parse(rawBody);
+    } catch {
+      // A response that isn't JSON (a LiteSpeed/Passenger timeout or error
+      // page, for instance) used to make `res.json().catch(() => null)`
+      // silently swallow everything, leaving only a blank generic message
+      // with no HTTP status or body to go on.
+      data = { message: `Serwer zwrócił nieoczekiwaną odpowiedź (HTTP ${res.status}): ${rawBody.slice(0, 200)}` };
+    }
   }
   return { ok: res.ok, data };
 }
