@@ -134,6 +134,23 @@ app.prepare().then(() => {
     console.log(`> Ready on port ${port} (${dev ? "development" : "production"})`);
   });
 
+  // Node's http.Server has a default 'clientError' handler for a malformed
+  // request (bad HTTP parsing — HPE_* codes, a truncated request line, a
+  // keep-alive connection race with whatever's in front of us) that writes
+  // "400 Bad Request" with an EMPTY body and destroys the socket BEFORE the
+  // request ever reaches the handler above — invisible to logDiag/crash.log
+  // and to the reverse proxy's own logs, because as far as it's concerned
+  // Node answered. This matches "manual sync sometimes gets HTTP 400 with an
+  // empty body and nothing in any log" exactly. Keep the same wire response
+  // (don't risk changing behavior for whatever's triggering this) but log
+  // the actual parse error so it's finally visible.
+  server.on("clientError", (err, socket) => {
+    logCrash("clientError", err);
+    if (!socket.destroyed) {
+      socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+    }
+  });
+
   // Node's own guidance is not to keep running after uncaughtException (the
   // process may be in a corrupted state) — log it and exit so Passenger
   // restarts us cleanly, same as a normal crash. unhandledRejection is
