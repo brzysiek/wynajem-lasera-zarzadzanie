@@ -31,7 +31,7 @@ type Device = {
   pricingCategory: DevicePricingCategory | null;
   variantOptions: string[];
   rentalCount: number;
-  lastSync: { status: "OK" | "ERROR"; createdAt: string } | null;
+  lastSync: { status: "OK" | "ERROR"; createdAt: string; errorMessage: string | null } | null;
   upcomingRentals: UpcomingRental[];
 };
 
@@ -391,6 +391,9 @@ function DeviceRow({ device, isAdmin, onChanged }: { device: Device; isAdmin: bo
                     <span className={device.lastSync.status === "OK" ? "text-green-700" : "text-red-700"}>
                       Sync: {device.lastSync.status === "OK" ? "OK" : "błąd"} ·{" "}
                       {formatDateTime(device.lastSync.createdAt)}
+                      {device.lastSync.status === "ERROR" && device.lastSync.errorMessage && (
+                        <> — {device.lastSync.errorMessage}</>
+                      )}
                     </span>
                   ) : (
                     <span className="text-gray-400">Brak synchronizacji</span>

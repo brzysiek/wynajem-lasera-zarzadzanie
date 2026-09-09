@@ -8,12 +8,13 @@ const SYNC_FUTURE_DAYS = 365;
 
 export type DeviceSyncResult = {
   deviceId: string;
+  deviceName: string;
   status: "OK" | "ERROR";
   count: number;
   message: string;
 };
 
-export async function syncDevice(device: { id: string; googleCalendarId: string }): Promise<DeviceSyncResult> {
+export async function syncDevice(device: { id: string; name: string; googleCalendarId: string }): Promise<DeviceSyncResult> {
   const timeMin = new Date(Date.now() - SYNC_PAST_DAYS * 24 * 60 * 60 * 1000);
   const timeMax = new Date(Date.now() + SYNC_FUTURE_DAYS * 24 * 60 * 60 * 1000);
 
@@ -67,13 +68,19 @@ export async function syncDevice(device: { id: string; googleCalendarId: string 
       data: { deviceId: device.id, direction: "PULL", eventsProcessed: events.length, status: "OK" },
     });
 
-    return { deviceId: device.id, status: "OK", count: events.length, message: `Zsynchronizowano ${events.length} wydarzeń.` };
+    return {
+      deviceId: device.id,
+      deviceName: device.name,
+      status: "OK",
+      count: events.length,
+      message: `Zsynchronizowano ${events.length} wydarzeń.`,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await prisma.syncLog.create({
       data: { deviceId: device.id, direction: "PULL", eventsProcessed: 0, status: "ERROR", errorMessage: message },
     });
-    return { deviceId: device.id, status: "ERROR", count: 0, message };
+    return { deviceId: device.id, deviceName: device.name, status: "ERROR", count: 0, message };
   }
 }
 
@@ -81,7 +88,7 @@ export async function syncDevice(device: { id: string; googleCalendarId: string 
 // API gentle and keeps sync logs/ordering predictable when several devices
 // fail at once.
 export async function syncAllDevices(): Promise<DeviceSyncResult[]> {
-  const devices = await prisma.device.findMany({ select: { id: true, googleCalendarId: true } });
+  const devices = await prisma.device.findMany({ select: { id: true, name: true, googleCalendarId: true } });
   const results: DeviceSyncResult[] = [];
   for (const device of devices) {
     results.push(await syncDevice(device));

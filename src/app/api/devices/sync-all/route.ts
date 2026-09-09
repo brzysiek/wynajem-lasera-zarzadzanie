@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { syncAllDevices } from "@/lib/device-sync";
-import { logInfo } from "@/lib/logger";
+import { logInfo, logError } from "@/lib/logger";
 
 export async function POST() {
   const session = await auth();
@@ -13,16 +13,31 @@ export async function POST() {
   const totalEvents = results.reduce((sum, r) => sum + r.count, 0);
   const errors = results.filter((r) => r.status === "ERROR");
 
-  logInfo("devices_sync_all_ok", {
-    userId: session.user.id,
-    deviceCount: results.length,
-    errorCount: errors.length,
-    totalEvents,
-  });
+  // Each per-device failure is already written to SyncLog (see
+  // device-sync.ts), but that table isn't surfaced anywhere admins actually
+  // check for problems — this used to only ever call logInfo here, even when
+  // some devices failed, so a bulk-sync error never showed up in
+  // app-error-*.log at all.
+  if (errors.length > 0) {
+    logError(
+      "devices_sync_all_partial_failure",
+      new Error(`${errors.length}/${results.length} urządzeń nie zsynchronizowano`),
+      {
+        userId: session.user.id,
+        deviceCount: results.length,
+        totalEvents,
+        errors: errors.map((e) => ({ deviceId: e.deviceId, deviceName: e.deviceName, message: e.message })),
+      },
+    );
+  } else {
+    logInfo("devices_sync_all_ok", { userId: session.user.id, deviceCount: results.length, totalEvents });
+  }
 
   const message =
     errors.length > 0
-      ? `Zsynchronizowano ${results.length - errors.length}/${results.length} urządzeń (${totalEvents} wydarzeń). Błędy: ${errors.length}.`
+      ? `Zsynchronizowano ${results.length - errors.length}/${results.length} urządzeń (${totalEvents} wydarzeń). Błędy: ${errors
+          .map((e) => `${e.deviceName} — ${e.message}`)
+          .join("; ")}`
       : `Zsynchronizowano wszystkie urządzenia (${results.length}) — ${totalEvents} wydarzeń.`;
 
   return NextResponse.json({ message, results });

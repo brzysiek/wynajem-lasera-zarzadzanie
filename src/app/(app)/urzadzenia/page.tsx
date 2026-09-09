@@ -53,7 +53,11 @@ export default async function DevicesPage() {
       : [],
     rentalCount: device._count.rentals,
     lastSync: device.syncLogs[0]
-      ? { status: device.syncLogs[0].status, createdAt: device.syncLogs[0].createdAt.toISOString() }
+      ? {
+          status: device.syncLogs[0].status,
+          createdAt: device.syncLogs[0].createdAt.toISOString(),
+          errorMessage: device.syncLogs[0].errorMessage,
+        }
       : null,
     upcomingRentals: (upcomingByDevice.get(device.id) ?? []).map((rental) => ({
       id: rental.id,

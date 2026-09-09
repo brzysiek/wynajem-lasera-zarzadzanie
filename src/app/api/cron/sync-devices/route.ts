@@ -20,7 +20,15 @@ export async function POST(req: NextRequest) {
     const totalEvents = results.reduce((sum, r) => sum + r.count, 0);
     const errors = results.filter((r) => r.status === "ERROR");
 
-    logInfo("device_sync_cron_ok", { deviceCount: results.length, errorCount: errors.length, totalEvents });
+    if (errors.length > 0) {
+      logError(
+        "device_sync_cron_partial_failure",
+        new Error(`${errors.length}/${results.length} urządzeń nie zsynchronizowano`),
+        { deviceCount: results.length, totalEvents, errors: errors.map((e) => ({ deviceId: e.deviceId, deviceName: e.deviceName, message: e.message })) },
+      );
+    } else {
+      logInfo("device_sync_cron_ok", { deviceCount: results.length, totalEvents });
+    }
 
     return NextResponse.json({ deviceCount: results.length, totalEvents, errorCount: errors.length, results });
   } catch (err) {
