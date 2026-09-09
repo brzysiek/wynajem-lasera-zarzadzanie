@@ -33,11 +33,12 @@ export async function POST() {
     logInfo("devices_sync_all_ok", { userId: session.user.id, deviceCount: results.length, totalEvents });
   }
 
+  // Per-device outcome (which calendar synced, which failed and why) is in
+  // `results` — the UI renders that as a breakdown list, so this message
+  // stays a one-line aggregate rather than repeating it.
   const message =
     errors.length > 0
-      ? `Zsynchronizowano ${results.length - errors.length}/${results.length} urządzeń (${totalEvents} wydarzeń). Błędy: ${errors
-          .map((e) => `${e.deviceName} — ${e.message}`)
-          .join("; ")}`
+      ? `Zsynchronizowano ${results.length - errors.length}/${results.length} urządzeń (${totalEvents} wydarzeń), ${errors.length} z błędem — szczegóły niżej.`
       : `Zsynchronizowano wszystkie urządzenia (${results.length}) — ${totalEvents} wydarzeń.`;
 
   return NextResponse.json({ message, results });

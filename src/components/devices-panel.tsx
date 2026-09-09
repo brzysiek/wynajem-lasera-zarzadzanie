@@ -445,10 +445,34 @@ function DeviceRow({ device, isAdmin, onChanged }: { device: Device; isAdmin: bo
   );
 }
 
+type SyncAllResult = { deviceId: string; deviceName: string; status: "OK" | "ERROR"; count: number; message: string };
+
+function SyncAllSummary({ message, results }: { message: string; results: SyncAllResult[] | null }) {
+  return (
+    <div className="mb-3 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+      <p>{message}</p>
+      {results && results.length > 0 && (
+        <ul className="mt-2 space-y-1 border-t border-gray-200 pt-2">
+          {results.map((r) => (
+            <li key={r.deviceId} className="flex items-start gap-1.5">
+              <span className={`mt-0.5 h-1.5 w-1.5 flex-none rounded-full ${r.status === "OK" ? "bg-green-600" : "bg-red-600"}`} />
+              <span>
+                <span className="font-medium">{r.deviceName}</span>
+                {r.status === "OK" ? ` — zsynchronizowano (${r.count} wydarzeń)` : ` — błąd: ${r.message}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function DevicesPanel({ devices, isAdmin }: { devices: Device[]; isAdmin: boolean }) {
   const [isAdding, setIsAdding] = useState(false);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [syncAllMessage, setSyncAllMessage] = useState<string | null>(null);
+  const [syncAllResults, setSyncAllResults] = useState<SyncAllResult[] | null>(null);
   const router = useRouter();
 
   function reload() {
@@ -458,9 +482,11 @@ export function DevicesPanel({ devices, isAdmin }: { devices: Device[]; isAdmin:
   async function handleSyncAll() {
     setIsSyncingAll(true);
     setSyncAllMessage(null);
+    setSyncAllResults(null);
     const { ok, data } = await api("/api/devices/sync-all", { method: "POST" });
     setIsSyncingAll(false);
     setSyncAllMessage(data?.message || (ok ? "Zsynchronizowano." : "Błąd synchronizacji."));
+    setSyncAllResults(Array.isArray(data?.results) ? data.results : null);
     if (ok) reload();
   }
 
@@ -488,7 +514,7 @@ export function DevicesPanel({ devices, isAdmin }: { devices: Device[]; isAdmin:
           )}
         </div>
       </div>
-      {syncAllMessage && <p className="mb-3 text-xs text-gray-500">{syncAllMessage}</p>}
+      {syncAllMessage && <SyncAllSummary message={syncAllMessage} results={syncAllResults} />}
 
       {isAdmin && devices.some((d) => d.pricingCategory === null) && (
         <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
