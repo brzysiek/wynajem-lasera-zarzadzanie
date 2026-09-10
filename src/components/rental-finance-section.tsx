@@ -43,15 +43,55 @@ function PayToggle({ value, onChange }: { value: PaymentMethod; onChange: (m: Pa
           key={m}
           type="button"
           onClick={() => onChange(m)}
-          className={`flex-1 px-3 py-1.5 text-center text-sm font-medium ${
+          className={`flex-1 px-3 py-1.5 text-center text-sm font-medium transition-colors ${
             value === m ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"
           }`}
         >
-          {m === "CASH" ? "Gotówka" : "Przelew"}
+          {m === "CASH" ? "💵 Gotówka" : "🏦 Przelew"}
         </button>
       ))}
     </div>
   );
+}
+
+// Mały przełącznik „z boku" — do włączania niezależnej płatności za transport.
+function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`flex items-center gap-2 rounded-full border px-2 py-1 text-xs font-medium transition-colors ${
+        checked ? "border-blue-300 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"
+      }`}
+    >
+      <span>{label}</span>
+      <span
+        className={`relative inline-flex h-4 w-7 flex-none items-center rounded-full transition-colors ${
+          checked ? "bg-blue-600" : "bg-gray-300"
+        }`}
+      >
+        <span
+          className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+            checked ? "translate-x-3.5" : "translate-x-0.5"
+          }`}
+        />
+      </span>
+    </button>
+  );
+}
+
+function Badge({ text, cls }: { text: string; cls: string }) {
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{text}</span>;
 }
 
 export function RentalFinanceSection({
@@ -76,7 +116,7 @@ export function RentalFinanceSection({
   // HubSpot mogło ją podpowiedzieć na żywo), tu tylko edytowana.
   transportPrice: string;
   onTransportPriceChange: (v: string) => void;
-  // Surowa wartość „ustalona_cena_transportu" z HubSpot — do wiersza podpowiedzi.
+  // Surowa wartość „ustalona_cena_transportu" z HubSpot — źródło podpowiedzi.
   transportPriceHint: string | null;
   previewPriceRules: PreviewPriceRule[];
   previewPulseTiers: PreviewPulseTier[];
@@ -95,12 +135,33 @@ export function RentalFinanceSection({
   const [vatApplicable, setVatApplicable] = useState<boolean>(initialFinance?.vatApplicable ?? false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialFinance?.paymentMethod ?? "CASH");
 
-  // --- transport (kwota w rodzicu; tu tylko przełączniki) ---
+  // --- transport ---
+  const hintAmount = parseAmount(transportPriceHint);
+  // Tryb ręczny transportu: gdy nie ma czego podpowiedzieć, albo zapisana
+  // wcześniej kwota różni się od aktualnej podpowiedzi z HubSpot.
+  const [transportManual, setTransportManual] = useState<boolean>(() => {
+    const hv = parseAmount(transportPriceHint);
+    if (hv == null) return true;
+    const cur = parseAmount(transportPrice);
+    return cur != null && cur !== hv;
+  });
   const [transportSeparate, setTransportSeparate] = useState<boolean>(initialFinance?.transportPaidSeparately ?? false);
   const [transportVat, setTransportVat] = useState<boolean>(initialFinance?.transportVatApplicable ?? false);
   const [transportPayment, setTransportPayment] = useState<PaymentMethod>(
     initialFinance?.transportPaymentMethod ?? "CASH",
   );
+
+  const showFilledTransport = !transportManual && hintAmount != null;
+  const effTransportPrice = showFilledTransport ? String(hintAmount) : transportPrice;
+
+  // W trybie „z HubSpot" trzymaj kwotę w rodzicu zsynchronizowaną z podpowiedzią
+  // (rodzic mirroruje ją też do legacy `Rental.transportPrice`).
+  useEffect(() => {
+    if (showFilledTransport && parseAmount(transportPrice) !== hintAmount) {
+      onTransportPriceChange(String(hintAmount));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFilledTransport, hintAmount]);
 
   const vatRate = initialFinance ? Number(initialFinance.vatRate) || defaultVatRate : defaultVatRate;
   const ctx = useMemo(() => ({ priceRules: previewPriceRules, pulseTiers: previewPulseTiers }), [previewPriceRules, previewPulseTiers]);
@@ -132,7 +193,7 @@ export function RentalFinanceSection({
       previewTotals({
         baseNet: effectiveBaseNet,
         pulseSurchargeNet: null, // dopłata Alma i nakładka HS — po stronie kierowcy
-        transportNet: parseAmount(transportPrice),
+        transportNet: parseAmount(effTransportPrice),
         transportPaidSeparately: transportSeparateEff,
         transportVatApplicable: transportVat,
         capFeeNet: null,
@@ -141,7 +202,7 @@ export function RentalFinanceSection({
         vatRate,
         isSzkolenie,
       }),
-    [effectiveBaseNet, transportPrice, transportSeparateEff, transportVat, vatApplicable, vatRate, isSzkolenie],
+    [effectiveBaseNet, effTransportPrice, transportSeparateEff, transportVat, vatApplicable, vatRate, isSzkolenie],
   );
 
   // Raportuj payload do formularza przy każdej zmianie.
@@ -153,7 +214,7 @@ export function RentalFinanceSection({
       vatApplicable,
       vatRate,
       paymentMethod,
-      transportPriceNet: isSzkolenie ? "" : transportPrice.trim(),
+      transportPriceNet: isSzkolenie ? "" : effTransportPrice.trim(),
       transportPaidSeparately: transportSeparateEff,
       transportVatApplicable: transportSeparateEff && transportVat,
       transportPaymentMethod: transportPayment,
@@ -163,7 +224,7 @@ export function RentalFinanceSection({
   }, [
     effVariant, isFlex, priceIsManual, manualPrice, manualMode, isSzkolenie, base.priceNet, overrideNote,
     vatApplicable, vatRate, paymentMethod,
-    transportPrice, transportSeparateEff, transportVat, transportPayment,
+    effTransportPrice, transportSeparateEff, transportVat, transportPayment,
   ]);
 
   const badge = isFlex
@@ -171,6 +232,9 @@ export function RentalFinanceSection({
     : priceIsManual
       ? { text: "✎ ręcznie", cls: "bg-amber-100 text-amber-800" }
       : { text: "🏷 z cennika", cls: "bg-blue-100 text-blue-700" };
+
+  const FILLED = "flex items-center justify-between rounded-md border border-gray-200 bg-gray-50";
+  const CHANGE_LINK = "text-xs font-medium text-blue-600 hover:underline";
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-5">
@@ -197,10 +261,11 @@ export function RentalFinanceSection({
         </label>
       )}
 
-      <div className="mb-4">
+      {/* --- cena wynajmu --- */}
+      <div className="mb-3">
         <div className="mb-1 flex items-center justify-between text-sm text-gray-700">
           <span>{isSzkolenie ? "Ustalona cena szkolenia (netto)" : "Cena wynajmu (netto)"}</span>
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.text}</span>
+          <Badge text={badge.text} cls={badge.cls} />
         </div>
 
         {priceIsManual ? (
@@ -230,7 +295,7 @@ export function RentalFinanceSection({
                     setManualPrice("");
                     setOverrideNote("");
                   }}
-                  className="mt-1 text-xs font-medium text-blue-600 hover:underline"
+                  className={`mt-1 ${CHANGE_LINK}`}
                 >
                   wróć do ceny z cennika
                 </button>
@@ -238,7 +303,7 @@ export function RentalFinanceSection({
             )}
           </>
         ) : (
-          <div className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+          <div className={`${FILLED} px-3 py-2`}>
             <span className="text-lg font-semibold text-gray-900">{fmt(base.priceNet ?? 0)} zł</span>
             {!isFlex && (
               <button
@@ -247,7 +312,7 @@ export function RentalFinanceSection({
                   setManualMode(true);
                   setManualPrice(String(base.priceNet ?? ""));
                 }}
-                className="text-xs font-medium text-blue-600 hover:underline"
+                className={CHANGE_LINK}
               >
                 Zmień ręcznie →
               </button>
@@ -261,54 +326,91 @@ export function RentalFinanceSection({
         )}
       </div>
 
-      {/* Cena transportu — przeniesiona tu z karty „Dostawa". Nie dla szkolenia. */}
+      {/* --- cena transportu (przeniesiona z karty „Dostawa") --- */}
       {!isSzkolenie && (
         <div className="mb-4">
-          <div className="mb-1 text-sm text-gray-700">Cena transportu (netto)</div>
-          <input
-            value={transportPrice}
-            onChange={(e) => onTransportPriceChange(e.target.value)}
-            inputMode="decimal"
-            placeholder="np. 150"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
-          />
-          {transportPriceHint && transportPriceHint.trim() && (
-            <p className="mt-1 text-xs text-gray-400">Podpowiedź z HubSpot: {transportPriceHint}</p>
-          )}
+          <div className="mb-1 flex items-center justify-between text-sm text-gray-700">
+            <span>Cena transportu (netto)</span>
+            {transportManual ? (
+              <Badge text="✎ ręcznie" cls="bg-amber-100 text-amber-800" />
+            ) : (
+              <Badge text="🏢 z HubSpot" cls="bg-orange-100 text-orange-700" />
+            )}
+          </div>
 
-          <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={transportSeparate}
-              onChange={(e) => setTransportSeparate(e.target.checked)}
-            />
-            Niezależna płatność za transport
-          </label>
-
-          {transportSeparateEff && (
-            <div className="mt-2 flex flex-col gap-3 rounded-md border border-gray-200 bg-gray-50 p-3">
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={transportVat} onChange={(e) => setTransportVat(e.target.checked)} />
-                Doliczyć VAT ({TRANSPORT_VAT_RATE_PREVIEW}%) do transportu
-              </label>
-              <div className="flex flex-col gap-1 text-sm text-gray-700">
-                Sposób płatności za transport
-                <PayToggle value={transportPayment} onChange={setTransportPayment} />
-              </div>
+          {showFilledTransport ? (
+            <div className={`${FILLED} px-3 py-1.5`}>
+              <span className="text-base font-semibold text-gray-900">{fmt(hintAmount ?? 0)} zł</span>
+              <button type="button" onClick={() => setTransportManual(true)} className={CHANGE_LINK}>
+                Zmień ręcznie →
+              </button>
             </div>
+          ) : (
+            <>
+              <input
+                value={transportPrice}
+                onChange={(e) => onTransportPriceChange(e.target.value)}
+                inputMode="decimal"
+                placeholder="np. 150"
+                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-900 focus:border-gray-500 focus:outline-none"
+              />
+              {hintAmount != null ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTransportManual(false);
+                    onTransportPriceChange(String(hintAmount));
+                  }}
+                  className={`mt-1 ${CHANGE_LINK}`}
+                >
+                  wróć do wartości z HubSpot ({fmt(hintAmount)} zł)
+                </button>
+              ) : (
+                transportPriceHint &&
+                transportPriceHint.trim() && (
+                  <p className="mt-1 text-xs text-gray-400">Podpowiedź z HubSpot: {transportPriceHint}</p>
+                )
+              )}
+            </>
           )}
         </div>
       )}
 
-      <div className="flex flex-col gap-3">
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" checked={vatApplicable} onChange={(e) => setVatApplicable(e.target.checked)} />
-          Doliczyć VAT ({vatRate}%){transportSeparateEff ? " do wynajmu" : ""}
-        </label>
-        <div className="flex flex-col gap-1 text-sm text-gray-700">
-          {transportSeparateEff ? "Sposób płatności za wynajem" : "Sposób płatności"}
-          <PayToggle value={paymentMethod} onChange={setPaymentMethod} />
+      {/* --- płatność: VAT + forma; „transport osobno" jako przełącznik z boku --- */}
+      <div className="mb-1">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-sm font-medium text-gray-700">Płatność{transportSeparateEff ? " za wynajem" : ""}</p>
+          {!isSzkolenie && (
+            <Switch label="transport osobno" checked={transportSeparate} onChange={setTransportSeparate} />
+          )}
         </div>
+
+        <div className="flex flex-col gap-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={vatApplicable} onChange={(e) => setVatApplicable(e.target.checked)} />
+            Doliczyć VAT ({vatRate}%)
+          </label>
+          <div className="flex flex-col gap-1 text-sm text-gray-700">
+            Forma płatności
+            <PayToggle value={paymentMethod} onChange={setPaymentMethod} />
+          </div>
+        </div>
+
+        {transportSeparateEff && (
+          <div className="mt-3 flex flex-col gap-3 rounded-md border border-blue-200 bg-blue-50/60 p-3">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-blue-900">
+              <span aria-hidden>🚚</span> Transport — osobna płatność
+            </p>
+            <label className="flex items-center gap-2 text-sm text-blue-900">
+              <input type="checkbox" checked={transportVat} onChange={(e) => setTransportVat(e.target.checked)} />
+              Doliczyć VAT ({TRANSPORT_VAT_RATE_PREVIEW}%)
+            </label>
+            <div className="flex flex-col gap-1 text-sm text-blue-900">
+              Forma płatności za transport
+              <PayToggle value={transportPayment} onChange={setTransportPayment} />
+            </div>
+          </div>
+        )}
       </div>
 
       {!isSzkolenie && needsCounters && (
@@ -318,6 +420,7 @@ export function RentalFinanceSection({
         <p className="mt-1 text-xs text-gray-500">Zużycie nakładki HS zaznaczy kierowca przy odbiorze.</p>
       )}
 
+      {/* --- podsumowanie --- */}
       <div className="mt-4 border-t border-gray-200 pt-3 text-sm">
         <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">
           {transportSeparateEff ? "Wynajem" : "Razem"}

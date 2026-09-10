@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Dashboard przychodów (zakładki)</title>
+<style>
+  :root{
+    --bg:#F1F3F6; --surface:#FFFFFF; --border:#E2E6EC;
+    --text:#171A21; --text-muted:#6B7280; --text-faint:#9CA3AF;
+    --brand:#2F6FD1; --brand-soft:#EAF1FC;
+    --green:#1E9E6B; --green-soft:#E7F7F0;
+    --red:#D93025; --red-soft:#FCE8E6;
+    --amber-soft:#FBF3E1; --amber-text:#7A5A0E; --amber-border:#F0E0B8;
+    --gold:#B5851E;
+    --purple:#7C3AED; --purple-soft:#F3EBFF;
+    --radius:14px; --radius-sm:9px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text); padding:40px 24px 90px; }
+
+  .intro{ max-width:1080px; margin:0 auto 28px; }
+  .intro .eyebrow{ font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--brand); margin-bottom:6px; }
+  .intro h1{ font-size:22px; margin:0 0 6px; letter-spacing:-0.01em; }
+  .intro p{ margin:0; color:var(--text-muted); font-size:14px; max-width:700px; line-height:1.5; }
+  .intro .authority{ margin-top:14px; background:var(--brand-soft); border:1px solid #CFE0F8; border-radius:var(--radius-sm); padding:12px 16px; font-size:13px; color:#1F4B8A; max-width:700px; line-height:1.5; }
+
+  .page{ max-width:1080px; margin:0 auto; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  .page-header{ padding:22px 28px 0; }
+  .page-header h2{ margin:0 0 18px; font-size:18px; }
+
+  .mode-tabs{ display:inline-flex; background:var(--bg); border-radius:999px; padding:3px; border:1px solid var(--border); }
+  .mode-tabs .seg{ padding:8px 18px; border-radius:999px; font-size:13.5px; font-weight:600; color:var(--text-muted); cursor:default; }
+  .mode-tabs .seg.active{ background:var(--surface); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+
+  .period-nav{ display:flex; align-items:center; justify-content:center; gap:22px; margin:20px 0 4px; }
+  .period-nav .arrow{ width:32px; height:32px; border-radius:50%; border:1px solid var(--border); background:var(--surface); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:15px; }
+  .period-nav .label{ font-size:16px; font-weight:700; min-width:200px; text-align:center; }
+
+  hr.div{ border:none; border-top:1px solid var(--border); margin:22px 0 0; }
+
+  .kpi-strip{ display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); }
+  .kpi-card{ background:var(--surface); padding:20px 22px; }
+  .kpi-card .label{ font-size:11.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--text-faint); }
+  .kpi-card .amount{ font-size:26px; font-weight:800; letter-spacing:-0.01em; margin-top:6px; }
+  .kpi-card .sub{ font-size:12px; color:var(--text-muted); margin-top:3px; }
+  .trend-inline{ display:inline-flex; align-items:center; gap:4px; margin-top:8px; font-size:12px; font-weight:700; }
+  .trend-inline.up{ color:var(--green); }
+  .trend-inline.down{ color:var(--red); }
+  .trend-inline .vs{ font-weight:500; color:var(--text-faint); }
+
+  .caveat{ margin:20px 28px 0; background:var(--amber-soft); border:1px solid var(--amber-border); border-radius:var(--radius-sm); padding:11px 14px; font-size:12.5px; color:var(--amber-text); display:flex; gap:8px; }
+
+  /* ---- CONTENT TAB BAR ---- */
+  .content-tabs{ display:flex; gap:4px; margin:24px 28px 0; border-bottom:1px solid var(--border); }
+  .content-tab-btn{ appearance:none; background:none; border:none; font-family:inherit; padding:10px 16px; font-size:13.5px; font-weight:600; color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .content-tab-btn.active{ color:var(--brand); border-bottom-color:var(--brand); }
+  .content-tab-btn:hover:not(.active){ color:var(--text); }
+
+  .tab-panel{ display:none; }
+  .tab-panel.active{ display:block; }
+
+  /* ---- INSIGHTS ---- */
+  .insights{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:20px 28px 0; }
+  .insight-box{ border-radius:var(--radius-sm); padding:13px 16px; display:flex; align-items:center; gap:12px; }
+  .insight-box.best{ background:var(--green-soft); }
+  .insight-box.worst{ background:var(--red-soft); }
+  .insight-box .icon{ font-size:20px; }
+  .insight-box .txt .title{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
+  .insight-box.best .txt .title{ color:var(--green); }
+  .insight-box.worst .txt .title{ color:var(--red); }
+  .insight-box .txt .device{ font-size:14px; font-weight:700; margin-top:2px; }
+  .insight-box .txt .pct{ font-size:12.5px; color:var(--text-muted); margin-top:1px; }
+
+  .table-section{ padding:24px 28px 8px; }
+  .table-section .heading{ font-size:13px; font-weight:700; color:var(--text-muted); margin-bottom:14px; }
+  table.devtable{ width:100%; border-collapse:collapse; }
+  table.devtable th{ text-align:left; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-faint); padding:0 10px 8px; border-bottom:1px solid var(--border); }
+  table.devtable th.num{ text-align:right; }
+  table.devtable td{ padding:11px 10px; font-size:13.5px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  table.devtable td.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  table.devtable tr:last-child td{ border-bottom:none; }
+  table.devtable td.device-name{ font-weight:600; }
+  table.devtable td.device-name.training{ font-style:italic; font-weight:500; color:var(--text-muted); }
+  table.devtable td.device-name.muted{ font-weight:500; color:var(--text-muted); }
+  .util-cell{ display:flex; align-items:center; gap:8px; justify-content:flex-end; }
+  .util-track{ width:60px; height:7px; background:var(--bg); border-radius:999px; overflow:hidden; }
+  .util-fill{ height:100%; background:var(--brand); border-radius:999px; }
+  .util-fill.low{ background:var(--text-faint); }
+  .dash{ color:var(--text-faint); }
+  .pct-tag{ color:var(--text-faint); font-size:12px; }
+  .new-badge{ display:inline-block; font-size:10px; font-weight:700; background:var(--purple-soft); color:var(--purple); padding:2px 7px; border-radius:999px; margin-left:7px; vertical-align:middle; }
+  .device-tags{ font-size:12px; color:var(--text-faint); }
+
+  .secondary{ display:grid; grid-template-columns:1fr 1fr; gap:20px; padding:26px 28px 28px; }
+  .mini-panel .heading{ font-size:13px; font-weight:700; color:var(--text-muted); margin-bottom:14px; }
+  .mini-row{ display:flex; align-items:center; gap:12px; padding:7px 0; }
+  .mini-row .name{ width:80px; flex-shrink:0; font-size:13px; font-weight:600; }
+  .mini-track{ flex:1; height:9px; background:var(--bg); border-radius:999px; overflow:hidden; }
+  .mini-fill{ height:100%; border-radius:999px; }
+  .mini-fill.blue{ background:var(--brand); }
+  .mini-fill.gold{ background:var(--gold); }
+  .mini-row .val{ width:78px; flex-shrink:0; text-align:right; font-size:12.5px; }
+  .mini-row .val b{ font-weight:700; }
+
+  /* ---- KLIENCI TAB ---- */
+  .avg-client-stat{ margin:20px 28px 0; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:16px 20px; display:flex; align-items:baseline; gap:10px; }
+  .avg-client-stat .big{ font-size:24px; font-weight:800; }
+  .avg-client-stat .lbl{ font-size:13px; color:var(--text-muted); }
+
+  /* ---- HEATMAP TAB ---- */
+  .heatmap-controls{ display:flex; align-items:center; justify-content:space-between; margin:20px 28px 0; }
+  .heatmap-controls .mode-tabs{ transform:scale(.95); transform-origin:left; }
+  .heat-legend{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-faint); }
+  .heat-legend .sw{ width:14px; height:14px; border-radius:3px; }
+
+  .device-filter-row{ display:flex; align-items:center; gap:14px; margin:16px 28px 0; flex-wrap:wrap; }
+  .filter-label{ font-size:12.5px; font-weight:700; color:var(--text-muted); flex-shrink:0; }
+  .device-checkboxes{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .family-label{ font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; letter-spacing:.03em; margin-right:2px; }
+  .family-sep{ width:1px; height:18px; background:var(--border); margin:0 4px; }
+  .chip-checkbox{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--text-muted); border:1px solid var(--border); border-radius:999px; padding:5px 12px 5px 8px; cursor:pointer; background:var(--surface); }
+  .chip-checkbox input{ width:14px; height:14px; accent-color:var(--brand); margin:0; }
+  .chip-checkbox.checked{ background:var(--brand-soft); border-color:#CFE0F8; color:var(--brand); }
+  .select-all-btn{ background:none; border:none; color:var(--brand); font-size:12px; font-weight:600; cursor:pointer; padding:0; font-family:inherit; margin-left:auto; }
+
+  .metric-note{ margin:14px 28px 0; background:var(--purple-soft); border:1px solid #E4D3FF; border-radius:var(--radius-sm); padding:11px 14px; font-size:12px; color:#4C1D95; line-height:1.5; }
+  .metric-note b{ color:var(--purple); }
+
+  .cal-wrap{ padding:20px 28px 0; }
+  .cal-weekday-header{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; }
+  .cal-weekday-header span{ text-align:center; font-size:11px; font-weight:700; color:var(--text-faint); text-transform:uppercase; }
+  .cal-row{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; }
+  .cal-cell{ aspect-ratio:1.35; border-radius:8px; padding:7px 9px; display:flex; flex-direction:column; justify-content:space-between; }
+  .cal-cell.pad{ background:transparent; }
+  .cal-cell.pad .daynum{ color:var(--text-faint); opacity:.4; }
+  .cal-cell .daynum{ font-size:11px; font-weight:600; color:var(--text-faint); }
+  .cal-cell .cellval{ font-size:13px; font-weight:700; align-self:flex-end; }
+  .heat-1{ background:#E3ECFA; }
+  .heat-1 .daynum, .heat-1 .cellval{ color:#3B5C8C; }
+  .heat-2{ background:#BFD4F3; }
+  .heat-2 .daynum, .heat-2 .cellval{ color:#2C4A78; }
+  .heat-3{ background:#8FB0E8; }
+  .heat-3 .daynum, .heat-3 .cellval{ color:#1F3A66; }
+  .heat-4{ background:#5685D9; }
+  .heat-4 .daynum, .heat-4 .cellval{ color:#FFFFFF; }
+  .heat-5{ background:#2F5FC4; }
+  .heat-5 .daynum, .heat-5 .cellval{ color:#FFFFFF; }
+
+  .weekday-agg{ padding:24px 28px 28px; }
+  .weekday-agg .heading{ font-size:13px; font-weight:700; color:var(--text-muted); margin-bottom:6px; }
+  .weekday-agg .callout{ font-size:12.5px; color:var(--text-muted); margin-bottom:14px; }
+  .weekday-agg .callout b{ color:var(--brand); }
+  .wd-bars{ display:grid; grid-template-columns:repeat(7,1fr); gap:10px; align-items:end; height:90px; }
+  .wd-bar-col{ display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .wd-bar{ width:100%; background:var(--brand); border-radius:5px 5px 0 0; }
+  .wd-bar.best{ background:var(--green); }
+  .wd-bar-label{ font-size:10.5px; color:var(--text-faint); margin-top:6px; font-weight:600; }
+  .wd-bar-val{ font-size:10.5px; color:var(--text-muted); margin-bottom:4px; }
+</style>
+</head>
+<body>
+
+  <div class="intro">
+    <div class="eyebrow">panel.wynajemlasera.pl · nowa funkcja</div>
+    <h1>Dashboard przychodów — z zakładkami (Urządzenia / Klienci / Mapa cieplna)</h1>
+    <p>Kliknij zakładki poniżej nagłówka KPI — faktycznie się przełączają. Dane przykładowe dla „Wrzesień 2026”, spójne między zakładkami (te same 57 600 zł widoczne z różnych perspektyw).</p>
+    <div class="authority"><b>Dla Claude Code:</b> ten plik jest źródłem prawdy dla wyglądu i struktury zakładek. Logika liczenia — w towarzyszącym pliku <code>prompt-claude-code-dashboard-przychodow.md</code>.</div>
+  </div>
+
+  <div class="page">
+    <div class="page-header">
+      <h2>Finanse — Przychody</h2>
+      <div class="mode-tabs">
+        <span class="seg active">Miesiąc</span>
+        <span class="seg">Zakres</span>
+        <span class="seg">Sezon</span>
+      </div>
+    </div>
+
+    <div class="period-nav">
+      <div class="arrow">‹</div>
+      <div class="label">Wrzesień 2026</div>
+      <div class="arrow">›</div>
+    </div>
+
+    <hr class="div" />
+
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="label">Przychód netto</div>
+        <div class="amount">57 600 zł</div>
+        <div class="trend-inline up">▲ +12% <span class="vs">vs sierpień</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Liczba wynajmów</div>
+        <div class="amount">34</div>
+        <div class="sub">w tym 2 szkolenia</div>
+        <div class="trend-inline up">▲ +8% <span class="vs">vs sierpień</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Śr. wartość wynajmu</div>
+        <div class="amount">1 694 zł</div>
+        <div class="trend-inline up">▲ +4% <span class="vs">vs sierpień</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Unikalni klienci</div>
+        <div class="amount">21</div>
+        <div class="sub">&nbsp;</div>
+      </div>
+    </div>
+
+    <div class="caveat">
+      <span>⚠️</span>
+      <span>2 wynajmy w tym okresie mają jeszcze nieostateczną cenę (czekają na odczyt liczników impulsów) — suma jest szacunkowa i może się zmienić.</span>
+    </div>
+
+    <!-- ============ CONTENT TABS ============ -->
+    <div class="content-tabs">
+      <button class="content-tab-btn active" data-tab="urzadzenia">Urządzenia</button>
+      <button class="content-tab-btn" data-tab="klienci">Klienci</button>
+      <button class="content-tab-btn" data-tab="heatmap">Mapa cieplna</button>
+    </div>
+
+    <!-- ============ TAB: URZĄDZENIA ============ -->
+    <div class="tab-panel active" id="tab-urzadzenia">
+
+      <div class="insights">
+        <div class="insight-box best">
+          <span class="icon">🏆</span>
+          <div class="txt">
+            <div class="title">Najlepiej wykorzystane</div>
+            <div class="device">Alma Harmony XL Pro</div>
+            <div class="pct">78% dni w okresie</div>
+          </div>
+        </div>
+        <div class="insight-box worst">
+          <span class="icon">📉</span>
+          <div class="txt">
+            <div class="title">Najsłabiej wykorzystane</div>
+            <div class="device">LightSheer ET400</div>
+            <div class="pct">12% dni w okresie</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-section">
+        <div class="heading">Rozbicie na urządzenia</div>
+        <table class="devtable">
+          <thead>
+            <tr>
+              <th>Urządzenie</th>
+              <th class="num">Przychód</th>
+              <th class="num">Udział</th>
+              <th class="num">Wynajmy</th>
+              <th class="num">Śr. wartość</th>
+              <th class="num">Wykorzystanie</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="device-name">LightSheer DESIRE</td>
+              <td class="num">18 400 zł</td>
+              <td class="num pct-tag">32%</td>
+              <td class="num">9</td>
+              <td class="num">2 044 zł</td>
+              <td class="num"><div class="util-cell"><div class="util-track"><div class="util-fill" style="width:67%"></div></div>67%</div></td>
+            </tr>
+            <tr>
+              <td class="device-name">Alma Harmony XL Pro</td>
+              <td class="num">14 200 zł</td>
+              <td class="num pct-tag">25%</td>
+              <td class="num">6</td>
+              <td class="num">2 367 zł</td>
+              <td class="num"><div class="util-cell"><div class="util-track"><div class="util-fill" style="width:78%"></div></div>78%</div></td>
+            </tr>
+            <tr>
+              <td class="device-name">Cooltech</td>
+              <td class="num">9 800 zł</td>
+              <td class="num pct-tag">17%</td>
+              <td class="num">7</td>
+              <td class="num">1 400 zł</td>
+              <td class="num"><div class="util-cell"><div class="util-track"><div class="util-fill" style="width:55%"></div></div>55%</div></td>
+            </tr>
+            <tr>
+              <td class="device-name">LightSheer QUATTRO</td>
+              <td class="num">7 100 zł</td>
+              <td class="num pct-tag">12%</td>
+              <td class="num">4</td>
+              <td class="num">1 775 zł</td>
+              <td class="num"><div class="util-cell"><div class="util-track"><div class="util-fill" style="width:40%"></div></div>40%</div></td>
+            </tr>
+            <tr>
+              <td class="device-name">ResurFX</td>
+              <td class="num">4 300 zł</td>
+              <td class="num pct-tag">7%</td>
+              <td class="num">4</td>
+              <td class="num">1 075 zł</td>
+              <td class="num"><div class="util-cell"><div class="util-track"><div class="util-fill low" style="width:35%"></div></div>35%</div></td>
+            </tr>
+            <tr>
+              <td class="device-name">LightSheer ET400</td>
+              <td class="num">1 200 zł</td>
+              <td class="num pct-tag">2%</td>
+              <td class="num">2</td>
+              <td class="num">600 zł</td>
+              <td class="num"><div class="util-cell"><div class="util-track"><div class="util-fill low" style="width:12%"></div></div>12%</div></td>
+            </tr>
+            <tr>
+              <td class="device-name training">Szkolenia</td>
+              <td class="num">2 600 zł</td>
+              <td class="num pct-tag">5%</td>
+              <td class="num">2</td>
+              <td class="num">1 300 zł</td>
+              <td class="num"><span class="dash">—</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="secondary">
+        <div class="mini-panel">
+          <div class="heading">Długość wynajmu</div>
+          <div class="mini-row"><div class="name">1 dzień</div><div class="mini-track"><div class="mini-fill blue" style="width:56%"></div></div><div class="val"><b>18</b> · 56%</div></div>
+          <div class="mini-row"><div class="name">2 dni</div><div class="mini-track"><div class="mini-fill blue" style="width:28%"></div></div><div class="val"><b>9</b> · 28%</div></div>
+          <div class="mini-row"><div class="name">3 dni</div><div class="mini-track"><div class="mini-fill blue" style="width:16%"></div></div><div class="val"><b>5</b> · 16%</div></div>
+        </div>
+        <div class="mini-panel">
+          <div class="heading">Sposób płatności</div>
+          <div class="mini-row"><div class="name">Gotówka</div><div class="mini-track"><div class="mini-fill gold" style="width:59%"></div></div><div class="val"><b>34 200 zł</b> · 59%</div></div>
+          <div class="mini-row"><div class="name">Przelew</div><div class="mini-track"><div class="mini-fill gold" style="width:41%"></div></div><div class="val"><b>23 400 zł</b> · 41%</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ TAB: KLIENCI ============ -->
+    <div class="tab-panel" id="tab-klienci">
+
+      <div class="avg-client-stat">
+        <span class="big">2 743 zł</span>
+        <span class="lbl">średni przychód na klienta w tym okresie (57 600 zł / 21 klientów)</span>
+      </div>
+
+      <div class="insights">
+        <div class="insight-box best">
+          <span class="icon">🏆</span>
+          <div class="txt">
+            <div class="title">Najwyższa śr. wartość wynajmu</div>
+            <div class="device">Gabinet Estetica</div>
+            <div class="pct">2 550 zł średnio na wynajem</div>
+          </div>
+        </div>
+        <div class="insight-box worst">
+          <span class="icon">📉</span>
+          <div class="txt">
+            <div class="title">Najniższa śr. wartość wynajmu</div>
+            <div class="device">Wellness Point</div>
+            <div class="pct">1 600 zł średnio na wynajem</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-section">
+        <div class="heading">Rozbicie na klientów</div>
+        <table class="devtable">
+          <thead>
+            <tr>
+              <th>Klient</th>
+              <th class="num">Przychód</th>
+              <th class="num">Udział</th>
+              <th class="num">Wynajmy</th>
+              <th class="num">Śr. wartość</th>
+              <th class="num">Urządzenia</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="device-name">Beauty Studio Julia</td>
+              <td class="num">8 400 zł</td>
+              <td class="num pct-tag">15%</td>
+              <td class="num">4</td>
+              <td class="num">2 100 zł</td>
+              <td class="num device-tags">2 różne</td>
+            </tr>
+            <tr>
+              <td class="device-name">Gabinet Anna Kowalska<span class="new-badge">Nowy</span></td>
+              <td class="num">6 200 zł</td>
+              <td class="num pct-tag">11%</td>
+              <td class="num">3</td>
+              <td class="num">2 067 zł</td>
+              <td class="num device-tags">1</td>
+            </tr>
+            <tr>
+              <td class="device-name">Gabinet Estetica<span class="new-badge">Nowy</span></td>
+              <td class="num">5 100 zł</td>
+              <td class="num pct-tag">9%</td>
+              <td class="num">2</td>
+              <td class="num">2 550 zł</td>
+              <td class="num device-tags">2 różne</td>
+            </tr>
+            <tr>
+              <td class="device-name">Wellness Point</td>
+              <td class="num">4 800 zł</td>
+              <td class="num pct-tag">8%</td>
+              <td class="num">3</td>
+              <td class="num">1 600 zł</td>
+              <td class="num device-tags">1</td>
+            </tr>
+            <tr>
+              <td class="device-name">Studio Vibe</td>
+              <td class="num">3 900 zł</td>
+              <td class="num pct-tag">7%</td>
+              <td class="num">2</td>
+              <td class="num">1 950 zł</td>
+              <td class="num device-tags">1</td>
+            </tr>
+            <tr>
+              <td class="device-name">Klinika Skinlab</td>
+              <td class="num">3 200 zł</td>
+              <td class="num pct-tag">6%</td>
+              <td class="num">2</td>
+              <td class="num">1 600 zł</td>
+              <td class="num device-tags">2 różne</td>
+            </tr>
+            <tr>
+              <td class="device-name muted">pozostali klienci (15)</td>
+              <td class="num">26 000 zł</td>
+              <td class="num pct-tag">44%</td>
+              <td class="num">18</td>
+              <td class="num">1 444 zł</td>
+              <td class="num device-tags">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ TAB: MAPA CIEPLNA ============ -->
+    <div class="tab-panel" id="tab-heatmap">
+
+      <div class="heatmap-controls">
+        <div class="mode-tabs">
+          <span class="seg">Przychód</span>
+          <span class="seg">Liczba wynajmów</span>
+          <span class="seg active">Obłożenie</span>
+        </div>
+        <div class="heat-legend">
+          Mniej
+          <span class="sw" style="background:#E3ECFA"></span>
+          <span class="sw" style="background:#BFD4F3"></span>
+          <span class="sw" style="background:#8FB0E8"></span>
+          <span class="sw" style="background:#5685D9"></span>
+          <span class="sw" style="background:#2F5FC4"></span>
+          Więcej
+        </div>
+      </div>
+
+      <div class="device-filter-row">
+        <span class="filter-label">Urządzenia:</span>
+        <div class="device-checkboxes">
+          <span class="family-label">LightSheer</span>
+          <label class="chip-checkbox checked"><input type="checkbox" checked /> DESIRE</label>
+          <label class="chip-checkbox checked"><input type="checkbox" checked /> LIGHT</label>
+          <label class="chip-checkbox checked"><input type="checkbox" checked /> QUATTRO</label>
+          <label class="chip-checkbox checked"><input type="checkbox" checked /> ET400</label>
+          <span class="family-sep"></span>
+          <span class="family-label">Inne</span>
+          <label class="chip-checkbox"><input type="checkbox" /> Alma Harmony</label>
+          <label class="chip-checkbox"><input type="checkbox" /> Cooltech</label>
+          <label class="chip-checkbox"><input type="checkbox" /> ResurFX</label>
+          <label class="chip-checkbox"><input type="checkbox" /> Observ</label>
+        </div>
+        <button class="select-all-btn">zaznacz wszystkie</button>
+      </div>
+
+      <div class="metric-note">
+        <b>Obłożenie</b> liczy się inaczej niż pozostałe dwie metryki: dla każdego dnia sprawdza, ile z
+        wybranych urządzeń było tego dnia fizycznie w trakcie wynajmu (cały zakres dat wynajmu, nie
+        tylko dzień rozpoczęcia) — stąd „2/4” zamiast kwoty. Kolor komórki zależy od <i>proporcji</i>
+        (2 z 4 = 50%), nie od surowej liczby — dzięki temu „2 z 2 urządzeń” (pełne obłożenie) wygląda
+        inaczej niż „2 z 6” (w większości wolne).
+      </div>
+
+      <div class="cal-wrap">
+        <div class="cal-weekday-header">
+          <span>Pon</span><span>Wt</span><span>Śr</span><span>Czw</span><span>Pt</span><span>Sob</span><span>Nd</span>
+        </div>
+
+        <div class="cal-row"><div class="cal-cell pad"><span class="daynum">31</span></div><div class="cal-cell heat-3"><span class="daynum">1</span><span class="cellval">2/4</span></div><div class="cal-cell heat-3"><span class="daynum">2</span><span class="cellval">2/4</span></div><div class="cal-cell heat-4"><span class="daynum">3</span><span class="cellval">3/4</span></div><div class="cal-cell heat-3"><span class="daynum">4</span><span class="cellval">2/4</span></div><div class="cal-cell heat-2"><span class="daynum">5</span><span class="cellval">1/4</span></div><div class="cal-cell heat-1"><span class="daynum">6</span><span class="cellval">0/4</span></div></div>
+        <div class="cal-row"><div class="cal-cell heat-2"><span class="daynum">7</span><span class="cellval">1/4</span></div><div class="cal-cell heat-3"><span class="daynum">8</span><span class="cellval">2/4</span></div><div class="cal-cell heat-2"><span class="daynum">9</span><span class="cellval">1/4</span></div><div class="cal-cell heat-3"><span class="daynum">10</span><span class="cellval">2/4</span></div><div class="cal-cell heat-3"><span class="daynum">11</span><span class="cellval">2/4</span></div><div class="cal-cell heat-1"><span class="daynum">12</span><span class="cellval">0/4</span></div><div class="cal-cell heat-1"><span class="daynum">13</span><span class="cellval">0/4</span></div></div>
+        <div class="cal-row"><div class="cal-cell heat-3"><span class="daynum">14</span><span class="cellval">2/4</span></div><div class="cal-cell heat-2"><span class="daynum">15</span><span class="cellval">1/4</span></div><div class="cal-cell heat-3"><span class="daynum">16</span><span class="cellval">2/4</span></div><div class="cal-cell heat-4"><span class="daynum">17</span><span class="cellval">3/4</span></div><div class="cal-cell heat-5"><span class="daynum">18</span><span class="cellval">4/4</span></div><div class="cal-cell heat-2"><span class="daynum">19</span><span class="cellval">1/4</span></div><div class="cal-cell heat-1"><span class="daynum">20</span><span class="cellval">0/4</span></div></div>
+        <div class="cal-row"><div class="cal-cell heat-4"><span class="daynum">21</span><span class="cellval">3/4</span></div><div class="cal-cell heat-2"><span class="daynum">22</span><span class="cellval">1/4</span></div><div class="cal-cell heat-4"><span class="daynum">23</span><span class="cellval">3/4</span></div><div class="cal-cell heat-3"><span class="daynum">24</span><span class="cellval">2/4</span></div><div class="cal-cell heat-3"><span class="daynum">25</span><span class="cellval">2/4</span></div><div class="cal-cell heat-1"><span class="daynum">26</span><span class="cellval">0/4</span></div><div class="cal-cell heat-1"><span class="daynum">27</span><span class="cellval">0/4</span></div></div>
+        <div class="cal-row"><div class="cal-cell heat-3"><span class="daynum">28</span><span class="cellval">2/4</span></div><div class="cal-cell heat-2"><span class="daynum">29</span><span class="cellval">1/4</span></div><div class="cal-cell heat-4"><span class="daynum">30</span><span class="cellval">3/4</span></div><div class="cal-cell pad"><span class="daynum">1</span></div><div class="cal-cell pad"><span class="daynum">2</span></div><div class="cal-cell pad"><span class="daynum">3</span></div><div class="cal-cell pad"><span class="daynum">4</span></div></div>
+      </div>
+
+      <div class="weekday-agg">
+        <div class="heading">Średnie obłożenie wg dnia tygodnia (Wszystkie LightSheer, cały okres)</div>
+        <div class="callout">Najlepszy dzień tygodnia: <b>piątek</b> (śr. 62% obłożenia)</div>
+        <div class="wd-bars">
+          <div class="wd-bar-col"><div class="wd-bar-val">50%</div><div class="wd-bar" style="height:81%"></div><div class="wd-bar-label">Pon</div></div>
+          <div class="wd-bar-col"><div class="wd-bar-val">35%</div><div class="wd-bar" style="height:56%"></div><div class="wd-bar-label">Wt</div></div>
+          <div class="wd-bar-col"><div class="wd-bar-val">55%</div><div class="wd-bar" style="height:89%"></div><div class="wd-bar-label">Śr</div></div>
+          <div class="wd-bar-col"><div class="wd-bar-val">62%</div><div class="wd-bar" style="height:100%"></div><div class="wd-bar-label">Czw</div></div>
+          <div class="wd-bar-col"><div class="wd-bar-val">62%</div><div class="wd-bar best" style="height:100%"></div><div class="wd-bar-label">Pt</div></div>
+          <div class="wd-bar-col"><div class="wd-bar-val">12%</div><div class="wd-bar" style="height:19%"></div><div class="wd-bar-label">Sob</div></div>
+          <div class="wd-bar-col"><div class="wd-bar-val">0%</div><div class="wd-bar" style="height:2%"></div><div class="wd-bar-label">Nd</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    document.querySelectorAll('.content-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.content-tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+    document.querySelectorAll('.chip-checkbox').forEach(chip => {
+      chip.addEventListener('click', () => {
+        setTimeout(() => chip.classList.toggle('checked', chip.querySelector('input').checked), 0);
+      });
+    });
+  </script>
+
+</body>
+</html>
