@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
+import { RevenueHeatmap } from "@/components/revenue-heatmap";
 import {
   bestWorstClientAvg,
   bestWorstUtilization,
@@ -79,11 +80,13 @@ function TrendChip({ value, vsLabel }: { value: number | null; vsLabel: string }
 export function RevenueDashboard({
   period,
   rows,
+  deviceList,
   newClientIds,
   comparison,
 }: {
   period: PeriodMeta;
   rows: RevenueRow[];
+  deviceList: { id: string; name: string }[];
   newClientIds: string[];
   comparison: Comparison;
 }) {
@@ -299,7 +302,7 @@ export function RevenueDashboard({
             uniqueClients={kpis.uniqueClients}
           />
         )}
-        {tab === "heatmap" && <Placeholder text="Zakładka „Mapa cieplna” pojawi się w kolejnym kroku." />}
+        {tab === "heatmap" && <RevenueHeatmap rows={rows} devices={deviceList} period={period} />}
       </div>
     </div>
   );
@@ -342,14 +345,6 @@ function KpiCard({
         <div className="mt-[3px] text-[12px]" style={{ color: C.muted }} dangerouslySetInnerHTML={{ __html: sub }} />
       )}
       {trend}
-    </div>
-  );
-}
-
-function Placeholder({ text }: { text: string }) {
-  return (
-    <div className="px-7 py-16 text-center text-[13.5px]" style={{ color: C.faint }}>
-      {text}
     </div>
   );
 }

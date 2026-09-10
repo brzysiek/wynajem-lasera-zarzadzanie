@@ -21,6 +21,8 @@ function row(over: Partial<RevenueRow>): RevenueRow {
     deviceId: "dev-a",
     deviceName: "Device A",
     startsAt: "2026-09-10T12:00:00.000Z",
+    startDate: "2026-09-10",
+    endDate: "2026-09-10",
     durationDays: 1,
     totalNet: 1000,
     paymentMethod: "TRANSFER",

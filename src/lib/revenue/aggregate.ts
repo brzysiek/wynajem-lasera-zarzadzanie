@@ -12,6 +12,10 @@ export type RevenueRow = {
   deviceId: string;
   deviceName: string;
   startsAt: string; // ISO
+  // Data kalendarzowa (YYYY-MM-DD, Europe/Warsaw) — liczona na serwerze, żeby
+  // mapa cieplna po stronie klienta nie zależała od strefy przeglądarki.
+  startDate: string;
+  endDate: string;
   durationDays: number; // rentalDurationDays, inclusive
   totalNet: number; // RentalFinance.totalNet (netto, bez VAT)
   paymentMethod: RevenuePaymentMethod;

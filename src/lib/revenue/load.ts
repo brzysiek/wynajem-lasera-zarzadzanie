@@ -6,6 +6,13 @@ import { rentalDurationDays } from "@/lib/pricing/duration";
 import type { RevenueRow } from "@/lib/revenue/aggregate";
 import type { Period } from "@/lib/revenue/period";
 
+// YYYY-MM-DD wg lokalnych składowych daty (serwer działa w Europe/Warsaw —
+// tak samo jak rentalDurationDays / reszta aplikacji).
+function localDateKey(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 // Wydarzenia przypisane do okresu wg Rental.startsAt (sekcja 2). Warunki:
 //  - nie usunięte w Google (deletedInGoogle = false)
 //  - mają rekord RentalFinance z jakąkolwiek wartością totalNet
@@ -48,6 +55,8 @@ export async function loadRevenueRows(period: Period): Promise<RevenueRow[]> {
       deviceId: r.deviceId,
       deviceName: r.device.name,
       startsAt: r.startsAt.toISOString(),
+      startDate: localDateKey(r.startsAt),
+      endDate: localDateKey(r.endsAt),
       durationDays: rentalDurationDays(r.startsAt, r.endsAt),
       totalNet: Number(r.finance.totalNet),
       paymentMethod: r.finance.paymentMethod === "CASH" ? "CASH" : "TRANSFER",
