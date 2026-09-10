@@ -29,7 +29,9 @@ function state(over: Partial<FinanceState>): FinanceState {
     capFeeNet: null,
     vatApplicable: false,
     vatRate: D(23),
-    transportPrice: null,
+    transportPriceNet: null,
+    transportPaidSeparately: false,
+    transportVatApplicable: false,
     ...over,
   };
 }
@@ -45,7 +47,7 @@ describe("recalculateFinance — LightSheer double (standard)", () => {
   });
 
   it("nakładka HS zaznaczona → +capFeeNet (snapshot podany w state)", () => {
-    const r = recalculateFinance(ctx({}), state({ capUsedHS: true, capFeeNet: D(70), transportPrice: D(150) }));
+    const r = recalculateFinance(ctx({}), state({ capUsedHS: true, capFeeNet: D(70), transportPriceNet: D(150) }));
     expect(r.totalNet.toNumber()).toBe(2720);
   });
 
@@ -60,6 +62,38 @@ describe("recalculateFinance — LightSheer double (standard)", () => {
     expect(r.baseRentalPriceNet.toNumber()).toBe(2300);
     expect(r.baseRentalPriceSource).toBe("MANUAL");
     expect(r.totalNet.toNumber()).toBe(2300);
+  });
+
+  it("transport osobno: suma wynajmu bez transportu + oddzielna suma transportu", () => {
+    const r = recalculateFinance(
+      ctx({}),
+      state({
+        baseRentalPriceNet: D(1000),
+        baseRentalPriceSource: "MANUAL",
+        vatApplicable: true,
+        transportPriceNet: D(100),
+        transportPaidSeparately: true,
+        transportVatApplicable: false,
+      }),
+    );
+    expect(r.totalNet.toNumber()).toBe(1000);
+    expect(r.totalGross.toNumber()).toBe(1230);
+    expect(r.transportTotalNet?.toNumber()).toBe(100);
+    expect(r.transportTotalGross?.toNumber()).toBe(100);
+  });
+
+  it("transport osobno z własnym VAT 23% (100 → 123)", () => {
+    const r = recalculateFinance(
+      ctx({}),
+      state({
+        baseRentalPriceNet: D(1000),
+        baseRentalPriceSource: "MANUAL",
+        transportPriceNet: D(100),
+        transportPaidSeparately: true,
+        transportVatApplicable: true,
+      }),
+    );
+    expect(r.transportTotalGross?.toNumber()).toBe(123);
   });
 });
 
@@ -140,7 +174,7 @@ describe("recalculateFinance — SZKOLENIE", () => {
   it("cena ręczna, brak impulsów/nakładki, transport pominięty", () => {
     const r = recalculateFinance(
       ctx({ eventType: "SZKOLENIE", pricingCategory: null, deviceVariant: null, durationDays: 1 }),
-      state({ baseRentalPriceNet: D(800), baseRentalPriceSource: "MANUAL", transportPrice: D(150) }),
+      state({ baseRentalPriceNet: D(800), baseRentalPriceSource: "MANUAL", transportPriceNet: D(150) }),
     );
     expect(r.baseRentalPriceNet.toNumber()).toBe(800);
     expect(r.pulseSurchargeNet).toBeNull();

@@ -1004,15 +1004,6 @@ export function RentalForm({
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Ustalona cena transportu
-              <input
-                value={transportPrice}
-                onChange={(e) => setTransportPrice(e.target.value)}
-                placeholder="Uzupełnia się automatycznie z kontaktu HubSpot, jeśli jest ustalona"
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
-              />
-            </label>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm text-gray-700">
                 Godzina dostawy
@@ -1051,6 +1042,8 @@ export function RentalForm({
                 deviceVariantOptions={device?.variantOptions ?? []}
                 durationDays={durationDays}
                 transportPrice={transportPrice}
+                onTransportPriceChange={setTransportPrice}
+                transportPriceHint={pendingContact?.transportPrice ?? rental?.contactTransportPriceCache ?? null}
                 previewPriceRules={previewPriceRules}
                 previewPulseTiers={previewPulseTiers}
                 defaultVatRate={defaultVatRate}

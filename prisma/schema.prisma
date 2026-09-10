@@ -340,13 +340,27 @@ model RentalFinance {
   vatApplicable Boolean @default(false)
   vatRate       Decimal @default(23) @db.Decimal(5, 2) // per-wydarzenie, na wypadek zmiany stawki
 
-  // --- suma — przeliczana i zapisywana po każdej zmianie, NIE ufać wartości z klienta ---
+  // --- suma WYNAJMU — przeliczana i zapisywana po każdej zmianie, NIE ufać wartości z klienta ---
+  // Gdy transportPaidSeparately = false, zawiera też transport (jak dawniej).
   totalNet   Decimal @db.Decimal(10, 2)
   totalGross Decimal @db.Decimal(10, 2)
 
-  // --- płatność ---
+  // --- płatność WYNAJMU ---
   paymentMethod PaymentMethod
-  cashCollected Boolean? // potwierdzenie odbioru gotówki przez kierowcę
+  cashCollected Boolean? // potwierdzenie odbioru gotówki (wynajem) przez kierowcę
+
+  // --- transport ---
+  // Kwota netto transportu (dawniej wolny tekst na Rental.transportPrice).
+  transportPriceNet       Decimal?       @db.Decimal(10, 2)
+  // true = transport rozliczany osobno: własny VAT (zawsze 23%) i własny
+  // sposób płatności, poza sumą wynajmu. false = wpada do sumy wynajmu.
+  transportPaidSeparately Boolean        @default(false)
+  transportVatApplicable  Boolean        @default(false) // tylko gdy transportPaidSeparately
+  transportPaymentMethod  PaymentMethod? // tylko gdy transportPaidSeparately
+  transportCashCollected  Boolean?       // potwierdzenie odbioru gotówki za transport przez kierowcę
+  // Zdenormalizowana suma transportu (tylko gdy transportPaidSeparately).
+  transportTotalNet       Decimal?       @db.Decimal(10, 2)
+  transportTotalGross     Decimal?       @db.Decimal(10, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

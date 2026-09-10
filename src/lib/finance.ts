@@ -163,6 +163,14 @@ export type RentalFinanceDto = {
   totalGross: string;
   paymentMethod: PaymentMethod;
   cashCollected: boolean | null;
+  // --- transport ---
+  transportPriceNet: string | null;
+  transportPaidSeparately: boolean;
+  transportVatApplicable: boolean;
+  transportPaymentMethod: PaymentMethod | null;
+  transportCashCollected: boolean | null;
+  transportTotalNet: string | null;
+  transportTotalGross: string | null;
 };
 
 export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
@@ -185,6 +193,13 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
     totalGross: row.totalGross.toString(),
     paymentMethod: row.paymentMethod,
     cashCollected: row.cashCollected,
+    transportPriceNet: row.transportPriceNet ? row.transportPriceNet.toString() : null,
+    transportPaidSeparately: row.transportPaidSeparately,
+    transportVatApplicable: row.transportVatApplicable,
+    transportPaymentMethod: row.transportPaymentMethod,
+    transportCashCollected: row.transportCashCollected,
+    transportTotalNet: row.transportTotalNet ? row.transportTotalNet.toString() : null,
+    transportTotalGross: row.transportTotalGross ? row.transportTotalGross.toString() : null,
   };
 }
 
@@ -197,6 +212,11 @@ export type OfficeFinanceInput = {
   vatApplicable: boolean;
   vatRate?: string | number | null;
   paymentMethod: "CASH" | "TRANSFER";
+  // --- transport ---
+  transportPriceNet?: string | number | null;
+  transportPaidSeparately?: boolean;
+  transportVatApplicable?: boolean;
+  transportPaymentMethod?: "CASH" | "TRANSFER" | null;
 };
 
 type RentalForFinanceSave = {
@@ -275,6 +295,23 @@ export async function saveRentalFinance(
   const capCountHS = isDouble ? existing?.capCountHS ?? 1 : 1;
   const capFeeNet = isDouble ? existing?.capFeeNet ?? null : null;
 
+  // --- transport ---
+  // Kwotę netto bierzemy z inputu biura (klucz obecny → wartość, także pusta
+  // = null); gdy klucz nieobecny (starszy klient) — dotychczasowa wartość, a w
+  // ostateczności parsowanie legacy `rental.transportPrice`.
+  const transportPriceNet = isSzkolenie
+    ? null
+    : "transportPriceNet" in input
+      ? parseDecimalInput(input.transportPriceNet)
+      : existing?.transportPriceNet ?? parseTransportPrice(rental.transportPrice);
+  const transportPaidSeparately = !isSzkolenie && Boolean(input.transportPaidSeparately);
+  const transportVatApplicable = transportPaidSeparately && Boolean(input.transportVatApplicable);
+  const transportPaymentMethod: PaymentMethod | null = transportPaidSeparately
+    ? input.transportPaymentMethod === "TRANSFER"
+      ? "TRANSFER"
+      : "CASH"
+    : null;
+
   const computed = recalculateFinance(
     { ...ctx, deviceVariant: variant },
     {
@@ -287,7 +324,9 @@ export async function saveRentalFinance(
       capFeeNet,
       vatApplicable: Boolean(input.vatApplicable),
       vatRate,
-      transportPrice: parseTransportPrice(rental.transportPrice),
+      transportPriceNet,
+      transportPaidSeparately,
+      transportVatApplicable,
     },
   );
 
@@ -308,11 +347,22 @@ export async function saveRentalFinance(
     totalNet: computed.totalNet,
     totalGross: computed.totalGross,
     paymentMethod: (input.paymentMethod === "TRANSFER" ? "TRANSFER" : "CASH") as PaymentMethod,
+    transportPriceNet,
+    transportPaidSeparately,
+    transportVatApplicable,
+    transportPaymentMethod,
+    transportTotalNet: computed.transportTotalNet,
+    transportTotalGross: computed.transportTotalGross,
   };
 
   await prisma.rentalFinance.upsert({
     where: { rentalId: rental.id },
-    create: { rentalId: rental.id, ...data, cashCollected: existing?.cashCollected ?? null },
+    create: {
+      rentalId: rental.id,
+      ...data,
+      cashCollected: existing?.cashCollected ?? null,
+      transportCashCollected: existing?.transportCashCollected ?? null,
+    },
     update: data,
   });
 

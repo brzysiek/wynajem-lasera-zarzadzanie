@@ -16,6 +16,7 @@ const DRIVER_EDITABLE_FIELDS = [
   "pulseCounterStart",
   "pulseCounterEnd",
   "cashCollected",
+  "transportCashCollected",
   "driverNotes",
 ] as const;
 
@@ -55,6 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let capUsedHS: boolean | null | undefined;
   let capCountHS: number | undefined;
   let cashCollected: boolean | null | undefined;
+  let transportCashCollected: boolean | null | undefined;
   let pulseCounterStart: number | null | undefined;
   let pulseCounterEnd: number | null | undefined;
   let driverNotes: string | null | undefined;
@@ -73,6 +75,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ("cashCollected" in body) {
     if (body.cashCollected !== null && typeof body.cashCollected !== "boolean") return bad("Nieprawidłowa wartość pola „gotówka odebrana”.");
     cashCollected = body.cashCollected;
+  }
+  if ("transportCashCollected" in body) {
+    if (body.transportCashCollected !== null && typeof body.transportCashCollected !== "boolean") {
+      return bad("Nieprawidłowa wartość pola „gotówka za transport odebrana”.");
+    }
+    transportCashCollected = body.transportCashCollected;
   }
   for (const field of ["pulseCounterStart", "pulseCounterEnd"] as const) {
     if (!(field in body)) continue;
@@ -102,6 +110,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const effStart = pulseCounterStart !== undefined ? pulseCounterStart : existing?.pulseCounterStart ?? null;
   const effEnd = pulseCounterEnd !== undefined ? pulseCounterEnd : existing?.pulseCounterEnd ?? null;
   const effCash = cashCollected !== undefined ? cashCollected : existing?.cashCollected ?? null;
+  const effTransportCash =
+    transportCashCollected !== undefined ? transportCashCollected : existing?.transportCashCollected ?? null;
+
+  // Pola transportu ustala biuro w sekcji „Finanse" — kierowca ich nie rusza.
+  const transportPriceNet = existing?.transportPriceNet ?? parseTransportPrice(rental.transportPrice);
+  const transportPaidSeparately = existing?.transportPaidSeparately ?? false;
+  const transportVatApplicable = existing?.transportVatApplicable ?? false;
 
   // Snapshot ceny nakładki HS w momencie PIERWSZEGO zaznaczenia (spec 3.4) —
   // późniejsza zmiana cap_fee_hs_net w ustawieniach nie rusza już zapisanej
@@ -156,7 +171,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       capFeeNet,
       vatApplicable,
       vatRate,
-      transportPrice: parseTransportPrice(rental.transportPrice),
+      transportPriceNet,
+      transportPaidSeparately,
+      transportVatApplicable,
     });
   } catch (err) {
     if (err instanceof PricingError) return bad(err.message);
@@ -174,8 +191,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     capCountHS: effCapCount,
     capFeeNet,
     cashCollected: effCash,
+    transportCashCollected: effTransportCash,
     totalNet: computed.totalNet,
     totalGross: computed.totalGross,
+    transportTotalNet: computed.transportTotalNet,
+    transportTotalGross: computed.transportTotalGross,
   };
 
   await prisma.$transaction(async (tx) => {
@@ -188,6 +208,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         vatApplicable,
         vatRate,
         paymentMethod,
+        transportPriceNet,
+        transportPaidSeparately,
+        transportVatApplicable,
       },
       update: financeData,
     });

@@ -60,9 +60,10 @@ export type FinanceState = {
   capFeeNet: Prisma.Decimal | null;
   vatApplicable: boolean;
   vatRate: Prisma.Decimal;
-  // rental.transportPrice to string ("500 zł", "do uzgodnienia") — API parsuje
-  // go do Decimal, a nieparsujące się wartości przekazuje jako null.
-  transportPrice: Prisma.Decimal | null;
+  // Kwota netto transportu (Decimal albo null gdy pusta / do uzgodnienia).
+  transportPriceNet: Prisma.Decimal | null;
+  transportPaidSeparately: boolean;
+  transportVatApplicable: boolean; // tylko gdy transportPaidSeparately
 };
 
 // Wynik recalculateFinance() — pola do zapisania na RentalFinance.
@@ -73,6 +74,8 @@ export type ComputedFinance = {
   pulseCalculationStatus: PulseCalculationStatus | null;
   totalNet: Prisma.Decimal;
   totalGross: Prisma.Decimal;
+  transportTotalNet: Prisma.Decimal | null;
+  transportTotalGross: Prisma.Decimal | null;
 };
 
 export { FLEX_VARIANT, DOUBLE_VARIANT } from "./variants";

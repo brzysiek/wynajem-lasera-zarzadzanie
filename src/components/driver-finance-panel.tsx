@@ -64,6 +64,7 @@ export function DriverFinancePanel({
   const [capUsed, setCapUsed] = useState<boolean>(finance?.capUsedHS ?? false);
   const [capCount, setCapCount] = useState<number>(finance?.capCountHS ?? 1);
   const [cashCollected, setCashCollected] = useState<boolean>(finance?.cashCollected ?? false);
+  const [transportCash, setTransportCash] = useState<boolean>(finance?.transportCashCollected ?? false);
   const [notes, setNotes] = useState(initialDriverNotes);
   const [notesOpen, setNotesOpen] = useState(initialDriverNotes.trim() !== "");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -103,15 +104,24 @@ export function DriverFinancePanel({
   // Autozapis — brak przycisku „Zapisz". Wołane po wyjściu z pola (liczniki,
   // uwagi) i od razu po każdym przełączniku (nakładka, liczba nakładek,
   // gotówka). Wysyła komplet pól kierowcy; API scala je z resztą rekordu.
-  async function save(ov?: { capUsed?: boolean; capCount?: number; cashCollected?: boolean }) {
+  async function save(ov?: {
+    capUsed?: boolean;
+    capCount?: number;
+    cashCollected?: boolean;
+    transportCashCollected?: boolean;
+  }) {
     const capUsedNow = ov?.capUsed ?? capUsed;
     const capCountNow = ov?.capCount ?? capCount;
     const cashNow = ov?.cashCollected ?? cashCollected;
+    const transportCashNow = ov?.transportCashCollected ?? transportCash;
 
     const payload: Record<string, unknown> = {
       driverNotes: notes.trim() || null,
       cashCollected: cashNow,
     };
+    if (finance?.transportPaidSeparately) {
+      payload.transportCashCollected = transportCashNow;
+    }
     if (isDouble) {
       payload.capUsedHS = capUsedNow;
       if (capUsedNow) payload.capCountHS = capCountNow;
@@ -149,8 +159,16 @@ export function DriverFinancePanel({
     }
   }
 
-  const { net, gross, rows, pending } = useMemo(() => {
-    if (!finance) return { net: 0, gross: 0, rows: [] as { label: string; value: number }[], pending: false };
+  const { net, gross, rows, pending, transportNet, transportGross } = useMemo(() => {
+    if (!finance)
+      return {
+        net: 0,
+        gross: 0,
+        rows: [] as { label: string; value: number }[],
+        pending: false,
+        transportNet: null as number | null,
+        transportGross: null as number | null,
+      };
 
     const baseFromFinance = Number(finance.baseRentalPriceNet) || 0;
     const flexMin = isFlex ? previewFlexPlaceholder(previewCtx, durationDays) : 0;
@@ -169,7 +187,10 @@ export function DriverFinancePanel({
 
     const capFee = Number(finance.capFeeNet ?? capFeeHsNet) || 0;
     const capCountEff = capUsed ? Math.max(1, capCount) : 1;
-    const transportN = isSzkolenie ? null : parseAmount(transportPrice);
+    const transportN = isSzkolenie
+      ? null
+      : parseAmount(finance.transportPriceNet ?? transportPrice);
+    const transportSeparate = !isSzkolenie && finance.transportPaidSeparately;
     const vatApplicable = finance.vatApplicable;
     const vatRate = Number(finance.vatRate) || 0;
 
@@ -177,6 +198,8 @@ export function DriverFinancePanel({
       baseNet,
       pulseSurchargeNet: surcharge || null,
       transportNet: transportN,
+      transportPaidSeparately: transportSeparate,
+      transportVatApplicable: finance.transportVatApplicable,
       capFeeNet: capFee,
       capUsed,
       capCount: capCountEff,
@@ -192,7 +215,8 @@ export function DriverFinancePanel({
     } else {
       r.push({ label: isSzkolenie ? "Szkolenie" : "Wynajem", value: baseNet });
     }
-    if (!isSzkolenie && transportN) r.push({ label: "Transport", value: transportN });
+    // Transport w rozbiciu wynajmu tylko gdy NIE jest płatny osobno.
+    if (!isSzkolenie && !transportSeparate && transportN) r.push({ label: "Transport", value: transportN });
     if (surcharge) {
       r.push({ label: `Dopłata za impulsy${pulsesUsed != null ? ` (${pulsesUsed})` : ""}`, value: surcharge });
     }
@@ -205,7 +229,14 @@ export function DriverFinancePanel({
     if (vatApplicable) r.push({ label: `VAT ${vatRate}%`, value: round2(t.gross - t.net) });
 
     const isPending = needsCounters && pulsesUsed == null;
-    return { net: t.net, gross: t.gross, rows: r, pending: isPending };
+    return {
+      net: t.net,
+      gross: t.gross,
+      rows: r,
+      pending: isPending,
+      transportNet: t.transportNet,
+      transportGross: t.transportGross,
+    };
   }, [
     finance,
     isFlex,
@@ -387,6 +418,40 @@ export function DriverFinancePanel({
           </div>
         </div>
       </details>
+
+      {/* Transport płatny osobno — dodatkowy wiersz obok banera wynajmu.
+          Gdy gotówka: osobne potwierdzenie odbioru przez kierowcę. */}
+      {finance.transportPaidSeparately && (transportGross ?? 0) > 0 && (
+        <div className={CARD}>
+          <div className="flex items-center justify-between">
+            <p className={FIELD_LABEL}>
+              Transport · {finance.transportPaymentMethod === "TRANSFER" ? "przelew" : "gotówka"}
+            </p>
+            <span className="text-[16px] font-extrabold tabular-nums text-[#171A21]">
+              {fmt(finance.transportVatApplicable ? transportGross ?? 0 : transportNet ?? 0)} zł
+            </span>
+          </div>
+          {finance.transportVatApplicable ? (
+            <p className="mt-0.5 text-[11px] text-[#9CA3AF]">w tym VAT 23%</p>
+          ) : (
+            <p className="mt-0.5 text-[11px] text-[#9CA3AF]">bez VAT</p>
+          )}
+          {finance.transportPaymentMethod !== "TRANSFER" && (
+            <label className="mt-2.5 flex items-center gap-2.5 rounded-[9px] border border-[#E2E6EC] bg-[#F1F3F6] px-3 py-2.5 text-[13px] font-semibold text-[#171A21]">
+              <input
+                type="checkbox"
+                className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
+                checked={transportCash}
+                onChange={(e) => {
+                  setTransportCash(e.target.checked);
+                  void save({ transportCashCollected: e.target.checked });
+                }}
+              />
+              Gotówka za transport odebrana
+            </label>
+          )}
+        </div>
+      )}
 
       {/* Nakładka HS — tylko podwójna głowica. Checkbox = główny przełącznik,
           stepper obok (nie pod spodem) doprecyzowuje ilość, tylko gdy zaznaczone. */}

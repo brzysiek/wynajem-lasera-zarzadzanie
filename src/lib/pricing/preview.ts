@@ -78,24 +78,42 @@ export function previewFlexPrice(ctx: PreviewContext, durationDays: number, puls
   return round2(overflow.priceNet + overflow.overflowStepPriceNet * steps);
 }
 
+// VAT transportu rozliczanego osobno — zawsze 23% (lustro TRANSPORT_VAT_RATE
+// z total.ts; tu jako liczba, bo to tylko podgląd).
+export const TRANSPORT_VAT_RATE_PREVIEW = 23;
+
 export function previewTotals(input: {
   baseNet: number;
   pulseSurchargeNet: number | null;
   transportNet: number | null;
+  transportPaidSeparately?: boolean;
+  transportVatApplicable?: boolean;
   capFeeNet: number | null;
   capUsed: boolean;
   capCount?: number; // ile nakładek HS (domyślnie 1)
   vatApplicable: boolean;
   vatRate: number;
   isSzkolenie: boolean;
-}): { net: number; gross: number } {
+}): { net: number; gross: number; transportNet: number | null; transportGross: number | null } {
+  const transportSeparate = Boolean(input.transportPaidSeparately) && !input.isSzkolenie;
+
   let net = input.baseNet;
   net += input.pulseSurchargeNet ?? 0;
-  if (!input.isSzkolenie) net += input.transportNet ?? 0;
+  if (!input.isSzkolenie && !transportSeparate) net += input.transportNet ?? 0;
   if (input.capUsed) net += (input.capFeeNet ?? 0) * Math.max(1, Math.trunc(input.capCount ?? 1));
   net = round2(net);
   const gross = input.vatApplicable ? round2(net * (1 + input.vatRate / 100)) : net;
-  return { net, gross };
+
+  let transportNet: number | null = null;
+  let transportGross: number | null = null;
+  if (transportSeparate) {
+    transportNet = round2(input.transportNet ?? 0);
+    transportGross = input.transportVatApplicable
+      ? round2(transportNet * (1 + TRANSPORT_VAT_RATE_PREVIEW / 100))
+      : transportNet;
+  }
+
+  return { net, gross, transportNet, transportGross };
 }
 
 export function parseAmount(raw: string | null | undefined): number | null {

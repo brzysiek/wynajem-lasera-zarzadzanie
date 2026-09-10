@@ -14,8 +14,8 @@ export { rentalDurationDays } from "./duration";
 export { resolveBasePrice, variantNeedsPulseCounters } from "./base-price";
 export type { BasePriceContext, ResolvedBasePrice } from "./base-price";
 export { computeAlmaPulseSurcharge, computeFlexBasePrice, flexPlaceholderNet, pulsesUsed, FLEX_PLACEHOLDER_NET } from "./pulse";
-export { computeTotals, round2 } from "./total";
-export type { TotalsInput } from "./total";
+export { computeTotals, round2, TRANSPORT_VAT_RATE } from "./total";
+export type { TotalsInput, TotalsResult } from "./total";
 export { formatPln } from "./format";
 
 // Finalizer wołany przy KAŻDYM zapisie RentalFinance (tworzenie/edycja przez
@@ -68,7 +68,9 @@ export function recalculateFinance(ctx: PricingContext, state: FinanceState): Co
     eventType: ctx.eventType,
     baseRentalPriceNet: base,
     pulseSurchargeNet: surcharge,
-    transportPrice: state.transportPrice,
+    transportPriceNet: state.transportPriceNet,
+    transportPaidSeparately: state.transportPaidSeparately,
+    transportVatApplicable: state.transportVatApplicable,
     capUsedHS: state.capUsedHS,
     capCountHS: state.capCountHS ?? 1,
     capFeeNet: state.capFeeNet,
@@ -83,5 +85,7 @@ export function recalculateFinance(ctx: PricingContext, state: FinanceState): Co
     pulseCalculationStatus: status,
     totalNet: totals.totalNet,
     totalGross: totals.totalGross,
+    transportTotalNet: totals.transportTotalNet,
+    transportTotalGross: totals.transportTotalGross,
   };
 }
