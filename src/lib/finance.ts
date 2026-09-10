@@ -163,6 +163,8 @@ export type RentalFinanceDto = {
   totalGross: string;
   paymentMethod: PaymentMethod;
   cashCollected: boolean | null;
+  deliveryDurationMinutes: number | null;
+  pickupDurationMinutes: number | null;
   // --- transport ---
   transportPriceNet: string | null;
   transportPaidSeparately: boolean;
@@ -193,6 +195,8 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
     totalGross: row.totalGross.toString(),
     paymentMethod: row.paymentMethod,
     cashCollected: row.cashCollected,
+    deliveryDurationMinutes: row.deliveryDurationMinutes,
+    pickupDurationMinutes: row.pickupDurationMinutes,
     transportPriceNet: row.transportPriceNet ? row.transportPriceNet.toString() : null,
     transportPaidSeparately: row.transportPaidSeparately,
     transportVatApplicable: row.transportVatApplicable,

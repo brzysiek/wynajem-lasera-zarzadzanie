@@ -349,6 +349,12 @@ model RentalFinance {
   paymentMethod PaymentMethod
   cashCollected Boolean? // potwierdzenie odbioru gotówki (wynajem) przez kierowcę
 
+  // --- czas pracy kierowcy (minuty) — wpisywany ręcznie przez KIEROWCĘ ---
+  // Tylko zbieranie danych pod przyszły moduł kosztów bezpośrednich; nigdzie
+  // jeszcze nie raportowane.
+  deliveryDurationMinutes Int?
+  pickupDurationMinutes   Int?
+
   // --- transport ---
   // Kwota netto transportu (dawniej wolny tekst na Rental.transportPrice).
   transportPriceNet       Decimal?       @db.Decimal(10, 2)

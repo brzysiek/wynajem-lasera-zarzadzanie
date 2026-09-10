@@ -6,11 +6,15 @@ import { useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { LogoutButton } from "@/components/logout-button";
 
-const NAV_ITEMS = [
+type NavItem = { href: string; label: string; match?: string; adminOnly?: boolean };
+
+const NAV_ITEMS: NavItem[] = [
   { href: "/kalendarz", label: "Kalendarz" },
   { href: "/nadchodzace", label: "Nadchodzące" },
   { href: "/urzadzenia", label: "Urządzenia" },
   { href: "/wysylka-sms", label: "Wysyłka SMS" },
+  // Wrażliwe dane finansowe firmy — tylko ADMIN (filtr niżej).
+  { href: "/finanse/przychody", label: "Finanse", match: "/finanse", adminOnly: true },
   { href: "/ustawienia/przypomnienia-sms", label: "Ustawienia", match: "/ustawienia" },
 ];
 
@@ -154,7 +158,9 @@ export function TopNav({
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const navItems = role === "KIEROWCA" ? DRIVER_NAV_ITEMS : NAV_ITEMS;
+  const navItems = (role === "KIEROWCA" ? DRIVER_NAV_ITEMS : NAV_ITEMS).filter(
+    (item) => !item.adminOnly || role === "ADMIN",
+  );
 
   // Route changes (including a nav-link click) should close the mobile
   // menu — adjusted during render (React's recommended pattern) rather

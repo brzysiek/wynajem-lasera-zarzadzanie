@@ -17,10 +17,13 @@ const DRIVER_EDITABLE_FIELDS = [
   "pulseCounterEnd",
   "cashCollected",
   "transportCashCollected",
+  "deliveryDurationMinutes",
+  "pickupDurationMinutes",
   "driverNotes",
 ] as const;
 
 const MAX_CAP_COUNT = 20;
+const MAX_DURATION_MIN = 24 * 60;
 
 function bad(message: string, status = 400) {
   return NextResponse.json({ message }, { status });
@@ -59,6 +62,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let transportCashCollected: boolean | null | undefined;
   let pulseCounterStart: number | null | undefined;
   let pulseCounterEnd: number | null | undefined;
+  let deliveryDurationMinutes: number | null | undefined;
+  let pickupDurationMinutes: number | null | undefined;
   let driverNotes: string | null | undefined;
 
   if ("capUsedHS" in body) {
@@ -95,6 +100,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (field === "pulseCounterStart") pulseCounterStart = num;
     else pulseCounterEnd = num;
   }
+  for (const field of ["deliveryDurationMinutes", "pickupDurationMinutes"] as const) {
+    if (!(field in body)) continue;
+    const raw = body[field];
+    const value = raw === null || raw === "" ? null : typeof raw === "number" ? raw : Number(raw);
+    if (value !== null && (!Number.isInteger(value) || value < 0 || value > MAX_DURATION_MIN)) {
+      return bad("Czas dostawy / odbioru podaj w minutach (liczba całkowita 0–1440).");
+    }
+    if (field === "deliveryDurationMinutes") deliveryDurationMinutes = value;
+    else pickupDurationMinutes = value;
+  }
   if ("driverNotes" in body) {
     if (body.driverNotes !== null && typeof body.driverNotes !== "string") return bad("Nieprawidłowe uwagi kierowcy.");
     driverNotes = body.driverNotes === null ? null : body.driverNotes.trim();
@@ -112,6 +127,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const effCash = cashCollected !== undefined ? cashCollected : existing?.cashCollected ?? null;
   const effTransportCash =
     transportCashCollected !== undefined ? transportCashCollected : existing?.transportCashCollected ?? null;
+  const effDeliveryMin =
+    deliveryDurationMinutes !== undefined ? deliveryDurationMinutes : existing?.deliveryDurationMinutes ?? null;
+  const effPickupMin =
+    pickupDurationMinutes !== undefined ? pickupDurationMinutes : existing?.pickupDurationMinutes ?? null;
 
   // Pola transportu ustala biuro w sekcji „Finanse" — kierowca ich nie rusza.
   const transportPriceNet = existing?.transportPriceNet ?? parseTransportPrice(rental.transportPrice);
@@ -192,6 +211,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     capFeeNet,
     cashCollected: effCash,
     transportCashCollected: effTransportCash,
+    deliveryDurationMinutes: effDeliveryMin,
+    pickupDurationMinutes: effPickupMin,
     totalNet: computed.totalNet,
     totalGross: computed.totalGross,
     transportTotalNet: computed.transportTotalNet,

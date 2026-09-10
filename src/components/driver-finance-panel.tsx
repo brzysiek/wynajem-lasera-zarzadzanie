@@ -65,6 +65,12 @@ export function DriverFinancePanel({
   const [capCount, setCapCount] = useState<number>(finance?.capCountHS ?? 1);
   const [cashCollected, setCashCollected] = useState<boolean>(finance?.cashCollected ?? false);
   const [transportCash, setTransportCash] = useState<boolean>(finance?.transportCashCollected ?? false);
+  const [deliveryMin, setDeliveryMin] = useState(
+    finance?.deliveryDurationMinutes != null ? String(finance.deliveryDurationMinutes) : "",
+  );
+  const [pickupMin, setPickupMin] = useState(
+    finance?.pickupDurationMinutes != null ? String(finance.pickupDurationMinutes) : "",
+  );
   const [notes, setNotes] = useState(initialDriverNotes);
   const [notesOpen, setNotesOpen] = useState(initialDriverNotes.trim() !== "");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -92,6 +98,18 @@ export function DriverFinancePanel({
   const pulsesUsed =
     needsCounters && startN != null && endN != null && orderValid ? (endN as number) - (startN as number) : null;
   const awaitingEnd = needsCounters && startN != null && endN == null;
+
+  // Czas pracy kierowcy (min) — niezależny od wariantu, opcjonalny.
+  const parseMin = (s: string): number | null | undefined => {
+    const t = s.trim();
+    if (t === "") return null;
+    const n = Number(t);
+    return Number.isInteger(n) && n >= 0 && n <= 24 * 60 ? n : undefined; // undefined = nie wysyłaj
+  };
+  const deliveryMinParsed = parseMin(deliveryMin);
+  const pickupMinParsed = parseMin(pickupMin);
+  const savedDeliveryMin = finance?.deliveryDurationMinutes ?? null;
+  const savedPickupMin = finance?.pickupDurationMinutes ?? null;
 
   const savedStart = finance?.pulseCounterStart ?? null;
   const savedEnd = finance?.pulseCounterEnd ?? null;
@@ -130,6 +148,8 @@ export function DriverFinancePanel({
       payload.pulseCounterStart = startRaw === "" ? null : Number(startRaw);
       payload.pulseCounterEnd = endRaw === "" ? null : Number(endRaw);
     }
+    if (deliveryMinParsed !== undefined) payload.deliveryDurationMinutes = deliveryMinParsed;
+    if (pickupMinParsed !== undefined) payload.pickupDurationMinutes = pickupMinParsed;
 
     const key = JSON.stringify(payload);
     if (key === lastSentKey.current) return;
@@ -608,6 +628,47 @@ export function DriverFinancePanel({
           )}
         </div>
       )}
+
+      {/* Czas pracy kierowcy — zbieranie danych pod przyszły moduł kosztów. */}
+      <div className={CARD}>
+        <p className={`mb-1 ${FIELD_LABEL}`}>Czas pracy (min)</p>
+        <p className="mb-3 text-[11px] text-[#9CA3AF]">Opcjonalnie — wpisz ile zajął dojazd/rozstawienie i odbiór.</p>
+        <div className="grid grid-cols-2 gap-2.5">
+          <label className="text-[11px] font-bold uppercase tracking-[0.03em] text-[#9CA3AF]">
+            Dostawa
+            <input
+              value={deliveryMin}
+              onChange={(e) => setDeliveryMin(e.target.value)}
+              onBlur={() => {
+                if (deliveryMinParsed !== undefined && deliveryMinParsed !== savedDeliveryMin) void save();
+              }}
+              inputMode="numeric"
+              placeholder="np. 45"
+              className={`mt-1 ${INPUT_BASE} ${
+                deliveryMinParsed === undefined ? "border-[#E15A2B]" : "border-[#E2E6EC] focus:border-[#2F6FD1]"
+              }`}
+            />
+          </label>
+          <label className="text-[11px] font-bold uppercase tracking-[0.03em] text-[#9CA3AF]">
+            Odbiór
+            <input
+              value={pickupMin}
+              onChange={(e) => setPickupMin(e.target.value)}
+              onBlur={() => {
+                if (pickupMinParsed !== undefined && pickupMinParsed !== savedPickupMin) void save();
+              }}
+              inputMode="numeric"
+              placeholder="np. 30"
+              className={`mt-1 ${INPUT_BASE} ${
+                pickupMinParsed === undefined ? "border-[#E15A2B]" : "border-[#E2E6EC] focus:border-[#2F6FD1]"
+              }`}
+            />
+          </label>
+        </div>
+        {(deliveryMinParsed === undefined || pickupMinParsed === undefined) && (
+          <p className="mt-2 text-[12px] text-[#E15A2B]">Podaj liczbę minut (0–1440).</p>
+        )}
+      </div>
 
       {notesCard}
     </div>
