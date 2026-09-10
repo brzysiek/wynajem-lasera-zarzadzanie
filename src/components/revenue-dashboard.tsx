@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { BASE_PATH } from "@/lib/base-path";
 import { RevenueHeatmap } from "@/components/revenue-heatmap";
 import {
@@ -16,6 +17,7 @@ import {
   trendPct,
   type ClientRow,
   type RevenueRow,
+  type UnpricedRental,
 } from "@/lib/revenue/aggregate";
 
 type PeriodMeta = {
@@ -81,12 +83,14 @@ export function RevenueDashboard({
   period,
   rows,
   deviceList,
+  unpriced,
   newClientIds,
   comparison,
 }: {
   period: PeriodMeta;
   rows: RevenueRow[];
   deviceList: { id: string; name: string }[];
+  unpriced: UnpricedRental[];
   newClientIds: string[];
   comparison: Comparison;
 }) {
@@ -263,6 +267,9 @@ export function RevenueDashboard({
           </div>
         )}
 
+        {/* ---- wynajmy bez wpisanej kwoty (rozwijane) ---- */}
+        <UnpricedNotice items={unpriced} />
+
         {/* ---- zakładki treści ---- */}
         <div className="mx-7 mt-6 flex gap-1 border-b" style={{ borderColor: C.border }}>
           {(
@@ -320,6 +327,70 @@ function wynajmy(n: number): string {
 }
 function maja(n: number): string {
   return n === 1 ? "ma" : "mają";
+}
+
+// Wynajmy/szkolenia w okresie bez wpisanej kwoty — nie sumują się do
+// przychodu. Zwinięte domyślnie, rozwijane do listy z linkami (analogicznie
+// do alertu w kalendarzu, ale w bursztynowej palecie dashboardu).
+function UnpricedNotice({ items }: { items: UnpricedRental[] }) {
+  const [open, setOpen] = useState(false);
+  if (items.length === 0) return null;
+  const n = items.length;
+
+  return (
+    <div
+      className="mx-7 mt-3 overflow-hidden rounded-[9px] border text-[12.5px]"
+      style={{ background: C.amberSoft, borderColor: C.amberBorder, color: C.amberText }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 px-[14px] py-[11px] text-left"
+      >
+        <span className="flex gap-2">
+          <span aria-hidden>⚠️</span>
+          <span>
+            <b className="font-bold">
+              {n} {wynajmy(n)}
+            </b>{" "}
+            w tym okresie {maja(n)} nieuzupełnioną kwotę — {n === 1 ? "nie wchodzi" : "nie wchodzą"} do sumy
+            przychodu.
+          </span>
+        </span>
+        <span className={`flex-none text-[11px] transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+      </button>
+
+      {open && (
+        <ul className="border-t px-[14px] py-1" style={{ borderColor: C.amberBorder }}>
+          {items.map((r) => (
+            <li key={r.id} className="border-b last:border-b-0" style={{ borderColor: "#EFE3C0" }}>
+              <Link
+                href={`/kalendarz/wynajem/${r.id}`}
+                className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2 hover:underline"
+              >
+                <span className="font-semibold tabular-nums">
+                  {new Date(r.startsAt).toLocaleDateString("pl-PL", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                  })}
+                </span>
+                <span>{r.deviceName}</span>
+                <span style={{ color: "#9A7A2E" }}>{r.title}</span>
+                <span
+                  className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.03em]"
+                  style={{ background: "#EFE3C0" }}
+                >
+                  {r.eventType === "SZKOLENIE" ? "Szkolenie" : "Wynajem"}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function KpiCard({

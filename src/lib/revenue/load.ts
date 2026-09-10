@@ -3,7 +3,7 @@
 // klienta / serwera.
 import { prisma } from "@/lib/prisma";
 import { rentalDurationDays } from "@/lib/pricing/duration";
-import type { RevenueRow } from "@/lib/revenue/aggregate";
+import type { RevenueRow, UnpricedRental } from "@/lib/revenue/aggregate";
 import type { Period } from "@/lib/revenue/period";
 
 // YYYY-MM-DD wg lokalnych składowych daty (serwer działa w Europe/Warsaw —
@@ -66,6 +66,34 @@ export async function loadRevenueRows(period: Period): Promise<RevenueRow[]> {
     });
   }
   return rows;
+}
+
+// Wynajmy w okresie BEZ rekordu RentalFinance — nie mają kwoty, więc nie
+// wchodzą do sumy przychodu. Sygnalizowane osobnym, rozwijanym komunikatem
+// (analogicznie do alertu w kalendarzu). Typ UnpricedRental w aggregate.ts.
+export async function loadUnpricedRentals(period: Period): Promise<UnpricedRental[]> {
+  const rentals = await prisma.rental.findMany({
+    where: {
+      deletedInGoogle: false,
+      startsAt: { gte: period.start, lte: period.end },
+      finance: { is: null },
+    },
+    orderBy: { startsAt: "asc" },
+    select: {
+      id: true,
+      title: true,
+      startsAt: true,
+      eventType: true,
+      device: { select: { name: true } },
+    },
+  });
+  return rentals.map((r) => ({
+    id: r.id,
+    title: r.title,
+    startsAt: r.startsAt.toISOString(),
+    deviceName: r.device.name,
+    eventType: r.eventType === "SZKOLENIE" ? "SZKOLENIE" : "WYNAJEM",
+  }));
 }
 
 // Odznaka „Nowy" (sekcja 12): klient jest nowy w okresie, jeśli jego

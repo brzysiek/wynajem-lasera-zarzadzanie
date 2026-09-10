@@ -27,6 +27,15 @@ export type RevenueRow = {
 // Wiersz „Szkolenia" w tabeli urządzeń dostaje ten sztuczny id (sekcja 2).
 export const TRAINING_BUCKET_ID = "__training__";
 
+// Wynajm w okresie bez rekordu RentalFinance (brak kwoty → poza sumą).
+export type UnpricedRental = {
+  id: string;
+  title: string;
+  startsAt: string; // ISO
+  deviceName: string;
+  eventType: RevenueEventType;
+};
+
 export function round(n: number): number {
   return Math.round(n);
 }

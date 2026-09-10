@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
-import { loadNewClientIds, loadRevenueRows } from "@/lib/revenue/load";
+import { loadNewClientIds, loadRevenueRows, loadUnpricedRentals } from "@/lib/revenue/load";
 import { computeKpis } from "@/lib/revenue/aggregate";
 import {
   comparisonLabel,
@@ -21,10 +21,11 @@ export default async function RevenuePage({
   const period = periodFromParams(sp);
   const cmp = comparisonPeriod(period);
 
-  const [rows, cmpRows, devices] = await Promise.all([
+  const [rows, cmpRows, devices, unpriced] = await Promise.all([
     loadRevenueRows(period),
     cmp ? loadRevenueRows(cmp) : Promise.resolve(null),
     prisma.device.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    loadUnpricedRentals(period),
   ]);
 
   const cmpKpis = cmpRows ? computeKpis(cmpRows) : null;
@@ -43,6 +44,7 @@ export default async function RevenuePage({
       }}
       rows={rows}
       deviceList={devices}
+      unpriced={unpriced}
       newClientIds={newClientIds}
       comparison={
         cmpKpis
