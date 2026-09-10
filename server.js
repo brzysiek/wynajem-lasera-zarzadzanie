@@ -107,7 +107,28 @@ app.prepare().then(() => {
     setInterval(() => logDiag("interval"), 2000).unref();
   }
 
-  const server = createServer((req, res) => {
+  // Confirmed via crash.log + diag.log correlation (2026-09-10): requests to
+  // this backend sometimes get rejected with "Parse Error: Transfer-Encoding
+  // can't be present with Content-Length" before ever reaching the handler
+  // below (no matching diag.log "request ..." line) — this happens over both
+  // HTTP/2 and HTTP/3 on the browser side, and raising keepAliveTimeout made
+  // no difference, so it isn't a client-facing protocol issue or a Node-side
+  // idle-timeout race. It's LiteSpeed's own backend proxy occasionally
+  // framing a request to this Node process with both headers set on its
+  // persistent connection to us — a bug in LiteSpeed's own request
+  // construction that we have no way to fix from here.
+  //
+  // insecureHTTPParser enables llhttp's lenient_transfer_encoding mode,
+  // which tolerates exactly this combination (preferring Transfer-Encoding)
+  // instead of rejecting the request outright. This normally trades away a
+  // request-smuggling guard that matters when multiple untrusted
+  // intermediaries can disagree about framing — but the only thing that can
+  // ever open a connection to this process is LiteSpeed's own backend
+  // socket (see the top-of-file note on lsnode/LSAPI), so there's no second
+  // hop here to smuggle a request past; this is purely working around
+  // LiteSpeed's own malformed backend request, not exposing anything new to
+  // the public internet.
+  const server = createServer({ insecureHTTPParser: true }, (req, res) => {
     logDiag(`request ${req.method} ${req.url}`);
     // A synchronous throw here would otherwise be an uncaught exception on
     // the http.Server 'request' event, killing the entire process (and
