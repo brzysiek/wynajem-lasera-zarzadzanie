@@ -136,11 +136,30 @@ export function RevenueDashboard({
       >
         {/* ---- header ---- */}
         <div className="px-7 pt-[22px]">
-          <h1 className="m-0 mb-[18px] text-[18px] font-semibold" style={{ color: C.text }}>
-            Finanse — Przychody
-          </h1>
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+            <h1 className="m-0 text-[18px] font-semibold" style={{ color: C.text }}>
+              Finanse — Przychody
+            </h1>
+            {(pending > 0 || unpriced.length > 0) && (
+              <div className="flex min-w-0 flex-1 flex-col gap-2 sm:max-w-[560px] sm:items-end">
+                {pending > 0 && (
+                  <div
+                    className="flex w-full gap-2 rounded-[9px] border px-[14px] py-[10px] text-[12.5px]"
+                    style={{ background: C.amberSoft, borderColor: C.amberBorder, color: C.amberText }}
+                  >
+                    <span aria-hidden>⚠️</span>
+                    <span>
+                      {pending} {wynajmy(pending)} w tym okresie {maja(pending)} jeszcze nieostateczną cenę
+                      (czekają na odczyt liczników impulsów) — suma jest szacunkowa i może się zmienić.
+                    </span>
+                  </div>
+                )}
+                <UnpricedNotice items={unpriced} />
+              </div>
+            )}
+          </div>
           <div
-            className="inline-flex rounded-full border p-[3px]"
+            className="mt-[18px] inline-flex rounded-full border p-[3px]"
             style={{ background: C.bg, borderColor: C.border }}
           >
             {(
@@ -253,23 +272,6 @@ export function RevenueDashboard({
           <KpiCard label="Unikalni klienci" amount={fmtNum(kpis.uniqueClients)} sub="&nbsp;" />
         </div>
 
-        {/* ---- komunikat o niepewnych cenach ---- */}
-        {pending > 0 && (
-          <div
-            className="mx-7 mt-5 flex gap-2 rounded-[9px] border px-[14px] py-[11px] text-[12.5px]"
-            style={{ background: C.amberSoft, borderColor: C.amberBorder, color: C.amberText }}
-          >
-            <span aria-hidden>⚠️</span>
-            <span>
-              {pending} {wynajmy(pending)} w tym okresie {maja(pending)} jeszcze nieostateczną cenę (czekają na
-              odczyt liczników impulsów) — suma jest szacunkowa i może się zmienić.
-            </span>
-          </div>
-        )}
-
-        {/* ---- wynajmy bez wpisanej kwoty (rozwijane) ---- */}
-        <UnpricedNotice items={unpriced} />
-
         {/* ---- zakładki treści ---- */}
         <div className="mx-7 mt-6 flex gap-1 border-b" style={{ borderColor: C.border }}>
           {(
@@ -339,14 +341,14 @@ function UnpricedNotice({ items }: { items: UnpricedRental[] }) {
 
   return (
     <div
-      className="mx-7 mt-3 overflow-hidden rounded-[9px] border text-[12.5px]"
+      className="w-full overflow-hidden rounded-[9px] border text-[12.5px]"
       style={{ background: C.amberSoft, borderColor: C.amberBorder, color: C.amberText }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-2 px-[14px] py-[11px] text-left"
+        className="flex w-full items-center justify-between gap-2 px-[14px] py-[10px] text-left"
       >
         <span className="flex gap-2">
           <span aria-hidden>⚠️</span>
