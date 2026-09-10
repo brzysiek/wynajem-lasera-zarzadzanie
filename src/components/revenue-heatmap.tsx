@@ -93,7 +93,7 @@ export function RevenueHeatmap({
   return (
     <>
       {/* ---- kontrolki ---- */}
-      <div className="mx-7 mt-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mx-4 mt-5 flex flex-wrap sm:mx-7 items-center justify-between gap-3">
         <div
           className="inline-flex rounded-full border p-[3px]"
           style={{ background: C.bg, borderColor: C.border }}
@@ -129,7 +129,7 @@ export function RevenueHeatmap({
       </div>
 
       {/* ---- filtr urządzeń: płaski rząd checkboxów ---- */}
-      <div className="mx-7 mt-4 flex flex-wrap items-center gap-x-3.5 gap-y-2">
+      <div className="mx-4 mt-4 flex flex-wrap sm:mx-7 items-center gap-x-3.5 gap-y-2">
         <span className="flex-shrink-0 text-[12.5px] font-bold" style={{ color: C.muted }}>
           Urządzenia:
         </span>
@@ -171,7 +171,7 @@ export function RevenueHeatmap({
       {/* ---- nota o metryce Obłożenie ---- */}
       {metric === "occupancy" && (
         <div
-          className="mx-7 mt-3.5 rounded-[9px] border px-3.5 py-[11px] text-[12px] leading-[1.5]"
+          className="mx-4 mt-3.5 rounded-[9px] sm:mx-7 border px-3.5 py-[11px] text-[12px] leading-[1.5]"
           style={{ background: "#F3EBFF", borderColor: "#E4D3FF", color: "#4C1D95" }}
         >
           <b style={{ color: "#7C3AED" }}>Obłożenie</b> liczy się inaczej niż pozostałe dwie metryki: dla każdego
@@ -183,7 +183,7 @@ export function RevenueHeatmap({
 
       {/* ---- siatka ---- */}
       {heat.empty ? (
-        <div className="px-7 py-14 text-center text-[13px]" style={{ color: C.faint }}>
+        <div className="px-4 py-14 text-center sm:px-7 text-[13px]" style={{ color: C.faint }}>
           Wybierz co najmniej jedno urządzenie.
         </div>
       ) : heat.gridMode === "month" ? (
@@ -194,7 +194,7 @@ export function RevenueHeatmap({
 
       {/* ---- pasek sum per dzień tygodnia ---- */}
       {!heat.empty && (
-        <div className="px-7 pb-7 pt-6">
+        <div className="px-4 pb-7 pt-6 sm:px-7">
           <div className="mb-1.5 text-[13px] font-bold" style={{ color: C.muted }}>
             {metric === "occupancy"
               ? "Średnie obłożenie wg dnia tygodnia (cały okres)"
@@ -248,7 +248,7 @@ export function RevenueHeatmap({
 
 function MonthGrid({ weeks, metric }: { weeks: HeatDay[][]; metric: HeatMetric }) {
   return (
-    <div className="px-7 pt-5">
+    <div className="px-4 pt-5 sm:px-7">
       <div className="mb-1.5 grid grid-cols-7 gap-1.5">
         {WEEKDAY_SHORT.map((w) => (
           <span key={w} className="text-center text-[11px] font-bold uppercase" style={{ color: C.faint }}>
@@ -296,7 +296,7 @@ function MonthGrid({ weeks, metric }: { weeks: HeatDay[][]; metric: HeatMetric }
 function ContinuousGrid({ weeks, metric }: { weeks: HeatDay[][]; metric: HeatMetric }) {
   const days = weeks.flat(); // kolejność: tydz0 Pon..Nd, tydz1 Pon..Nd, …
   return (
-    <div className="px-7 pt-5">
+    <div className="px-4 pt-5 sm:px-7">
       <div className="flex gap-2 overflow-x-auto pb-2">
         <div className="flex flex-shrink-0 flex-col gap-[3px] pt-[1px]">
           {WEEKDAY_SHORT.map((w) => (

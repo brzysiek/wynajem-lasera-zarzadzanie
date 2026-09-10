@@ -129,37 +129,18 @@ export function RevenueDashboard({
   const stepSeason = (dir: -1 | 1) => go({ mode: "season", s: String(sy + dir) });
 
   return (
-    <div className="mx-auto max-w-[1080px]">
+    <div>
       <div
         className="overflow-hidden rounded-[14px] border"
         style={{ borderColor: C.border, background: C.surface }}
       >
         {/* ---- header ---- */}
-        <div className="px-7 pt-[22px]">
-          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-            <h1 className="m-0 text-[18px] font-semibold" style={{ color: C.text }}>
-              Finanse — Przychody
-            </h1>
-            {(pending > 0 || unpriced.length > 0) && (
-              <div className="flex min-w-0 flex-1 flex-col gap-2 sm:max-w-[560px] sm:items-end">
-                {pending > 0 && (
-                  <div
-                    className="flex w-full gap-2 rounded-[9px] border px-[14px] py-[10px] text-[12.5px]"
-                    style={{ background: C.amberSoft, borderColor: C.amberBorder, color: C.amberText }}
-                  >
-                    <span aria-hidden>⚠️</span>
-                    <span>
-                      {pending} {wynajmy(pending)} w tym okresie {maja(pending)} jeszcze nieostateczną cenę
-                      (czekają na odczyt liczników impulsów) — suma jest szacunkowa i może się zmienić.
-                    </span>
-                  </div>
-                )}
-                <UnpricedNotice items={unpriced} />
-              </div>
-            )}
-          </div>
+        <div className="px-4 pt-[22px] sm:px-7">
+          <h1 className="m-0 mb-[18px] text-[18px] font-semibold" style={{ color: C.text }}>
+            Finanse — Przychody
+          </h1>
           <div
-            className="mt-[18px] inline-flex rounded-full border p-[3px]"
+            className="inline-flex rounded-full border p-[3px]"
             style={{ background: C.bg, borderColor: C.border }}
           >
             {(
@@ -272,8 +253,11 @@ export function RevenueDashboard({
           <KpiCard label="Unikalni klienci" amount={fmtNum(kpis.uniqueClients)} sub="&nbsp;" />
         </div>
 
+        {/* ---- jeden komunikat pod liczbami: co obniża/uzupełnia sumę ---- */}
+        <RevenueNotice pending={pending} unpriced={unpriced} />
+
         {/* ---- zakładki treści ---- */}
-        <div className="mx-7 mt-6 flex gap-1 border-b" style={{ borderColor: C.border }}>
+        <div className="mx-4 mt-6 flex gap-1 border-b sm:mx-7" style={{ borderColor: C.border }}>
           {(
             [
               ["urzadzenia", "Urządzenia"],
@@ -331,65 +315,86 @@ function maja(n: number): string {
   return n === 1 ? "ma" : "mają";
 }
 
-// Wynajmy/szkolenia w okresie bez wpisanej kwoty — nie sumują się do
-// przychodu. Zwinięte domyślnie, rozwijane do listy z linkami (analogicznie
-// do alertu w kalendarzu, ale w bursztynowej palecie dashboardu).
-function UnpricedNotice({ items }: { items: UnpricedRental[] }) {
+// Jeden komunikat tuż pod paskiem KPI — mówi, dlaczego pokazana suma może
+// nie być ostateczna. Zwinięty = jedna linia z podsumowaniem; rozwinięty =
+// wyjaśnienie cen tymczasowych + lista wynajmów bez kwoty (linki).
+function RevenueNotice({ pending, unpriced }: { pending: number; unpriced: UnpricedRental[] }) {
   const [open, setOpen] = useState(false);
-  if (items.length === 0) return null;
-  const n = items.length;
+  const nUn = unpriced.length;
+  if (pending === 0 && nUn === 0) return null;
+
+  const bits: string[] = [];
+  if (pending > 0) bits.push(`${pending} z ceną tymczasową`);
+  if (nUn > 0) bits.push(`${nUn} bez wpisanej kwoty`);
 
   return (
     <div
-      className="w-full overflow-hidden rounded-[9px] border text-[12.5px]"
+      className="mx-4 mt-4 overflow-hidden rounded-[9px] border text-[12.5px] sm:mx-7"
       style={{ background: C.amberSoft, borderColor: C.amberBorder, color: C.amberText }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-2 px-[14px] py-[10px] text-left"
+        className="flex w-full items-center gap-2 px-[14px] py-[9px] text-left"
       >
-        <span className="flex gap-2">
-          <span aria-hidden>⚠️</span>
-          <span>
-            <b className="font-bold">
-              {n} {wynajmy(n)}
-            </b>{" "}
-            w tym okresie {maja(n)} nieuzupełnioną kwotę — {n === 1 ? "nie wchodzi" : "nie wchodzą"} do sumy
-            przychodu.
-          </span>
+        <span aria-hidden>⚠️</span>
+        <span className="flex-1">
+          Suma może być niepełna — <b className="font-bold">{bits.join(" · ")}</b>.
         </span>
+        <span className="flex-none font-semibold underline">{open ? "ukryj" : "szczegóły"}</span>
         <span className={`flex-none text-[11px] transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
       </button>
 
       {open && (
-        <ul className="border-t px-[14px] py-1" style={{ borderColor: C.amberBorder }}>
-          {items.map((r) => (
-            <li key={r.id} className="border-b last:border-b-0" style={{ borderColor: "#EFE3C0" }}>
-              <Link
-                href={`/kalendarz/wynajem/${r.id}`}
-                className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2 hover:underline"
-              >
-                <span className="font-semibold tabular-nums">
-                  {new Date(r.startsAt).toLocaleDateString("pl-PL", {
-                    weekday: "short",
-                    day: "numeric",
-                    month: "short",
-                  })}
-                </span>
-                <span>{r.deviceName}</span>
-                <span style={{ color: "#9A7A2E" }}>{r.title}</span>
-                <span
-                  className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.03em]"
-                  style={{ background: "#EFE3C0" }}
-                >
-                  {r.eventType === "SZKOLENIE" ? "Szkolenie" : "Wynajem"}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="border-t px-[14px] py-2.5" style={{ borderColor: C.amberBorder }}>
+          {pending > 0 && (
+            <p className={nUn > 0 ? "mb-3" : ""}>
+              <b className="font-bold">
+                {pending} {wynajmy(pending)}
+              </b>{" "}
+              {maja(pending)} cenę tymczasową (czekają na odczyt liczników impulsów przez kierowcę) — kwota jest
+              szacunkowa i może się jeszcze zmienić.
+            </p>
+          )}
+          {nUn > 0 && (
+            <>
+              <p className="mb-1">
+                <b className="font-bold">
+                  {nUn} {wynajmy(nUn)}
+                </b>{" "}
+                nie {nUn === 1 ? "ma" : "mają"} wpisanej kwoty — {nUn === 1 ? "nie wchodzi" : "nie wchodzą"} do
+                sumy przychodu:
+              </p>
+              <ul>
+                {unpriced.map((r) => (
+                  <li key={r.id} className="border-b last:border-b-0" style={{ borderColor: "#EFE3C0" }}>
+                    <Link
+                      href={`/kalendarz/wynajem/${r.id}`}
+                      className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5 hover:underline"
+                    >
+                      <span className="font-semibold tabular-nums">
+                        {new Date(r.startsAt).toLocaleDateString("pl-PL", {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </span>
+                      <span>{r.deviceName}</span>
+                      <span style={{ color: "#9A7A2E" }}>{r.title}</span>
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.03em]"
+                        style={{ background: "#EFE3C0" }}
+                      >
+                        {r.eventType === "SZKOLENIE" ? "Szkolenie" : "Wynajem"}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
@@ -407,7 +412,7 @@ function KpiCard({
   trend?: React.ReactNode;
 }) {
   return (
-    <div className="px-[22px] py-5" style={{ background: C.surface }}>
+    <div className="px-4 py-4 sm:px-[22px] sm:py-5" style={{ background: C.surface }}>
       <div className="text-[11.5px] font-bold uppercase tracking-[0.03em]" style={{ color: C.faint }}>
         {label}
       </div>
@@ -440,7 +445,7 @@ function UrzadzeniaTab({
   return (
     <>
       {insight && (
-        <div className="mx-7 mt-5 grid grid-cols-1 gap-[14px] sm:grid-cols-2">
+        <div className="mx-4 mt-5 sm:mx-7 grid grid-cols-1 gap-[14px] sm:grid-cols-2">
           <InsightBox
             kind="best"
             title="Najlepiej wykorzystane"
@@ -456,7 +461,7 @@ function UrzadzeniaTab({
         </div>
       )}
 
-      <div className="px-7 pb-2 pt-6">
+      <div className="px-4 pb-2 pt-6 sm:px-7">
         <div className="mb-[14px] text-[13px] font-bold" style={{ color: C.muted }}>
           Rozbicie na urządzenia
         </div>
@@ -465,7 +470,8 @@ function UrzadzeniaTab({
             Brak przychodu w wybranym okresie.
           </p>
         ) : (
-          <table className="w-full border-collapse">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse">
             <thead>
               <tr>
                 {["Urządzenie", "Przychód", "Udział", "Wynajmy", "Śr. wartość", "Wykorzystanie"].map((h, i) => (
@@ -529,11 +535,12 @@ function UrzadzeniaTab({
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-5 px-7 pb-7 pt-[26px] sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 px-4 pb-7 pt-[26px] sm:grid-cols-2 sm:px-7">
         <MiniPanel heading="Długość wynajmu">
           {durations.map((d) => (
             <MiniRow
@@ -599,7 +606,7 @@ function KlienciTab({
     <>
       {avgPerClient !== null && (
         <div
-          className="mx-7 mt-5 flex items-baseline gap-2.5 rounded-[9px] border px-5 py-4"
+          className="mx-4 mt-5 sm:mx-7 flex items-baseline gap-2.5 rounded-[9px] border px-5 py-4"
           style={{ background: C.bg, borderColor: C.border }}
         >
           <span className="text-[24px] font-extrabold" style={{ color: C.text }}>
@@ -613,7 +620,7 @@ function KlienciTab({
       )}
 
       {insight && (
-        <div className="mx-7 mt-5 grid grid-cols-1 gap-[14px] sm:grid-cols-2">
+        <div className="mx-4 mt-5 sm:mx-7 grid grid-cols-1 gap-[14px] sm:grid-cols-2">
           <InsightBox
             kind="best"
             title="Najwyższa śr. wartość wynajmu"
@@ -629,7 +636,7 @@ function KlienciTab({
         </div>
       )}
 
-      <div className="px-7 pb-8 pt-6">
+      <div className="px-4 pb-8 pt-6 sm:px-7">
         <div className="mb-[14px] text-[13px] font-bold" style={{ color: C.muted }}>
           Rozbicie na klientów
         </div>
@@ -638,7 +645,8 @@ function KlienciTab({
             Brak przychodu w wybranym okresie.
           </p>
         ) : (
-          <table className="w-full border-collapse">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse">
             <thead>
               <tr>
                 {["Klient", "Przychód", "Udział", "Wynajmy", "Śr. wartość", "Urządzenia"].map((h, i) => (
@@ -694,7 +702,8 @@ function KlienciTab({
                 );
               })}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
     </>
