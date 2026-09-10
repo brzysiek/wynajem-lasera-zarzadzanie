@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BASE_PATH } from "@/lib/base-path";
@@ -589,6 +589,66 @@ function deviceCountLabel(n: number | null): string {
   return n === 1 ? "1" : `${n} różne`;
 }
 
+// Wiersz tabeli klientów. `sub` = pojedynczy klient rozwinięty spod
+// „pozostali klienci". `onToggle`/`open` = tryb wiersza zbiorczego (klik rozwija).
+function ClientTr({
+  row,
+  sub,
+  onToggle,
+  open,
+}: {
+  row: ClientRow;
+  sub?: boolean;
+  onToggle?: () => void;
+  open?: boolean;
+}) {
+  const aggregate = row.kind !== "named";
+  return (
+    <tr style={sub ? { background: "#FAFBFC" } : undefined}>
+      <td
+        className={`py-[11px] text-[13.5px] ${sub ? "pl-7 pr-2.5" : "px-2.5"}`}
+        style={{
+          borderBottom: `1px solid ${C.border}`,
+          fontWeight: aggregate ? 500 : 600,
+          color: aggregate ? C.muted : C.text,
+        }}
+      >
+        {onToggle ? (
+          <button type="button" onClick={onToggle} className="flex items-center gap-1.5 text-left">
+            <span className={`text-[10px] transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+            <span className="underline">{row.name}</span>
+          </button>
+        ) : (
+          row.name
+        )}
+        {row.isNew && (
+          <span
+            className="ml-[7px] inline-block rounded-full px-[7px] py-0.5 align-middle text-[10px] font-bold"
+            style={{ background: "#F3EBFF", color: "#7C3AED" }}
+          >
+            Nowy
+          </span>
+        )}
+      </td>
+      <td className="px-2.5 py-[11px] text-right text-[13.5px] tabular-nums" style={cell()}>
+        {fmtPln(row.revenueNet)}
+      </td>
+      <td className="px-2.5 py-[11px] text-right text-[12px] tabular-nums" style={cell(C.faint)}>
+        {row.sharePct}%
+      </td>
+      <td className="px-2.5 py-[11px] text-right text-[13.5px] tabular-nums" style={cell()}>
+        {row.rentalCount}
+      </td>
+      <td className="px-2.5 py-[11px] text-right text-[13.5px] tabular-nums" style={cell()}>
+        {fmtPln(row.avgValue)}
+      </td>
+      <td className="px-2.5 py-[11px] text-right text-[12px]" style={cell(C.faint)}>
+        {deviceCountLabel(row.deviceCount)}
+      </td>
+    </tr>
+  );
+}
+
 function KlienciTab({
   clients,
   insight,
@@ -602,6 +662,7 @@ function KlienciTab({
   revenueNet: number;
   uniqueClients: number;
 }) {
+  const [restOpen, setRestOpen] = useState(false);
   return (
     <>
       {avgPerClient !== null && (
@@ -661,46 +722,16 @@ function KlienciTab({
               </tr>
             </thead>
             <tbody>
-              {clients.map((c) => {
-                const aggregate = c.kind !== "named";
-                return (
-                  <tr key={c.id}>
-                    <td
-                      className="px-2.5 py-[11px] text-[13.5px]"
-                      style={{
-                        borderBottom: `1px solid ${C.border}`,
-                        fontWeight: aggregate ? 500 : 600,
-                        color: aggregate ? C.muted : C.text,
-                      }}
-                    >
-                      {c.name}
-                      {c.isNew && (
-                        <span
-                          className="ml-[7px] inline-block rounded-full px-[7px] py-0.5 align-middle text-[10px] font-bold"
-                          style={{ background: "#F3EBFF", color: "#7C3AED" }}
-                        >
-                          Nowy
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-2.5 py-[11px] text-right text-[13.5px] tabular-nums" style={cell()}>
-                      {fmtPln(c.revenueNet)}
-                    </td>
-                    <td className="px-2.5 py-[11px] text-right text-[12px] tabular-nums" style={cell(C.faint)}>
-                      {c.sharePct}%
-                    </td>
-                    <td className="px-2.5 py-[11px] text-right text-[13.5px] tabular-nums" style={cell()}>
-                      {c.rentalCount}
-                    </td>
-                    <td className="px-2.5 py-[11px] text-right text-[13.5px] tabular-nums" style={cell()}>
-                      {fmtPln(c.avgValue)}
-                    </td>
-                    <td className="px-2.5 py-[11px] text-right text-[12px]" style={cell(C.faint)}>
-                      {deviceCountLabel(c.deviceCount)}
-                    </td>
-                  </tr>
-                );
-              })}
+              {clients.map((c) =>
+                c.kind === "rest" && c.hidden && c.hidden.length > 0 ? (
+                  <Fragment key={c.id}>
+                    <ClientTr row={c} onToggle={() => setRestOpen((v) => !v)} open={restOpen} />
+                    {restOpen && c.hidden.map((h) => <ClientTr key={h.id} row={h} sub />)}
+                  </Fragment>
+                ) : (
+                  <ClientTr key={c.id} row={c} />
+                ),
+              )}
             </tbody>
             </table>
           </div>

@@ -201,6 +201,8 @@ export type ClientRow = {
   rentalCount: number;
   avgValue: number;
   deviceCount: number | null; // null → „—" (pozycje zbiorcze / brak sensu)
+  // Tylko na wierszu „rest": zwinięci pojedynczy klienci do rozwinięcia w UI.
+  hidden?: ClientRow[];
 };
 
 export function computeClientBreakdown(
@@ -260,6 +262,7 @@ export function computeClientBreakdown(
       rentalCount: restCount,
       avgValue: restCount > 0 ? restRevenue / restCount : 0,
       deviceCount: null,
+      hidden: rest,
     });
   } else {
     out.push(...namedRows);

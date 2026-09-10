@@ -180,6 +180,9 @@ describe("computeClientBreakdown", () => {
     expect(out[6].id).toBe(REST_CLIENTS_ID);
     expect(out[6].name).toBe("pozostali klienci (4)");
     expect(out[6].rentalCount).toBe(4);
+    // wiersz zbiorczy niesie pojedynczych klientów do rozwinięcia w UI
+    expect(out[6].hidden).toHaveLength(4);
+    expect(out[6].hidden!.every((h) => h.kind === "named")).toBe(true);
   });
 
   it("dokładnie na progu (8) → bez zwijania", () => {
