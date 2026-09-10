@@ -335,29 +335,63 @@ export function DriverFinancePanel({
     );
   }
 
-  const isCash = finance.paymentMethod === "CASH";
+  const rentalIsCash = finance.paymentMethod === "CASH";
   const rentalValue = finance.vatApplicable ? gross : net;
+
+  // Transport rozliczany osobno (biuro włączyło „niezależna płatność").
+  const transportSep = !isSzkolenie && finance.transportPaidSeparately && (transportGross ?? 0) > 0;
+  const transportIsCash = transportSep && finance.transportPaymentMethod !== "TRANSFER";
+  const transportValue = finance.transportVatApplicable ? transportGross ?? 0 : transportNet ?? 0;
+
+  // Ile gotówki kierowca realnie odbiera (wynajem gotówką + transport gotówką).
+  const cashTotal = (rentalIsCash ? rentalValue : 0) + (transportIsCash ? transportValue : 0);
+  const splitLabel = (cash: boolean) => (cash ? "gotówką" : "przelewem");
+
+  // Trzy stany banera:
+  //  cash     — wynajem płatny gotówką (± transport): pełny pomarańcz, duża kwota
+  //  mixed    — wynajem przelewem, ale transport osobno gotówką: kolor pośredni
+  //             (bursztyn), wyraźna sekcja „transport gotówką"
+  //  transfer — wszystko przelewem: zieleń, nic nie pobierasz
+  const bannerKind: "cash" | "mixed" | "transfer" = rentalIsCash
+    ? "cash"
+    : transportIsCash
+      ? "mixed"
+      : "transfer";
+
+  const bannerBg = {
+    cash: "bg-[linear-gradient(155deg,#E15A2B_0%,#9C3D1B_100%)] shadow-[0_10px_24px_-10px_rgba(225,90,43,0.5)]",
+    mixed: "bg-[linear-gradient(150deg,#E1852B_0%,#7C6A2E_58%,#2C8A63_100%)] shadow-[0_10px_24px_-10px_rgba(196,140,52,0.5)]",
+    transfer: "bg-[linear-gradient(155deg,#1E9E6B_0%,#12724F_100%)] shadow-[0_10px_24px_-10px_rgba(30,158,107,0.45)]",
+  }[bannerKind];
+
+  const transportCashCheckbox = (
+    <label className="mt-2.5 flex items-center gap-2.5 rounded-[9px] border border-white/[0.3] bg-white/[0.16] px-3 py-2.5 text-left text-[13px] font-semibold">
+      <input
+        type="checkbox"
+        className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
+        checked={transportCash}
+        onChange={(e) => {
+          setTransportCash(e.target.checked);
+          void save({ transportCashCollected: e.target.checked });
+        }}
+      />
+      Gotówka za transport odebrana
+    </label>
+  );
 
   return (
     <div className="flex flex-col gap-3">
       {/* Banner płatności — pierwsza rzecz, jaką widzi kierowca (mockup-master).
-          Kolor koduje info: pomarańcz = gotówka do odebrania, zieleń = przelew,
-          nic nie pobieraj. Jedyny element z wyraźnym cieniem. */}
-      <div
-        className={`rounded-[14px] px-5 py-[18px] text-center text-white ${
-          isCash
-            ? "bg-[linear-gradient(155deg,#E15A2B_0%,#9C3D1B_100%)] shadow-[0_10px_24px_-10px_rgba(225,90,43,0.5)]"
-            : "bg-[linear-gradient(155deg,#1E9E6B_0%,#12724F_100%)] shadow-[0_10px_24px_-10px_rgba(30,158,107,0.45)]"
-        }`}
-      >
+          Jedyny element z wyraźnym cieniem. */}
+      <div className={`rounded-[14px] px-5 py-[18px] text-center text-white ${bannerBg}`}>
         <div className="flex items-center justify-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.06em] opacity-90">
-          {isCash ? "💵 Gotówka" : "🏦 Przelew"}
+          {bannerKind === "cash" ? "💵 Gotówka" : bannerKind === "mixed" ? "🏦 Przelew · 💵 transport" : "🏦 Przelew"}
         </div>
 
-        {isCash ? (
+        {bannerKind === "cash" && (
           <>
             <div className="mt-1.5 text-[36px] font-extrabold leading-none tracking-[-0.02em] tabular-nums">
-              {fmt(rentalValue)} zł
+              {fmt(cashTotal)} zł
             </div>
             <div className="mt-1.5 text-[12.5px] opacity-85">do odebrania od klientki</div>
             {pending && (
@@ -365,7 +399,19 @@ export function DriverFinancePanel({
                 kwota tymczasowa — uzupełnij liczniki impulsów poniżej
               </div>
             )}
-            <label className="mt-3.5 flex items-center gap-2.5 rounded-[9px] border border-white/[0.28] bg-white/[0.14] px-3 py-2.5 text-left text-[13px] font-semibold">
+
+            {transportSep && (
+              <div className="mt-2.5 space-y-0.5 border-t border-white/[0.25] pt-2.5 text-[12.5px] opacity-90">
+                <div>
+                  Wynajem: <b className="font-bold">{fmt(rentalValue)} zł</b> — {splitLabel(rentalIsCash)}
+                </div>
+                <div>
+                  Transport: <b className="font-bold">{fmt(transportValue)} zł</b> — {splitLabel(transportIsCash)}
+                </div>
+              </div>
+            )}
+
+            <label className="mt-3 flex items-center gap-2.5 rounded-[9px] border border-white/[0.28] bg-white/[0.14] px-3 py-2.5 text-left text-[13px] font-semibold">
               <input
                 type="checkbox"
                 className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
@@ -375,16 +421,46 @@ export function DriverFinancePanel({
                   void save({ cashCollected: e.target.checked });
                 }}
               />
-              Gotówka odebrana
+              {transportSep ? "Gotówka za wynajem odebrana" : "Gotówka odebrana"}
             </label>
+            {transportIsCash && transportCashCheckbox}
           </>
-        ) : (
+        )}
+
+        {bannerKind === "mixed" && (
           <>
-            <div className="mt-2 text-[19px] font-extrabold leading-[1.3]">
-              Nie musisz pobierać gotówki
+            <div className="mt-2 text-[19px] font-extrabold leading-[1.25]">
+              Nie pobierasz gotówki za wynajem
             </div>
-            <div className="mt-2.5 border-t border-white/[0.25] pt-2.5 text-[13px] opacity-90">
-              Wartość wynajmu: <b className="font-bold">{fmt(rentalValue)} zł</b> — rozliczona przelewem
+            <div className="mt-1 text-[12.5px] opacity-90">
+              Wynajem <b className="font-bold">{fmt(rentalValue)} zł</b> — rozliczony przelewem
+            </div>
+
+            <div className="mt-3 rounded-[11px] border border-white/[0.4] bg-white/[0.18] px-3 py-3">
+              <div className="text-[11.5px] font-bold uppercase tracking-[0.05em] opacity-95">
+                ⚠ Transport rozliczany osobno — gotówką
+              </div>
+              <div className="mt-1 text-[30px] font-extrabold leading-none tabular-nums">
+                {fmt(transportValue)} zł
+              </div>
+              <div className="mt-0.5 text-[12px] opacity-85">do odebrania od klientki</div>
+              {transportCashCheckbox}
+            </div>
+          </>
+        )}
+
+        {bannerKind === "transfer" && (
+          <>
+            <div className="mt-2 text-[19px] font-extrabold leading-[1.3]">Nie musisz pobierać gotówki</div>
+            <div className="mt-2.5 space-y-0.5 border-t border-white/[0.25] pt-2.5 text-[13px] opacity-90">
+              <div>
+                {transportSep ? "Wynajem" : "Wartość wynajmu"}: <b className="font-bold">{fmt(rentalValue)} zł</b> — przelewem
+              </div>
+              {transportSep && (
+                <div>
+                  Transport: <b className="font-bold">{fmt(transportValue)} zł</b> — przelewem
+                </div>
+              )}
             </div>
             {pending && (
               <div className="mt-1 text-[11px] font-semibold opacity-85">
@@ -418,40 +494,6 @@ export function DriverFinancePanel({
           </div>
         </div>
       </details>
-
-      {/* Transport płatny osobno — dodatkowy wiersz obok banera wynajmu.
-          Gdy gotówka: osobne potwierdzenie odbioru przez kierowcę. */}
-      {finance.transportPaidSeparately && (transportGross ?? 0) > 0 && (
-        <div className={CARD}>
-          <div className="flex items-center justify-between">
-            <p className={FIELD_LABEL}>
-              Transport · {finance.transportPaymentMethod === "TRANSFER" ? "przelew" : "gotówka"}
-            </p>
-            <span className="text-[16px] font-extrabold tabular-nums text-[#171A21]">
-              {fmt(finance.transportVatApplicable ? transportGross ?? 0 : transportNet ?? 0)} zł
-            </span>
-          </div>
-          {finance.transportVatApplicable ? (
-            <p className="mt-0.5 text-[11px] text-[#9CA3AF]">w tym VAT 23%</p>
-          ) : (
-            <p className="mt-0.5 text-[11px] text-[#9CA3AF]">bez VAT</p>
-          )}
-          {finance.transportPaymentMethod !== "TRANSFER" && (
-            <label className="mt-2.5 flex items-center gap-2.5 rounded-[9px] border border-[#E2E6EC] bg-[#F1F3F6] px-3 py-2.5 text-[13px] font-semibold text-[#171A21]">
-              <input
-                type="checkbox"
-                className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
-                checked={transportCash}
-                onChange={(e) => {
-                  setTransportCash(e.target.checked);
-                  void save({ transportCashCollected: e.target.checked });
-                }}
-              />
-              Gotówka za transport odebrana
-            </label>
-          )}
-        </div>
-      )}
 
       {/* Nakładka HS — tylko podwójna głowica. Checkbox = główny przełącznik,
           stepper obok (nie pod spodem) doprecyzowuje ilość, tylko gdy zaznaczone. */}
