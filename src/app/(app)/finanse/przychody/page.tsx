@@ -1,5 +1,5 @@
 import { requireAdmin } from "@/lib/auth-guards";
-import { loadRevenueRows } from "@/lib/revenue/load";
+import { loadNewClientIds, loadRevenueRows } from "@/lib/revenue/load";
 import { computeKpis } from "@/lib/revenue/aggregate";
 import {
   comparisonLabel,
@@ -27,6 +27,9 @@ export default async function RevenuePage({
 
   const cmpKpis = cmpRows ? computeKpis(cmpRows) : null;
 
+  const contactIds = [...new Set(rows.map((r) => r.hubspotContactId).filter((v): v is string => v !== null))];
+  const newClientIds = [...(await loadNewClientIds(contactIds, period.start))];
+
   return (
     <RevenueDashboard
       period={{
@@ -37,6 +40,7 @@ export default async function RevenuePage({
         end: isoDate(period.end),
       }}
       rows={rows}
+      newClientIds={newClientIds}
       comparison={
         cmpKpis
           ? {

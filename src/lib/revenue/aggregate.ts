@@ -168,3 +168,115 @@ export function computePaymentSplit(rows: RevenueRow[]): PaymentSplit {
 export function pendingPriceCount(rows: RevenueRow[]): number {
   return rows.filter((r) => r.pulsePending).length;
 }
+
+// --- zakładka Klienci (sekcja 12) ---
+export const NO_CLIENT_ID = "__no_client__";
+export const REST_CLIENTS_ID = "__rest__";
+
+// Ilu nazwanych klientów pokazujemy w całości, zanim reszta trafi do
+// zbiorczego wiersza „pozostali klienci (N)".
+const CLIENT_TOP_N = 6;
+const CLIENT_COLLAPSE_THRESHOLD = 8;
+
+export type ClientRow = {
+  id: string; // hubspotContactId | NO_CLIENT_ID | REST_CLIENTS_ID
+  name: string;
+  kind: "named" | "none" | "rest";
+  isNew: boolean;
+  revenueNet: number;
+  sharePct: number;
+  rentalCount: number;
+  avgValue: number;
+  deviceCount: number | null; // null → „—" (pozycje zbiorcze / brak sensu)
+};
+
+export function computeClientBreakdown(
+  rows: RevenueRow[],
+  newClientIds: ReadonlySet<string>,
+): ClientRow[] {
+  const totalRevenue = rows.reduce((s, r) => s + r.totalNet, 0);
+
+  type Acc = { name: string; revenue: number; count: number; devices: Set<string> };
+  const named = new Map<string, Acc>();
+  const noClient: Acc = { name: "Bez przypisanego klienta", revenue: 0, count: 0, devices: new Set() };
+
+  for (const r of rows) {
+    const acc = r.hubspotContactId
+      ? named.get(r.hubspotContactId) ??
+        (() => {
+          const a: Acc = { name: r.contactLabel || "Klient bez nazwy", revenue: 0, count: 0, devices: new Set() };
+          named.set(r.hubspotContactId!, a);
+          return a;
+        })()
+      : noClient;
+    acc.revenue += r.totalNet;
+    acc.count += 1;
+    acc.devices.add(r.deviceId);
+  }
+
+  const share = (v: number) => (totalRevenue > 0 ? round((v / totalRevenue) * 100) : 0);
+
+  const namedRows: ClientRow[] = [...named.entries()]
+    .map(([id, a]) => ({
+      id,
+      name: a.name,
+      kind: "named" as const,
+      isNew: newClientIds.has(id),
+      revenueNet: a.revenue,
+      sharePct: share(a.revenue),
+      rentalCount: a.count,
+      avgValue: a.revenue / a.count,
+      deviceCount: a.devices.size,
+    }))
+    .sort((x, y) => y.revenueNet - x.revenueNet);
+
+  const out: ClientRow[] = [];
+  if (namedRows.length > CLIENT_COLLAPSE_THRESHOLD) {
+    const shown = namedRows.slice(0, CLIENT_TOP_N);
+    const rest = namedRows.slice(CLIENT_TOP_N);
+    out.push(...shown);
+    const restRevenue = rest.reduce((s, r) => s + r.revenueNet, 0);
+    const restCount = rest.reduce((s, r) => s + r.rentalCount, 0);
+    out.push({
+      id: REST_CLIENTS_ID,
+      name: `pozostali klienci (${rest.length})`,
+      kind: "rest",
+      isNew: false,
+      revenueNet: restRevenue,
+      sharePct: share(restRevenue),
+      rentalCount: restCount,
+      avgValue: restCount > 0 ? restRevenue / restCount : 0,
+      deviceCount: null,
+    });
+  } else {
+    out.push(...namedRows);
+  }
+
+  if (noClient.count > 0) {
+    out.push({
+      id: NO_CLIENT_ID,
+      name: noClient.name,
+      kind: "none",
+      isNew: false,
+      revenueNet: noClient.revenue,
+      sharePct: share(noClient.revenue),
+      rentalCount: noClient.count,
+      avgValue: noClient.revenue / noClient.count,
+      deviceCount: null,
+    });
+  }
+
+  return out;
+}
+
+// Insight best/worst po ŚREDNIEJ wartości wynajmu klienta (sekcja 12) — nie po
+// przychodzie (tabela i tak jest po nim posortowana). Tylko nazwani klienci,
+// z pominięciem wierszy zbiorczych.
+export function bestWorstClientAvg(
+  clientRows: ClientRow[],
+): { best: ClientRow; worst: ClientRow } | null {
+  const named = clientRows.filter((c) => c.kind === "named");
+  if (named.length < 2) return null;
+  const sorted = [...named].sort((a, b) => b.avgValue - a.avgValue);
+  return { best: sorted[0], worst: sorted[sorted.length - 1] };
+}

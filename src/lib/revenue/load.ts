@@ -58,3 +58,25 @@ export async function loadRevenueRows(period: Period): Promise<RevenueRow[]> {
   }
   return rows;
 }
+
+// Odznaka „Nowy" (sekcja 12): klient jest nowy w okresie, jeśli jego
+// NAJWCZEŚNIEJSZY wynajem w całej historii ma startsAt >= początek okresu
+// (czyli nie ma żadnego wcześniejszego). Liczone na żywo, nie flaga w bazie.
+export async function loadNewClientIds(
+  contactIds: string[],
+  periodStart: Date,
+): Promise<Set<string>> {
+  if (contactIds.length === 0) return new Set();
+  const grouped = await prisma.rental.groupBy({
+    by: ["hubspotContactId"],
+    where: { hubspotContactId: { in: contactIds }, deletedInGoogle: false },
+    _min: { startsAt: true },
+  });
+  const isNew = new Set<string>();
+  for (const g of grouped) {
+    if (g.hubspotContactId && g._min.startsAt && g._min.startsAt >= periodStart) {
+      isNew.add(g.hubspotContactId);
+    }
+  }
+  return isNew;
+}

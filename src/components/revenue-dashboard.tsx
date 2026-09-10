@@ -4,13 +4,16 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
 import {
+  bestWorstClientAvg,
   bestWorstUtilization,
+  computeClientBreakdown,
   computeDeviceBreakdown,
   computeDurationHistogram,
   computeKpis,
   computePaymentSplit,
   pendingPriceCount,
   trendPct,
+  type ClientRow,
   type RevenueRow,
 } from "@/lib/revenue/aggregate";
 
@@ -76,10 +79,12 @@ function TrendChip({ value, vsLabel }: { value: number | null; vsLabel: string }
 export function RevenueDashboard({
   period,
   rows,
+  newClientIds,
   comparison,
 }: {
   period: PeriodMeta;
   rows: RevenueRow[];
+  newClientIds: string[];
   comparison: Comparison;
 }) {
   const router = useRouter();
@@ -91,6 +96,11 @@ export function RevenueDashboard({
   const durations = useMemo(() => computeDurationHistogram(rows), [rows]);
   const payments = useMemo(() => computePaymentSplit(rows), [rows]);
   const pending = useMemo(() => pendingPriceCount(rows), [rows]);
+
+  const newClientSet = useMemo(() => new Set(newClientIds), [newClientIds]);
+  const clients = useMemo(() => computeClientBreakdown(rows, newClientSet), [rows, newClientSet]);
+  const clientInsight = useMemo(() => bestWorstClientAvg(clients), [clients]);
+  const avgPerClient = kpis.uniqueClients > 0 ? kpis.revenueNet / kpis.uniqueClients : null;
 
   const showTrend = period.mode !== "range" && comparison !== null;
 
@@ -280,7 +290,15 @@ export function RevenueDashboard({
         {tab === "urzadzenia" && (
           <UrzadzeniaTab insight={insight} devices={devices} durations={durations} payments={payments} />
         )}
-        {tab === "klienci" && <Placeholder text="Zakładka „Klienci” pojawi się w kolejnym kroku." />}
+        {tab === "klienci" && (
+          <KlienciTab
+            clients={clients}
+            insight={clientInsight}
+            avgPerClient={avgPerClient}
+            revenueNet={kpis.revenueNet}
+            uniqueClients={kpis.uniqueClients}
+          />
+        )}
         {tab === "heatmap" && <Placeholder text="Zakładka „Mapa cieplna” pojawi się w kolejnym kroku." />}
       </div>
     </div>
@@ -488,6 +506,131 @@ function UrzadzeniaTab({
 
 function cell(color?: string): React.CSSProperties {
   return { borderBottom: `1px solid ${C.border}`, color: color ?? C.text };
+}
+
+// ---------------- zakładka Klienci ----------------
+function deviceCountLabel(n: number | null): string {
+  if (n === null) return "—";
+  return n === 1 ? "1" : `${n} różne`;
+}
+
+function KlienciTab({
+  clients,
+  insight,
+  avgPerClient,
+  revenueNet,
+  uniqueClients,
+}: {
+  clients: ClientRow[];
+  insight: ReturnType<typeof bestWorstClientAvg>;
+  avgPerClient: number | null;
+  revenueNet: number;
+  uniqueClients: number;
+}) {
+  return (
+    <>
+      {avgPerClient !== null && (
+        <div
+          className="mx-7 mt-5 flex items-baseline gap-2.5 rounded-[9px] border px-5 py-4"
+          style={{ background: C.bg, borderColor: C.border }}
+        >
+          <span className="text-[24px] font-extrabold" style={{ color: C.text }}>
+            {fmtPln(avgPerClient)}
+          </span>
+          <span className="text-[13px]" style={{ color: C.muted }}>
+            średni przychód na klienta w tym okresie ({fmtPln(revenueNet)} / {fmtNum(uniqueClients)}{" "}
+            {uniqueClients === 1 ? "klient" : "klientów"})
+          </span>
+        </div>
+      )}
+
+      {insight && (
+        <div className="mx-7 mt-5 grid grid-cols-1 gap-[14px] sm:grid-cols-2">
+          <InsightBox
+            kind="best"
+            title="Najwyższa śr. wartość wynajmu"
+            device={insight.best.name}
+            pct={`${fmtPln(insight.best.avgValue)} średnio na wynajem`}
+          />
+          <InsightBox
+            kind="worst"
+            title="Najniższa śr. wartość wynajmu"
+            device={insight.worst.name}
+            pct={`${fmtPln(insight.worst.avgValue)} średnio na wynajem`}
+          />
+        </div>
+      )}
+
+      <div className="px-7 pb-8 pt-6">
+        <div className="mb-[14px] text-[13px] font-bold" style={{ color: C.muted }}>
+          Rozbicie na klientów
+        </div>
+        {clients.length === 0 ? (
+          <p className="py-6 text-[13px]" style={{ color: C.faint }}>
+            Brak przychodu w wybranym okresie.
+          </p>
+        ) : (
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                {["Klient", "Przychód", "Udział", "Wynajmy", "Śr. wartość", "Urządzenia"].map((h, i) => (
+                  <th
+                    key={h}
+                    className={`px-2.5 pb-2 text-[10.5px] font-bold uppercase tracking-[0.03em] ${i === 0 ? "text-left" : "text-right"}`}
+                    style={{ color: C.faint, borderBottom: `1px solid ${C.border}` }}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {clients.map((c) => {
+                const aggregate = c.kind !== "named";
+                return (
+                  <tr key={c.id}>
+                    <td
+                      className="px-2.5 py-[11px] text-[13.5px]"
+                      style={{
+                        borderBottom: `1px solid ${C.border}`,
+                        fontWeight: aggregate ? 500 : 600,
+                        color: aggregate ? C.muted : C.text,
+                      }}
+                    >
+                      {c.name}
+                      {c.isNew && (
+                        <span
+                          className="ml-[7px] inline-block rounded-full px-[7px] py-0.5 align-middle text-[10px] font-bold"
+                          style={{ background: "#F3EBFF", color: "#7C3AED" }}
+                        >
+                          Nowy
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-2.5 py-[11px] text-right text-[13.5px] tabular-nums" style={cell()}>
+                      {fmtPln(c.revenueNet)}
+                    </td>
+                    <td className="px-2.5 py-[11px] text-right text-[12px] tabular-nums" style={cell(C.faint)}>
+                      {c.sharePct}%
+                    </td>
+                    <td className="px-2.5 py-[11px] text-right text-[13.5px] tabular-nums" style={cell()}>
+                      {c.rentalCount}
+                    </td>
+                    <td className="px-2.5 py-[11px] text-right text-[13.5px] tabular-nums" style={cell()}>
+                      {fmtPln(c.avgValue)}
+                    </td>
+                    <td className="px-2.5 py-[11px] text-right text-[12px]" style={cell(C.faint)}>
+                      {deviceCountLabel(c.deviceCount)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
 }
 
 function InsightBox({

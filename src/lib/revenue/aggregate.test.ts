@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  bestWorstClientAvg,
   bestWorstUtilization,
+  computeClientBreakdown,
   computeDeviceBreakdown,
   computeDurationHistogram,
   computeKpis,
   computePaymentSplit,
+  NO_CLIENT_ID,
   pendingPriceCount,
+  REST_CLIENTS_ID,
   trendPct,
   type RevenueRow,
 } from "./aggregate";
@@ -130,5 +134,74 @@ describe("computePaymentSplit", () => {
 describe("pendingPriceCount", () => {
   it("liczy wydarzenia z ceną tymczasową", () => {
     expect(pendingPriceCount([row({ pulsePending: true }), row({}), row({ pulsePending: true })])).toBe(2);
+  });
+});
+
+describe("computeClientBreakdown", () => {
+  it("grupuje po hubspotContactId, liczy śr. wartość i różne urządzenia, odznaka Nowy", () => {
+    const rows = [
+      row({ hubspotContactId: "c1", contactLabel: "Beauty Studio", totalNet: 2000, deviceId: "a" }),
+      row({ hubspotContactId: "c1", contactLabel: "Beauty Studio", totalNet: 2000, deviceId: "b" }),
+      row({ hubspotContactId: "c2", contactLabel: "Wellness", totalNet: 1000, deviceId: "a" }),
+    ];
+    const out = computeClientBreakdown(rows, new Set(["c2"]));
+    const c1 = out.find((c) => c.id === "c1")!;
+    expect(c1.rentalCount).toBe(2);
+    expect(c1.avgValue).toBe(2000);
+    expect(c1.deviceCount).toBe(2);
+    expect(c1.isNew).toBe(false);
+    expect(out.find((c) => c.id === "c2")!.isNew).toBe(true);
+    // sort malejąco po przychodzie
+    expect(out[0].id).toBe("c1");
+  });
+
+  it("wydarzenia bez kontaktu: jeden wiersz zbiorczy na koncu, deviceCount null", () => {
+    const rows = [
+      row({ hubspotContactId: "c1", totalNet: 1000 }),
+      row({ hubspotContactId: null, totalNet: 500 }),
+      row({ hubspotContactId: null, totalNet: 700 }),
+    ];
+    const out = computeClientBreakdown(rows, new Set());
+    const none = out[out.length - 1];
+    expect(none.id).toBe(NO_CLIENT_ID);
+    expect(none.rentalCount).toBe(2);
+    expect(none.revenueNet).toBe(1200);
+    expect(none.deviceCount).toBeNull();
+  });
+
+  it("powyzej progu: top 6 + zbiorczy wiersz pozostali klienci N", () => {
+    const rows = Array.from({ length: 10 }, (_, i) =>
+      row({ hubspotContactId: `c${i}`, contactLabel: `K${i}`, totalNet: 1000 - i * 50 }),
+    );
+    const out = computeClientBreakdown(rows, new Set());
+    expect(out).toHaveLength(7);
+    expect(out[6].id).toBe(REST_CLIENTS_ID);
+    expect(out[6].name).toBe("pozostali klienci (4)");
+    expect(out[6].rentalCount).toBe(4);
+  });
+
+  it("dokładnie na progu (8) → bez zwijania", () => {
+    const rows = Array.from({ length: 8 }, (_, i) => row({ hubspotContactId: `c${i}`, totalNet: 100 }));
+    expect(computeClientBreakdown(rows, new Set())).toHaveLength(8);
+  });
+});
+
+describe("bestWorstClientAvg", () => {
+  it("liczy po średniej wartości wynajmu, nie po przychodzie; pomija wiersze zbiorcze", () => {
+    // c1: przychód 4000 (2 wynajmy, śr 2000). c2: przychód 2550 (1 wynajem, śr 2550).
+    const rows = [
+      row({ hubspotContactId: "c1", contactLabel: "Duży łączny", totalNet: 2000 }),
+      row({ hubspotContactId: "c1", contactLabel: "Duży łączny", totalNet: 2000 }),
+      row({ hubspotContactId: "c2", contactLabel: "Wysoka średnia", totalNet: 2550 }),
+      row({ hubspotContactId: null, totalNet: 9999 }),
+    ];
+    const bw = bestWorstClientAvg(computeClientBreakdown(rows, new Set()))!;
+    expect(bw.best.name).toBe("Wysoka średnia"); // 2550 > 2000 mimo mniejszego przychodu
+    expect(bw.worst.name).toBe("Duży łączny");
+  });
+
+  it("mniej niż 2 nazwanych klientów → null", () => {
+    const rows = [row({ hubspotContactId: "c1" }), row({ hubspotContactId: null })];
+    expect(bestWorstClientAvg(computeClientBreakdown(rows, new Set()))).toBeNull();
   });
 });
