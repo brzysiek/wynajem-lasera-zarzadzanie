@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Jost } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { AppFooter } from "@/components/app-footer";
@@ -13,6 +13,18 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Rebranding (docs/prompt-claude-code-powloka-aplikacji.md, sekcja 3) — Jost
+// jest UŻYWANY WYŁĄCZNIE przez elementy powłoki (topbar/sidebar/pasek ikon,
+// patrz komponenty w src/components/shell). Reszta aplikacji zostaje na
+// domyślnym Geist/Arial — nie zmieniamy globalnego --font-sans, tylko
+// wystawiamy tę zmienną obok, żeby powłoka mogła się po nią sięgnąć.
+const jost = Jost({
+  variable: "--font-jost",
+  weight: ["300", "400", "500", "600"],
+  style: ["normal", "italic"],
+  subsets: ["latin", "latin-ext"],
 });
 
 export const metadata: Metadata = {
@@ -49,7 +61,7 @@ export default function RootLayout({
   const isDev = process.env.NODE_ENV !== "production";
 
   return (
-    <html lang="pl" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="pl" className={`${geistSans.variable} ${geistMono.variable} ${jost.variable} h-full antialiased`}>
       <body className={`min-h-full flex flex-col text-gray-900 ${isDev ? "bg-amber-50" : "bg-gray-50"}`}>
         <div className="flex min-h-0 flex-1 flex-col">
           <Providers>{children}</Providers>

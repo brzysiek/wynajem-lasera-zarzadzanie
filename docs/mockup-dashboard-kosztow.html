@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — Dashboard kosztów (rozbudowany)</title>
+<style>
+  :root{
+    --bg:#F1F3F6; --surface:#FFFFFF; --border:#E2E6EC;
+    --text:#171A21; --text-muted:#6B7280; --text-faint:#9CA3AF;
+    --brand:#2F6FD1; --brand-soft:#EAF1FC;
+    --green:#1E9E6B; --green-soft:#E7F7F0;
+    --red:#D93025; --red-soft:#FCE8E6;
+    --purple:#7C3AED; --purple-soft:#F3EBFF;
+    --gold:#B5851E; --gold-soft:#FBF3E1;
+    --amber-text:#7A5A0E;
+    --radius:14px; --radius-sm:9px;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text); padding:40px 24px 90px; }
+
+  .intro{ max-width:1080px; margin:0 auto 28px; }
+  .intro .eyebrow{ font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--brand); margin-bottom:6px; }
+  .intro h1{ font-size:22px; margin:0 0 6px; letter-spacing:-0.01em; }
+  .intro p{ margin:0; color:var(--text-muted); font-size:14px; max-width:700px; line-height:1.5; }
+  .intro .authority{ margin-top:14px; background:var(--brand-soft); border:1px solid #CFE0F8; border-radius:var(--radius-sm); padding:12px 16px; font-size:13px; color:#1F4B8A; max-width:700px; line-height:1.5; }
+  .intro .caution{ margin-top:10px; background:var(--gold-soft); border:1px solid #F0E0B8; border-radius:var(--radius-sm); padding:10px 14px; font-size:12.5px; color:var(--amber-text); max-width:700px; line-height:1.5; }
+
+  .page{ max-width:1080px; margin:0 auto 40px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  .page-header{ padding:22px 28px 0; display:flex; align-items:flex-start; justify-content:space-between; }
+  .page-header h2{ margin:0; font-size:18px; }
+  .link-manage{ font-size:13px; font-weight:700; color:var(--brand); text-decoration:none; padding-top:2px; }
+
+  .mode-tabs{ display:inline-flex; background:var(--bg); border-radius:999px; padding:3px; border:1px solid var(--border); margin-top:16px; }
+  .mode-tabs .seg{ padding:8px 18px; border-radius:999px; font-size:13.5px; font-weight:600; color:var(--text-muted); cursor:default; }
+  .mode-tabs .seg.active{ background:var(--surface); color:var(--text); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+
+  .period-nav{ display:flex; align-items:center; justify-content:center; gap:22px; margin:20px 0 4px; }
+  .period-nav .arrow{ width:32px; height:32px; border-radius:50%; border:1px solid var(--border); background:var(--surface); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:15px; }
+  .period-nav .label{ font-size:16px; font-weight:700; min-width:200px; text-align:center; }
+
+  hr.div{ border:none; border-top:1px solid var(--border); margin:22px 0 0; }
+
+  .kpi-strip{ display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--border); }
+  .kpi-card{ background:var(--surface); padding:18px 18px; }
+  .kpi-card .label{ font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--text-faint); }
+  .kpi-card .amount{ font-size:22px; font-weight:800; letter-spacing:-0.01em; margin-top:6px; }
+  .kpi-card .sub{ font-size:11.5px; color:var(--text-muted); margin-top:3px; }
+  .trend-inline{ display:inline-flex; align-items:center; gap:4px; margin-top:8px; font-size:12px; font-weight:700; }
+  .trend-inline.up{ color:var(--red); }
+  .trend-inline.down{ color:var(--green); }
+  .trend-inline .vs{ font-weight:500; color:var(--text-faint); }
+
+  /* ---- TREND MIESIĘCZNY ---- */
+  .trend-section{ padding:24px 28px; border-bottom:1px solid var(--border); }
+  .trend-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .trend-header .heading{ font-size:13px; font-weight:700; color:var(--text-muted); }
+  .trend-legend{ display:flex; gap:14px; font-size:11.5px; color:var(--text-muted); }
+  .trend-legend .sw{ display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; }
+  .trend-chart{ display:grid; grid-template-columns:repeat(6,1fr); gap:16px; align-items:end; height:190px; }
+  .trend-col{ display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .trend-bar-total{ font-size:11px; color:var(--text-faint); margin-bottom:5px; font-weight:600; }
+  .trend-bar{ width:100%; max-width:52px; display:flex; flex-direction:column-reverse; border-radius:5px 5px 0 0; overflow:hidden; }
+  .trend-bar .seg.ogolne{ background:var(--brand); }
+  .trend-bar .seg.pojazdy{ background:var(--gold); }
+  .trend-bar .seg.urzadzenia{ background:var(--purple); }
+  .trend-col-label{ font-size:11.5px; color:var(--text-faint); font-weight:600; margin-top:8px; }
+  .trend-col-label.current{ color:var(--text); font-weight:800; }
+  .trend-insight{ margin-top:16px; background:var(--red-soft); border-radius:var(--radius-sm); padding:10px 14px; font-size:12.5px; color:var(--red); display:flex; gap:8px; align-items:center; }
+  .trend-insight b{ font-weight:800; }
+
+  .content-tabs{ display:flex; gap:4px; margin:0 28px; border-bottom:1px solid var(--border); padding-top:4px; }
+  .content-tab-btn{ appearance:none; background:none; border:none; font-family:inherit; padding:10px 16px; font-size:13.5px; font-weight:600; color:var(--text-muted); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .content-tab-btn.active{ color:var(--brand); border-bottom-color:var(--brand); }
+  .tab-panel{ display:none; }
+  .tab-panel.active{ display:block; }
+
+  .table-section{ padding:24px 28px 28px; }
+  .table-section .heading{ font-size:13px; font-weight:700; color:var(--text-muted); margin-bottom:14px; }
+  table.devtable{ width:100%; border-collapse:collapse; }
+  table.devtable th{ text-align:left; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--text-faint); padding:0 10px 8px; border-bottom:1px solid var(--border); }
+  table.devtable th.num{ text-align:right; }
+  table.devtable td{ padding:11px 10px; font-size:13.5px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  table.devtable td.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  table.devtable tbody tr:last-child > td{ border-bottom:none; }
+  table.devtable td.name{ font-weight:600; }
+  table.devtable tr.total-row td{ font-weight:800; border-top:2px solid var(--border); }
+  .auto-badge{ font-size:10px; font-weight:700; background:var(--purple-soft); color:var(--purple); padding:2px 7px; border-radius:999px; margin-left:7px; }
+  .scope-tag{ font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:999px; margin-left:8px; }
+  .scope-tag.general{ background:var(--brand-soft); color:var(--brand); }
+  .scope-tag.vehicle{ background:var(--gold-soft); color:var(--gold); }
+  .scope-tag.device{ background:var(--purple-soft); color:var(--purple); }
+  .dash{ color:var(--text-faint); }
+
+  details.row-detail{ border:none; }
+  details.row-detail summary{ list-style:none; cursor:pointer; }
+  details.row-detail summary::-webkit-details-marker{ display:none; }
+  .detail-body{ padding:8px 10px 14px 10px; background:var(--bg); font-size:12.5px; color:var(--text-muted); }
+  .detail-body .meta{ margin-bottom:8px; }
+  .detail-body .item{ display:flex; justify-content:space-between; padding:3px 0; }
+  .chev-cell{ color:var(--text-faint); font-size:11px; margin-right:6px; }
+
+  .note{ max-width:1080px; margin:16px auto 0; font-size:12px; color:var(--text-muted); text-align:center; line-height:1.5; }
+</style>
+</head>
+<body>
+
+  <div class="intro">
+    <div class="eyebrow">panel.wynajemlasera.pl · nowa funkcja</div>
+    <h1>Dashboard kosztów — rozbudowana wersja</h1>
+    <p>Dodane: 5. karta KPI (koszt na wynajem), trend miesięczny (6 miesięcy, rozbity na zakresy) z insightem, zakładka „Kategorie” (przekrojowo przez wszystkie zakresy, nie tylko ogólne), zakładka „Kierowcy”, kolumna koszt/km w Pojazdach.</p>
+    <div class="authority"><b>Dla Claude Code:</b> ten plik jest źródłem prawdy dla wyglądu. Logika — w towarzyszącym pliku <code>.md</code>.</div>
+    <div class="caution">Dane „Kierowcy” poniżej są w pełni fikcyjne (etykiety „Kierowca A/B”, wymyślone stawki) — celowo nie użyłem prawdziwego imienia, żeby nie łączyć realnej osoby z wymyślonymi kwotami wynagrodzenia w przykładowych danych.</div>
+  </div>
+
+  <div class="page">
+    <div class="page-header">
+      <h2>Finanse — Koszty</h2>
+      <a href="#" class="link-manage">Zarządzaj kosztami →</a>
+    </div>
+    <div style="padding:0 28px;">
+      <div class="mode-tabs">
+        <span class="seg active">Miesiąc</span>
+        <span class="seg">Zakres</span>
+        <span class="seg">Sezon</span>
+      </div>
+    </div>
+
+    <div class="period-nav">
+      <div class="arrow">‹</div>
+      <div class="label">Wrzesień 2026</div>
+      <div class="arrow">›</div>
+    </div>
+
+    <hr class="div" />
+
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="label">Koszty łącznie</div>
+        <div class="amount">7 530 zł</div>
+        <div class="trend-inline down">▼ −4% <span class="vs">vs sierpień</span></div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Ogólne</div>
+        <div class="amount">1 750 zł</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Pojazdy</div>
+        <div class="amount">3 030 zł</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Urządzenia</div>
+        <div class="amount">2 750 zł</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Koszt na wynajem</div>
+        <div class="amount">221 zł</div>
+        <div class="sub">7 530 zł / 34 wynajmy</div>
+      </div>
+    </div>
+
+    <!-- TREND MIESIĘCZNY -->
+    <div class="trend-section">
+      <div class="trend-header">
+        <div class="heading">Trend miesięczny — ostatnie 6 miesięcy</div>
+        <div class="trend-legend">
+          <span><span class="sw" style="background:var(--brand)"></span>Ogólne</span>
+          <span><span class="sw" style="background:var(--gold)"></span>Pojazdy</span>
+          <span><span class="sw" style="background:var(--purple)"></span>Urządzenia</span>
+        </div>
+      </div>
+
+      <div class="trend-chart">
+        <div class="trend-col" style="height:64%">
+          <div class="trend-bar-total">5 200</div>
+          <div class="trend-bar" style="height:100%">
+            <div class="seg ogolne" style="flex-grow:1400"></div>
+            <div class="seg pojazdy" style="flex-grow:2600"></div>
+            <div class="seg urzadzenia" style="flex-grow:1200"></div>
+          </div>
+        </div>
+        <div class="trend-col" style="height:75%">
+          <div class="trend-bar-total">6 100</div>
+          <div class="trend-bar" style="height:100%">
+            <div class="seg ogolne" style="flex-grow:1500"></div>
+            <div class="seg pojazdy" style="flex-grow:2800"></div>
+            <div class="seg urzadzenia" style="flex-grow:1800"></div>
+          </div>
+        </div>
+        <div class="trend-col" style="height:86%">
+          <div class="trend-bar-total">6 950</div>
+          <div class="trend-bar" style="height:100%">
+            <div class="seg ogolne" style="flex-grow:1650"></div>
+            <div class="seg pojazdy" style="flex-grow:3200"></div>
+            <div class="seg urzadzenia" style="flex-grow:2100"></div>
+          </div>
+        </div>
+        <div class="trend-col" style="height:100%">
+          <div class="trend-bar-total">8 100</div>
+          <div class="trend-bar" style="height:100%">
+            <div class="seg ogolne" style="flex-grow:1800"></div>
+            <div class="seg pojazdy" style="flex-grow:2900"></div>
+            <div class="seg urzadzenia" style="flex-grow:3400"></div>
+          </div>
+        </div>
+        <div class="trend-col" style="height:97%">
+          <div class="trend-bar-total">7 840</div>
+          <div class="trend-bar" style="height:100%">
+            <div class="seg ogolne" style="flex-grow:1900"></div>
+            <div class="seg pojazdy" style="flex-grow:3200"></div>
+            <div class="seg urzadzenia" style="flex-grow:2740"></div>
+          </div>
+        </div>
+        <div class="trend-col" style="height:93%">
+          <div class="trend-bar-total">7 530</div>
+          <div class="trend-bar" style="height:100%">
+            <div class="seg ogolne" style="flex-grow:1750"></div>
+            <div class="seg pojazdy" style="flex-grow:3030"></div>
+            <div class="seg urzadzenia" style="flex-grow:2750"></div>
+          </div>
+        </div>
+      </div>
+      <div class="trend-chart" style="height:auto; margin-top:6px;">
+        <div class="trend-col-label">Kwi</div>
+        <div class="trend-col-label">Maj</div>
+        <div class="trend-col-label">Cze</div>
+        <div class="trend-col-label">Lip</div>
+        <div class="trend-col-label">Sie</div>
+        <div class="trend-col-label current">Wrz</div>
+      </div>
+
+      <div class="trend-insight">
+        <span>⚠️</span>
+        <span>Lipiec: skok kosztów urządzeń do <b>3 400 zł</b> (jednorazowa wymiana lampy) — poza tym stabilny wzrost napędzany głównie kosztami pojazdów.</span>
+      </div>
+    </div>
+
+    <div class="content-tabs">
+      <button class="content-tab-btn active" data-tab="kategorie">Kategorie</button>
+      <button class="content-tab-btn" data-tab="pojazdy">Pojazdy</button>
+      <button class="content-tab-btn" data-tab="urzadzenia">Urządzenia</button>
+      <button class="content-tab-btn" data-tab="kierowcy">Kierowcy</button>
+    </div>
+
+    <!-- TAB: KATEGORIE (przekrojowo) -->
+    <div class="tab-panel active" id="tab-kategorie">
+      <div class="table-section">
+        <div class="heading">Rozbicie na kategorie — wszystkie zakresy razem, posortowane malejąco</div>
+        <table class="devtable">
+          <thead><tr><th>Kategoria</th><th class="num">Kwota</th></tr></thead>
+          <tbody>
+            <tr><td class="name">Wymiana lampy / elementu zużywalnego<span class="scope-tag device">Urządzenie</span></td><td class="num">2 400 zł</td></tr>
+            <tr><td class="name">Paliwo<span class="scope-tag vehicle">Pojazd</span><span class="auto-badge">⚙ auto</span></td><td class="num">1 680 zł</td></tr>
+            <tr><td class="name">Marketing i reklama<span class="scope-tag general">Ogólne</span></td><td class="num">1 200 zł</td></tr>
+            <tr><td class="name">Serwis / przegląd<span class="scope-tag vehicle">Pojazd</span></td><td class="num">1 070 zł</td></tr>
+            <tr><td class="name">Księgowość / prawne<span class="scope-tag general">Ogólne</span></td><td class="num">400 zł</td></tr>
+            <tr><td class="name">Materiały eksploatacyjne<span class="scope-tag device">Urządzenie</span></td><td class="num">350 zł</td></tr>
+            <tr><td class="name">Ubezpieczenie<span class="scope-tag vehicle">Pojazd</span></td><td class="num">280 zł</td></tr>
+            <tr><td class="name">Hosting / serwer<span class="scope-tag general">Ogólne</span></td><td class="num">150 zł</td></tr>
+            <tr class="total-row"><td>Razem</td><td class="num">7 530 zł</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB: POJAZDY -->
+    <div class="tab-panel" id="tab-pojazdy">
+      <div class="table-section">
+        <div class="heading">Rozbicie na pojazdy</div>
+        <table class="devtable">
+          <thead><tr><th></th><th>Pojazd</th><th class="num">Paliwo<span class="auto-badge">⚙ auto</span></th><th class="num">Inne koszty</th><th class="num">Razem</th><th class="num">Koszt/km<span class="auto-badge">⚙ auto</span></th></tr></thead>
+          <tbody>
+            <tr>
+              <td colspan="6" style="padding:0; border-bottom:1px solid var(--border);">
+                <details class="row-detail">
+                  <summary style="display:grid; grid-template-columns:24px 1fr 110px 110px 100px 100px; padding:11px 10px; font-size:13.5px; align-items:center;">
+                    <span class="chev-cell">▸</span>
+                    <span class="name">Ford Transit — auto 1</span>
+                    <span style="text-align:right;">980 zł</span>
+                    <span style="text-align:right;">930 zł</span>
+                    <span style="text-align:right; font-weight:700;">1 910 zł</span>
+                    <span style="text-align:right;">1,91 zł</span>
+                  </summary>
+                  <div class="detail-body">
+                    <div class="meta">14 dostaw w tym okresie · 1 000 km łącznie</div>
+                    <div class="item"><span>15.09 — Serwis</span><span>650 zł</span></div>
+                    <div class="item"><span>20.09 — Ubezpieczenie</span><span>280 zł</span></div>
+                  </div>
+                </details>
+              </td>
+            </tr>
+            <tr>
+              <td colspan="6" style="padding:0;">
+                <details class="row-detail">
+                  <summary style="display:grid; grid-template-columns:24px 1fr 110px 110px 100px 100px; padding:11px 10px; font-size:13.5px; align-items:center;">
+                    <span class="chev-cell">▸</span>
+                    <span class="name">VW Caddy — auto 2</span>
+                    <span style="text-align:right;">700 zł</span>
+                    <span style="text-align:right;">420 zł</span>
+                    <span style="text-align:right; font-weight:700;">1 120 zł</span>
+                    <span style="text-align:right;">1,34 zł</span>
+                  </summary>
+                  <div class="detail-body">
+                    <div class="meta">10 dostaw w tym okresie · 833 km łącznie</div>
+                    <div class="item"><span>08.09 — Przegląd</span><span>420 zł</span></div>
+                  </div>
+                </details>
+              </td>
+            </tr>
+            <tr class="total-row"><td></td><td>Razem</td><td class="num">1 680 zł</td><td class="num">1 350 zł</td><td class="num">3 030 zł</td><td class="num"><span class="dash">—</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note" style="margin-top:0;">„Koszt/km” = (paliwo + inne koszty pojazdu w okresie) ÷ suma km w okresie — całkowity koszt eksploatacji na kilometr, nie tylko sam koszt paliwa. Przydatne do porównania, które auto jest realnie tańsze w utrzymaniu.</div>
+    </div>
+
+    <!-- TAB: URZĄDZENIA -->
+    <div class="tab-panel" id="tab-urzadzenia">
+      <div class="table-section">
+        <div class="heading">Rozbicie na urządzenia</div>
+        <table class="devtable">
+          <thead><tr><th></th><th>Urządzenie</th><th class="num">Koszty w okresie</th><th class="num">Koszt na impuls<span class="auto-badge">⚙ auto</span></th></tr></thead>
+          <tbody>
+            <tr>
+              <td colspan="4" style="padding:0; border-bottom:1px solid var(--border);">
+                <details class="row-detail">
+                  <summary style="display:grid; grid-template-columns:24px 1fr 160px 160px; padding:11px 10px; font-size:13.5px; align-items:center;">
+                    <span class="chev-cell">▸</span>
+                    <span class="name">Alma Harmony XL Pro</span>
+                    <span style="text-align:right;">2 400 zł</span>
+                    <span style="text-align:right;">0,75 zł / impuls</span>
+                  </summary>
+                  <div class="detail-body">
+                    <div class="meta">3 200 impulsów zużytych w tym okresie</div>
+                    <div class="item"><span>25.09 — Wymiana lampy</span><span>2 400 zł</span></div>
+                  </div>
+                </details>
+              </td>
+            </tr>
+            <tr>
+              <td colspan="4" style="padding:0;">
+                <details class="row-detail">
+                  <summary style="display:grid; grid-template-columns:24px 1fr 160px 160px; padding:11px 10px; font-size:13.5px; align-items:center;">
+                    <span class="chev-cell">▸</span>
+                    <span class="name">LightSheer DESIRE</span>
+                    <span style="text-align:right;">350 zł</span>
+                    <span style="text-align:right;"><span class="dash">—</span></span>
+                  </summary>
+                  <div class="detail-body">
+                    <div class="item"><span>10.09 — Materiały eksploatacyjne (nakładki)</span><span>350 zł</span></div>
+                  </div>
+                </details>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB: KIEROWCY -->
+    <div class="tab-panel" id="tab-kierowcy">
+      <div class="table-section">
+        <div class="heading">Rozbicie na kierowców — koszt pracy (wyliczony)</div>
+        <table class="devtable">
+          <thead><tr><th>Kierowca</th><th class="num">Wynajmy obsłużone</th><th class="num">Łączny czas</th><th class="num">Koszt pracy<span class="auto-badge">⚙ auto</span></th></tr></thead>
+          <tbody>
+            <tr><td class="name">Kierowca A</td><td class="num">19</td><td class="num">28,5 godz.</td><td class="num">1 425 zł</td></tr>
+            <tr><td class="name">Kierowca B</td><td class="num">9</td><td class="num">14 godz.</td><td class="num">700 zł</td></tr>
+            <tr class="total-row"><td>Razem</td><td class="num">28</td><td class="num">42,5 godz.</td><td class="num">2 125 zł</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note" style="margin-top:0;">Ta zakładka jest widoczna wyłącznie dla ADMINA — dane wynagrodzeń nigdy nie trafiają do widoku żadnego kierowcy, nawet dotyczące jego samego. Suma kosztu pracy nie wchodzi do KPI „Koszty łącznie” (patrz plik .md) — pokazana tu osobno jako wgląd poglądowy.</div>
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('.content-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.content-tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+  </script>
+
+</body>
+</html>
