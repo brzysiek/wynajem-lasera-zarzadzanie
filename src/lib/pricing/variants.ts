@@ -29,6 +29,7 @@ export const VARIANT_OPTIONS_BY_CATEGORY: Record<DevicePricingCategory, { value:
   ALMA_HARMONY: [
     { value: "dye_vl", label: "Dye-VL" },
     { value: "dye_vl_ipixel", label: "Dye-VL + Er:YAG iPixel" },
+    { value: "er_yag_ipixel", label: "Er:YAG iPixel" },
   ],
   LIGHTSHEER_ET400_FLAT: [],
   COOLTECH_FLAT: [],
@@ -59,6 +60,7 @@ export const VARIANT_LABELS: Record<string, string> = {
   double: "podwójna głowica",
   dye_vl: "Dye-VL",
   dye_vl_ipixel: "Dye-VL + Er:YAG iPixel",
+  er_yag_ipixel: "Er:YAG iPixel",
 };
 
 export function variantShortLabel(variant: string | null | undefined): string {
