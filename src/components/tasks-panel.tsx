@@ -346,13 +346,10 @@ export function TasksPanel({
 
   return (
     <>
-      {/* Przyciemnienie tła — tylko mobile (dzisiejsze zachowanie, zamrożone
-          1:1). Na desktopie panel wysuwa się obok trwałego paska ikon, bez
-          przyciemniania reszty apki — docs/prompt-claude-code-powloka-aplikacji.md, sekcja 1.4. */}
-      {open && <div className="fixed inset-0 z-40 bg-black/10 md:hidden" onClick={onClose} aria-hidden />}
+      {open && <div className="fixed inset-0 z-40 bg-black/10" onClick={onClose} aria-hidden />}
 
       <aside
-        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-white transition-transform duration-200 sm:w-[380px] md:inset-y-auto md:top-14 md:bottom-0 md:right-14 md:w-[340px] ${
+        className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-white transition-transform duration-200 sm:w-[380px] ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
         style={{ borderLeft: `1px solid ${C.border}`, boxShadow: open ? "0 0 16px rgba(0,0,0,0.12)" : "none" }}

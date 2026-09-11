@@ -5,13 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { LogoutButton } from "@/components/logout-button";
-import { SHELL, SHELL_FONT_STYLE } from "@/components/shell-tokens";
 
-// Ta lista zasila WYŁĄCZNIE rozwijane menu mobilne poniżej (< md) — na
-// desktopie te same pozycje żyją teraz w SidebarNav (lewy panel), patrz
-// docs/prompt-claude-code-powloka-aplikacji.md. Zachowanie na mobile jest
-// świadomie zamrożone 1:1 (mockup powłoki dotyczy wyłącznie desktopu) —
-// stąd „Finanse" zostaje tu jako pojedynczy płaski link, bez podmenu.
 type NavItem = { href: string; label: string; match?: string; adminOnly?: boolean };
 
 const NAV_ITEMS: NavItem[] = [
@@ -26,26 +20,6 @@ const NAV_ITEMS: NavItem[] = [
 
 // A driver only ever has the read-only calendar.
 const DRIVER_NAV_ITEMS = NAV_ITEMS.filter((item) => item.href === "/kalendarz");
-
-// Placeholder tekstowy — czeka na lokalny plik graficzny w public/ (patrz
-// prompt-claude-code-powloka-aplikacji.md, sekcja 1.1: zabronione hotlinkowanie
-// zewnętrznego URL-a do wynajemlasera.pl w kodzie docelowym). Podmienić na
-// <Image src="/logo.png" .../> gdy plik trafi do repo.
-function AppLogo() {
-  return (
-    <span className="text-[15px] font-semibold tracking-tight" style={{ color: SHELL.brandDeep, ...SHELL_FONT_STYLE }}>
-      WynajemLasera<span style={{ color: SHELL.brand }}>.pl</span>
-    </span>
-  );
-}
-
-function SidebarToggleIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 function HamburgerIcon({ open }: { open: boolean }) {
   return (
@@ -173,7 +147,6 @@ export function TopNav({
   showTasks = false,
   openTaskCount = null,
   onToggleTasks,
-  onToggleSidebarCollapse,
 }: {
   userName: string;
   role?: "ADMIN" | "STAFF" | "KIEROWCA";
@@ -182,8 +155,6 @@ export function TopNav({
   showTasks?: boolean;
   openTaskCount?: number | null;
   onToggleTasks?: () => void;
-  // Desktop only — zwija/rozwija SidebarNav (docs/prompt-claude-code-powloka-aplikacji.md, sekcja 1.2).
-  onToggleSidebarCollapse?: () => void;
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -201,43 +172,41 @@ export function TopNav({
   }
 
   return (
-    <header className="border-b bg-white" style={{ borderColor: SHELL.border }}>
+    <header className="border-b border-gray-200 bg-white">
       <div className="flex h-14 items-center justify-between px-4">
-        <div className="flex items-center gap-3">
-          {/* Mobile: otwiera rozwijane menu poniżej (zachowanie 1:1 jak dziś). */}
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
             aria-label={menuOpen ? "Zamknij menu" : "Otwórz menu"}
             aria-expanded={menuOpen}
-            className="flex-none rounded-md p-2 text-gray-600 hover:bg-gray-100 md:hidden"
+            className="mr-1 flex-none rounded-md p-2 text-gray-600 hover:bg-gray-100 md:hidden"
           >
             <HamburgerIcon open={menuOpen} />
           </button>
-          {/* Desktop: zwija/rozwija lewy panel (SidebarNav) — nowa powłoka. */}
-          {onToggleSidebarCollapse && (
-            <button
-              type="button"
-              onClick={onToggleSidebarCollapse}
-              aria-label="Zwiń/rozwiń panel nawigacji"
-              className="hidden flex-none rounded-full p-2.5 hover:bg-gray-50 md:flex"
-              style={{ color: SHELL.textMuted }}
-            >
-              <SidebarToggleIcon />
-            </button>
-          )}
-          <AppLogo />
+          <nav className="hidden items-center gap-1 md:flex">
+            {navItems.map((item) => {
+              const isActive = pathname.startsWith(item.match ?? item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`rounded-md px-3 py-2 text-sm font-medium ${
+                    isActive
+                      ? "bg-gray-900 text-white"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
 
         <div className="flex items-center gap-3">
           {canActAsDriver && <ViewToggle driverActive={driverPreview} />}
-          {/* Desktop: ten sam przycisk żyje teraz w prawym pasku ikon (IconRail) —
-              tu tylko na mobile, gdzie zachowujemy dzisiejsze umiejscowienie 1:1. */}
-          {showTasks && onToggleTasks && (
-            <div className="md:hidden">
-              <TasksButton count={openTaskCount} onClick={onToggleTasks} />
-            </div>
-          )}
+          {showTasks && onToggleTasks && <TasksButton count={openTaskCount} onClick={onToggleTasks} />}
           <div className="hidden items-center gap-3 md:flex">
             <span className="text-sm text-gray-600">{userName}</span>
             <LogoutButton />
