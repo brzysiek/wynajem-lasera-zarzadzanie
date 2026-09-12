@@ -86,8 +86,8 @@ export function AppShell({
         <main
           className={
             isFullWidth
-              ? "flex min-h-0 w-full flex-1 flex-col"
-              : "w-full flex-1 overflow-y-auto"
+              ? "flex min-h-0 min-w-0 w-full flex-1 flex-col"
+              : "w-full min-w-0 flex-1 overflow-y-auto"
           }
           style={isFullWidth ? undefined : { background: SHELL.bg }}
         >
