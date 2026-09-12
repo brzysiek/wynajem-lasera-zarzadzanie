@@ -8,11 +8,13 @@ import { logInfo, logWarn, logError } from "@/lib/logger";
 import { REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { resolveDriverId } from "@/lib/rental-driver";
+import { resolveContactDistanceKm, resolveVehicleId } from "@/lib/rental-vehicle";
 import { saveRentalFinance } from "@/lib/finance";
 
 const RENTAL_INCLUDE = {
   device: true,
   driver: { select: { id: true, name: true } },
+  vehicle: { select: { id: true, name: true } },
   finance: true,
   reminderRules: { orderBy: { daysBefore: "asc" as const } },
   messages: { orderBy: { sentAt: "desc" as const } },
@@ -72,6 +74,10 @@ export async function POST(req: NextRequest) {
   const transportPrice = typeof body?.transportPrice === "string" ? body.transportPrice.trim() : "";
   const eventType = body?.eventType === "SZKOLENIE" ? "SZKOLENIE" : "WYNAJEM";
 
+  const distanceResolved = resolveContactDistanceKm(body?.contactDistanceKm);
+  if (!distanceResolved.ok) return distanceResolved.response;
+  const contactDistanceKm = distanceResolved.distanceKm;
+
   if (!deviceId || !title || !startsAt || !endsAt || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
     logWarn("rental_create_rejected", { userId: session.user.id, reason: "invalid_input" });
     return NextResponse.json(
@@ -89,12 +95,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Nie znaleziono urządzenia." }, { status: 404 });
   }
 
-  // Only an admin may assign a driver; a STAFF request silently ignores the field.
+  // Only an admin may assign a driver/vehicle; a STAFF request silently ignores the fields.
   let driverId: string | null = null;
+  let vehicleId: string | null = null;
   if (session.user.role === "ADMIN" && body && "driverId" in body) {
     const resolved = await resolveDriverId(body.driverId);
     if (!resolved.ok) return resolved.response;
     driverId = resolved.driverId;
+  }
+  if (session.user.role === "ADMIN" && body && "vehicleId" in body) {
+    const resolved = await resolveVehicleId(body.vehicleId);
+    if (!resolved.ok) return resolved.response;
+    vehicleId = resolved.vehicleId;
   }
 
   try {
@@ -121,7 +133,9 @@ export async function POST(req: NextRequest) {
         deliveryTime,
         pickupTime,
         transportPrice: transportPrice || null,
+        contactDistanceKm,
         driverId,
+        vehicleId,
         eventType,
         lastSyncedAt: new Date(),
       },
@@ -137,6 +151,22 @@ export async function POST(req: NextRequest) {
       try {
         const contact = await getHubspotContact(contactId);
         const name = [contact.firstname, contact.lastname].filter(Boolean).join(" ").trim() || null;
+        // contactDistanceKm nie synchronizuje się z HubSpot (docs/prompt-claude-code-dashboard-kosztow.md
+        // sekcja 7 — świadomie, bez integracji mapowych). "Raz przy danym
+        // kliencie" realizujemy lokalnie: jeśli biuro nic nie wpisało na tym
+        // formularzu, podpowiadamy ostatnią znaną odległość z poprzedniego
+        // wynajmu tego samego kontaktu.
+        let distanceToSave = contactDistanceKm;
+        if (distanceToSave === null) {
+          const prev = await prisma.rental.findFirst({
+            where: { hubspotContactId: contact.id, contactDistanceKm: { not: null } },
+            orderBy: { startsAt: "desc" },
+            select: { contactDistanceKm: true },
+          });
+          if (prev?.contactDistanceKm !== null && prev?.contactDistanceKm !== undefined) {
+            distanceToSave = Number(prev.contactDistanceKm);
+          }
+        }
         await prisma.rental.update({
           where: { id: rental.id },
           data: {
@@ -149,6 +179,7 @@ export async function POST(req: NextRequest) {
             contactTransportPriceCache: contact.transportPrice,
             // Backfill the rental's own field only if nothing was typed on the form.
             ...(transportPrice ? {} : { transportPrice: contact.transportPrice }),
+            contactDistanceKm: distanceToSave,
           },
         });
       } catch (err) {

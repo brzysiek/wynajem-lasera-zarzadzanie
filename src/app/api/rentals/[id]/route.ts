@@ -6,11 +6,13 @@ import { logInfo, logWarn, logError } from "@/lib/logger";
 import { CONFIRMATION_OFFSET, REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { resolveDriverId } from "@/lib/rental-driver";
+import { resolveContactDistanceKm, resolveVehicleId } from "@/lib/rental-vehicle";
 import { saveRentalFinance } from "@/lib/finance";
 
 const RENTAL_INCLUDE = {
   device: true,
   driver: { select: { id: true, name: true } },
+  vehicle: { select: { id: true, name: true } },
   finance: true,
   reminderRules: { orderBy: { daysBefore: "asc" as const } },
   messages: { orderBy: { sentAt: "desc" as const } },
@@ -45,13 +47,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const eventType =
     body?.eventType === "SZKOLENIE" ? "SZKOLENIE" : body?.eventType === "WYNAJEM" ? "WYNAJEM" : rental.eventType;
 
-  // Only an admin may (re)assign or clear the driver; other roles never
-  // send the field and a STAFF request that does is ignored.
+  let contactDistanceKm: number | null = rental.contactDistanceKm !== null ? Number(rental.contactDistanceKm) : null;
+  if (body && "contactDistanceKm" in body) {
+    const resolved = resolveContactDistanceKm(body.contactDistanceKm);
+    if (!resolved.ok) return resolved.response;
+    contactDistanceKm = resolved.distanceKm;
+  }
+
+  // Only an admin may (re)assign or clear the driver/vehicle; other roles
+  // never send the fields and a STAFF request that does is ignored.
   let driverId = rental.driverId;
+  let vehicleId = rental.vehicleId;
   if (session.user.role === "ADMIN" && body && "driverId" in body) {
     const resolved = await resolveDriverId(body.driverId);
     if (!resolved.ok) return resolved.response;
     driverId = resolved.driverId;
+  }
+  if (session.user.role === "ADMIN" && body && "vehicleId" in body) {
+    const resolved = await resolveVehicleId(body.vehicleId);
+    if (!resolved.ok) return resolved.response;
+    vehicleId = resolved.vehicleId;
   }
 
   if (!title || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
@@ -126,7 +141,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         deliveryTime,
         pickupTime,
         transportPrice: transportPrice || null,
+        contactDistanceKm,
         driverId,
+        vehicleId,
         eventType,
         lastSyncedAt: new Date(),
       },

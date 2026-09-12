@@ -26,6 +26,7 @@ export type Device = {
 };
 
 export type DriverOption = { id: string; name: string };
+export type VehicleOption = { id: string; name: string };
 
 export type ReminderDays = 1 | 3 | 7;
 // 0 = one-off "reservation confirmation" offset. Historically sent via the
@@ -71,12 +72,15 @@ export type Rental = {
   hubspotContactId?: string | null;
   driverId?: string | null;
   driver?: DriverOption | null;
+  vehicleId?: string | null;
+  vehicle?: VehicleOption | null;
   contactNameCache?: string | null;
   contactPhoneCache?: string | null;
   contactEmailCache?: string | null;
   contactCompanyCache?: string | null;
   contactAddressCache?: string | null;
   contactTransportPriceCache?: string | null;
+  contactDistanceKm?: string | null;
   internalNotes?: string | null;
   deliveryAddress?: string | null;
   deliveryTime?: string | null;
@@ -689,6 +693,7 @@ export function RentalForm({
   reminderTemplates,
   smsTemplates = [],
   drivers = [],
+  vehicles = [],
   canManageDrivers = false,
   canManageFinance = false,
   previewPriceRules = [],
@@ -703,6 +708,7 @@ export function RentalForm({
   reminderTemplates: ReminderTemplatePreview[];
   smsTemplates?: SmsTemplateOption[];
   drivers?: DriverOption[];
+  vehicles?: VehicleOption[];
   // Only an admin sees/edits the driver field (assignment is admin-only).
   canManageDrivers?: boolean;
   // ADMIN/STAFF widzą sekcję „Finanse".
@@ -746,6 +752,8 @@ export function RentalForm({
     rental?.transportPrice ?? rental?.contactTransportPriceCache ?? "",
   );
   const [driverId, setDriverId] = useState(rental?.driverId ?? "");
+  const [vehicleId, setVehicleId] = useState(rental?.vehicleId ?? "");
+  const [contactDistanceKm, setContactDistanceKm] = useState(rental?.contactDistanceKm ?? "");
   const [eventType, setEventType] = useState<RentalEventType>(rental?.eventType ?? "WYNAJEM");
   const financeRef = useRef<FinancePayload | null>(null);
   const handleFinanceChange = useCallback((p: FinancePayload) => {
@@ -769,6 +777,12 @@ export function RentalForm({
   const assignedDriver = rental?.driver ?? null;
   const driverOptions: DriverOption[] =
     assignedDriver && !drivers.some((d) => d.id === assignedDriver.id) ? [assignedDriver, ...drivers] : drivers;
+
+  // Ta sama zasada co przy kierowcy — pojazd przypisany do tego wynajmu
+  // zostaje wybieralny, nawet jeśli w międzyczasie dezaktywowany.
+  const assignedVehicle = rental?.vehicle ?? null;
+  const vehicleOptions: VehicleOption[] =
+    assignedVehicle && !vehicles.some((v) => v.id === assignedVehicle.id) ? [assignedVehicle, ...vehicles] : vehicles;
 
   function goBack() {
     router.push(backHref);
@@ -825,10 +839,12 @@ export function RentalForm({
       deliveryTime: isSzkolenie ? "" : deliveryTime,
       pickupTime: isSzkolenie ? "" : pickupTime,
       transportPrice: isSzkolenie ? "" : transportPrice,
+      contactDistanceKm: isSzkolenie ? "" : contactDistanceKm,
       eventType,
     };
     if (canManageDrivers) {
       body.driverId = driverId || null;
+      body.vehicleId = vehicleId || null;
     }
     if (canManageFinance && financeRef.current) {
       body.finance = financeRef.current;
@@ -964,7 +980,7 @@ export function RentalForm({
                 placeholder="np. domofon nie działa — dzwonić na telefon po przyjeździe"
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
               />
-              <span className="text-xs text-gray-400">Widoczna dla kierowcy jako „Uwaga z biura".</span>
+              <span className="text-xs text-gray-400">Widoczna dla kierowcy jako „Uwaga z biura”.</span>
             </label>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1024,6 +1040,20 @@ export function RentalForm({
                 />
               </label>
             </div>
+            <label className="flex flex-col gap-1 text-sm text-gray-700">
+              Odległość do klienta (km)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={contactDistanceKm}
+                onChange={(e) => setContactDistanceKm(e.target.value)}
+                placeholder="np. 12,5"
+                className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+              />
+              <span className="text-xs text-gray-400">
+                Wpisz raz przy danym adresie — używane do wyliczenia kosztu paliwa (Finanse → Koszty).
+              </span>
+            </label>
             {deliveryTime && (
               <p className="text-xs text-gray-500">
                 Godzina dostawy zostanie dodana jako prefiks do nazwy wydarzenia w kalendarzu: „
@@ -1079,6 +1109,22 @@ export function RentalForm({
                   <span className="text-xs text-gray-400">
                     Przypisany kierowca widzi ten wynajem w swoim kalendarzu (tylko podgląd).
                   </span>
+                </label>
+                <label className="mt-4 flex flex-col gap-1 text-sm text-gray-700">
+                  Pojazd
+                  <select
+                    value={vehicleId}
+                    onChange={(e) => setVehicleId(e.target.value)}
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                  >
+                    <option value="">— brak —</option>
+                    {vehicleOptions.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-400">Używane do wyliczenia kosztu paliwa (Finanse → Koszty).</span>
                 </label>
               </div>
             )}

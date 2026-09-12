@@ -33,6 +33,7 @@ function deviceDto<T extends { variantOptions: unknown }>(d: T) {
 const RENTAL_INCLUDE = {
   device: true,
   driver: { select: { id: true, name: true } },
+  vehicle: { select: { id: true, name: true } },
   finance: true,
   reminderRules: { orderBy: { daysBefore: "asc" as const } },
   messages: { orderBy: { sentAt: "desc" as const } },
@@ -107,13 +108,16 @@ export default async function RentalDetailPage({
 
   const isAdmin = role === "ADMIN";
 
-  const [devices, rental, reminderTemplates, smsTemplates, drivers, financeCtx] = await Promise.all([
+  const [devices, rental, reminderTemplates, smsTemplates, drivers, vehicles, financeCtx] = await Promise.all([
     prisma.device.findMany({ orderBy: { name: "asc" }, select: DEVICE_SELECT }),
     prisma.rental.findUnique({ where: { id }, include: RENTAL_INCLUDE }),
     getAllReminderTemplates(),
     listSmsTemplates(),
     isAdmin
       ? prisma.user.findMany({ where: { role: "KIEROWCA" }, orderBy: { name: "asc" }, select: { id: true, name: true } })
+      : Promise.resolve([]),
+    isAdmin
+      ? prisma.vehicle.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })
       : Promise.resolve([]),
     loadFinanceFormContext(),
   ]);
@@ -136,12 +140,15 @@ export default async function RentalDetailPage({
     hubspotContactId: rental.hubspotContactId,
     driverId: rental.driverId,
     driver: rental.driver,
+    vehicleId: rental.vehicleId,
+    vehicle: rental.vehicle,
     contactNameCache: rental.contactNameCache,
     contactPhoneCache: rental.contactPhoneCache,
     contactEmailCache: rental.contactEmailCache,
     contactCompanyCache: rental.contactCompanyCache,
     contactAddressCache: rental.contactAddressCache,
     contactTransportPriceCache: rental.contactTransportPriceCache,
+    contactDistanceKm: rental.contactDistanceKm ? rental.contactDistanceKm.toString() : null,
     deliveryAddress: rental.deliveryAddress,
     deliveryTime: rental.deliveryTime,
     pickupTime: rental.pickupTime,
@@ -173,6 +180,7 @@ export default async function RentalDetailPage({
       reminderTemplates={reminderTemplates}
       smsTemplates={smsTemplates}
       drivers={drivers}
+      vehicles={vehicles}
       canManageDrivers={isAdmin}
       canManageFinance
       previewPriceRules={financeCtx.previewPriceRules}

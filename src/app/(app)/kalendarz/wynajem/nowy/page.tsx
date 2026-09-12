@@ -13,7 +13,7 @@ export default async function NewRentalPage({
   const session = await auth();
   const isAdmin = session?.user.role === "ADMIN";
 
-  const [devices, reminderTemplates, drivers, financeCtx] = await Promise.all([
+  const [devices, reminderTemplates, drivers, vehicles, financeCtx] = await Promise.all([
     prisma.device.findMany({
       orderBy: { name: "asc" },
       select: {
@@ -29,6 +29,9 @@ export default async function NewRentalPage({
     getAllReminderTemplates(),
     isAdmin
       ? prisma.user.findMany({ where: { role: "KIEROWCA" }, orderBy: { name: "asc" }, select: { id: true, name: true } })
+      : Promise.resolve([]),
+    isAdmin
+      ? prisma.vehicle.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })
       : Promise.resolve([]),
     loadFinanceFormContext(),
   ]);
@@ -46,6 +49,7 @@ export default async function NewRentalPage({
       defaultDateIso={date}
       reminderTemplates={reminderTemplates}
       drivers={drivers}
+      vehicles={vehicles}
       canManageDrivers={isAdmin}
       canManageFinance
       previewPriceRules={financeCtx.previewPriceRules}

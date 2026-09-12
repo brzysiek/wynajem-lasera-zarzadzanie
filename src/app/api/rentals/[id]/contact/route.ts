@@ -26,6 +26,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const contact = await getHubspotContact(contactId);
     const name = [contact.firstname, contact.lastname].filter(Boolean).join(" ").trim() || null;
 
+    // contactDistanceKm nie synchronizuje się z HubSpot — podpowiadamy
+    // ostatnią znaną odległość z poprzedniego wynajmu tego samego kontaktu,
+    // tylko jeśli ten wynajem jeszcze jej nie ma (docs/prompt-claude-code-dashboard-kosztow.md sekcja 7).
+    let distanceToSave = rental.contactDistanceKm;
+    if (distanceToSave === null) {
+      const prev = await prisma.rental.findFirst({
+        where: { hubspotContactId: contact.id, contactDistanceKm: { not: null } },
+        orderBy: { startsAt: "desc" },
+        select: { contactDistanceKm: true },
+      });
+      if (prev?.contactDistanceKm !== null && prev?.contactDistanceKm !== undefined) {
+        distanceToSave = prev.contactDistanceKm;
+      }
+    }
+
     const updated = await prisma.rental.update({
       where: { id },
       data: {
@@ -38,6 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         contactTransportPriceCache: contact.transportPrice,
         // Fill the rental's own transport-price field only if it's still empty.
         ...(rental.transportPrice ? {} : { transportPrice: contact.transportPrice }),
+        contactDistanceKm: distanceToSave,
       },
       include: { device: true },
     });
