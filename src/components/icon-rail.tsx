@@ -45,7 +45,7 @@ function RailIcon({
         aria-label={tooltip}
         className="relative flex h-10 w-10 items-center justify-center rounded-[10px]"
         style={{
-          color: disabled ? "#DCDFE2" : open ? SHELL.brand : SHELL.textMuted,
+          color: disabled ? "#DCDFE2" : SHELL.brand,
           background: open ? SHELL.brandSoft : "transparent",
           cursor: disabled ? "default" : "pointer",
         }}
