@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { SHELL, SHELL_FONT_STYLE } from "@/components/shell-tokens";
@@ -219,8 +219,18 @@ export function SidebarNav({
   collapsed: boolean;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const financeActive = pathname.startsWith("/finanse");
+  // Przychody i Koszty współdzielą wybrany okres (mode/m/from/to/s w URL,
+  // docs/prompt-claude-code-dashboard-przychodow.md sekcja 1) — przy
+  // przełączaniu MIĘDZY nimi doklej bieżące query params, żeby okres się nie
+  // resetował. "Wpisy kosztów" ma świadomie własny, niezależny filtr —
+  // zostaje bez params.
+  const periodQuery =
+    (pathname === "/finanse/przychody" || pathname === "/finanse/koszty") && searchParams.size > 0
+      ? `?${searchParams.toString()}`
+      : "";
   const [manualFinanceOpen, setManualFinanceOpen] = useState<boolean | null>(null);
   const financeOpen = manualFinanceOpen ?? financeActive;
 
@@ -294,10 +304,11 @@ export function SidebarNav({
               <div className="mb-2 ml-8 mt-0.5">
                 {FINANCE_SUB_ITEMS.map((sub) => {
                   const active = pathname === sub.href || pathname.startsWith(`${sub.href}/`);
+                  const carriesPeriod = sub.href === "/finanse/przychody" || sub.href === "/finanse/koszty";
                   return (
                     <Link
                       key={sub.href}
-                      href={sub.href}
+                      href={carriesPeriod ? `${sub.href}${periodQuery}` : sub.href}
                       className="mb-px block rounded-md px-2.5 py-[7px] text-[13.5px]"
                       style={active ? { color: SHELL.brand, fontWeight: 600 } : { color: SHELL.sidebarTextDim }}
                     >
