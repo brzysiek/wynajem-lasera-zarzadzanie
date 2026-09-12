@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { SHELL, SHELL_FONT_STYLE } from "@/components/shell-tokens";
 import { useCalendarDeviceFilter } from "@/components/calendar-device-filter-context";
@@ -145,36 +145,68 @@ function NavRow({
 // na desktopie nie było dwóch bocznych pasków naraz.
 function CalendarsSubItem({ collapsed }: { collapsed: boolean }) {
   const { devices, checkedIds, toggleDevice, loading } = useCalendarDeviceFilter();
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function cancelClose() {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }
+  function scheduleClose() {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), 150);
+  }
+  function openFlyout() {
+    cancelClose();
+    const rect = rowRef.current?.getBoundingClientRect();
+    if (rect) setPos({ top: rect.top, left: rect.right + 4 });
+    setOpen(true);
+  }
+  useEffect(() => () => cancelClose(), []);
 
   return (
-    <div className="group relative mb-1.5" style={{ marginLeft: collapsed ? 0 : 20 }}>
-      <div
-        className="flex cursor-default items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px]"
-        style={{ color: SHELL.sidebarTextDim }}
-      >
-        <LayersIcon />
-        {!collapsed && <span>Kalendarze</span>}
-      </div>
+    // position: fixed liczony z realnej pozycji wiersza (getBoundingClientRect),
+    // zamiast absolute wewnątrz <nav>: <nav> ma overflow-y-auto, co (per CSS —
+    // ustawienie jednej osi overflow na non-visible wymusza auto na drugiej)
+    // przycinało flyout wychodzący poza jego szerokość, więc renderował się
+    // niewidoczny/"pod" resztą strony zamiast nad nią.
+    <div
+      ref={rowRef}
+      className="mb-1.5 flex cursor-default items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px]"
+      style={{ color: SHELL.sidebarTextDim, marginLeft: collapsed ? 0 : 20 }}
+      onMouseEnter={openFlyout}
+      onMouseLeave={scheduleClose}
+    >
+      <LayersIcon />
+      {!collapsed && <span>Kalendarze</span>}
 
-      <div
-        className="pointer-events-none absolute left-full top-0 z-20 ml-1 w-56 rounded-lg bg-white p-1.5 opacity-0 shadow-lg transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
-        style={{ border: `1px solid ${SHELL.border}` }}
-      >
-        <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Urządzenia</p>
-        {loading && <p className="px-2 py-1 text-xs text-gray-400">Ładowanie…</p>}
-        {!loading && devices.length === 0 && <p className="px-2 py-1 text-xs text-gray-400">Brak urządzeń.</p>}
-        {devices.map((d) => (
-          <label
-            key={d.id}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            <input type="checkbox" checked={checkedIds.has(d.id)} onChange={() => toggleDevice(d.id)} />
-            <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: d.color }} />
-            <span className="truncate">{d.name}</span>
-            {!d.active && <span className="flex-none text-xs text-gray-400">(wycofane)</span>}
-          </label>
-        ))}
-      </div>
+      {open && pos && (
+        <div
+          className="fixed z-[100] w-56 rounded-lg bg-white p-1.5 shadow-lg"
+          style={{ top: pos.top, left: pos.left, border: `1px solid ${SHELL.border}` }}
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+        >
+          <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Urządzenia</p>
+          {loading && <p className="px-2 py-1 text-xs text-gray-400">Ładowanie…</p>}
+          {!loading && devices.length === 0 && <p className="px-2 py-1 text-xs text-gray-400">Brak urządzeń.</p>}
+          {devices.map((d) => (
+            <label
+              key={d.id}
+              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <input type="checkbox" checked={checkedIds.has(d.id)} onChange={() => toggleDevice(d.id)} />
+              <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: d.color }} />
+              <span className="truncate">{d.name}</span>
+              {!d.active && <span className="flex-none text-xs text-gray-400">(wycofane)</span>}
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -231,7 +263,9 @@ export function SidebarNav({
           return (
             <div key={item.href}>
               <NavRow href={item.href} label={item.label} icon={item.icon} collapsed={collapsed} active={active} />
-              {item.href === "/kalendarz" && <CalendarsSubItem collapsed={collapsed} />}
+              {/* Tylko na samej sekcji Kalendarz — na innych stronach (np. Finanse)
+                  ten filtr nie ma znaczenia, więc się nie pokazuje. */}
+              {item.href === "/kalendarz" && active && <CalendarsSubItem collapsed={collapsed} />}
             </div>
           );
         }
