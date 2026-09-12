@@ -10,16 +10,15 @@ export default async function CalendarPage() {
   const viewCookie = (await cookies()).get(VIEW_COOKIE)?.value;
   const driverMode = actsAsDriver(session?.user.role, session?.user.canActAsDriver, viewCookie);
 
-  const devices = await prisma.device.findMany({
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, shortName: true, color: true, active: true, googleCalendarId: true },
-  });
-
   // Ostrzeżenie dla admina: wynajmy z najbliższych ALERT_WINDOW_DAYS dni
   // (od dziś) bez przypisanego kierowcy / kontaktu / telefonu.
   const alerts = driverMode || session?.user.role !== "ADMIN" ? [] : await loadRentalAlerts();
 
-  return <CalendarView devices={devices} canEdit={!driverMode} alerts={alerts} />;
+  // Lista urządzeń do filtra nie jest już przekazywana tu jako prop —
+  // CalendarView czyta ją (i zaznaczenie widoczności) ze współdzielonego
+  // CalendarDeviceFilterProvider (AppShell), tak samo jak flyout "Kalendarze"
+  // w lewym pasku nawigacji. Patrz src/components/calendar-device-filter-context.tsx.
+  return <CalendarView canEdit={!driverMode} alerts={alerts} />;
 }
 
 async function loadRentalAlerts(): Promise<RentalAlert[]> {

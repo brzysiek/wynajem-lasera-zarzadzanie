@@ -7,6 +7,7 @@ import { BASE_PATH } from "@/lib/base-path";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { CalendarAlerts } from "@/components/calendar-alerts";
 import type { RentalAlert } from "@/lib/rental-alerts";
+import { useCalendarDeviceFilter } from "@/components/calendar-device-filter-context";
 
 type RawRental = Rental & { device: Device };
 
@@ -313,15 +314,18 @@ function ChevronIcon({ open }: { open: boolean }) {
 const VIEW_STATE_KEY = "kalendarz:view";
 
 export function CalendarView({
-  devices,
   canEdit = true,
   alerts = [],
 }: {
-  devices: Device[];
   canEdit?: boolean;
   alerts?: RentalAlert[];
 }) {
   const router = useRouter();
+  // Lista urządzeń + zaznaczenie widoczności — współdzielone z flyoutem
+  // "Kalendarze" pod pozycją "Kalendarz" w lewym pasku nawigacji
+  // (docs/prompt-claude-code-powloka-aplikacji.md); Provider mieszka w
+  // AppShell, patrz src/components/calendar-device-filter-context.tsx.
+  const { devices, checkedIds: checkedDeviceIds, toggleDevice } = useCalendarDeviceFilter();
   const alertIds = useMemo(() => new Set(alerts.map((a) => a.id)), [alerts]);
   const [mode, setMode] = useState<"month" | "week">("month");
   const [current, setCurrent] = useState(() => new Date());
@@ -353,7 +357,6 @@ export function CalendarView({
       // Ignore (private mode, quota, etc.) — navigation still works.
     }
   }, [mode, current]);
-  const [checkedDeviceIds, setCheckedDeviceIds] = useState<Set<string>>(() => new Set(devices.map((d) => d.id)));
   const [rentals, setRentals] = useState<RawRental[]>([]);
   const [isLoading, startLoading] = useTransition();
   const [dragOverDay, setDragOverDay] = useState<string | null>(null);
@@ -394,15 +397,6 @@ export function CalendarView({
 
   function refreshQuietly() {
     startLoading(() => fetchRentals());
-  }
-
-  function toggleDevice(id: string) {
-    setCheckedDeviceIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
   const visibleRentals = rentals.filter((r) => checkedDeviceIds.has(r.deviceId));
@@ -471,25 +465,12 @@ export function CalendarView({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-      {/* Desktop sidebar — Google Calendar-style device list */}
-      <aside className="hidden w-60 flex-none flex-col gap-4 border-r border-gray-200 bg-white p-4 lg:flex">
-        {canEdit && (
-          <button
-            type="button"
-            onClick={() => openCreate()}
-            className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
-          >
-            + Nowa rezerwacja
-          </button>
-        )}
-        <div className="flex flex-col gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Urządzenia</p>
-          {deviceList}
-        </div>
-      </aside>
-
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {/* Lista urządzeń i "+ Nowa rezerwacja" żyły tu kiedyś jako osobna
+          kolumna obok kalendarza — dziś filtr urządzeń jest we flyoucie
+          "Kalendarze" pod pozycją "Kalendarz" w lewym pasku nawigacji
+          (SidebarNav, na md+), a "Nowa rezerwacja" w pasku narzędzi poniżej,
+          żeby nie dublować kolumn na desktopie. */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
           <div className="flex items-center gap-2">
             <button
@@ -541,16 +522,18 @@ export function CalendarView({
               <button
                 type="button"
                 onClick={() => openCreate()}
-                className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 lg:hidden"
+                className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
               >
-                Nowa rezerwacja
+                + Nowa rezerwacja
               </button>
             )}
           </div>
         </div>
 
-        {/* Mobile/tablet device filter — sidebar takes over on lg+ */}
-        <div className="border-b border-gray-200 bg-white lg:hidden">
+        {/* Mobile: sidebar z SidebarNav (i jego flyout "Kalendarze") pokazuje
+            się dopiero od md — poniżej tego progu filtr urządzeń zostaje
+            zwijany tutaj, jak dotychczas. */}
+        <div className="border-b border-gray-200 bg-white md:hidden">
           <button
             type="button"
             onClick={() => setMobileDeviceFilterOpen((v) => !v)}
@@ -626,7 +609,6 @@ export function CalendarView({
             )}
           </div>
         </div>
-      </div>
     </div>
   );
 }

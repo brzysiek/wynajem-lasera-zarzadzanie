@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { SHELL, SHELL_FONT_STYLE } from "@/components/shell-tokens";
+import { useCalendarDeviceFilter } from "@/components/calendar-device-filter-context";
 
 // Ostatnio odwiedzona podstrona Finansów — fallback nawigacyjny, gdy panel
 // jest zwinięty i nie da się pokazać podmenu (docs/prompt-claude-code-powloka-aplikacji.md, sekcja 2.1).
@@ -61,6 +62,18 @@ function FinanceBarsIcon() {
     </svg>
   );
 }
+// Ikonka podpozycji "Kalendarze" (lista/warstwy) — celowo mniejsza wizualnie
+// niż ikony głównych pozycji, bo to pod-element Kalendarza, nie osobna strona.
+function LayersIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M10 3 3 7l7 4 7-4-7-4Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M3 10.5 10 14.5 17 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M3 14 10 18 17 14" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function GearIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -125,6 +138,47 @@ function NavRow({
   );
 }
 
+// Podpozycja pod "Kalendarz": nie nawiguje, tylko po najechaniu pokazuje
+// listę urządzeń/kalendarzy z checkboxami widoczności (ten sam stan co
+// filtr na samej stronie kalendarza — src/components/calendar-device-filter-context.tsx).
+// Zastępuje dawną osobną kolumnę "URZĄDZENIA" obok siatki kalendarza, żeby
+// na desktopie nie było dwóch bocznych pasków naraz.
+function CalendarsSubItem({ collapsed }: { collapsed: boolean }) {
+  const { devices, checkedIds, toggleDevice, loading } = useCalendarDeviceFilter();
+
+  return (
+    <div className="group relative mb-1.5" style={{ marginLeft: collapsed ? 0 : 20 }}>
+      <div
+        className="flex cursor-default items-center gap-2.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px]"
+        style={{ color: SHELL.sidebarTextDim }}
+      >
+        <LayersIcon />
+        {!collapsed && <span>Kalendarze</span>}
+      </div>
+
+      <div
+        className="pointer-events-none absolute left-full top-0 z-20 ml-1 w-56 rounded-lg bg-white p-1.5 opacity-0 shadow-lg transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
+        style={{ border: `1px solid ${SHELL.border}` }}
+      >
+        <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Urządzenia</p>
+        {loading && <p className="px-2 py-1 text-xs text-gray-400">Ładowanie…</p>}
+        {!loading && devices.length === 0 && <p className="px-2 py-1 text-xs text-gray-400">Brak urządzeń.</p>}
+        {devices.map((d) => (
+          <label
+            key={d.id}
+            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <input type="checkbox" checked={checkedIds.has(d.id)} onChange={() => toggleDevice(d.id)} />
+            <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: d.color }} />
+            <span className="truncate">{d.name}</span>
+            {!d.active && <span className="flex-none text-xs text-gray-400">(wycofane)</span>}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SidebarNav({
   role,
   collapsed,
@@ -175,14 +229,10 @@ export function SidebarNav({
         if (item.kind === "link") {
           const active = pathname.startsWith(item.match ?? item.href);
           return (
-            <NavRow
-              key={item.href}
-              href={item.href}
-              label={item.label}
-              icon={item.icon}
-              collapsed={collapsed}
-              active={active}
-            />
+            <div key={item.href}>
+              <NavRow href={item.href} label={item.label} icon={item.icon} collapsed={collapsed} active={active} />
+              {item.href === "/kalendarz" && <CalendarsSubItem collapsed={collapsed} />}
+            </div>
           );
         }
 
