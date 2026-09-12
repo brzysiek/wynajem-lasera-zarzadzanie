@@ -15,11 +15,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Rebranding (docs/prompt-claude-code-powloka-aplikacji.md, sekcja 3) — Jost
-// jest UŻYWANY WYŁĄCZNIE przez elementy powłoki (topbar/sidebar/pasek ikon,
-// patrz komponenty w src/components/shell). Reszta aplikacji zostaje na
-// domyślnym Geist/Arial — nie zmieniamy globalnego --font-sans, tylko
-// wystawiamy tę zmienną obok, żeby powłoka mogła się po nią sięgnąć.
+// Rebranding — Jost jest teraz krojem CAŁEJ aplikacji (patrz globals.css,
+// `body { font-family: var(--font-jost) }`), spójnym z wynajemlasera.pl.
+// Zaczęło się jako czcionka wyłącznie powłoki (docs/prompt-claude-code-powloka-aplikacji.md
+// sekcja 3), rozszerzone na treść stron przy osobnym zleceniu "premium" na
+// całą paletę (src/components/shell-tokens.ts, teraz też App).
 const jost = Jost({
   variable: "--font-jost",
   weight: ["300", "400", "500", "600"],

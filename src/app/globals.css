@@ -17,8 +17,11 @@
    preference here would flip just the page background to near-black while
    everything else stayed light, making it unreadable. Keep it white always. */
 
+/* Rebranding (docs/prompt-claude-code-powloka-aplikacji.md sekcja 3):
+   Jost jest teraz krojem CAŁEJ aplikacji, nie tylko ramy (topbar/sidebar) —
+   ta sama czcionka co wynajemlasera.pl, spójna z resztą marki. */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-jost), "Helvetica Neue", Helvetica, Arial, sans-serif;
 }

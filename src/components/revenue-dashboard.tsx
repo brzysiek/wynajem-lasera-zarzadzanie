@@ -35,16 +35,20 @@ type Comparison = {
   avgValue: number | null;
 } | null;
 
-// ---- kolory z mockup-dashboard-przychodow.html ----
+// ---- paleta premium (src/components/shell-tokens.ts, ta sama co
+// wynajemlasera.pl) — zastępuje dawną kolorystykę mockup-dashboard-przychodow.html
+// (jaśniejszy, bardziej "generyczny SaaS" niebieski #2F6FD1). ----
 const C = {
-  bg: "#F1F3F6",
+  bg: "#F2F4F6",
   surface: "#FFFFFF",
-  border: "#E2E6EC",
-  text: "#171A21",
-  muted: "#6B7280",
-  faint: "#9CA3AF",
-  brand: "#2F6FD1",
-  brandSoft: "#EAF1FC",
+  border: "#E9EDF1",
+  text: "#4A4A4A",
+  muted: "#6F7378",
+  faint: "#9AA1A8",
+  brand: "#1B6FA8",
+  brandSoft: "#EAF4FB",
+  accent: "#E08A5C",
+  accentSoft: "#FBF0E7",
   green: "#1E9E6B",
   greenSoft: "#E7F7F0",
   red: "#D93025",
@@ -136,7 +140,7 @@ export function RevenueDashboard({
       >
         {/* ---- header ---- */}
         <div className="px-4 pt-[22px] sm:px-7">
-          <h1 className="m-0 mb-[18px] text-[18px] font-semibold" style={{ color: C.text }}>
+          <h1 className="m-0 mb-[18px] text-[21px] font-normal italic" style={{ color: C.accent }}>
             Finanse — Przychody
           </h1>
           <div

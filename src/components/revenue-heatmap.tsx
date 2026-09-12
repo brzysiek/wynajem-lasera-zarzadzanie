@@ -9,26 +9,29 @@ import {
 } from "@/lib/revenue/heatmap";
 import type { RevenueRow } from "@/lib/revenue/aggregate";
 
+// Paleta premium (src/components/shell-tokens.ts) — ta sama co reszta
+// dashboardu przychodów (revenue-dashboard.tsx).
 const C = {
   surface: "#FFFFFF",
-  bg: "#F1F3F6",
-  border: "#E2E6EC",
-  text: "#171A21",
-  muted: "#6B7280",
-  faint: "#9CA3AF",
-  brand: "#2F6FD1",
-  brandSoft: "#EAF1FC",
+  bg: "#F2F4F6",
+  border: "#E9EDF1",
+  text: "#4A4A4A",
+  muted: "#6F7378",
+  faint: "#9AA1A8",
+  brand: "#1B6FA8",
+  brandSoft: "#EAF4FB",
   green: "#1E9E6B",
 };
 
-// Skala 5 poziomów z mockupu (heat-1..heat-5).
+// Skala 5 poziomów (heat-1..heat-5) — retintowana do nowego brand blue,
+// najciemniejszy poziom = dokładnie C.brand.
 const HEAT: ({ bg: string; fg: string } | null)[] = [
   null,
-  { bg: "#E3ECFA", fg: "#3B5C8C" },
-  { bg: "#BFD4F3", fg: "#2C4A78" },
-  { bg: "#8FB0E8", fg: "#1F3A66" },
-  { bg: "#5685D9", fg: "#FFFFFF" },
-  { bg: "#2F5FC4", fg: "#FFFFFF" },
+  { bg: "#E6EEF4", fg: "#355570" },
+  { bg: "#C2DBEA", fg: "#204A64" },
+  { bg: "#8FBFDA", fg: "#153A52" },
+  { bg: "#4E93BE", fg: "#FFFFFF" },
+  { bg: "#1B6FA8", fg: "#FFFFFF" },
 ];
 
 type PeriodMeta = { mode: "month" | "range" | "season"; label: string; start: string; end: string };

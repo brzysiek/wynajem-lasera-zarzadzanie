@@ -22,15 +22,18 @@ type CostRow = {
   vehicleName: string | null;
 };
 
+// Paleta premium (src/components/shell-tokens.ts) — spójna z resztą
+// dashboardów Finanse.
 const C = {
-  bg: "#F1F3F6",
+  bg: "#F2F4F6",
   surface: "#FFFFFF",
-  border: "#E2E6EC",
-  text: "#171A21",
-  muted: "#6B7280",
-  faint: "#9CA3AF",
-  brand: "#2F6FD1",
-  brandSoft: "#EAF1FC",
+  border: "#E9EDF1",
+  text: "#4A4A4A",
+  muted: "#6F7378",
+  faint: "#9AA1A8",
+  brand: "#1B6FA8",
+  brandSoft: "#EAF4FB",
+  accent: "#E08A5C",
   purple: "#7C3AED",
   purpleSoft: "#F3EBFF",
   red: "#D93025",
@@ -255,7 +258,7 @@ function CostFormModal({
             onClick={() => void submit()}
             disabled={saving}
             className="rounded-lg px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50"
-            style={{ background: C.brand }}
+            style={{ background: C.accent }}
           >
             {mode === "create" ? "Dodaj koszt" : "Zapisz"}
           </button>
@@ -358,14 +361,14 @@ export function CostEntriesManager({
     <div>
       <div className="overflow-hidden rounded-[14px] border" style={{ borderColor: C.border, background: C.surface }}>
         <div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-[22px] sm:px-7">
-          <h1 className="m-0 text-[18px] font-semibold" style={{ color: C.text }}>
+          <h1 className="m-0 text-[21px] font-normal italic" style={{ color: C.accent }}>
             Wpisy kosztów
           </h1>
           <button
             type="button"
             onClick={() => setModal({ mode: "create", row: null })}
             className="rounded-lg px-4 py-2.5 text-[13px] font-bold text-white"
-            style={{ background: C.text }}
+            style={{ background: C.accent }}
           >
             + Dodaj koszt
           </button>
