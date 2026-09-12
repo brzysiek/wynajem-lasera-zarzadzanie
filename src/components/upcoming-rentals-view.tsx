@@ -160,7 +160,7 @@ export function UpcomingRentalsView({ devices }: { devices: Device[] }) {
           value={clientFilter}
           onChange={(e) => setClientFilter(e.target.value)}
           placeholder="Filtruj po kliencie…"
-          className="w-64 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+          className="w-64 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
         />
         <div className="flex items-center gap-2 text-sm text-gray-700">
           <span>Grupuj:</span>
@@ -178,7 +178,7 @@ export function UpcomingRentalsView({ devices }: { devices: Device[] }) {
                 onClick={() => setGrouping(opt.key)}
                 className={`px-2 py-1 font-medium ${i === 0 ? "rounded-l-md" : ""} ${
                   i === arr.length - 1 ? "rounded-r-md" : ""
-                } ${grouping === opt.key ? "bg-gray-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                } ${grouping === opt.key ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
               >
                 {opt.label}
               </button>

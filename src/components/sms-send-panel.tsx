@@ -214,7 +214,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
                 type="button"
                 onClick={() => switchMode("contact")}
                 className={`rounded-l-md px-2 py-1 font-medium ${
-                  mode === "contact" ? "bg-gray-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                  mode === "contact" ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
                 }`}
               >
                 Kontakt
@@ -223,7 +223,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
                 type="button"
                 onClick={() => switchMode("rental")}
                 className={`rounded-r-md px-2 py-1 font-medium ${
-                  mode === "rental" ? "bg-gray-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                  mode === "rental" ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
                 }`}
               >
                 Wynajem
@@ -261,7 +261,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
                     }
                   }}
                   placeholder="Szukaj kontaktu w HubSpot (min. 3 znaki)…"
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
                 />
                 {isSearchingContact && <p className="mt-1 text-xs text-gray-400">Szukanie…</p>}
                 {contactSearchError && <p className="mt-1 text-xs text-red-700">{contactSearchError}</p>}
@@ -320,7 +320,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
                   }
                 }}
                 placeholder="Szukaj wynajmu po tytule, urządzeniu lub kliencie (min. 2 znaki)…"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
               />
               {isSearchingRental && <p className="mt-1 text-xs text-gray-400">Szukanie…</p>}
               {rentalSearchError && <p className="mt-1 text-xs text-red-700">{rentalSearchError}</p>}
@@ -358,7 +358,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
             onChange={(e) => setPhone(e.target.value)}
             placeholder="np. 500 100 200"
             required
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
           />
         </label>
 
@@ -367,7 +367,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
           <select
             value={templateId}
             onChange={(e) => applyTemplate(e.target.value)}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
           >
             <option value="">— wpisz treść ręcznie —</option>
             {templates.map((t) => (
@@ -384,7 +384,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={4}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
           />
         </label>
 
@@ -396,7 +396,7 @@ export function SmsSendPanel({ templates }: { templates: Template[] }) {
             type="button"
             onClick={handleSend}
             disabled={!canSend}
-            className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+            className="rounded-md bg-[#1B6FA8] px-4 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
           >
             {isSending ? "Wysyłanie…" : "Wyślij SMS"}
           </button>

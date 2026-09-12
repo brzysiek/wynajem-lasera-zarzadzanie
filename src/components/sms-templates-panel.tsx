@@ -74,7 +74,7 @@ function TemplateRow({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Nazwa szablonu"
-            className="w-full max-w-xs rounded-md border border-gray-300 px-2 py-1 text-sm font-medium text-gray-900 focus:border-gray-500 focus:outline-none"
+            className="w-full max-w-xs rounded-md border border-gray-300 px-2 py-1 text-sm font-medium text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
           />
         )}
         {!template.locked &&
@@ -107,7 +107,7 @@ function TemplateRow({
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={2}
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
       />
       {error && <p className="mt-1 text-xs text-red-700">{error}</p>}
       {dirty && (
@@ -116,7 +116,7 @@ function TemplateRow({
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+            className="rounded-md bg-[#1B6FA8] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
           >
             {isSaving ? "Zapisywanie…" : "Zapisz"}
           </button>
@@ -170,14 +170,14 @@ function NewTemplateForm({ onCreated }: { onCreated: (t: SmsTemplateDto) => void
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="Nazwa szablonu"
-          className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+          className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
         />
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={2}
           placeholder="Treść wiadomości"
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+          className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
         />
         {error && <p className="text-xs text-red-700">{error}</p>}
         <div className="flex gap-2">
@@ -185,7 +185,7 @@ function NewTemplateForm({ onCreated }: { onCreated: (t: SmsTemplateDto) => void
             type="button"
             onClick={handleCreate}
             disabled={isSaving || !label.trim() || !body.trim()}
-            className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+            className="rounded-md bg-[#1B6FA8] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
           >
             {isSaving ? "Dodawanie…" : "Dodaj"}
           </button>

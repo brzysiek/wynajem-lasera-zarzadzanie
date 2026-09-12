@@ -93,7 +93,7 @@ function VehicleRow({ vehicle, onSaved }: { vehicle: VehicleDto; onSaved: (v: Ve
             type="button"
             onClick={() => void save()}
             disabled={saving || !name.trim() || !plateNumber.trim()}
-            className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            className="rounded-md bg-[#1B6FA8] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
           >
             Zapisz
           </button>
@@ -209,7 +209,7 @@ export function VehiclesPanel({ initialVehicles }: { initialVehicles: VehicleDto
           <button
             type="submit"
             disabled={adding || !newName.trim() || !newPlate.trim()}
-            className="rounded-md bg-gray-900 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-md bg-[#1B6FA8] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             + Dodaj
           </button>

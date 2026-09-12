@@ -10,7 +10,10 @@ export const SHELL = {
   brandDeep: "#14567F",
   accent: "#E08A5C",
   accentSoft: "#FBF0E7",
-  sidebarBg: "#FAFCFD",
+  // Lekko błękitne (nie białe/szare) tło sidebaru — celowo "żywsze" niż
+  // dawne prawie-białe #FAFCFD, żeby lewy pasek miał wyczuwalny kolor marki
+  // nawet gdy żadna pozycja nie jest aktywna.
+  sidebarBg: "#EFF6FB",
   sidebarText: "#5B6167",
   sidebarTextDim: "#9AA1A8",
   bg: "#F2F4F6",

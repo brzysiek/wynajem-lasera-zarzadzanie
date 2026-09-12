@@ -65,7 +65,7 @@ export function ReminderSettingsPanel({ initialEnabled }: { initialEnabled: bool
           onClick={handleToggle}
           disabled={isToggling}
           className={`shrink-0 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 ${
-            enabled ? "bg-red-600 text-white hover:bg-red-700" : "bg-gray-900 text-white hover:bg-gray-700"
+            enabled ? "bg-red-600 text-white hover:bg-red-700" : "bg-[#1B6FA8] text-white hover:bg-[#14567F]"
           }`}
         >
           {isToggling ? "Zapisywanie…" : enabled ? "Wyłącz przypomnienia SMS" : "Włącz przypomnienia SMS"}

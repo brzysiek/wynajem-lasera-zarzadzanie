@@ -44,7 +44,7 @@ function ManualRunButton({
         type="button"
         onClick={handleClick}
         disabled={isRunning}
-        className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+        className="rounded-md bg-[#1B6FA8] px-4 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
       >
         {isRunning ? runningLabel : label}
       </button>

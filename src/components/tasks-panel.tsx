@@ -7,7 +7,8 @@ import { dueChip, verbZlecil, type DueChipKind, type TaskDto } from "@/lib/tasks
 
 type Person = { id: string; name: string };
 
-// Kolory Google Tasks / Material (docs/panel zadania sekcja 7).
+// Struktura Google Tasks / Material, ale paleta marki (src/components/shell-tokens.ts)
+// zamiast Google-blue — część premium reskinu, nie osobna decyzja jak wcześniej.
 const C = {
   text: "#202124",
   sub: "#5f6368",
@@ -16,13 +17,13 @@ const C = {
   fieldBorder: "#dadce0",
   field: "#f8f9fa",
   hover: "#f1f3f4",
-  blue: "#1a73e8",
-  bluePale: "#e8f0fe",
+  blue: "#1B6FA8",
+  bluePale: "#EAF4FB",
   red: "#d93025",
 };
 
 const CHIP: Record<Exclude<DueChipKind, "none">, { bg: string; fg: string }> = {
-  today: { bg: "#e8f0fe", fg: "#1a73e8" },
+  today: { bg: "#EAF4FB", fg: "#1B6FA8" },
   tomorrow: { bg: "#fef7e0", fg: "#b06000" },
   overdue: { bg: "#fce8e6", fg: "#d93025" },
   future: { bg: "#f1f3f4", fg: "#5f6368" },

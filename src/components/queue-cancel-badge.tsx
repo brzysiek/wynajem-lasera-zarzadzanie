@@ -32,7 +32,7 @@ export function QueueCancelBadge({
         type="button"
         onClick={() => setOpen(true)}
         title="Kliknij, aby edytować treść lub anulować wysyłkę"
-        className="rounded bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-200"
+        className="rounded bg-[#EAF4FB] px-1.5 py-0.5 text-xs font-medium text-[#1B6FA8] hover:bg-[#D9EAF7]"
       >
         zakolejkowane
       </button>
@@ -127,7 +127,7 @@ function QueueEditModal({
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 rows={5}
-                className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
               />
             </label>
             {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
@@ -154,7 +154,7 @@ function QueueEditModal({
                   type="button"
                   onClick={handleSave}
                   disabled={isSaving || !body.trim()}
-                  className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+                  className="rounded-md bg-[#1B6FA8] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
                 >
                   {isSaving ? "Zapisywanie…" : "Zapisz zmiany"}
                 </button>

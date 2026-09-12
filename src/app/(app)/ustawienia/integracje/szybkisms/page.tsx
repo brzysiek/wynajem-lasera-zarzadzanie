@@ -16,7 +16,7 @@ export default async function SzybkiSmsIntegrationPage() {
     <div>
       <SzybkiSmsPanel initiallyConfigured={configured} />
 
-      <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+      <div className="mb-6 rounded-lg border border-[#CFE0F0] bg-[#EAF4FB] p-4 text-sm text-[#14567F]">
         Konfiguracja poniżej ustawia tylko dane dostępowe do bramki SzybkiSMS. Samą wysyłkę przypomnień SMS o
         nadchodzących wynajmach dodamy w kolejnym kroku.
       </div>

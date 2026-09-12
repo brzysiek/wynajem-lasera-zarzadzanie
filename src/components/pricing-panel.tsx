@@ -45,7 +45,7 @@ function numInput(value: string, onChange: (v: string) => void, extra = "") {
       value={value}
       onChange={(e) => onChange(e.target.value)}
       inputMode="decimal"
-      className={`w-28 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-gray-500 focus:outline-none ${extra}`}
+      className={`w-28 rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none ${extra}`}
     />
   );
 }
@@ -191,7 +191,7 @@ export function PricingPanel({
                     );
                   })}
                   {catNewRules.map((nr) => (
-                    <tr key={nr.key} className="bg-blue-50/40">
+                    <tr key={nr.key} className="bg-[#EAF4FB]/40">
                       <td className="py-1 pr-3">
                         {categoryHasVariants(category) ? (
                           <select
@@ -245,7 +245,7 @@ export function PricingPanel({
                     { key: crypto.randomUUID(), pricingCategory: category, variant: "", durationDays: "", priceNet: "" },
                   ])
                 }
-                className="mt-1 text-xs font-medium text-blue-600 hover:underline"
+                className="mt-1 text-xs font-medium text-[#1B6FA8] hover:underline"
               >
                 + dodaj wiersz
               </button>
@@ -318,7 +318,7 @@ export function PricingPanel({
                 value={settings[key] ?? ""}
                 onChange={(e) => setSettings((prev) => ({ ...prev, [key]: e.target.value }))}
                 inputMode="decimal"
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
               />
             </label>
           ))}
@@ -333,7 +333,7 @@ export function PricingPanel({
           type="button"
           onClick={handleSave}
           disabled={isSaving}
-          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+          className="rounded-md bg-[#1B6FA8] px-4 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
         >
           {isSaving ? "Zapisywanie…" : "Zapisz cennik"}
         </button>

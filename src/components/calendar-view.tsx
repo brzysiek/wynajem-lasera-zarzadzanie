@@ -196,9 +196,9 @@ function CalendarWeekRow({
             title={canEdit ? "Nowa rezerwacja" : undefined}
             className={`border-b border-r border-gray-300 p-1.5 pt-1 ${canEdit ? "cursor-pointer hover:bg-gray-50" : ""} ${
               isOver
-                ? "bg-blue-50"
+                ? "bg-[#EAF4FB]"
                 : isToday
-                  ? "bg-amber-50"
+                  ? "bg-[#FBF0E7]"
                   : isPastDay(day)
                     ? "bg-gray-200"
                     : !inMonth
@@ -506,14 +506,14 @@ export function CalendarView({
               <button
                 type="button"
                 onClick={() => setMode("month")}
-                className={`px-3 py-2 text-sm font-medium ${mode === "month" ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+                className={`px-3 py-2 text-sm font-medium ${mode === "month" ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
               >
                 Miesiąc
               </button>
               <button
                 type="button"
                 onClick={() => setMode("week")}
-                className={`px-3 py-2 text-sm font-medium ${mode === "week" ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+                className={`px-3 py-2 text-sm font-medium ${mode === "week" ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
               >
                 Tydzień
               </button>
@@ -522,7 +522,7 @@ export function CalendarView({
               <button
                 type="button"
                 onClick={() => openCreate()}
-                className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
+                className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F]"
               >
                 + Nowa rezerwacja
               </button>

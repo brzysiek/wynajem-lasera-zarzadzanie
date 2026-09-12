@@ -22,7 +22,7 @@ export function IntegrationsTabs() {
             href={tab.href}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
               isActive
-                ? "border-gray-900 text-gray-900"
+                ? "border-[#1B6FA8] text-gray-900"
                 : "border-transparent text-gray-500 hover:text-gray-900"
             }`}
           >

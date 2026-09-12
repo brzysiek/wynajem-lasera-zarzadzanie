@@ -99,12 +99,12 @@ export function HubspotPanel({ initiallyConfigured }: { initiallyConfigured: boo
           value={token}
           onChange={(event) => setToken(event.target.value)}
           autoComplete="off"
-          className="w-full flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+          className="w-full flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
         />
         <button
           type="submit"
           disabled={isSaving || !token}
-          className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+          className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
         >
           {isSaving ? "Zapisywanie…" : "Zapisz"}
         </button>

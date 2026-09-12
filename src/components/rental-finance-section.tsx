@@ -44,7 +44,7 @@ function PayToggle({ value, onChange }: { value: PaymentMethod; onChange: (m: Pa
           type="button"
           onClick={() => onChange(m)}
           className={`flex-1 px-3 py-1.5 text-center text-sm font-medium transition-colors ${
-            value === m ? "bg-gray-900 text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+            value === m ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
           }`}
         >
           {m === "CASH" ? "💵 Gotówka" : "🏦 Przelew"}
@@ -71,13 +71,13 @@ function Switch({
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className={`flex items-center gap-2 rounded-full border px-2 py-1 text-xs font-medium transition-colors ${
-        checked ? "border-blue-300 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"
+        checked ? "border-[#9CC5E0] bg-[#EAF4FB] text-[#1B6FA8]" : "border-gray-200 text-gray-500 hover:bg-gray-50"
       }`}
     >
       <span>{label}</span>
       <span
         className={`relative inline-flex h-4 w-7 flex-none items-center rounded-full transition-colors ${
-          checked ? "bg-blue-600" : "bg-gray-300"
+          checked ? "bg-[#1B6FA8]" : "bg-gray-300"
         }`}
       >
         <span
@@ -231,10 +231,10 @@ export function RentalFinanceSection({
     ? { text: "⏳ tymczasowo", cls: "bg-gray-100 text-gray-600" }
     : priceIsManual
       ? { text: "✎ ręcznie", cls: "bg-amber-100 text-amber-800" }
-      : { text: "🏷 z cennika", cls: "bg-blue-100 text-blue-700" };
+      : { text: "🏷 z cennika", cls: "bg-[#EAF4FB] text-[#1B6FA8]" };
 
   const FILLED = "flex items-center justify-between rounded-md border border-gray-200 bg-gray-50";
-  const CHANGE_LINK = "text-xs font-medium text-blue-600 hover:underline";
+  const CHANGE_LINK = "text-xs font-medium text-[#1B6FA8] hover:underline";
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-5">
@@ -249,7 +249,7 @@ export function RentalFinanceSection({
               setDeviceVariant(e.target.value);
               setManualMode(false);
             }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
           >
             <option value="">— wybierz —</option>
             {deviceVariantOptions.map((v) => (
@@ -275,7 +275,7 @@ export function RentalFinanceSection({
               onChange={(e) => setManualPrice(e.target.value)}
               inputMode="decimal"
               placeholder="np. 1500"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
             />
             {!isSzkolenie && base.priceNet == null && (
               <p className="mt-1 text-xs text-amber-700">Brak reguły w cenniku dla tego wariantu / okresu — wpisz cenę ręcznie.</p>
@@ -286,7 +286,7 @@ export function RentalFinanceSection({
                   value={overrideNote}
                   onChange={(e) => setOverrideNote(e.target.value)}
                   placeholder="Powód odstępstwa od cennika (opcjonalnie, ale zachęcamy)"
-                  className="mt-2 w-full rounded-md border border-gray-300 px-3 py-2 text-xs text-gray-900 focus:border-gray-500 focus:outline-none"
+                  className="mt-2 w-full rounded-md border border-gray-300 px-3 py-2 text-xs text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
                 />
                 <button
                   type="button"
@@ -352,7 +352,7 @@ export function RentalFinanceSection({
                 onChange={(e) => onTransportPriceChange(e.target.value)}
                 inputMode="decimal"
                 placeholder="np. 150"
-                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-900 focus:border-gray-500 focus:outline-none"
+                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
               />
               {hintAmount != null ? (
                 <button
@@ -397,15 +397,15 @@ export function RentalFinanceSection({
         </div>
 
         {transportSeparateEff && (
-          <div className="mt-3 flex flex-col gap-3 rounded-md border border-blue-200 bg-blue-50/60 p-3">
-            <p className="flex items-center gap-1.5 text-sm font-semibold text-blue-900">
+          <div className="mt-3 flex flex-col gap-3 rounded-md border border-[#CFE0F0] bg-[#EAF4FB]/60 p-3">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-[#14567F]">
               <span aria-hidden>🚚</span> Transport — osobna płatność
             </p>
-            <label className="flex items-center gap-2 text-sm text-blue-900">
+            <label className="flex items-center gap-2 text-sm text-[#14567F]">
               <input type="checkbox" checked={transportVat} onChange={(e) => setTransportVat(e.target.checked)} />
               Doliczyć VAT ({TRANSPORT_VAT_RATE_PREVIEW}%)
             </label>
-            <div className="flex flex-col gap-1 text-sm text-blue-900">
+            <div className="flex flex-col gap-1 text-sm text-[#14567F]">
               Forma płatności za transport
               <PayToggle value={transportPayment} onChange={setTransportPayment} />
             </div>

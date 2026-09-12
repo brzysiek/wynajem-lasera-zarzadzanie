@@ -125,12 +125,10 @@ function NavRow({
     <Link
       href={href}
       title={collapsed ? label : undefined}
-      className="mb-0.5 flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium"
-      style={
-        active
-          ? { background: SHELL.brandSoft, color: SHELL.brand }
-          : { color: SHELL.sidebarText }
-      }
+      className={`mb-0.5 flex items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+        active ? "shadow-sm" : "hover:bg-white/70"
+      }`}
+      style={active ? { background: SHELL.brand, color: "#FFFFFF" } : { color: SHELL.sidebarText }}
     >
       {icon}
       {!collapsed && <span>{label}</span>}
@@ -287,14 +285,19 @@ export function SidebarNav({
               type="button"
               title={collapsed ? "Finanse" : undefined}
               onClick={() => (collapsed ? goToLastFinancePage() : setManualFinanceOpen((v) => !(v ?? financeActive)))}
-              className="mb-0.5 flex w-full items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium"
-              style={financeActive ? { background: SHELL.brandSoft, color: SHELL.brand } : { color: SHELL.sidebarText }}
+              className={`mb-0.5 flex w-full items-center gap-3 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                financeActive ? "shadow-sm" : "hover:bg-white/70"
+              }`}
+              style={financeActive ? { background: SHELL.brand, color: "#FFFFFF" } : { color: SHELL.sidebarText }}
             >
               <FinanceBarsIcon />
               {!collapsed && (
                 <>
                   <span>Finanse</span>
-                  <span className="ml-auto text-[10px]" style={{ color: SHELL.sidebarTextDim }}>
+                  <span
+                    className="ml-auto text-[10px]"
+                    style={{ color: financeActive ? "rgba(255,255,255,0.8)" : SHELL.sidebarTextDim }}
+                  >
                     {financeOpen ? "▾" : "▸"}
                   </span>
                 </>

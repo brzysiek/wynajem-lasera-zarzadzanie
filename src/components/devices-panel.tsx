@@ -175,7 +175,7 @@ function DeviceForm({
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -185,7 +185,7 @@ function DeviceForm({
             onChange={(e) => setShortName(e.target.value)}
             required
             maxLength={12}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -204,7 +204,7 @@ function DeviceForm({
               value={googleCalendarId}
               onChange={(e) => setGoogleCalendarId(e.target.value)}
               required
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
             >
               <option value="">— wybierz —</option>
               {calendars.map((cal) => (
@@ -220,7 +220,7 @@ function DeviceForm({
               onFocus={loadCalendars}
               required
               placeholder="np. xxxx@group.calendar.google.com"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
             />
           )}
           {calendarsError && <span className="text-xs text-amber-700">{calendarsError}</span>}
@@ -238,7 +238,7 @@ function DeviceForm({
                 setPricingCategory(e.target.value as DevicePricingCategory | "");
                 setVariantOptions(new Set());
               }}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
             >
               <option value="">— nieskonfigurowana —</option>
               {PRICING_CATEGORY_VALUES.map((cat) => (
@@ -285,7 +285,7 @@ function DeviceForm({
         <button
           type="submit"
           disabled={isSaving}
-          className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+          className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
         >
           {isSaving ? "Zapisywanie…" : "Zapisz"}
         </button>
@@ -401,7 +401,7 @@ function DeviceRow({ device, isAdmin, onChanged }: { device: Device; isAdmin: bo
                       href={googleCalendarUrl(device.googleCalendarId)}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-medium text-blue-600 hover:underline"
+                      className="font-medium text-[#1B6FA8] hover:underline"
                     >
                       otwórz ↗
                     </a>
@@ -537,7 +537,7 @@ export function DevicesPanel({ devices, isAdmin }: { devices: Device[]; isAdmin:
             <button
               type="button"
               onClick={() => setIsAdding(true)}
-              className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700"
+              className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F]"
             >
               Dodaj urządzenie
             </button>
