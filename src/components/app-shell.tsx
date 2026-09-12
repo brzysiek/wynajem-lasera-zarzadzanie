@@ -69,7 +69,7 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <TopNav
         userName={userName}
         role={role}
@@ -80,7 +80,13 @@ export function AppShell({
         onToggleTasks={() => setTasksOpen((v) => !v)}
         onToggleSidebarCollapse={toggleCollapsed}
       />
-      <div className="relative flex min-h-0 flex-1">
+      {/* min-w-0 tutaj i na `main` poniżej: bez tego wąski viewport pozwala
+          contentowi strony (np. siatce kalendarza z min-w-[640px]) rozepchnąć
+          CAŁY wiersz i wypchnąć pasek ikon po prawej poza ekran, zamiast
+          przewinąć się wewnątrz własnego kontenera (calendar-view.tsx ma już
+          na to overflow-auto — potrzebuje tylko żeby przodkowie pozwolili mu
+          się skurczyć). */}
+      <div className="relative flex min-h-0 min-w-0 flex-1">
         <SidebarNav role={role} collapsed={collapsed} />
 
         <main
