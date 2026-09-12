@@ -10,8 +10,18 @@ export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+// Koszt/km wyliczony z DWÓCH wejść zamiast wpisywany wprost: stałego
+// spalania pojazdu (Vehicle.fuelConsumptionL100km, zmienia się rzadko) i
+// jednej, współdzielonej ceny paliwa (PricingSetting["fuel_price_per_liter"],
+// ADMIN aktualizuje raz dla całej floty, nie osobno w każdym aucie).
+export function vehicleFuelCostPerKm(consumptionL100km: number | null, pricePerLiter: number | null): number | null {
+  if (consumptionL100km == null || pricePerLiter == null) return null;
+  return round2((consumptionL100km / 100) * pricePerLiter);
+}
+
 // --- 3.1 koszt paliwa per wynajem ---
-// null gdy brakuje contactDistanceKm LUB vehicleId LUB vehicle.fuelCostPerKm.
+// null gdy brakuje contactDistanceKm LUB vehicleId LUB koszt/km pojazdu
+// (patrz vehicleFuelCostPerKm — sam brak spalania LUB ceny paliwa też daje null).
 export function fuelCostForRental(distanceKm: number | null, fuelCostPerKm: number | null): number | null {
   if (distanceKm == null || fuelCostPerKm == null) return null;
   return round2(distanceKm * fuelCostPerKm);

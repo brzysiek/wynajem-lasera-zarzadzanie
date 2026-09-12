@@ -53,7 +53,10 @@ export type RentalFuelInput = {
   vehicleId: string;
   vehicleName: string;
   distanceKm: number | null; // Rental.contactDistanceKm
-  fuelCostPerKm: number | null; // Vehicle.fuelCostPerKm
+  // Wyliczone (nie pole DB): Vehicle.fuelConsumptionL100km/100 *
+  // PricingSetting["fuel_price_per_liter"] — patrz vehicleFuelCostPerKm w
+  // src/lib/costs/calc.ts, wołane w dashboard-load.ts.
+  fuelCostPerKm: number | null;
 };
 
 // Jeden wynajem z licznikami impulsów w okresie — wejście do kosztu na

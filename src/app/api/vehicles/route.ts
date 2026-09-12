@@ -23,20 +23,24 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const plateNumber = typeof body?.plateNumber === "string" ? body.plateNumber.trim() : "";
-  const fuelCostRaw = body?.fuelCostPerKm;
-  const fuelCostPerKm =
-    typeof fuelCostRaw === "number" ? fuelCostRaw : typeof fuelCostRaw === "string" ? Number(fuelCostRaw.replace(",", ".")) : NaN;
+  const consumptionRaw = body?.fuelConsumptionL100km;
+  const fuelConsumptionL100km =
+    typeof consumptionRaw === "number"
+      ? consumptionRaw
+      : typeof consumptionRaw === "string"
+        ? Number(consumptionRaw.replace(",", "."))
+        : NaN;
 
-  if (!name || !plateNumber || !Number.isFinite(fuelCostPerKm) || fuelCostPerKm < 0) {
+  if (!name || !plateNumber || !Number.isFinite(fuelConsumptionL100km) || fuelConsumptionL100km < 0) {
     logWarn("vehicle_create_rejected", { userId: session.user.id });
     return NextResponse.json(
-      { message: "Uzupełnij nazwę, numer rejestracyjny i nieujemny koszt paliwa na km." },
+      { message: "Uzupełnij nazwę, numer rejestracyjny i nieujemne spalanie (L/100km)." },
       { status: 400 },
     );
   }
 
   const vehicle = await prisma.vehicle.create({
-    data: { name, plateNumber, fuelCostPerKm, fuelCostUpdatedAt: new Date(), active: true },
+    data: { name, plateNumber, fuelConsumptionL100km, active: true },
   });
 
   logInfo("vehicle_created", { userId: session.user.id, vehicleId: vehicle.id });

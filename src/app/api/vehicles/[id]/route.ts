@@ -15,24 +15,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const data: {
     name?: string;
     plateNumber?: string;
-    fuelCostPerKm?: number;
-    fuelCostUpdatedAt?: Date;
+    fuelConsumptionL100km?: number;
     active?: boolean;
   } = {};
 
   if (typeof body?.name === "string" && body.name.trim()) data.name = body.name.trim();
   if (typeof body?.plateNumber === "string" && body.plateNumber.trim()) data.plateNumber = body.plateNumber.trim();
-  if ("fuelCostPerKm" in (body ?? {})) {
-    const raw = body.fuelCostPerKm;
+  if ("fuelConsumptionL100km" in (body ?? {})) {
+    const raw = body.fuelConsumptionL100km;
     const n = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw.replace(",", ".")) : NaN;
     if (!Number.isFinite(n) || n < 0) {
-      logWarn("vehicle_update_rejected", { userId: session.user.id, vehicleId: id, reason: "invalid_fuel_cost" });
-      return NextResponse.json({ message: "Koszt paliwa na km musi być nieujemną liczbą." }, { status: 400 });
+      logWarn("vehicle_update_rejected", { userId: session.user.id, vehicleId: id, reason: "invalid_fuel_consumption" });
+      return NextResponse.json({ message: "Spalanie (L/100km) musi być nieujemną liczbą." }, { status: 400 });
     }
-    data.fuelCostPerKm = n;
-    // Zmiana ceny paliwa = jawna aktualizacja przez ADMINA, odśwież znacznik czasu
-    // pod wskaźnik „ostatnia aktualizacja: X dni temu" (sekcja 7).
-    data.fuelCostUpdatedAt = new Date();
+    data.fuelConsumptionL100km = n;
   }
   if (typeof body?.active === "boolean") data.active = body.active;
 

@@ -4,8 +4,17 @@
 // (src/lib/revenue/load.ts + aggregate.ts).
 import { prisma } from "@/lib/prisma";
 import { monthPeriod } from "@/lib/revenue/period";
+import { vehicleFuelCostPerKm } from "./calc";
 import type { CostEntry, DevicePulseInput, DriverLaborInput, RentalFuelInput } from "./dashboard-aggregate";
 import type { Period } from "@/lib/revenue/period";
+
+// Jeden, współdzielony parametr ceny paliwa (PricingSetting["fuel_price_per_liter"])
+// zamiast osobnego kosztu/km per pojazd — patrz Vehicle.fuelConsumptionL100km
+// w schema.prisma. null gdy ADMIN jeszcze nigdy go nie ustawił (nie zgadujemy).
+export async function loadFuelPricePerLiter(): Promise<number | null> {
+  const setting = await prisma.pricingSetting.findUnique({ where: { key: "fuel_price_per_liter" } });
+  return setting ? Number(setting.value) : null;
+}
 
 function localDateKey(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -41,25 +50,28 @@ export async function loadCostsInPeriod(period: Period): Promise<CostEntry[]> {
 // okresie — ta sama reguła co reszta aplikacji) — wejście do kosztu paliwa
 // i sumy km per pojazd (sekcja 3.1, 4.3).
 export async function loadRentalFuelInputs(period: Period): Promise<RentalFuelInput[]> {
-  const rentals = await prisma.rental.findMany({
-    where: {
-      deletedInGoogle: false,
-      startsAt: { gte: period.start, lte: period.end },
-      vehicleId: { not: null },
-    },
-    select: {
-      vehicleId: true,
-      contactDistanceKm: true,
-      vehicle: { select: { name: true, fuelCostPerKm: true } },
-    },
-  });
+  const [rentals, pricePerLiter] = await Promise.all([
+    prisma.rental.findMany({
+      where: {
+        deletedInGoogle: false,
+        startsAt: { gte: period.start, lte: period.end },
+        vehicleId: { not: null },
+      },
+      select: {
+        vehicleId: true,
+        contactDistanceKm: true,
+        vehicle: { select: { name: true, fuelConsumptionL100km: true } },
+      },
+    }),
+    loadFuelPricePerLiter(),
+  ]);
   return rentals
     .filter((r): r is typeof r & { vehicleId: string; vehicle: NonNullable<typeof r.vehicle> } => r.vehicleId !== null && r.vehicle !== null)
     .map((r) => ({
       vehicleId: r.vehicleId,
       vehicleName: r.vehicle.name,
       distanceKm: r.contactDistanceKm !== null ? Number(r.contactDistanceKm) : null,
-      fuelCostPerKm: r.vehicle.fuelCostPerKm !== null ? Number(r.vehicle.fuelCostPerKm) : null,
+      fuelCostPerKm: vehicleFuelCostPerKm(Number(r.vehicle.fuelConsumptionL100km), pricePerLiter),
     }));
 }
 

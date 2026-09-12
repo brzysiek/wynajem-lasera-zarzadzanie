@@ -6,23 +6,27 @@ import { VehiclesPanel } from "@/components/vehicles-panel";
 export default async function VehiclesSettingsPage() {
   await requireAdmin();
 
-  const vehicles = await prisma.vehicle.findMany({ orderBy: { name: "asc" } });
+  const [vehicles, fuelPriceSetting] = await Promise.all([
+    prisma.vehicle.findMany({ orderBy: { name: "asc" } }),
+    prisma.pricingSetting.findUnique({ where: { key: "fuel_price_per_liter" } }),
+  ]);
 
   return (
     <div>
       <PageHeader
         title="Pojazdy"
-        description="Flota do przypisywania przy wynajmach — koszt paliwa/km wpisywany ręcznie (nie ma dostępnego darmowego API cen paliw), używany do wyliczenia kosztu paliwa per wynajem."
+        description="Flota do przypisywania przy wynajmach. Koszt paliwa per wynajem liczy się ze spalania pojazdu (poniżej) i jednej, wspólnej ceny paliwa — nie wpisujesz kosztu/km osobno w każdym aucie."
       />
       <VehiclesPanel
         initialVehicles={vehicles.map((v) => ({
           id: v.id,
           name: v.name,
           plateNumber: v.plateNumber,
-          fuelCostPerKm: v.fuelCostPerKm.toString(),
-          fuelCostUpdatedAt: v.fuelCostUpdatedAt ? v.fuelCostUpdatedAt.toISOString() : null,
+          fuelConsumptionL100km: v.fuelConsumptionL100km.toString(),
           active: v.active,
         }))}
+        fuelPrice={fuelPriceSetting ? fuelPriceSetting.value.toString() : "6.50"}
+        fuelPriceUpdatedAt={fuelPriceSetting ? fuelPriceSetting.updatedAt.toISOString() : null}
       />
     </div>
   );

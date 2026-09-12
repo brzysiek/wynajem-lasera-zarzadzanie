@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { costPerKm, costPerPulse, driverCostForRental, fuelCostForRental } from "./calc";
+import { costPerKm, costPerPulse, driverCostForRental, fuelCostForRental, vehicleFuelCostPerKm } from "./calc";
+
+describe("vehicleFuelCostPerKm", () => {
+  it("spalanie/100 * cena paliwa", () => {
+    // 8 L/100km * 6 zł/L = 0.48 zł/km
+    expect(vehicleFuelCostPerKm(8, 6)).toBe(0.48);
+  });
+  it("brak spalania → null", () => {
+    expect(vehicleFuelCostPerKm(null, 6)).toBeNull();
+  });
+  it("brak ceny paliwa → null", () => {
+    expect(vehicleFuelCostPerKm(8, null)).toBeNull();
+  });
+});
 
 describe("fuelCostForRental", () => {
   it("mnoży km * stawkę", () => {

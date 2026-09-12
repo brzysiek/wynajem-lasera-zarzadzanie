@@ -8,6 +8,7 @@ import { IconRail } from "@/components/icon-rail";
 import { TasksPanel } from "@/components/tasks-panel";
 import { SHELL } from "@/components/shell-tokens";
 import { CalendarDeviceFilterProvider } from "@/components/calendar-device-filter-context";
+import { FuelPriceReminder } from "@/components/fuel-price-reminder";
 
 // Kosmetyczny stan UI (nie dane biznesowe) — przetrwa odświeżenie strony,
 // docs/prompt-claude-code-powloka-aplikacji.md, sekcja 1.2.
@@ -121,6 +122,7 @@ export function AppShell({
           )}
         </div>
       </div>
+      <FuelPriceReminder role={role} />
     </CalendarDeviceFilterProvider>
   );
 }

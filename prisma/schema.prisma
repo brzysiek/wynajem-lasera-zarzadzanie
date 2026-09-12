@@ -415,9 +415,13 @@ model PulseTier {
 }
 
 model PricingSetting {
-  id    String  @id @default(cuid())
-  key   String  @unique // "cap_fee_hs_net" | "vat_rate_default" | "alma_pulse_rate_net"
-  value Decimal @db.Decimal(12, 4)
+  id        String   @id @default(cuid())
+  key       String   @unique // "cap_fee_hs_net" | "vat_rate_default" | "alma_pulse_rate_net" | "fuel_price_per_liter"
+  value     Decimal  @db.Decimal(12, 4)
+  // Do wskaźnika "ostatnia aktualizacja: X dni temu" na /ustawienia/pojazdy
+  // (fuel_price_per_liter — jeden parametr aktualizowany co tydzień zamiast
+  // osobnego kosztu/km per pojazd, patrz Vehicle.fuelConsumptionL100km).
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@map("pricing_settings")
 }
@@ -425,16 +429,18 @@ model PricingSetting {
 // ==================== Moduł kosztów (docs/prompt-claude-code-dashboard-kosztow.md) ====================
 
 model Vehicle {
-  id                String    @id @default(cuid())
-  name              String // np. "Skoda Fabia"
-  plateNumber       String
-  // Ustawiane ręcznie przez ADMINA na /ustawienia/pojazdy — brak publicznego,
-  // darmowego API z cenami paliw nadającego się do integracji (sekcja 7).
-  fuelCostPerKm     Decimal   @db.Decimal(6, 2)
-  fuelCostUpdatedAt DateTime?
-  active            Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id          String   @id @default(cuid())
+  name        String // np. "Skoda Fabia"
+  plateNumber String
+  // Spalanie — stała cecha pojazdu, zmienia się rzadko (w przeciwieństwie do
+  // ceny paliwa, która jest teraz JEDNYM współdzielonym parametrem,
+  // PricingSetting["fuel_price_per_liter"], nie polem per pojazd — ADMIN
+  // aktualizuje cenę paliwa raz, dla całej floty naraz, zamiast osobno
+  // przeliczać koszt/km w każdym aucie. koszt/km = spalanie/100 * cena paliwa.
+  fuelConsumptionL100km Decimal  @db.Decimal(5, 2)
+  active                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   rentals Rental[]
   costs   Cost[]
