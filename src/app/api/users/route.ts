@@ -24,13 +24,19 @@ export async function GET() {
       role: true,
       canActAsDriver: true,
       grammaticalGender: true,
+      hourlyRate: true,
       invitedAt: true,
       activatedAt: true,
       createdAt: true,
     },
   });
 
-  return NextResponse.json({ users });
+  // Ten endpoint jest requireAdminSession() (patrz wyżej) — bezpiecznie
+  // zwraca hourlyRate. NIE kopiuj tego selecta do żadnego endpointu
+  // dostępnego roli KIEROWCA (docs/prompt-claude-code-dashboard-kosztow.md sekcja 1.4).
+  return NextResponse.json({
+    users: users.map((u) => ({ ...u, hourlyRate: u.hourlyRate !== null ? u.hourlyRate.toString() : null })),
+  });
 }
 
 export async function POST(req: NextRequest) {

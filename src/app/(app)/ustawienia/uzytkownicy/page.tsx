@@ -15,14 +15,19 @@ export default async function UsersSettingsPage() {
       role: true,
       canActAsDriver: true,
       grammaticalGender: true,
+      hourlyRate: true,
       invitedAt: true,
       activatedAt: true,
       createdAt: true,
     },
   });
 
+  // requireAdmin() powyżej — bezpiecznie serializuje hourlyRate (ADMIN-only
+  // strona; nigdy nie kopiuj tego selecta/mapowania do niczego dostępnego
+  // roli KIEROWCA, docs/prompt-claude-code-dashboard-kosztow.md sekcja 1.4).
   const usersData = users.map((user) => ({
     ...user,
+    hourlyRate: user.hourlyRate !== null ? user.hourlyRate.toString() : null,
     invitedAt: user.invitedAt ? user.invitedAt.toISOString() : null,
     activatedAt: user.activatedAt ? user.activatedAt.toISOString() : null,
     createdAt: user.createdAt.toISOString(),

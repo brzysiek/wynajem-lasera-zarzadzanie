@@ -28,6 +28,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     role?: "ADMIN" | "STAFF" | "KIEROWCA";
     canActAsDriver?: boolean;
     grammaticalGender?: "M" | "F" | null;
+    hourlyRate?: number | null;
   } = {};
 
   if (typeof body?.name === "string" && body.name.trim()) {
@@ -64,6 +65,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data.grammaticalGender = body.grammaticalGender;
   }
 
+  // hourlyRate ma sens wyłącznie dla roli KIEROWCA (schema.prisma, sekcja
+  // bezpieczeństwa docs/prompt-claude-code-dashboard-kosztow.md 1.4) — dla
+  // efektywnej roli (po tym PATCH-u) innej niż KIEROWCA zawsze wymuszamy
+  // null, niezależnie co przyszło w body.
+  const effectiveRole = data.role ?? target.role;
+  if (effectiveRole !== "KIEROWCA") {
+    if (target.hourlyRate !== null) data.hourlyRate = null;
+  } else if ("hourlyRate" in (body ?? {})) {
+    if (body.hourlyRate === null) {
+      data.hourlyRate = null;
+    } else {
+      const n = Number(body.hourlyRate);
+      if (!Number.isFinite(n) || n < 0) {
+        return NextResponse.json({ message: "Stawka godzinowa musi być nieujemną liczbą." }, { status: 400 });
+      }
+      data.hourlyRate = n;
+    }
+  }
+
   if (typeof body?.password === "string" && body.password) {
     if (body.password.length < MIN_PASSWORD_LENGTH) {
       return NextResponse.json(
@@ -83,6 +103,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const updated = await prisma.user.update({ where: { id }, data });
   logInfo("user_updated", { userId: session.user.id, targetUserId: id, fields: Object.keys(data) });
 
+  // requireAdminSession() powyżej — bezpiecznie zwraca hourlyRate (nigdy nie
+  // kopiuj tego kształtu odpowiedzi do endpointu dostępnego roli KIEROWCA).
   return NextResponse.json({
     user: {
       id: updated.id,
@@ -91,6 +113,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       role: updated.role,
       canActAsDriver: updated.canActAsDriver,
       grammaticalGender: updated.grammaticalGender,
+      hourlyRate: updated.hourlyRate !== null ? updated.hourlyRate.toString() : null,
       invitedAt: updated.invitedAt,
       activatedAt: updated.activatedAt,
       createdAt: updated.createdAt,

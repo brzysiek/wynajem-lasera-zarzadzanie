@@ -14,6 +14,10 @@ type User = {
   role: Role;
   canActAsDriver: boolean;
   grammaticalGender: Gender | null;
+  // Tylko dla roli KIEROWCA — nigdy nie pojawia się w żadnym widoku/API
+  // dostępnym samej roli KIEROWCA (docs/prompt-claude-code-dashboard-kosztow.md
+  // sekcja 1.4). Ta strona jest ADMIN-only, więc bezpieczna.
+  hourlyRate: string | null;
   invitedAt: string | null;
   activatedAt: string | null;
   createdAt: string;
@@ -191,6 +195,7 @@ function EditForm({
   const [role, setRole] = useState(user.role);
   const [canActAsDriver, setCanActAsDriver] = useState(user.canActAsDriver);
   const [gender, setGender] = useState<Gender | "">(user.grammaticalGender ?? "");
+  const [hourlyRate, setHourlyRate] = useState(user.hourlyRate ?? "");
   const [changingPassword, setChangingPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -211,6 +216,14 @@ function EditForm({
         return;
       }
     }
+    let hourlyRateValue: number | null = null;
+    if (role === "KIEROWCA" && hourlyRate.trim() !== "") {
+      hourlyRateValue = Number(hourlyRate.trim().replace(",", "."));
+      if (!Number.isFinite(hourlyRateValue) || hourlyRateValue < 0) {
+        setError("Stawka godzinowa musi być nieujemną liczbą.");
+        return;
+      }
+    }
 
     setIsSaving(true);
     const body: {
@@ -220,6 +233,7 @@ function EditForm({
       role?: Role;
       canActAsDriver?: boolean;
       grammaticalGender?: Gender | null;
+      hourlyRate?: number | null;
     } = {};
     if (name !== user.name) body.name = name;
     if (email !== user.email) body.email = email;
@@ -227,6 +241,9 @@ function EditForm({
     const effectiveCanDrive = role !== "KIEROWCA" && canActAsDriver;
     if (effectiveCanDrive !== user.canActAsDriver) body.canActAsDriver = effectiveCanDrive;
     if ((gender || null) !== (user.grammaticalGender ?? null)) body.grammaticalGender = gender || null;
+    if (role === "KIEROWCA" && hourlyRate.trim() !== (user.hourlyRate ?? "")) {
+      body.hourlyRate = hourlyRateValue;
+    }
     if (changingPassword) body.password = password;
 
     const { ok, data } = await api(`/api/users/${user.id}`, {
@@ -309,6 +326,22 @@ function EditForm({
                 Zmiana zadziała dopiero po Twoim ponownym zalogowaniu.
               </span>
             )}
+          </span>
+        </label>
+      )}
+
+      {role === "KIEROWCA" && (
+        <label className="mt-3 flex flex-col gap-1 text-sm text-gray-700 sm:max-w-[220px]">
+          Stawka godzinowa (zł)
+          <input
+            value={hourlyRate}
+            onChange={(e) => setHourlyRate(e.target.value)}
+            inputMode="decimal"
+            placeholder="np. 30"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-gray-500 focus:outline-none"
+          />
+          <span className="text-xs text-gray-400">
+            Do wyliczenia kosztu pracy w Finanse → Koszty. Widoczne wyłącznie dla ADMINA — nigdy dla samego kierowcy.
           </span>
         </label>
       )}

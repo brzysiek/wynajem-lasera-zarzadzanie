@@ -60,8 +60,14 @@ export default async function RentalDetailPage({
   // panel. A real KIEROWCA only sees rentals assigned to them; a preview
   // opens any rental.
   if (driverMode) {
+    // driver: nie dołączany tutaj wcale — ta gałąź renderuje widok samego
+    // KIEROWCY (real albo preview), więc nawet niewykorzystywany server-side
+    // `include: { driver: true }` niepotrzebnie ściągałby do pamięci procesu
+    // hourlyRate/passwordHash (docs/prompt-claude-code-dashboard-kosztow.md
+    // sekcja 1.4 — twarda reguła bezpieczeństwa). rental.driverId (już
+    // pobrane) wystarcza do sprawdzenia właściciela poniżej.
     const [rental, financeCtx] = await Promise.all([
-      prisma.rental.findUnique({ where: { id }, include: { device: true, driver: true, finance: true } }),
+      prisma.rental.findUnique({ where: { id }, include: { device: true, finance: true } }),
       loadFinanceFormContext(),
     ]);
     if (!rental || (!preview && rental.driverId !== session!.user.id)) {
