@@ -353,7 +353,14 @@ export function TasksPanel({
 
       <aside
         className={`fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-white transition-transform duration-200 sm:w-[380px] md:inset-y-auto md:top-14 md:bottom-0 md:right-14 md:w-[340px] ${
-          open ? "translate-x-0" : "translate-x-full"
+          open
+            ? "translate-x-0"
+            : // Na mobile panel przylega do right:0, więc "swoja szerokość" (100%)
+              // wystarczy żeby zniknąć. Na desktopie stoi 56px (md:right-14) od
+              // krawędzi (obok paska ikon) — samo 100% zostawiało tę różnicę
+              // widoczną jako wąska szczelina zasłaniającą pasek ikon, więc na
+              // md+ trzeba doliczyć ten offset do przesunięcia.
+              "translate-x-full md:translate-x-[calc(100%_+_3.5rem)]"
         }`}
         style={{ borderLeft: `1px solid ${C.border}`, boxShadow: open ? "0 0 16px rgba(0,0,0,0.12)" : "none" }}
         aria-hidden={!open}
