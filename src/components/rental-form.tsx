@@ -729,6 +729,9 @@ export function RentalForm({
   // zwijało pola pod ręką — patrz <details onToggle> niżej.
   const [descriptionOpen, setDescriptionOpen] = useState(() => Boolean(rental?.description?.trim()));
   const [internalNotes, setInternalNotes] = useState(rental?.internalNotes ?? "");
+  // Ta sama logika co descriptionOpen powyżej — rozwijane tylko gdy już
+  // coś zawierają.
+  const [internalNotesOpen, setInternalNotesOpen] = useState(() => Boolean(rental?.internalNotes?.trim()));
   // Reservation dates are always whole days — no time-of-day picker for
   // startsAt/endsAt (unlike delivery/pickup, which do carry a time). Both
   // are normalized to midnight right away (not just on change), otherwise
@@ -947,69 +950,27 @@ export function RentalForm({
               </label>
             </div>
 
-            <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Urządzenie
-              <select
-                value={deviceId}
-                onChange={(e) => setDeviceId(e.target.value)}
-                required
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-              >
-                {devices
-                  .filter((d) => d.active || d.id === deviceId)
-                  .map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-              </select>
-              {isEditing && deviceId !== rental!.deviceId && (
-                <p className="text-xs text-amber-700">
-                  Zmiana urządzenia przeniesie to wydarzenie do kalendarza Google innego urządzenia.
-                </p>
-              )}
-            </label>
-
-            {/* Opis: rzadko wypełniany, więc rozwijany — domyślnie zwinięty,
-                chyba że rezerwacja już go ma (wtedy nie chowamy istniejącej
-                treści). Kontrolowane przez descriptionOpen/onToggle, nie
-                `defaultOpen`, żeby pisanie/kasowanie tekstu nie zwijało pola
-                pod ręką w trakcie edycji. */}
-            <details
-              open={descriptionOpen}
-              onToggle={(e) => setDescriptionOpen(e.currentTarget.open)}
-              className="group rounded-md border border-gray-200"
-            >
-              <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-sm text-gray-700 [&::-webkit-details-marker]:hidden">
-                <span className="text-[10px] text-gray-400 transition-transform group-open:rotate-90">▸</span>
-                Opis
-                {!descriptionOpen && description.trim() && (
-                  <span className="truncate text-xs font-normal text-gray-400">— {description.trim()}</span>
-                )}
-              </summary>
-              <div className="px-3 pb-3">
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                />
-              </div>
-            </details>
-
-            <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Uwaga dla kierowcy
-              <textarea
-                value={internalNotes}
-                onChange={(e) => setInternalNotes(e.target.value)}
-                rows={2}
-                placeholder="np. domofon nie działa — dzwonić na telefon po przyjeździe"
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-              />
-              <span className="text-xs text-gray-400">Widoczna dla kierowcy jako „Uwaga z biura”.</span>
-            </label>
-
-            <div className="grid gap-3 sm:grid-cols-2">
+            {/* Urządzenie + daty w jednym wierszu, zaraz pod Typ+Tytuł —
+                nazwy urządzeń nie są długie, więc pole może być węższe niż
+                Początek/Koniec nie muszą czekać na dole karty. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.3fr_1fr_1fr]">
+              <label className="flex flex-col gap-1 text-sm text-gray-700">
+                Urządzenie
+                <select
+                  value={deviceId}
+                  onChange={(e) => setDeviceId(e.target.value)}
+                  required
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                >
+                  {devices
+                    .filter((d) => d.active || d.id === deviceId)
+                    .map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
               <label className="flex flex-col gap-1 text-sm text-gray-700">
                 Początek
                 <input
@@ -1031,18 +992,80 @@ export function RentalForm({
                 />
               </label>
             </div>
+            {isEditing && deviceId !== rental!.deviceId && (
+              <p className="-mt-2 text-xs text-amber-700">
+                Zmiana urządzenia przeniesie to wydarzenie do kalendarza Google innego urządzenia.
+              </p>
+            )}
           </div>
 
-          {/* Klient (HubSpot) — dawniej w prawej kolumnie, teraz zaraz pod
-              Danymi rezerwacji: po wybraniu urządzenia to naturalnie kolejna
-              rzecz do sprawdzenia/uzupełnienia. */}
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <p className="mb-2 text-sm text-gray-700">Klient (HubSpot)</p>
-            <ContactSection
-              rentalId={isEditing ? rental!.id : null}
-              initialContact={isEditing ? contactFromRental(rental) : null}
-              onContactChange={handleContactChange}
-            />
+          {/* Opis + Uwaga dla kierowcy (węższa karta, oba pola rozwijane —
+              rzadko wypełniane) równolegle z kartą Klienta, na tej samej
+              wysokości. */}
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-5">
+              {/* Opis: rzadko wypełniany, więc rozwijany — domyślnie zwinięty,
+                  chyba że rezerwacja już go ma (wtedy nie chowamy istniejącej
+                  treści). Kontrolowane przez descriptionOpen/onToggle, nie
+                  `defaultOpen`, żeby pisanie/kasowanie tekstu nie zwijało pola
+                  pod ręką w trakcie edycji. */}
+              <details
+                open={descriptionOpen}
+                onToggle={(e) => setDescriptionOpen(e.currentTarget.open)}
+                className="group rounded-md border border-gray-200"
+              >
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-sm text-gray-700 [&::-webkit-details-marker]:hidden">
+                  <span className="text-[10px] text-gray-400 transition-transform group-open:rotate-90">▸</span>
+                  Opis
+                  {!descriptionOpen && description.trim() && (
+                    <span className="truncate text-xs font-normal text-gray-400">— {description.trim()}</span>
+                  )}
+                </summary>
+                <div className="px-3 pb-3">
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                  />
+                </div>
+              </details>
+
+              {/* Uwaga dla kierowcy: ta sama logika co Opis — rozwijana,
+                  domyślnie zwinięta, chyba że już coś w niej jest. */}
+              <details
+                open={internalNotesOpen}
+                onToggle={(e) => setInternalNotesOpen(e.currentTarget.open)}
+                className="group rounded-md border border-gray-200"
+              >
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-sm text-gray-700 [&::-webkit-details-marker]:hidden">
+                  <span className="text-[10px] text-gray-400 transition-transform group-open:rotate-90">▸</span>
+                  Uwaga dla kierowcy
+                  {!internalNotesOpen && internalNotes.trim() && (
+                    <span className="truncate text-xs font-normal text-gray-400">— {internalNotes.trim()}</span>
+                  )}
+                </summary>
+                <div className="px-3 pb-3">
+                  <textarea
+                    value={internalNotes}
+                    onChange={(e) => setInternalNotes(e.target.value)}
+                    rows={2}
+                    placeholder="np. domofon nie działa — dzwonić na telefon po przyjeździe"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                  />
+                  <span className="mt-1 block text-xs text-gray-400">Widoczna dla kierowcy jako „Uwaga z biura”.</span>
+                </div>
+              </details>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-white p-5">
+              <p className="mb-2 text-sm text-gray-700">Klient (HubSpot)</p>
+              <ContactSection
+                rentalId={isEditing ? rental!.id : null}
+                initialContact={isEditing ? contactFromRental(rental) : null}
+                onContactChange={handleContactChange}
+              />
+            </div>
           </div>
 
           {/* Dostawa i realizacja: kto jedzie (kierowca + pojazd) razem z tym,
