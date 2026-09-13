@@ -8,6 +8,8 @@ import { IconRail } from "@/components/icon-rail";
 import { TasksPanel } from "@/components/tasks-panel";
 import { SHELL } from "@/components/shell-tokens";
 import { CalendarDeviceFilterProvider } from "@/components/calendar-device-filter-context";
+import { RentalAlertsProvider } from "@/components/rental-alerts-context";
+import { RentalAlertsPanel } from "@/components/rental-alerts-panel";
 import { FuelPriceReminder } from "@/components/fuel-price-reminder";
 
 // Kosmetyczny stan UI (nie dane biznesowe) — przetrwa odświeżenie strony,
@@ -47,6 +49,10 @@ export function AppShell({
   const isFullWidth = pathname === "/kalendarz";
   // Lista zadań: ADMIN i STAFF (biuro). Kierowca i podgląd kierowcy — nie.
   const showTasks = role === "ADMIN" || role === "STAFF";
+  // Ostrzeżenia kalendarza: tylko prawdziwy ADMIN, nie podgląd kierowcy — tak
+  // samo jak dawny baner nad siatką (kalendarz/page.tsx przed przeniesieniem
+  // na pasek ikon, patrz rental-alerts-context.tsx).
+  const showAlerts = role === "ADMIN" && !driverPreview;
   const [tasksOpen, setTasksOpen] = useState(false);
   const [openTaskCount, setOpenTaskCount] = useState<number | null>(null);
 
@@ -72,57 +78,61 @@ export function AppShell({
 
   return (
     <CalendarDeviceFilterProvider>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <TopNav
-          userName={userName}
-          role={role}
-          canActAsDriver={canActAsDriver}
-          driverPreview={driverPreview}
-          showTasks={showTasks}
-          openTaskCount={openTaskCount}
-          onToggleTasks={() => setTasksOpen((v) => !v)}
-          onToggleSidebarCollapse={toggleCollapsed}
-        />
-        {/* min-w-0 tutaj i na `main` poniżej: bez tego wąski viewport pozwala
-            contentowi strony (np. siatce kalendarza z min-w-[640px]) rozepchnąć
-            CAŁY wiersz i wypchnąć pasek ikon po prawej poza ekran, zamiast
-            przewinąć się wewnątrz własnego kontenera (calendar-view.tsx ma już
-            na to overflow-auto — potrzebuje tylko żeby przodkowie pozwolili mu
-            się skurczyć). */}
-        <div className="relative flex min-h-0 min-w-0 flex-1">
-          <SidebarNav role={role} collapsed={collapsed} />
-
-          <main
-            className={
-              isFullWidth
-                ? "flex min-h-0 min-w-0 w-full flex-1 flex-col"
-                : "w-full min-w-0 flex-1 overflow-y-auto"
-            }
-            style={isFullWidth ? undefined : { background: SHELL.bg }}
-          >
-            <div className={isFullWidth ? undefined : "mx-auto max-w-6xl px-4 py-6 md:px-[30px] md:py-[26px]"}>
-              {children}
-            </div>
-          </main>
-
-          <IconRail
+      <RentalAlertsProvider enabled={showAlerts}>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <TopNav
+            userName={userName}
+            role={role}
+            canActAsDriver={canActAsDriver}
+            driverPreview={driverPreview}
             showTasks={showTasks}
-            tasksOpen={tasksOpen}
             openTaskCount={openTaskCount}
             onToggleTasks={() => setTasksOpen((v) => !v)}
+            onToggleSidebarCollapse={toggleCollapsed}
           />
+          {/* min-w-0 tutaj i na `main` poniżej: bez tego wąski viewport pozwala
+              contentowi strony (np. siatce kalendarza z min-w-[640px]) rozepchnąć
+              CAŁY wiersz i wypchnąć pasek ikon po prawej poza ekran, zamiast
+              przewinąć się wewnątrz własnego kontenera (calendar-view.tsx ma już
+              na to overflow-auto — potrzebuje tylko żeby przodkowie pozwolili mu
+              się skurczyć). */}
+          <div className="relative flex min-h-0 min-w-0 flex-1">
+            <SidebarNav role={role} collapsed={collapsed} />
 
-          {showTasks && (
-            <TasksPanel
-              open={tasksOpen}
-              onClose={() => setTasksOpen(false)}
-              currentUserId={userId}
-              onCountChange={setOpenTaskCount}
+            <main
+              className={
+                isFullWidth
+                  ? "flex min-h-0 min-w-0 w-full flex-1 flex-col"
+                  : "w-full min-w-0 flex-1 overflow-y-auto"
+              }
+              style={isFullWidth ? undefined : { background: SHELL.bg }}
+            >
+              <div className={isFullWidth ? undefined : "mx-auto max-w-6xl px-4 py-6 md:px-[30px] md:py-[26px]"}>
+                {children}
+              </div>
+            </main>
+
+            <IconRail
+              showTasks={showTasks}
+              tasksOpen={tasksOpen}
+              openTaskCount={openTaskCount}
+              onToggleTasks={() => setTasksOpen((v) => !v)}
+              showAlerts={showAlerts}
             />
-          )}
+
+            {showTasks && (
+              <TasksPanel
+                open={tasksOpen}
+                onClose={() => setTasksOpen(false)}
+                currentUserId={userId}
+                onCountChange={setOpenTaskCount}
+              />
+            )}
+            {showAlerts && <RentalAlertsPanel />}
+          </div>
         </div>
-      </div>
-      <FuelPriceReminder role={role} />
+        <FuelPriceReminder role={role} />
+      </RentalAlertsProvider>
     </CalendarDeviceFilterProvider>
   );
 }

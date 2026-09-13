@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Device, Rental } from "@/components/rental-form";
 import { BASE_PATH } from "@/lib/base-path";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
-import { CalendarAlerts } from "@/components/calendar-alerts";
-import type { RentalAlert } from "@/lib/rental-alerts";
+import { useRentalAlerts } from "@/components/rental-alerts-context";
 import { useCalendarDeviceFilter } from "@/components/calendar-device-filter-context";
 
 type RawRental = Rental & { device: Device };
@@ -315,10 +314,8 @@ const VIEW_STATE_KEY = "kalendarz:view";
 
 export function CalendarView({
   canEdit = true,
-  alerts = [],
 }: {
   canEdit?: boolean;
-  alerts?: RentalAlert[];
 }) {
   const router = useRouter();
   // Lista urządzeń + zaznaczenie widoczności — współdzielone z flyoutem
@@ -326,7 +323,11 @@ export function CalendarView({
   // (docs/prompt-claude-code-powloka-aplikacji.md); Provider mieszka w
   // AppShell, patrz src/components/calendar-device-filter-context.tsx.
   const { devices, checkedIds: checkedDeviceIds, toggleDevice } = useCalendarDeviceFilter();
-  const alertIds = useMemo(() => new Set(alerts.map((a) => a.id)), [alerts]);
+  // Ostrzeżenia (wynajmy bez kierowcy/kontaktu/telefonu) — dawniej osobny
+  // baner nad siatką (calendar-alerts.tsx, usunięty), dziś tylko czerwona
+  // ramka/⚠ na kafelkach; sam panel z listą żyje na prawym pasku ikon
+  // (icon-rail.tsx + rental-alerts-panel.tsx), patrz rental-alerts-context.tsx.
+  const { alertIds } = useRentalAlerts();
   const [mode, setMode] = useState<"month" | "week">("month");
   const [current, setCurrent] = useState(() => new Date());
   const viewStateRestored = useRef(false);
@@ -549,7 +550,6 @@ export function CalendarView({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
-          <CalendarAlerts alerts={alerts} />
           {isLoading && <p className="mb-2 text-sm text-gray-400">Ładowanie…</p>}
           {dragError && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
