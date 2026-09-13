@@ -5,7 +5,7 @@ import { VIEW_COOKIE, actsAsDriver } from "@/lib/effective-role";
 import { loadRentalAlerts } from "@/lib/rental-alerts-load";
 
 // Ostrzeżenia kalendarza (wynajmy bez kierowcy/kontaktu/telefonu) — używane
-// przez ikonę + wysuwany panel na prawym pasku (src/components/rental-alerts-context.tsx),
+// przez ikonę + wysuwany panel na prawym pasku (src/components/notifications-context.tsx),
 // dawniej liczone tylko wewnątrz kalendarz/page.tsx dla banera nad siatką.
 // Admin only; podgląd kierowcy dostaje puste (tak jak dawniej baner).
 export async function GET() {

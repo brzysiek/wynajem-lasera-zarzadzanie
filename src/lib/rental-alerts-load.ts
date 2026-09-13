@@ -3,7 +3,7 @@ import { ALERT_WINDOW_DAYS, type RentalAlert, type RentalAlertField } from "@/li
 
 // Serwerowa (Prisma) część modelu ostrzeżeń — src/lib/rental-alerts.ts ma tylko
 // typy/etykiety i jest client-safe. Wyodrębnione z kalendarz/page.tsx, bo dziś
-// odpytuje to też GET /api/rentals/alerts (pasek ikon — src/components/rental-alerts-context.tsx),
+// odpytuje to też GET /api/rentals/alerts (pasek ikon — src/components/notifications-context.tsx),
 // nie tylko sama strona kalendarza.
 export async function loadRentalAlerts(): Promise<RentalAlert[]> {
   const from = new Date();

@@ -10,7 +10,7 @@ export default async function CalendarPage() {
 
   // Ostrzeżenia (wynajmy bez kierowcy/kontaktu/telefonu) już nie są ładowane
   // tutaj jako baner — mieszkają na prawym pasku ikon (auto-pop po wejściu na
-  // tę stronę), patrz src/components/rental-alerts-context.tsx + GET
+  // tę stronę), patrz src/components/notifications-context.tsx + GET
   // /api/rentals/alerts. Lista urządzeń do filtra tak samo idzie przez
   // współdzielony CalendarDeviceFilterProvider (AppShell), nie przez props tej strony.
   return <CalendarView canEdit={!driverMode} />;

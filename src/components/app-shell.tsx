@@ -8,8 +8,8 @@ import { IconRail } from "@/components/icon-rail";
 import { TasksPanel } from "@/components/tasks-panel";
 import { SHELL } from "@/components/shell-tokens";
 import { CalendarDeviceFilterProvider } from "@/components/calendar-device-filter-context";
-import { RentalAlertsProvider } from "@/components/rental-alerts-context";
-import { RentalAlertsPanel } from "@/components/rental-alerts-panel";
+import { NotificationsProvider } from "@/components/notifications-context";
+import { NotificationsPanel } from "@/components/notifications-panel";
 import { FuelPriceReminder } from "@/components/fuel-price-reminder";
 
 // Kosmetyczny stan UI (nie dane biznesowe) — przetrwa odświeżenie strony,
@@ -49,10 +49,9 @@ export function AppShell({
   const isFullWidth = pathname === "/kalendarz";
   // Lista zadań: ADMIN i STAFF (biuro). Kierowca i podgląd kierowcy — nie.
   const showTasks = role === "ADMIN" || role === "STAFF";
-  // Ostrzeżenia kalendarza: tylko prawdziwy ADMIN, nie podgląd kierowcy — tak
-  // samo jak dawny baner nad siatką (kalendarz/page.tsx przed przeniesieniem
-  // na pasek ikon, patrz rental-alerts-context.tsx).
-  const showAlerts = role === "ADMIN" && !driverPreview;
+  // Centrum powiadomień (ostrzeżenia kalendarza + przychodów): tylko
+  // prawdziwy ADMIN, nie podgląd kierowcy — patrz notifications-context.tsx.
+  const showNotifications = role === "ADMIN" && !driverPreview;
   const [tasksOpen, setTasksOpen] = useState(false);
   const [openTaskCount, setOpenTaskCount] = useState<number | null>(null);
 
@@ -78,7 +77,7 @@ export function AppShell({
 
   return (
     <CalendarDeviceFilterProvider>
-      <RentalAlertsProvider enabled={showAlerts}>
+      <NotificationsProvider enabled={showNotifications}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <TopNav
             userName={userName}
@@ -117,7 +116,7 @@ export function AppShell({
               tasksOpen={tasksOpen}
               openTaskCount={openTaskCount}
               onToggleTasks={() => setTasksOpen((v) => !v)}
-              showAlerts={showAlerts}
+              showNotifications={showNotifications}
             />
 
             {showTasks && (
@@ -128,11 +127,11 @@ export function AppShell({
                 onCountChange={setOpenTaskCount}
               />
             )}
-            {showAlerts && <RentalAlertsPanel />}
+            {showNotifications && <NotificationsPanel />}
           </div>
         </div>
         <FuelPriceReminder role={role} />
-      </RentalAlertsProvider>
+      </NotificationsProvider>
     </CalendarDeviceFilterProvider>
   );
 }

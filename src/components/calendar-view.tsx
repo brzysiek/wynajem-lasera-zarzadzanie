@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Device, Rental } from "@/components/rental-form";
 import { BASE_PATH } from "@/lib/base-path";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
-import { useRentalAlerts } from "@/components/rental-alerts-context";
+import { useNotifications } from "@/components/notifications-context";
 import { useCalendarDeviceFilter } from "@/components/calendar-device-filter-context";
 
 type RawRental = Rental & { device: Device };
@@ -325,9 +325,9 @@ export function CalendarView({
   const { devices, checkedIds: checkedDeviceIds, toggleDevice } = useCalendarDeviceFilter();
   // Ostrzeżenia (wynajmy bez kierowcy/kontaktu/telefonu) — dawniej osobny
   // baner nad siatką (calendar-alerts.tsx, usunięty), dziś tylko czerwona
-  // ramka/⚠ na kafelkach; sam panel z listą żyje na prawym pasku ikon
-  // (icon-rail.tsx + rental-alerts-panel.tsx), patrz rental-alerts-context.tsx.
-  const { alertIds } = useRentalAlerts();
+  // ramka/⚠ na kafelkach; sama karta z listą żyje na prawym pasku ikon
+  // (icon-rail.tsx + notifications-panel.tsx), patrz notifications-context.tsx.
+  const { alertIds } = useNotifications();
   const [mode, setMode] = useState<"month" | "week">("month");
   const [current, setCurrent] = useState(() => new Date());
   const viewStateRestored = useRef(false);

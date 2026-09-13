@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   comparisonPeriod,
+  currentAndNextMonthPeriod,
   monthPeriod,
   periodFromParams,
   prevMonthPeriod,
@@ -28,6 +29,27 @@ describe("monthPeriod", () => {
   it("prevMonthPeriod przez granicę roku: styczeń → grudzień poprzedniego roku", () => {
     const prev = prevMonthPeriod(monthPeriod(2026, 1));
     expect(prev.label).toBe("Grudzień 2025");
+  });
+});
+
+describe("currentAndNextMonthPeriod", () => {
+  it("wrzesień 2026: od 1 września do 31 października", () => {
+    const p = currentAndNextMonthPeriod(new Date(2026, 8, 15));
+    expect(p.start.getMonth()).toBe(8);
+    expect(p.start.getDate()).toBe(1);
+    expect(p.end.getMonth()).toBe(9);
+    expect(p.end.getDate()).toBe(31);
+    expect(p.dayCount).toBe(30 + 31);
+  });
+
+  it("przez granicę roku: grudzień → styczeń następnego roku", () => {
+    const p = currentAndNextMonthPeriod(new Date(2026, 11, 10));
+    expect(p.start.getFullYear()).toBe(2026);
+    expect(p.start.getMonth()).toBe(11);
+    expect(p.start.getDate()).toBe(1);
+    expect(p.end.getFullYear()).toBe(2027);
+    expect(p.end.getMonth()).toBe(0);
+    expect(p.end.getDate()).toBe(31);
   });
 });
 

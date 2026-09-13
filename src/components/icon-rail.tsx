@@ -1,7 +1,7 @@
 "use client";
 
 import { SHELL } from "@/components/shell-tokens";
-import { useRentalAlerts } from "@/components/rental-alerts-context";
+import { useNotifications } from "@/components/notifications-context";
 
 function WarnIcon() {
   return (
@@ -100,31 +100,35 @@ export function IconRail({
   tasksOpen,
   openTaskCount,
   onToggleTasks,
-  showAlerts,
+  showNotifications,
 }: {
   showTasks: boolean;
   tasksOpen: boolean;
   openTaskCount: number | null;
   onToggleTasks: () => void;
-  showAlerts: boolean;
+  showNotifications: boolean;
 }) {
   // Hook zawsze wywołany (reguły hooków) — warunkowe jest tylko renderowanie
   // samej ikony niżej, żeby nie odpytywać kontekstu na kontach bez uprawnień.
-  const { alerts, open: alertsOpen, show: showAlertsCard, hide: hideAlertsCard } = useRentalAlerts();
-  const hasAlerts = showAlerts && alerts.length > 0;
-  if (!showTasks && !hasAlerts) return null;
+  // Jedna ikonka na oba źródła (kalendarz + przychody, patrz
+  // notifications-context.tsx) — badge to suma obu, kolorystyka per typ żyje
+  // dopiero w karcie (notifications-panel.tsx), nie na samej ikonce.
+  const { alerts, unpriced, open: notifOpen, show: showNotif, hide: hideNotif } = useNotifications();
+  const notifCount = alerts.length + unpriced.length;
+  const hasNotifications = showNotifications && notifCount > 0;
+  if (!showTasks && !hasNotifications) return null;
 
   return (
     <div
       className="hidden w-14 shrink-0 flex-col items-center gap-1.5 py-3.5 md:flex"
       style={{ background: SHELL.surface, borderLeft: `1px solid ${SHELL.border}` }}
     >
-      {hasAlerts && (
+      {hasNotifications && (
         <RailIcon
-          tooltip={`Ostrzeżenia kalendarza (${alerts.length})`}
-          open={alertsOpen}
-          onClick={() => (alertsOpen ? hideAlertsCard() : showAlertsCard())}
-          badge={alerts.length}
+          tooltip={`Powiadomienia (${notifCount})`}
+          open={notifOpen}
+          onClick={() => (notifOpen ? hideNotif() : showNotif())}
+          badge={notifCount}
           tone="danger"
         >
           <WarnIcon />
@@ -135,7 +139,9 @@ export function IconRail({
           <TasksIcon />
         </RailIcon>
       )}
-      <RailIcon tooltip="Powiadomienia — wkrótce" disabled>
+      {/* Osobny, wyłączony placeholder — inny kanał niż powyższa ikona
+          (push/dzwonek), która już działa i pokazuje realne dane. */}
+      <RailIcon tooltip="Powiadomienia push — wkrótce" disabled>
         <BellOffIcon />
       </RailIcon>
     </div>

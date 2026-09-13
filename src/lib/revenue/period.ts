@@ -46,6 +46,25 @@ export function prevMonthPeriod(p: Period): Period {
   return m === 0 ? monthPeriod(y - 1, 12) : monthPeriod(y, m); // m = poprzedni miesiąc (1-based)
 }
 
+// Bieżący + następny miesiąc kalendarzowy jako jeden ciągły zakres — używane
+// przez powiadomienie o brakujących kwotach wynajmu (src/app/api/rentals/revenue-alerts/route.ts),
+// NIE przez sam dashboard przychodów (tam okres wybiera użytkownik). Chodzi o
+// to, żeby dało się ocenić preliminowany przychód na najbliższe tygodnie —
+// stąd pełne miesiące, nie "N dni do przodu" jak w alertach kalendarza.
+export function currentAndNextMonthPeriod(now: Date = new Date()): Period {
+  const cur = monthPeriod(now.getFullYear(), now.getMonth() + 1);
+  const nextMonth1to12 = now.getMonth() + 2; // 1-based, może wyjść 13
+  const next =
+    nextMonth1to12 > 12 ? monthPeriod(now.getFullYear() + 1, 1) : monthPeriod(now.getFullYear(), nextMonth1to12);
+  return {
+    mode: "range",
+    start: cur.start,
+    end: next.end,
+    label: `${cur.label} – ${next.label}`,
+    dayCount: cur.dayCount + next.dayCount,
+  };
+}
+
 // --- Sezon (zawsze wrzesień–sierpień) ---
 export function seasonPeriod(startYear: number): Period {
   const start = startOfDay(startYear, 8, 1); // 1 września
