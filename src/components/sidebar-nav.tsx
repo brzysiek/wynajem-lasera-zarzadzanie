@@ -141,8 +141,9 @@ function NavRow({
 // filtr na samej stronie kalendarza — src/components/calendar-device-filter-context.tsx).
 // Zastępuje dawną osobną kolumnę "URZĄDZENIA" obok siatki kalendarza, żeby
 // na desktopie nie było dwóch bocznych pasków naraz.
-function CalendarsSubItem({ collapsed }: { collapsed: boolean }) {
-  const { devices, checkedIds, toggleDevice, loading } = useCalendarDeviceFilter();
+function CalendarsSubItem({ collapsed, role }: { collapsed: boolean; role?: "ADMIN" | "STAFF" | "KIEROWCA" }) {
+  const { devices, checkedIds, toggleDevice, loading, drivers, driverViewId, setDriverView } =
+    useCalendarDeviceFilter();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -192,17 +193,55 @@ function CalendarsSubItem({ collapsed }: { collapsed: boolean }) {
           <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Urządzenia</p>
           {loading && <p className="px-2 py-1 text-xs text-gray-400">Ładowanie…</p>}
           {!loading && devices.length === 0 && <p className="px-2 py-1 text-xs text-gray-400">Brak urządzeń.</p>}
-          {devices.map((d) => (
-            <label
-              key={d.id}
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              <input type="checkbox" checked={checkedIds.has(d.id)} onChange={() => toggleDevice(d.id)} />
-              <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: d.color }} />
-              <span className="truncate">{d.name}</span>
-              {!d.active && <span className="flex-none text-xs text-gray-400">(wycofane)</span>}
-            </label>
-          ))}
+          {/* Zaznaczenia zostają widoczne, ale nieaktywne, gdy działa Widok
+              kierowcy — to on wtedy decyduje, co widać (patrz calendar-view.tsx). */}
+          <div className={driverViewId ? "pointer-events-none opacity-40" : undefined}>
+            {devices.map((d) => (
+              <label
+                key={d.id}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <input type="checkbox" checked={checkedIds.has(d.id)} onChange={() => toggleDevice(d.id)} />
+                <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ backgroundColor: d.color }} />
+                <span className="truncate">{d.name}</span>
+                {!d.active && <span className="flex-none text-xs text-gray-400">(wycofane)</span>}
+              </label>
+            ))}
+          </div>
+
+          {/* Widok kierowcy — tylko ADMIN (GET /api/users, źródło listy, jest
+              admin-only). Wybór jest wyłączny (jeden kierowca naraz) i
+              przesłania filtr urządzeń powyżej — klik na już aktywnego
+              kierowcę wyłącza widok i wraca do zaznaczonych urządzeń. */}
+          {role === "ADMIN" && drivers.length > 0 && (
+            <>
+              <div className="my-1.5 border-t border-gray-100" />
+              <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                Widok kierowcy
+              </p>
+              {drivers.map((d) => {
+                const active = driverViewId === d.id;
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => setDriverView(active ? null : d.id)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-gray-50"
+                    style={active ? { background: SHELL.brandSoft, color: SHELL.brand, fontWeight: 600 } : { color: "#374151" }}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 flex-none rounded-full border"
+                      style={{
+                        borderColor: active ? SHELL.brand : "#D1D5DB",
+                        background: active ? SHELL.brand : "transparent",
+                      }}
+                    />
+                    <span className="truncate">Widok kierowcy: {d.name}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -273,7 +312,7 @@ export function SidebarNav({
               <NavRow href={item.href} label={item.label} icon={item.icon} collapsed={collapsed} active={active} />
               {/* Tylko na samej sekcji Kalendarz — na innych stronach (np. Finanse)
                   ten filtr nie ma znaczenia, więc się nie pokazuje. */}
-              {item.href === "/kalendarz" && active && <CalendarsSubItem collapsed={collapsed} />}
+              {item.href === "/kalendarz" && active && <CalendarsSubItem collapsed={collapsed} role={role} />}
             </div>
           );
         }

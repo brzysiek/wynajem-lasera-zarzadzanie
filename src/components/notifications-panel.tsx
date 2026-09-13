@@ -86,6 +86,20 @@ export function NotificationsPanel() {
       className="fixed bottom-4 right-4 z-50 flex w-[340px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl bg-white md:right-[72px]"
       style={{ border: `1px solid ${NEUTRAL.border}`, boxShadow: "0 8px 28px rgba(0,0,0,0.18)", maxHeight: "40vh" }}
     >
+      {/* Zamknięcie całej karty — dawniej tylko klik obok, ale to za mało
+          oczywiste (nie widać krzyżyka). Pływa nad treścią, żeby działało
+          niezależnie od tego, która sekcja (czerwona/bursztynowa) jest na
+          górze. */}
+      <button
+        type="button"
+        onClick={hide}
+        aria-label="Zamknij powiadomienia"
+        className="absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-sm font-bold shadow-sm hover:bg-white"
+        style={{ color: NEUTRAL.sub }}
+      >
+        ✕
+      </button>
+
       <div className="min-h-0 flex-1 overflow-y-auto">
         {nCal > 0 && (
           <div style={{ borderBottom: nRev > 0 ? `1px solid ${NEUTRAL.border}` : undefined }}>
@@ -93,7 +107,7 @@ export function NotificationsPanel() {
               type="button"
               onClick={toggleCalendarExpanded}
               aria-expanded={calendarExpanded}
-              className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+              className="flex w-full items-center justify-between gap-2 py-3 pl-4 pr-9 text-left"
               style={{ background: RED.soft }}
             >
               <span className="text-[13px] font-semibold leading-snug" style={{ color: RED.text }}>
@@ -148,7 +162,7 @@ export function NotificationsPanel() {
               type="button"
               onClick={toggleRevenueExpanded}
               aria-expanded={revenueExpanded}
-              className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+              className="flex w-full items-center justify-between gap-2 py-3 pl-4 pr-9 text-left"
               style={{ background: AMBER.soft }}
             >
               <span className="text-[13px] font-semibold leading-snug" style={{ color: AMBER.text }}>

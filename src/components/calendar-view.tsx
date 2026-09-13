@@ -322,7 +322,14 @@ export function CalendarView({
   // "Kalendarze" pod pozycją "Kalendarz" w lewym pasku nawigacji
   // (docs/prompt-claude-code-powloka-aplikacji.md); Provider mieszka w
   // AppShell, patrz src/components/calendar-device-filter-context.tsx.
-  const { devices, checkedIds: checkedDeviceIds, toggleDevice } = useCalendarDeviceFilter();
+  const {
+    devices,
+    checkedIds: checkedDeviceIds,
+    toggleDevice,
+    drivers,
+    driverViewId,
+    setDriverView,
+  } = useCalendarDeviceFilter();
   // Ostrzeżenia (wynajmy bez kierowcy/kontaktu/telefonu) — dawniej osobny
   // baner nad siatką (calendar-alerts.tsx, usunięty), dziś tylko czerwona
   // ramka/⚠ na kafelkach; sama karta z listą żyje na prawym pasku ikon
@@ -400,7 +407,12 @@ export function CalendarView({
     startLoading(() => fetchRentals());
   }
 
-  const visibleRentals = rentals.filter((r) => checkedDeviceIds.has(r.deviceId));
+  // "Widok kierowcy" (ustawiany z lewego paska, CalendarsSubItem w
+  // sidebar-nav.tsx) PRZESŁANIA filtr urządzeń — pokazuje WSZYSTKIE wynajmy
+  // danego kierowcy, niezależnie od zaznaczonych urządzeń.
+  const visibleRentals = driverViewId
+    ? rentals.filter((r) => r.driverId === driverViewId)
+    : rentals.filter((r) => checkedDeviceIds.has(r.deviceId));
 
   function navigate(step: number) {
     setCurrent((prev) => (mode === "month" ? new Date(prev.getFullYear(), prev.getMonth() + step, 1) : addDays(prev, step * 7)));
@@ -550,6 +562,24 @@ export function CalendarView({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-auto p-3">
+          {/* Widok kierowcy aktywny — jawnie widoczne (nie tylko podświetlenie
+              w sidebarze), bo przesłania filtr urządzeń: łatwo by było się
+              zdziwić "gdzie reszta wynajmów". */}
+          {driverViewId && (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-[#9CC5E0] bg-[#EAF4FB] px-3 py-2 text-sm text-[#14567F]">
+              <span>
+                Widok kierowcy: <b>{drivers.find((d) => d.id === driverViewId)?.name ?? "…"}</b> — pokazuje tylko jego
+                wynajmy, niezależnie od zaznaczonych urządzeń.
+              </span>
+              <button
+                type="button"
+                onClick={() => setDriverView(null)}
+                className="flex-none rounded-md border border-[#9CC5E0] bg-white px-2 py-1 text-xs font-semibold text-[#14567F] hover:bg-[#F2F7FB]"
+              >
+                Wyłącz
+              </button>
+            </div>
+          )}
           {isLoading && <p className="mb-2 text-sm text-gray-400">Ładowanie…</p>}
           {dragError && (
             <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
