@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { costPerKm, costPerPulse, driverCostForRental, fuelCostForRental, vehicleFuelCostPerKm } from "./calc";
+import { costPerKm, costPerPulse, driverCostForRental, fuelCostForRental, legFuelCost, vehicleFuelCostPerKm } from "./calc";
 
 describe("vehicleFuelCostPerKm", () => {
   it("spalanie/100 * cena paliwa", () => {
@@ -14,15 +14,35 @@ describe("vehicleFuelCostPerKm", () => {
   });
 });
 
-describe("fuelCostForRental", () => {
-  it("mnoży km * stawkę", () => {
-    expect(fuelCostForRental(20, 1.2)).toBe(24);
+describe("legFuelCost", () => {
+  it("mnoży km * stawkę * 2 (tam i z powrotem)", () => {
+    expect(legFuelCost(20, 1.2)).toBe(48);
   });
   it("brak dystansu → null, nie 0", () => {
-    expect(fuelCostForRental(null, 1.2)).toBeNull();
+    expect(legFuelCost(null, 1.2)).toBeNull();
   });
-  it("brak stawki pojazdu (brak vehicleId/fuelCostPerKm) → null", () => {
-    expect(fuelCostForRental(20, null)).toBeNull();
+  it("brak stawki pojazdu → null", () => {
+    expect(legFuelCost(20, null)).toBeNull();
+  });
+});
+
+describe("fuelCostForRental", () => {
+  it("sumuje etap dostawy i odbioru (ten sam pojazd → 2x legFuelCost)", () => {
+    // 20km * 1.2 * 2 (dostawa) + 20km * 1.2 * 2 (odbiór) = 48 + 48 = 96
+    expect(fuelCostForRental(20, 1.2, 1.2)).toBe(96);
+  });
+  it("różne pojazdy na dostawę i odbiór → każdy etap swoją stawką, nic nie dzielone", () => {
+    // dostawa: 20*1.2*2=48, odbiór: 20*2*2=80
+    expect(fuelCostForRental(20, 1.2, 2)).toBe(128);
+  });
+  it("brak dystansu → null (oba etapy bez danych)", () => {
+    expect(fuelCostForRental(null, 1.2, 1.2)).toBeNull();
+  });
+  it("brak stawki obu pojazdów → null", () => {
+    expect(fuelCostForRental(20, null, null)).toBeNull();
+  });
+  it("brak stawki tylko jednego etapu → liczy drugi, nie zeruje całości", () => {
+    expect(fuelCostForRental(20, 1.2, null)).toBe(48);
   });
 });
 

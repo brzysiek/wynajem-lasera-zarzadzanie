@@ -61,18 +61,35 @@ export async function loadRentalFuelInputs(period: Period): Promise<RentalFuelIn
         vehicleId: true,
         contactDistanceKm: true,
         vehicle: { select: { name: true, fuelConsumptionL100km: true } },
+        finance: {
+          select: {
+            pickupVehicleId: true,
+            pickupVehicle: { select: { name: true, fuelConsumptionL100km: true } },
+          },
+        },
       },
     }),
     loadFuelPricePerLiter(),
   ]);
   return rentals
     .filter((r): r is typeof r & { vehicleId: string; vehicle: NonNullable<typeof r.vehicle> } => r.vehicleId !== null && r.vehicle !== null)
-    .map((r) => ({
-      vehicleId: r.vehicleId,
-      vehicleName: r.vehicle.name,
-      distanceKm: r.contactDistanceKm !== null ? Number(r.contactDistanceKm) : null,
-      fuelCostPerKm: vehicleFuelCostPerKm(Number(r.vehicle.fuelConsumptionL100km), pricePerLiter),
-    }));
+    .map((r) => {
+      const deliveryFuelCostPerKm = vehicleFuelCostPerKm(Number(r.vehicle.fuelConsumptionL100km), pricePerLiter);
+      const pickupVehicle = r.finance?.pickupVehicle ?? null;
+      return {
+        distanceKm: r.contactDistanceKm !== null ? Number(r.contactDistanceKm) : null,
+        deliveryVehicleId: r.vehicleId,
+        deliveryVehicleName: r.vehicle.name,
+        deliveryFuelCostPerKm,
+        // Brak pickupVehicle (kierowca nie zaznaczył innego) -> ten sam
+        // pojazd/koszt co dostawa.
+        pickupVehicleId: pickupVehicle ? r.finance!.pickupVehicleId! : r.vehicleId,
+        pickupVehicleName: pickupVehicle ? pickupVehicle.name : r.vehicle.name,
+        pickupFuelCostPerKm: pickupVehicle
+          ? vehicleFuelCostPerKm(Number(pickupVehicle.fuelConsumptionL100km), pricePerLiter)
+          : deliveryFuelCostPerKm,
+      };
+    });
 }
 
 // Wynajmy z licznikami impulsów w okresie — wejście do kosztu na impuls

@@ -215,8 +215,9 @@ model Rental {
   // wyliczenia kosztu paliwa per wynajem (docs/prompt-claude-code-dashboard-kosztow.md, sekcja 3.1).
   contactDistanceKm   Decimal?  @db.Decimal(6, 1)
   eventType           RentalEventType @default(WYNAJEM)
-  // Uwagi wpisywane przez rolę KIEROWCA — osobne od internalNotes (biuro).
-  driverNotes         String?   @db.Text
+  // Uwagi kierowcy: dawniej jedno pole na cały wynajem, teraz osobno per etap
+  // — RentalFinance.deliveryNotes / pickupNotes (dostawa i odbiór mogą mieć
+  // zupełnie inny kontekst, np. "dostawa połączona z innym klientem").
   lastSyncedAt        DateTime?
   deletedInGoogle     Boolean   @default(false)
   createdAt           DateTime  @default(now())
@@ -369,6 +370,21 @@ model RentalFinance {
   deliveryDurationMinutes Int?
   pickupDurationMinutes   Int?
 
+  // --- pojazd odbioru, gdy inny niż dostawy ---
+  // Dostawa zawsze jedzie pojazdem z Rental.vehicleId (ustala biuro). Odbiór
+  // domyślnie tym samym — pickupVehicleId = null. Kierowca może zaznaczyć, że
+  // odbiór był innym pojazdem (suwak w widoku kierowcy) — wtedy tu ląduje
+  // drugi pojazd. Podstawa do liczenia kosztu paliwa PER ETAP (patrz
+  // src/lib/costs/calc.ts — każdy etap to osobna trasa tam-i-z-powrotem).
+  pickupVehicleId String?
+  pickupVehicle   Vehicle? @relation("RentalFinancePickupVehicle", fields: [pickupVehicleId], references: [id])
+
+  // --- uwagi kierowcy PER ETAP (zastępują dawne Rental.driverNotes) ---
+  // Dostawa i odbiór mogą mieć zupełnie inny kontekst (np. "dostawa
+  // połączona z innym klientem"), więc jedna wspólna uwaga nie wystarczała.
+  deliveryNotes String? @db.Text
+  pickupNotes   String? @db.Text
+
   // --- transport ---
   // Kwota netto transportu (dawniej wolny tekst na Rental.transportPrice).
   transportPriceNet       Decimal?       @db.Decimal(10, 2)
@@ -442,8 +458,9 @@ model Vehicle {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  rentals Rental[]
-  costs   Cost[]
+  rentals              Rental[]
+  costs                Cost[]
+  pickupForRentals     RentalFinance[] @relation("RentalFinancePickupVehicle")
 
   @@map("vehicles")
 }

@@ -49,28 +49,76 @@ describe("sumCostsByScope", () => {
   });
 });
 
+// Domyślnie ten sam pojazd na dostawę i odbiór (pickup* = delivery*) — tak
+// wygląda większość wynajmów; testy z dwoma różnymi pojazdami nadpisują je jawnie.
+function fuelInput(overrides: Partial<RentalFuelInput> = {}): RentalFuelInput {
+  const base: RentalFuelInput = {
+    distanceKm: 10,
+    deliveryVehicleId: "v1",
+    deliveryVehicleName: "Ford",
+    deliveryFuelCostPerKm: 2,
+    pickupVehicleId: "v1",
+    pickupVehicleName: "Ford",
+    pickupFuelCostPerKm: 2,
+  };
+  const merged = { ...base, ...overrides };
+  // Wygodne dla testów jednopojazdowych: nadpisanie tylko delivery* niech
+  // automatycznie nadpisze też pickup*, chyba że test jawnie poda inny pickup.
+  if (overrides.deliveryVehicleId && !overrides.pickupVehicleId) merged.pickupVehicleId = overrides.deliveryVehicleId;
+  if (overrides.deliveryVehicleName && !overrides.pickupVehicleName) merged.pickupVehicleName = overrides.deliveryVehicleName;
+  if (overrides.deliveryFuelCostPerKm !== undefined && overrides.pickupFuelCostPerKm === undefined) {
+    merged.pickupFuelCostPerKm = overrides.deliveryFuelCostPerKm;
+  }
+  return merged;
+}
+
 describe("totalFuelCost", () => {
   it("pomija wynajmy z brakującymi danymi zamiast zerować całość", () => {
+    // ten sam pojazd oba etapy: 10km*2*2=40 za dostawę + 40 za odbiór = 80
     const inputs: RentalFuelInput[] = [
-      { vehicleId: "v1", vehicleName: "Ford", distanceKm: 10, fuelCostPerKm: 2 },
-      { vehicleId: "v1", vehicleName: "Ford", distanceKm: null, fuelCostPerKm: 2 },
-      { vehicleId: "v1", vehicleName: "Ford", distanceKm: 5, fuelCostPerKm: null },
+      fuelInput({ distanceKm: 10, deliveryFuelCostPerKm: 2 }),
+      fuelInput({ distanceKm: null, deliveryFuelCostPerKm: 2 }),
+      fuelInput({ distanceKm: 5, deliveryFuelCostPerKm: null, pickupFuelCostPerKm: null }),
     ];
-    expect(totalFuelCost(inputs)).toBe(20);
+    expect(totalFuelCost(inputs)).toBe(80);
   });
 });
 
 describe("vehicleBreakdown", () => {
-  it("liczy paliwo, inne koszty, razem i koszt/km", () => {
+  it("liczy paliwo, inne koszty, razem i koszt/km (ten sam pojazd oba etapy)", () => {
     const costs: CostEntry[] = [cost({ scope: "VEHICLE", vehicleId: "v1", vehicleName: "Ford", amount: 300, categoryName: "Serwis/przegląd" })];
+    // wynajem 1: dostawa 100*2*2=400 + odbiór (ten sam pojazd) 400 = 800, km 200+200=400
+    // wynajem 2: dostawa 50*2*2=200 + odbiór 200 = 400, km 100+100=200
+    // razem: fuelNet 1200, totalKm 600
     const fuel: RentalFuelInput[] = [
-      { vehicleId: "v1", vehicleName: "Ford", distanceKm: 100, fuelCostPerKm: 2 },
-      { vehicleId: "v1", vehicleName: "Ford", distanceKm: 50, fuelCostPerKm: 2 },
+      fuelInput({ distanceKm: 100, deliveryFuelCostPerKm: 2 }),
+      fuelInput({ distanceKm: 50, deliveryFuelCostPerKm: 2 }),
     ];
     const rows = vehicleBreakdown(costs, fuel);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ vehicleId: "v1", fuelNet: 300, otherNet: 300, totalNet: 600, totalKm: 150, rentalCount: 2 });
-    expect(rows[0].costPerKmValue).toBe(4);
+    expect(rows[0]).toMatchObject({ vehicleId: "v1", fuelNet: 1200, otherNet: 300, totalNet: 1500, totalKm: 600, rentalCount: 2 });
+    expect(rows[0].costPerKmValue).toBe(2.5);
+  });
+
+  it("różne pojazdy dostawy i odbioru -> koszt/km rozdzielony na dwa wiersze, rentalCount po 1 w każdym", () => {
+    const fuel: RentalFuelInput[] = [
+      fuelInput({
+        distanceKm: 10,
+        deliveryVehicleId: "v1",
+        deliveryVehicleName: "Ford",
+        deliveryFuelCostPerKm: 2,
+        pickupVehicleId: "v2",
+        pickupVehicleName: "Skoda",
+        pickupFuelCostPerKm: 1,
+      }),
+    ];
+    const rows = vehicleBreakdown([], fuel);
+    expect(rows).toHaveLength(2);
+    const v1 = rows.find((r) => r.vehicleId === "v1")!;
+    const v2 = rows.find((r) => r.vehicleId === "v2")!;
+    // v1 (dostawa): 10*2*2=40, 20km; v2 (odbiór): 10*1*2=20, 20km
+    expect(v1).toMatchObject({ fuelNet: 40, totalKm: 20, rentalCount: 1 });
+    expect(v2).toMatchObject({ fuelNet: 20, totalKm: 20, rentalCount: 1 });
   });
 
   it("brak km w okresie -> koszt/km null, nie dzielenie przez zero", () => {
@@ -80,7 +128,10 @@ describe("vehicleBreakdown", () => {
   });
 
   it("pomija pojazdy bez żadnych kosztów/km", () => {
-    const rows = vehicleBreakdown([], [{ vehicleId: "v1", vehicleName: "Ford", distanceKm: null, fuelCostPerKm: null }]);
+    const rows = vehicleBreakdown(
+      [],
+      [fuelInput({ distanceKm: null, deliveryFuelCostPerKm: null, pickupFuelCostPerKm: null })],
+    );
     expect(rows).toHaveLength(0);
   });
 });

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { logInfo, logWarn } from "@/lib/logger";
 import { PricingError, recalculateFinance, resolveBasePrice } from "@/lib/pricing";
 import { loadPricingContext, loadPricingSettings, parseTransportPrice } from "@/lib/finance";
+import { resolveVehicleId } from "@/lib/rental-vehicle";
 
 // Pola, które rola KIEROWCA może edytować — wyłącznie na wydarzeniach
 // przypisanych do niej (spec 5). Whitelist egzekwowana twardo: klucz w body
@@ -19,7 +20,9 @@ const DRIVER_EDITABLE_FIELDS = [
   "transportCashCollected",
   "deliveryDurationMinutes",
   "pickupDurationMinutes",
-  "driverNotes",
+  "pickupVehicleId",
+  "deliveryNotes",
+  "pickupNotes",
 ] as const;
 
 const MAX_CAP_COUNT = 20;
@@ -64,7 +67,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let pulseCounterEnd: number | null | undefined;
   let deliveryDurationMinutes: number | null | undefined;
   let pickupDurationMinutes: number | null | undefined;
-  let driverNotes: string | null | undefined;
+  let pickupVehicleId: string | null | undefined;
+  let deliveryNotes: string | null | undefined;
+  let pickupNotes: string | null | undefined;
 
   if ("capUsedHS" in body) {
     if (body.capUsedHS !== null && typeof body.capUsedHS !== "boolean") return bad("Nieprawidłowa wartość pola „nakładka HS”.");
@@ -110,9 +115,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (field === "deliveryDurationMinutes") deliveryDurationMinutes = value;
     else pickupDurationMinutes = value;
   }
-  if ("driverNotes" in body) {
-    if (body.driverNotes !== null && typeof body.driverNotes !== "string") return bad("Nieprawidłowe uwagi kierowcy.");
-    driverNotes = body.driverNotes === null ? null : body.driverNotes.trim();
+  if ("pickupVehicleId" in body) {
+    const resolved = await resolveVehicleId(body.pickupVehicleId);
+    if (!resolved.ok) return resolved.response;
+    pickupVehicleId = resolved.vehicleId;
+  }
+  for (const field of ["deliveryNotes", "pickupNotes"] as const) {
+    if (!(field in body)) continue;
+    const raw = body[field];
+    if (raw !== null && typeof raw !== "string") return bad("Nieprawidłowa uwaga kierowcy.");
+    const value = raw === null ? null : raw.trim();
+    if (field === "deliveryNotes") deliveryNotes = value;
+    else pickupNotes = value;
   }
 
   const existing = rental.finance;
@@ -131,6 +145,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     deliveryDurationMinutes !== undefined ? deliveryDurationMinutes : existing?.deliveryDurationMinutes ?? null;
   const effPickupMin =
     pickupDurationMinutes !== undefined ? pickupDurationMinutes : existing?.pickupDurationMinutes ?? null;
+  const effPickupVehicleId =
+    pickupVehicleId !== undefined ? pickupVehicleId : existing?.pickupVehicleId ?? null;
+  const effDeliveryNotes = deliveryNotes !== undefined ? deliveryNotes : existing?.deliveryNotes ?? null;
+  const effPickupNotes = pickupNotes !== undefined ? pickupNotes : existing?.pickupNotes ?? null;
 
   // Pola transportu ustala biuro w sekcji „Finanse" — kierowca ich nie rusza.
   const transportPriceNet = existing?.transportPriceNet ?? parseTransportPrice(rental.transportPrice);
@@ -213,31 +231,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     transportCashCollected: effTransportCash,
     deliveryDurationMinutes: effDeliveryMin,
     pickupDurationMinutes: effPickupMin,
+    pickupVehicleId: effPickupVehicleId,
+    deliveryNotes: effDeliveryNotes,
+    pickupNotes: effPickupNotes,
     totalNet: computed.totalNet,
     totalGross: computed.totalGross,
     transportTotalNet: computed.transportTotalNet,
     transportTotalGross: computed.transportTotalGross,
   };
 
-  await prisma.$transaction(async (tx) => {
-    await tx.rentalFinance.upsert({
-      where: { rentalId: id },
-      create: {
-        rentalId: id,
-        ...financeData,
-        deviceVariant: ctx.deviceVariant,
-        vatApplicable,
-        vatRate,
-        paymentMethod,
-        transportPriceNet,
-        transportPaidSeparately,
-        transportVatApplicable,
-      },
-      update: financeData,
-    });
-    if (driverNotes !== undefined) {
-      await tx.rental.update({ where: { id }, data: { driverNotes } });
-    }
+  // Jedyny zapis tego endpointu (dawniej też Rental.driverNotes obok — usunięte,
+  // uwagi kierowcy żyją teraz na RentalFinance), więc bez $transaction.
+  await prisma.rentalFinance.upsert({
+    where: { rentalId: id },
+    create: {
+      rentalId: id,
+      ...financeData,
+      deviceVariant: ctx.deviceVariant,
+      vatApplicable,
+      vatRate,
+      paymentMethod,
+      transportPriceNet,
+      transportPaidSeparately,
+      transportVatApplicable,
+    },
+    update: financeData,
   });
 
   logInfo("driver_finance_updated", { userId: session.user.id, rentalId: id, fields: Object.keys(body) });

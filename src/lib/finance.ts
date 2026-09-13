@@ -165,6 +165,10 @@ export type RentalFinanceDto = {
   cashCollected: boolean | null;
   deliveryDurationMinutes: number | null;
   pickupDurationMinutes: number | null;
+  // null = odbiór tym samym pojazdem co Rental.vehicleId (domyślne).
+  pickupVehicleId: string | null;
+  deliveryNotes: string | null;
+  pickupNotes: string | null;
   // --- transport ---
   transportPriceNet: string | null;
   transportPaidSeparately: boolean;
@@ -197,6 +201,9 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
     cashCollected: row.cashCollected,
     deliveryDurationMinutes: row.deliveryDurationMinutes,
     pickupDurationMinutes: row.pickupDurationMinutes,
+    pickupVehicleId: row.pickupVehicleId,
+    deliveryNotes: row.deliveryNotes,
+    pickupNotes: row.pickupNotes,
     transportPriceNet: row.transportPriceNet ? row.transportPriceNet.toString() : null,
     transportPaidSeparately: row.transportPaidSeparately,
     transportVatApplicable: row.transportVatApplicable,

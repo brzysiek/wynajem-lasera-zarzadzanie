@@ -66,9 +66,13 @@ export default async function RentalDetailPage({
     // hourlyRate/passwordHash (docs/prompt-claude-code-dashboard-kosztow.md
     // sekcja 1.4 — twarda reguła bezpieczeństwa). rental.driverId (już
     // pobrane) wystarcza do sprawdzenia właściciela poniżej.
-    const [rental, financeCtx] = await Promise.all([
-      prisma.rental.findUnique({ where: { id }, include: { device: true, finance: true } }),
+    const [rental, financeCtx, vehicles] = await Promise.all([
+      prisma.rental.findUnique({
+        where: { id },
+        include: { device: true, finance: true, vehicle: { select: { id: true, name: true } } },
+      }),
       loadFinanceFormContext(),
+      prisma.vehicle.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     ]);
     if (!rental || (!preview && rental.driverId !== session!.user.id)) {
       notFound();
@@ -99,12 +103,14 @@ export default async function RentalDetailPage({
             eventType={rental.eventType}
             pricingCategory={rental.device.pricingCategory}
             finance={financeDto(rental.finance)}
-            initialDriverNotes={rental.driverNotes ?? ""}
             previewCtx={{ priceRules: financeCtx.previewPriceRules, pulseTiers: financeCtx.previewPulseTiers }}
             durationDays={rentalDurationDays(rental.startsAt, rental.endsAt)}
             transportPrice={rental.transportPrice}
             capFeeHsNet={financeCtx.capFeeHsNet}
             almaPulseRateNet={financeCtx.almaPulseRateNet}
+            vehicleId={rental.vehicleId}
+            vehicleName={rental.vehicle?.name ?? null}
+            vehicles={vehicles}
             tripInfoSlot={<DriverTripInfo rental={tripRental} />}
           />
         }

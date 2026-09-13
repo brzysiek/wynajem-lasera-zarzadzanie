@@ -34,24 +34,30 @@ export function DriverFinancePanel({
   eventType,
   pricingCategory,
   finance,
-  initialDriverNotes,
   previewCtx,
   durationDays,
   transportPrice,
   capFeeHsNet,
   almaPulseRateNet,
+  vehicleId,
+  vehicleName,
+  vehicles,
   tripInfoSlot,
 }: {
   rentalId: string;
   eventType: RentalEventType;
   pricingCategory: DevicePricingCategory | null;
   finance: RentalFinanceDto | null;
-  initialDriverNotes: string;
   previewCtx: PreviewContext;
   durationDays: number;
   transportPrice: string | null;
   capFeeHsNet: number;
   almaPulseRateNet: number;
+  // Pojazd dostawy — ustala biuro (Rental.vehicleId), kierowca go nie zmienia
+  // tutaj, tylko może zaznaczyć INNY pojazd na odbiór (suwak niżej).
+  vehicleId: string | null;
+  vehicleName: string | null;
+  vehicles: { id: string; name: string }[];
   // Karta „Klientka" + „Uwaga z biura" — renderowane zaraz po banerze
   // płatności (mockup-master), przed rozbiciem kwoty.
   tripInfoSlot?: React.ReactNode;
@@ -71,12 +77,20 @@ export function DriverFinancePanel({
   const [pickupMin, setPickupMin] = useState(
     finance?.pickupDurationMinutes != null ? String(finance.pickupDurationMinutes) : "",
   );
-  const [notes, setNotes] = useState(initialDriverNotes);
-  const [notesOpen, setNotesOpen] = useState(initialDriverNotes.trim() !== "");
+  const initialPickupVehicleId = finance?.pickupVehicleId ?? null;
+  const [pickupSameVehicle, setPickupSameVehicle] = useState(initialPickupVehicleId == null);
+  const [pickupVehicleSel, setPickupVehicleSel] = useState(initialPickupVehicleId ?? "");
+  const initialDeliveryNotes = finance?.deliveryNotes ?? "";
+  const initialPickupNotes = finance?.pickupNotes ?? "";
+  const [deliveryNotes, setDeliveryNotes] = useState(initialDeliveryNotes);
+  const [deliveryNotesOpen, setDeliveryNotesOpen] = useState(initialDeliveryNotes.trim() !== "");
+  const [pickupNotes, setPickupNotes] = useState(initialPickupNotes);
+  const [pickupNotesOpen, setPickupNotesOpen] = useState(initialPickupNotes.trim() !== "");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const lastSentKey = useRef<string | null>(null);
 
+  const otherVehicles = vehicles.filter((v) => v.id !== vehicleId);
   const variant = finance?.deviceVariant ?? null;
   const isFlex = !isSzkolenie && pricingCategory === "LIGHTSHEER_VARIANT" && variant === FLEX_VARIANT;
   const isDouble = !isSzkolenie && variant === DOUBLE_VARIANT;
@@ -113,7 +127,8 @@ export function DriverFinancePanel({
 
   const savedStart = finance?.pulseCounterStart ?? null;
   const savedEnd = finance?.pulseCounterEnd ?? null;
-  const savedNotes = initialDriverNotes.trim();
+  const savedDeliveryNotes = initialDeliveryNotes.trim();
+  const savedPickupNotes = initialPickupNotes.trim();
   const countersDirty =
     needsCounters &&
     !countersError &&
@@ -127,16 +142,23 @@ export function DriverFinancePanel({
     capCount?: number;
     cashCollected?: boolean;
     transportCashCollected?: boolean;
+    pickupSameVehicle?: boolean;
+    pickupVehicleSel?: string;
   }) {
     const capUsedNow = ov?.capUsed ?? capUsed;
     const capCountNow = ov?.capCount ?? capCount;
     const cashNow = ov?.cashCollected ?? cashCollected;
     const transportCashNow = ov?.transportCashCollected ?? transportCash;
+    const pickupSameVehicleNow = ov?.pickupSameVehicle ?? pickupSameVehicle;
+    const pickupVehicleSelNow = ov?.pickupVehicleSel ?? pickupVehicleSel;
 
     const payload: Record<string, unknown> = {
-      driverNotes: notes.trim() || null,
+      deliveryNotes: deliveryNotes.trim() || null,
+      pickupNotes: pickupNotes.trim() || null,
       cashCollected: cashNow,
     };
+    const pickupVehicleIdNow = pickupSameVehicleNow ? null : pickupVehicleSelNow || null;
+    if (pickupVehicleIdNow !== initialPickupVehicleId) payload.pickupVehicleId = pickupVehicleIdNow;
     if (finance?.transportPaidSeparately) {
       payload.transportCashCollected = transportCashNow;
     }
@@ -285,49 +307,88 @@ export function DriverFinancePanel({
     </div>
   );
 
-  const noteText = notes.trim();
-  const notesCard = notesOpen ? (
-    <div className={CARD}>
-      <div className="mb-2 flex items-center justify-between">
-        <p className={FIELD_LABEL}>Uwagi kierowcy</p>
-        <button
-          type="button"
-          onClick={() => {
-            if (noteText !== savedNotes) void save();
-            setNotesOpen(false);
-          }}
-          className="text-[13px] font-semibold text-[#2F6FD1]"
-        >
-          Gotowe
+  // Uwaga kierowcy PER ETAP (dostawa / odbiór) — dawniej jedna wspólna;
+  // osobno, bo dostawa i odbiór bywają zupełnie inną sytuacją (np. dostawa
+  // połączona z innym klientem, odbiór normalny). Ten sam trójstanowy wzorzec
+  // co dawniej: puste "+ Dodaj uwagę" / zwinięte z podglądem / rozwinięte.
+  function noteCard(
+    label: string,
+    value: string,
+    setValue: (v: string) => void,
+    open: boolean,
+    setOpen: (v: boolean) => void,
+    saved: string,
+    placeholder: string,
+  ) {
+    const text = value.trim();
+    if (open) {
+      return (
+        <div className={CARD}>
+          <div className="mb-2 flex items-center justify-between">
+            <p className={FIELD_LABEL}>{label}</p>
+            <button
+              type="button"
+              onClick={() => {
+                if (text !== saved) void save();
+                setOpen(false);
+              }}
+              className="text-[13px] font-semibold text-[#2F6FD1]"
+            >
+              Gotowe
+            </button>
+          </div>
+          <textarea
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={() => {
+              if (value.trim() !== saved) void save();
+            }}
+            rows={3}
+            placeholder={placeholder}
+            className={`${INPUT_BASE} resize-none border-[#E2E6EC] focus:border-[#2F6FD1]`}
+          />
+        </div>
+      );
+    }
+    if (text) {
+      return (
+        <button type="button" onClick={() => setOpen(true)} className={`${CARD} text-left`}>
+          <p className={`mb-1 ${FIELD_LABEL}`}>{label}</p>
+          <p className="whitespace-pre-wrap text-[13.5px] text-[#171A21]">{text}</p>
         </button>
-      </div>
-      <textarea
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        onBlur={() => {
-          if (notes.trim() !== savedNotes) void save();
-        }}
-        rows={3}
-        placeholder="np. utrudniony dojazd, klientka prosiła o kontakt przed odbiorem…"
-        className={`${INPUT_BASE} resize-none border-[#E2E6EC] focus:border-[#2F6FD1]`}
-      />
-    </div>
-  ) : noteText ? (
-    <button type="button" onClick={() => setNotesOpen(true)} className={`${CARD} text-left`}>
-      <p className={`mb-1 ${FIELD_LABEL}`}>Uwagi kierowcy</p>
-      <p className="whitespace-pre-wrap text-[13.5px] text-[#171A21]">{noteText}</p>
-    </button>
-  ) : (
-    <button
-      type="button"
-      onClick={() => setNotesOpen(true)}
-      className="flex items-center gap-2.5 rounded-[14px] border border-[#E2E6EC] bg-white px-4 py-3.5 text-[13.5px] font-semibold text-[#2F6FD1]"
-    >
-      <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full border-[1.5px] border-[#2F6FD1] text-[13px] leading-none">
-        +
-      </span>
-      Dodaj uwagę
-    </button>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-2.5 rounded-[14px] border border-[#E2E6EC] bg-white px-4 py-3.5 text-[13.5px] font-semibold text-[#2F6FD1]"
+      >
+        <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full border-[1.5px] border-[#2F6FD1] text-[13px] leading-none">
+          +
+        </span>
+        {label === "Uwaga do dostawy" ? "Dodaj uwagę do dostawy" : "Dodaj uwagę do odbioru"}
+      </button>
+    );
+  }
+
+  const deliveryNotesCard = noteCard(
+    "Uwaga do dostawy",
+    deliveryNotes,
+    setDeliveryNotes,
+    deliveryNotesOpen,
+    setDeliveryNotesOpen,
+    savedDeliveryNotes,
+    "np. MP. dostawa połączona z innym klientem",
+  );
+  const pickupNotesCard = noteCard(
+    "Uwaga do odbioru",
+    pickupNotes,
+    setPickupNotes,
+    pickupNotesOpen,
+    setPickupNotesOpen,
+    savedPickupNotes,
+    "np. MP. odbiór połączony z innym klientem",
   );
 
   // Brak rozliczenia przygotowanego przez biuro — kierowca może zostawić tylko uwagi.
@@ -338,18 +399,8 @@ export function DriverFinancePanel({
           Biuro nie przygotowało jeszcze rozliczenia tego wydarzenia.
         </div>
         {tripInfoSlot}
-        <div className={CARD}>
-          <p className={`mb-2 ${FIELD_LABEL}`}>Uwagi kierowcy</p>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={() => {
-              if (notes.trim() !== savedNotes) void save();
-            }}
-            rows={3}
-            className={`${INPUT_BASE} resize-none border-[#E2E6EC] focus:border-[#2F6FD1]`}
-          />
-        </div>
+        {deliveryNotesCard}
+        {pickupNotesCard}
         {statusLine}
       </div>
     );
@@ -670,7 +721,54 @@ export function DriverFinancePanel({
         )}
       </div>
 
-      {notesCard}
+      {/* Pojazd odbioru, gdy inny niż dostawy — np. odbiór łączony z innym
+          klientem, jedzie się innym autem. Dostawa zawsze pojazdem z biura
+          (vehicleName), tego kierowca tu nie zmienia. Karta pokazuje się
+          tylko gdy jest jakiś INNY pojazd do wyboru. */}
+      {vehicleId && otherVehicles.length > 0 && (
+        <div className={CARD}>
+          <p className={`mb-1 ${FIELD_LABEL}`}>Pojazd</p>
+          <p className="mb-3 text-[13.5px] text-[#171A21]">
+            Dostawa: <b>{vehicleName ?? "—"}</b>
+          </p>
+          <label className="flex items-center gap-2 text-[13.5px] text-[#171A21]">
+            <input
+              type="checkbox"
+              checked={!pickupSameVehicle}
+              onChange={(e) => {
+                const different = e.target.checked;
+                setPickupSameVehicle(!different);
+                if (!different) {
+                  setPickupVehicleSel("");
+                  void save({ pickupSameVehicle: true, pickupVehicleSel: "" });
+                }
+              }}
+            />
+            Odbiór innym pojazdem
+          </label>
+          {!pickupSameVehicle && (
+            <select
+              value={pickupVehicleSel}
+              onChange={(e) => {
+                const v = e.target.value;
+                setPickupVehicleSel(v);
+                if (v) void save({ pickupVehicleSel: v });
+              }}
+              className={`mt-2 ${INPUT_BASE} border-[#E2E6EC] focus:border-[#2F6FD1]`}
+            >
+              <option value="">— wybierz pojazd —</option>
+              {otherVehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {deliveryNotesCard}
+      {pickupNotesCard}
     </div>
   );
 }

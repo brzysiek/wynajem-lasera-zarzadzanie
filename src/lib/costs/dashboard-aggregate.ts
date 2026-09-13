@@ -2,7 +2,7 @@
 // sekcja 4). Czyste funkcje na plain data — Prisma zostaje w dashboard-load.ts,
 // tak samo jak w module przychodów (src/lib/revenue/aggregate.ts + load.ts).
 
-import { round2, fuelCostForRental, driverCostForRental, costPerPulse, costPerKm } from "./calc";
+import { round2, fuelCostForRental, legFuelCost, driverCostForRental, costPerPulse, costPerKm } from "./calc";
 
 export type CostScope = "GENERAL" | "VEHICLE" | "DEVICE";
 
@@ -48,15 +48,21 @@ export type CostEntry = {
 };
 
 // Jeden wynajem z przypisanym pojazdem w okresie — wejście do kosztu paliwa
-// (sekcja 3.1) i sumy km per pojazd.
+// (sekcja 3.1) i sumy km per pojazd. Dostawa i odbiór osobno, bo mogą jechać
+// różnymi pojazdami (RentalFinance.pickupVehicleId) — patrz legFuelCost w
+// src/lib/costs/calc.ts. pickupVehicleId/-Name/-FuelCostPerKm = te same
+// wartości co delivery*, gdy kierowca nie zaznaczył innego pojazdu odbioru.
 export type RentalFuelInput = {
-  vehicleId: string;
-  vehicleName: string;
-  distanceKm: number | null; // Rental.contactDistanceKm
+  distanceKm: number | null; // Rental.contactDistanceKm — W JEDNĄ STRONĘ
+  deliveryVehicleId: string;
+  deliveryVehicleName: string;
   // Wyliczone (nie pole DB): Vehicle.fuelConsumptionL100km/100 *
   // PricingSetting["fuel_price_per_liter"] — patrz vehicleFuelCostPerKm w
   // src/lib/costs/calc.ts, wołane w dashboard-load.ts.
-  fuelCostPerKm: number | null;
+  deliveryFuelCostPerKm: number | null;
+  pickupVehicleId: string;
+  pickupVehicleName: string;
+  pickupFuelCostPerKm: number | null;
 };
 
 // Jeden wynajem z licznikami impulsów w okresie — wejście do kosztu na
@@ -98,7 +104,7 @@ export function sumCostsByScope(costs: CostEntry[]): ScopeTotals {
 export function totalFuelCost(inputs: RentalFuelInput[]): number {
   let sum = 0;
   for (const i of inputs) {
-    const c = fuelCostForRental(i.distanceKm, i.fuelCostPerKm);
+    const c = fuelCostForRental(i.distanceKm, i.deliveryFuelCostPerKm, i.pickupFuelCostPerKm);
     if (c != null) sum += c;
   }
   return round2(sum);
@@ -129,12 +135,23 @@ export function vehicleBreakdown(costs: CostEntry[], fuelInputs: RentalFuelInput
     return row;
   };
 
+  // Dostawa i odbiór liczone (i przypisane do wiersza pojazdu) OSOBNO — to
+  // dwie niezależne trasy tam-i-z-powrotem, mogą jechać różnymi pojazdami.
+  // Ten sam pojazd na oba etapy -> jeden wiersz dostaje oba koszty/km, ale
+  // rentalCount rośnie tylko raz (to wciąż jeden wynajem).
   for (const i of fuelInputs) {
-    const row = ensure(i.vehicleId, i.vehicleName);
-    const fuel = fuelCostForRental(i.distanceKm, i.fuelCostPerKm);
-    if (fuel != null) row.fuelNet = round2(row.fuelNet + fuel);
-    if (i.distanceKm != null) row.totalKm = round2(row.totalKm + i.distanceKm);
-    row.rentalCount += 1;
+    const deliveryRow = ensure(i.deliveryVehicleId, i.deliveryVehicleName);
+    const deliveryFuel = legFuelCost(i.distanceKm, i.deliveryFuelCostPerKm);
+    if (deliveryFuel != null) deliveryRow.fuelNet = round2(deliveryRow.fuelNet + deliveryFuel);
+    if (i.distanceKm != null) deliveryRow.totalKm = round2(deliveryRow.totalKm + i.distanceKm * 2);
+    deliveryRow.rentalCount += 1;
+
+    const sameVehicle = i.pickupVehicleId === i.deliveryVehicleId;
+    const pickupRow = sameVehicle ? deliveryRow : ensure(i.pickupVehicleId, i.pickupVehicleName);
+    const pickupFuel = legFuelCost(i.distanceKm, i.pickupFuelCostPerKm);
+    if (pickupFuel != null) pickupRow.fuelNet = round2(pickupRow.fuelNet + pickupFuel);
+    if (i.distanceKm != null) pickupRow.totalKm = round2(pickupRow.totalKm + i.distanceKm * 2);
+    if (!sameVehicle) pickupRow.rentalCount += 1;
   }
   for (const c of costs) {
     if (c.scope !== "VEHICLE" || !c.vehicleId) continue;

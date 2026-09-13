@@ -19,12 +19,31 @@ export function vehicleFuelCostPerKm(consumptionL100km: number | null, pricePerL
   return round2((consumptionL100km / 100) * pricePerLiter);
 }
 
-// --- 3.1 koszt paliwa per wynajem ---
-// null gdy brakuje contactDistanceKm LUB vehicleId LUB koszt/km pojazdu
-// (patrz vehicleFuelCostPerKm — sam brak spalania LUB ceny paliwa też daje null).
-export function fuelCostForRental(distanceKm: number | null, fuelCostPerKm: number | null): number | null {
+// --- 3.1 koszt paliwa PER ETAP (dostawa LUB odbiór) ---
+// Rental.contactDistanceKm to odległość W JEDNĄ STRONĘ do klienta — każdy
+// etap to osobna, pełna trasa tam-i-z-powrotem, stąd ×2. Dostawa i odbiór są
+// od siebie niezależne (mogą jechać różnymi pojazdami — RentalFinance.pickupVehicleId),
+// więc liczone osobno, nie jedną wspólną trasą jak dawniej.
+// null gdy brakuje odległości LUB kosztu/km pojazdu tego etapu.
+export function legFuelCost(distanceKm: number | null, fuelCostPerKm: number | null): number | null {
   if (distanceKm == null || fuelCostPerKm == null) return null;
-  return round2(distanceKm * fuelCostPerKm);
+  return round2(distanceKm * fuelCostPerKm * 2);
+}
+
+// --- 3.1 koszt paliwa CAŁEGO wynajmu = dostawa + odbiór ---
+// Gdy ten sam pojazd robi oba etapy, to po prostu 2× legFuelCost. Gdy różne —
+// każdy etap liczony kosztem/km SWOJEGO pojazdu, nic się między nimi nie
+// dzieli (patrz legFuelCost). null tylko gdy OBA etapy dają null (zupełny
+// brak danych) — jeden brakujący etap nie zeruje drugiego.
+export function fuelCostForRental(
+  distanceKm: number | null,
+  deliveryFuelCostPerKm: number | null,
+  pickupFuelCostPerKm: number | null,
+): number | null {
+  const delivery = legFuelCost(distanceKm, deliveryFuelCostPerKm);
+  const pickup = legFuelCost(distanceKm, pickupFuelCostPerKm);
+  if (delivery == null && pickup == null) return null;
+  return round2((delivery ?? 0) + (pickup ?? 0));
 }
 
 // --- 3.2 koszt pracy kierowcy per wynajem ---
