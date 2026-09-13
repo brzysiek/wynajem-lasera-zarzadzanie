@@ -8,8 +8,13 @@ import type { RentalAlert } from "@/lib/rental-alerts";
 type RentalAlertsContextValue = {
   alerts: RentalAlert[];
   alertIds: Set<string>;
+  // `open` = widoczna karta powiadomienia w ogóle; `expanded` = rozwinięta na
+  // pełną listę (drugi poziom, patrz `show`/`toggleExpanded` niżej).
   open: boolean;
-  setOpen: (v: boolean) => void;
+  expanded: boolean;
+  show: () => void;
+  hide: () => void;
+  toggleExpanded: () => void;
 };
 
 const RentalAlertsContext = createContext<RentalAlertsContextValue | null>(null);
@@ -35,7 +40,18 @@ export function RentalAlertsProvider({
   // jest false.
   const [rawAlerts, setRawAlerts] = useState<RentalAlert[]>(EMPTY_ALERTS);
   const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const pathname = usePathname();
+
+  // Każde świeże pokazanie karty (auto-pop albo klik w ikonę na pasku) startuje
+  // zwinięte — samo powiadomienie "czegoś brakuje", bez listy. Rozwinięcie to
+  // osobny, świadomy klik (toggleExpanded), patrz rental-alerts-panel.tsx.
+  const show = useCallback(() => {
+    setOpen(true);
+    setExpanded(false);
+  }, []);
+  const hide = useCallback(() => setOpen(false), []);
+  const toggleExpanded = useCallback(() => setExpanded((v) => !v), []);
 
   const refresh = useCallback(() => {
     if (!enabled) return;
@@ -72,13 +88,16 @@ export function RentalAlertsProvider({
     }
     if (!enabled || alerts.length === 0) return;
     if (autoOpenedPathRef.current === pathname) return;
-    setOpen(true);
+    show();
     autoOpenedPathRef.current = pathname;
-  }, [pathname, enabled, alerts]);
+  }, [pathname, enabled, alerts, show]);
 
   const alertIds = useMemo(() => new Set(alerts.map((a) => a.id)), [alerts]);
 
-  const value = useMemo(() => ({ alerts, alertIds, open, setOpen }), [alerts, alertIds, open]);
+  const value = useMemo(
+    () => ({ alerts, alertIds, open, expanded, show, hide, toggleExpanded }),
+    [alerts, alertIds, open, expanded, show, hide, toggleExpanded],
+  );
 
   return <RentalAlertsContext.Provider value={value}>{children}</RentalAlertsContext.Provider>;
 }

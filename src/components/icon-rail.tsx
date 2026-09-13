@@ -110,7 +110,7 @@ export function IconRail({
 }) {
   // Hook zawsze wywołany (reguły hooków) — warunkowe jest tylko renderowanie
   // samej ikony niżej, żeby nie odpytywać kontekstu na kontach bez uprawnień.
-  const { alerts, open: alertsOpen, setOpen: setAlertsOpen } = useRentalAlerts();
+  const { alerts, open: alertsOpen, show: showAlertsCard, hide: hideAlertsCard } = useRentalAlerts();
   const hasAlerts = showAlerts && alerts.length > 0;
   if (!showTasks && !hasAlerts) return null;
 
@@ -123,7 +123,7 @@ export function IconRail({
         <RailIcon
           tooltip={`Ostrzeżenia kalendarza (${alerts.length})`}
           open={alertsOpen}
-          onClick={() => setAlertsOpen(!alertsOpen)}
+          onClick={() => (alertsOpen ? hideAlertsCard() : showAlertsCard())}
           badge={alerts.length}
           tone="danger"
         >
