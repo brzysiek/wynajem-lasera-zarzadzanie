@@ -723,6 +723,11 @@ export function RentalForm({
   const [deviceId, setDeviceId] = useState(rental?.deviceId ?? defaultDeviceId ?? devices[0]?.id ?? "");
   const [title, setTitle] = useState(rental?.title ?? "");
   const [description, setDescription] = useState(rental?.description ?? "");
+  // Opis bywa pusty w większości rezerwacji — rozwijany, domyślnie otwarty
+  // tylko gdy już coś w nim jest (edycja istniejącej rezerwacji z opisem).
+  // Kontrolowane (nie defaultOpen), żeby wpisywanie/kasowanie tekstu nie
+  // zwijało pola pod ręką — patrz <details onToggle> niżej.
+  const [descriptionOpen, setDescriptionOpen] = useState(() => Boolean(rental?.description?.trim()));
   const [internalNotes, setInternalNotes] = useState(rental?.internalNotes ?? "");
   // Reservation dates are always whole days — no time-of-day picker for
   // startsAt/endsAt (unlike delivery/pickup, which do carry a time). Both
@@ -908,25 +913,39 @@ export function RentalForm({
           <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5">
             <p className="mb-2 text-sm text-gray-700">Dane rezerwacji</p>
 
-            {canManageFinance && (
-              <div className="flex items-center gap-2 text-sm text-gray-700">
-                <span>Typ wydarzenia:</span>
-                <div className="flex overflow-hidden rounded-md border border-gray-300">
-                  {(["WYNAJEM", "SZKOLENIE"] as RentalEventType[]).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setEventType(t)}
-                      className={`px-3 py-1.5 text-sm font-medium ${
-                        eventType === t ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      {t === "WYNAJEM" ? "Wynajem" : "Szkolenie"}
-                    </button>
-                  ))}
+            {/* Typ wydarzenia + Tytuł w jednym wierszu (zamiast typu osobno
+                nad pełnoszerokościowym tytułem) — dwa krótkie pola, nie ma
+                powodu zajmować nimi dwóch wierszy. */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              {canManageFinance && (
+                <div className="flex flex-none flex-col gap-1 text-sm text-gray-700">
+                  Typ wydarzenia
+                  <div className="flex overflow-hidden rounded-md border border-gray-300">
+                    {(["WYNAJEM", "SZKOLENIE"] as RentalEventType[]).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setEventType(t)}
+                        className={`px-3 py-2 text-sm font-medium ${
+                          eventType === t ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        {t === "WYNAJEM" ? "Wynajem" : "Szkolenie"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+              <label className="flex flex-1 flex-col gap-1 text-sm text-gray-700">
+                Tytuł
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  required
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                />
+              </label>
+            </div>
 
             <label className="flex flex-col gap-1 text-sm text-gray-700">
               Urządzenie
@@ -951,25 +970,32 @@ export function RentalForm({
               )}
             </label>
 
-            <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Tytuł
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-              />
-            </label>
-
-            <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Opis
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-              />
-            </label>
+            {/* Opis: rzadko wypełniany, więc rozwijany — domyślnie zwinięty,
+                chyba że rezerwacja już go ma (wtedy nie chowamy istniejącej
+                treści). Kontrolowane przez descriptionOpen/onToggle, nie
+                `defaultOpen`, żeby pisanie/kasowanie tekstu nie zwijało pola
+                pod ręką w trakcie edycji. */}
+            <details
+              open={descriptionOpen}
+              onToggle={(e) => setDescriptionOpen(e.currentTarget.open)}
+              className="group rounded-md border border-gray-200"
+            >
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-sm text-gray-700 [&::-webkit-details-marker]:hidden">
+                <span className="text-[10px] text-gray-400 transition-transform group-open:rotate-90">▸</span>
+                Opis
+                {!descriptionOpen && description.trim() && (
+                  <span className="truncate text-xs font-normal text-gray-400">— {description.trim()}</span>
+                )}
+              </summary>
+              <div className="px-3 pb-3">
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                />
+              </div>
+            </details>
 
             <label className="flex flex-col gap-1 text-sm text-gray-700">
               Uwaga dla kierowcy
@@ -1007,58 +1033,119 @@ export function RentalForm({
             </div>
           </div>
 
-          {!isSzkolenie && (
+          {/* Klient (HubSpot) — dawniej w prawej kolumnie, teraz zaraz pod
+              Danymi rezerwacji: po wybraniu urządzenia to naturalnie kolejna
+              rzecz do sprawdzenia/uzupełnienia. */}
+          <div className="rounded-lg border border-gray-200 bg-white p-5">
+            <p className="mb-2 text-sm text-gray-700">Klient (HubSpot)</p>
+            <ContactSection
+              rentalId={isEditing ? rental!.id : null}
+              initialContact={isEditing ? contactFromRental(rental) : null}
+              onContactChange={handleContactChange}
+            />
+          </div>
+
+          {/* Dostawa i realizacja: kto jedzie (kierowca + pojazd) razem z tym,
+              gdzie i kiedy (adres/godziny/odległość) — dawniej dwie osobne
+              karty (Dostawa w lewej kolumnie, Kierowca/Pojazd w prawej),
+              teraz jedna, bo to jedno pytanie operacyjne. Kierowca/Pojazd
+              dotyczy też szkoleń; adres/godziny/odległość — tylko wynajem. */}
+          {(canManageDrivers || !isSzkolenie) && (
           <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5">
-            <p className="mb-2 text-sm text-gray-700">Dostawa</p>
-            <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Adres dostawy
-              <textarea
-                value={deliveryAddress}
-                onChange={(e) => setDeliveryAddress(e.target.value)}
-                rows={2}
-                placeholder="Uzupełnia się automatycznie z adresu klienta, jeśli jest dostępny"
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-              />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
-                Godzina dostawy
-                <input
-                  type="time"
-                  value={deliveryTime}
-                  onChange={(e) => setDeliveryTime(e.target.value)}
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
-                Godzina odbioru
-                <input
-                  type="time"
-                  value={pickupTime}
-                  onChange={(e) => setPickupTime(e.target.value)}
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                />
-              </label>
-            </div>
-            <label className="flex flex-col gap-1 text-sm text-gray-700">
-              Odległość do klienta (km)
-              <input
-                type="text"
-                inputMode="decimal"
-                value={contactDistanceKm}
-                onChange={(e) => setContactDistanceKm(e.target.value)}
-                placeholder="np. 12,5"
-                className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-              />
-              <span className="text-xs text-gray-400">
-                Wpisz raz przy danym adresie — używane do wyliczenia kosztu paliwa (Finanse → Koszty).
-              </span>
-            </label>
-            {deliveryTime && (
-              <p className="text-xs text-gray-500">
-                Godzina dostawy zostanie dodana jako prefiks do nazwy wydarzenia w kalendarzu: „
-                {withDeliveryTimePrefix(title || "(bez tytułu)", deliveryTime)}”
-              </p>
+            <p className="mb-2 text-sm text-gray-700">Dostawa i realizacja</p>
+
+            {canManageDrivers && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  Kierowca
+                  <select
+                    value={driverId}
+                    onChange={(e) => setDriverId(e.target.value)}
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                  >
+                    <option value="">— brak —</option>
+                    {driverOptions.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-400">
+                    Przypisany kierowca widzi ten wynajem w swoim kalendarzu (tylko podgląd).
+                  </span>
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  Pojazd
+                  <select
+                    value={vehicleId}
+                    onChange={(e) => setVehicleId(e.target.value)}
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                  >
+                    <option value="">— brak —</option>
+                    {vehicleOptions.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-gray-400">Używane do wyliczenia kosztu paliwa (Finanse → Koszty).</span>
+                </label>
+              </div>
+            )}
+
+            {!isSzkolenie && (
+              <>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  Adres dostawy
+                  <textarea
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    rows={2}
+                    placeholder="Uzupełnia się automatycznie z adresu klienta, jeśli jest dostępny"
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                    Godzina dostawy
+                    <input
+                      type="time"
+                      value={deliveryTime}
+                      onChange={(e) => setDeliveryTime(e.target.value)}
+                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm text-gray-700">
+                    Godzina odbioru
+                    <input
+                      type="time"
+                      value={pickupTime}
+                      onChange={(e) => setPickupTime(e.target.value)}
+                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                    />
+                  </label>
+                </div>
+                <label className="flex flex-col gap-1 text-sm text-gray-700">
+                  Odległość do klienta (km)
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={contactDistanceKm}
+                    onChange={(e) => setContactDistanceKm(e.target.value)}
+                    placeholder="np. 12,5"
+                    className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                  />
+                  <span className="text-xs text-gray-400">
+                    Wpisz raz przy danym adresie — używane do wyliczenia kosztu paliwa (Finanse → Koszty).
+                  </span>
+                </label>
+                {deliveryTime && (
+                  <p className="text-xs text-gray-500">
+                    Godzina dostawy zostanie dodana jako prefiks do nazwy wydarzenia w kalendarzu: „
+                    {withDeliveryTimePrefix(title || "(bez tytułu)", deliveryTime)}”
+                  </p>
+                )}
+              </>
             )}
           </div>
           )}
@@ -1080,53 +1167,6 @@ export function RentalForm({
                 initialFinance={rental?.finance ?? null}
                 onChange={handleFinanceChange}
               />
-            )}
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
-              <p className="mb-2 text-sm text-gray-700">Klient (HubSpot)</p>
-              <ContactSection
-                rentalId={isEditing ? rental!.id : null}
-                initialContact={isEditing ? contactFromRental(rental) : null}
-                onContactChange={handleContactChange}
-              />
-            </div>
-
-            {canManageDrivers && (
-              <div className="rounded-lg border border-gray-200 bg-white p-5">
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
-                  Kierowca
-                  <select
-                    value={driverId}
-                    onChange={(e) => setDriverId(e.target.value)}
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                  >
-                    <option value="">— brak —</option>
-                    {driverOptions.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-xs text-gray-400">
-                    Przypisany kierowca widzi ten wynajem w swoim kalendarzu (tylko podgląd).
-                  </span>
-                </label>
-                <label className="mt-4 flex flex-col gap-1 text-sm text-gray-700">
-                  Pojazd
-                  <select
-                    value={vehicleId}
-                    onChange={(e) => setVehicleId(e.target.value)}
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                  >
-                    <option value="">— brak —</option>
-                    {vehicleOptions.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-xs text-gray-400">Używane do wyliczenia kosztu paliwa (Finanse → Koszty).</span>
-                </label>
-              </div>
             )}
 
             {isEditing && (
