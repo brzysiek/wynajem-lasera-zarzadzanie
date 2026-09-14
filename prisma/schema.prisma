@@ -461,6 +461,7 @@ model Vehicle {
   rentals              Rental[]
   costs                Cost[]
   pickupForRentals     RentalFinance[] @relation("RentalFinancePickupVehicle")
+  fuelInvoices         FuelInvoice[]
 
   @@map("vehicles")
 }
@@ -514,4 +515,43 @@ model Cost {
   @@index([vehicleId])
   @@index([categoryId])
   @@map("costs")
+}
+
+enum FuelInvoiceMatchSource {
+  AUTO   // rozpoznany automatycznie po nr rej z pola "Nr. Pojazdu" na fakturze
+  MANUAL // admin poprawił/wybrał ręcznie w UI
+}
+
+// Faktura za paliwo wgrana przez ADMINA (eksport XML z Fakturowni/KSeF) —
+// weryfikacja szacowanego kosztu paliwa (Vehicle.fuelConsumptionL100km ×
+// odległość × cena/L, patrz src/lib/costs/calc.ts) względem realnych
+// wydatków. Karty paliwowe są WSPÓLNE dla całej floty, ale stacja pyta o nr
+// rej przy tankowaniu — trafia na fakturę w osobnym polu opisu, stąd
+// dopasowanie po numerze rejestracyjnym, nie po koncie/karcie.
+// Parser: src/lib/costs/fuel-invoice-parse.ts.
+model FuelInvoice {
+  id            String    @id @default(cuid())
+  fileName      String
+  invoiceNumber String?
+  invoiceDate   DateTime?
+  sellerName    String?
+  amountNet     Decimal?  @db.Decimal(10, 2)
+  amountGross   Decimal?  @db.Decimal(10, 2)
+  currency      String?
+  // Pełna treść pliku — do wglądu/debugowania parsera i ponownego
+  // dopasowania, gdyby trzeba było poprawić logikę już po wgraniu.
+  rawXml        String    @db.LongText
+  // Surowa treść pola "Nr. Pojazdu" z faktury (np. "DW9FF41 (PV ...)"),
+  // zanim wyciągnięto sam numer — do wglądu, gdy dopasowanie zawiedzie.
+  vehiclePlateRaw String?
+  vehicleId     String? // null = nie rozpoznano / nie dotyczy jednego pojazdu
+  vehicle       Vehicle? @relation(fields: [vehicleId], references: [id])
+  matchSource   FuelInvoiceMatchSource?
+  uploadedAt    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([vehicleId])
+  @@index([invoiceDate])
+  @@map("fuel_invoices")
 }

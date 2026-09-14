@@ -9,7 +9,7 @@ import type {
   DriverRow,
   MonthlyCostPoint,
   TrendInsight,
-  VehicleRow,
+  VehicleRowWithActual,
 } from "@/lib/costs/dashboard-aggregate";
 
 type PeriodMeta = {
@@ -131,6 +131,7 @@ export function CostsDashboard({
   insight,
   categories,
   vehicles,
+  unassignedFuelInvoiceNet,
   devices,
   drivers,
 }: {
@@ -140,7 +141,11 @@ export function CostsDashboard({
   months: MonthlyCostPoint[];
   insight: TrendInsight;
   categories: CategoryRow[];
-  vehicles: VehicleRow[];
+  vehicles: VehicleRowWithActual[];
+  // Suma faktur paliwowych w okresie NIE dopasowanych do żadnego pojazdu —
+  // liczy się do floty, nie pasuje do żadnego wiersza tabeli (admin jeszcze
+  // nie poprawił ręcznie w /finanse/koszty/faktury-paliwa).
+  unassignedFuelInvoiceNet: number;
   devices: DeviceCostRow[];
   drivers: DriverRow[];
 }) {
@@ -392,9 +397,11 @@ export function CostsDashboard({
               head={[
                 "Pojazd",
                 <span key="f">
-                  Paliwo
+                  Paliwo (szacowane)
                   <AutoBadge />
                 </span>,
+                "Paliwo (faktury)",
+                "Różnica",
                 "Inne koszty",
                 "Razem",
                 <span key="k">
@@ -402,18 +409,32 @@ export function CostsDashboard({
                   <AutoBadge />
                 </span>,
               ]}
-              rows={vehicles.map((v) => [
-                v.vehicleName,
-                fmtPln(v.fuelNet),
-                fmtPln(v.otherNet),
-                <span key="t" style={{ fontWeight: 700 }}>
-                  {fmtPln(v.totalNet)}
-                </span>,
-                v.costPerKmValue === null ? <Dash key="d" /> : fmtPln2(v.costPerKmValue),
-              ])}
+              rows={vehicles.map((v) => {
+                const delta = v.actualFuelNet === null ? null : v.actualFuelNet - v.fuelNet;
+                return [
+                  v.vehicleName,
+                  fmtPln(v.fuelNet),
+                  v.actualFuelNet === null ? <Dash key="a" /> : fmtPln(v.actualFuelNet),
+                  delta === null ? (
+                    <Dash key="delta" />
+                  ) : (
+                    <span key="delta" style={{ color: Math.abs(delta) < 1 ? C.muted : delta > 0 ? C.red : C.green }}>
+                      {delta > 0 ? "+" : ""}
+                      {fmtPln(delta)}
+                    </span>
+                  ),
+                  fmtPln(v.otherNet),
+                  <span key="t" style={{ fontWeight: 700 }}>
+                    {fmtPln(v.totalNet)}
+                  </span>,
+                  v.costPerKmValue === null ? <Dash key="d" /> : fmtPln2(v.costPerKmValue),
+                ];
+              })}
               totalRow={[
                 "Razem",
                 fmtPln(vehicles.reduce((s, v) => s + v.fuelNet, 0)),
+                <Dash key="a" />,
+                <Dash key="delta" />,
                 fmtPln(vehicles.reduce((s, v) => s + v.otherNet, 0)),
                 fmtPln(vehicles.reduce((s, v) => s + v.totalNet, 0)),
                 <Dash key="d" />,
@@ -422,8 +443,19 @@ export function CostsDashboard({
             />
             <p className="mt-3 text-[12px]" style={{ color: C.muted }}>
               „Koszt/km” = (paliwo + inne koszty pojazdu w okresie) ÷ suma km w okresie — całkowity koszt eksploatacji na
-              kilometr, nie tylko sam koszt paliwa.
+              kilometr, nie tylko sam koszt paliwa. „Paliwo (faktury)” = suma wgranych i dopasowanych faktur
+              (Finanse → Koszty → Faktury paliwa) — puste, gdy dla tego pojazdu jeszcze żadnej nie wgrano.
             </p>
+            {unassignedFuelInvoiceNet > 0 && (
+              <p className="mt-2 rounded-md px-3 py-2 text-[12px]" style={{ background: C.purpleSoft, color: C.purple }}>
+                + {fmtPln(unassignedFuelInvoiceNet)} z faktur paliwowych w tym okresie nie jest dopasowanych do
+                żadnego pojazdu —{" "}
+                <a href={`${BASE_PATH}/finanse/koszty/faktury-paliwa`} className="underline">
+                  popraw w Fakturach paliwa
+                </a>
+                .
+              </p>
+            )}
           </div>
         )}
 

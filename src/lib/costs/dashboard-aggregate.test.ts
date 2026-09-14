@@ -5,6 +5,7 @@ import {
   deviceBreakdown,
   driverBreakdown,
   last6MonthsEnding,
+  mergeActualFuelCosts,
   sumCostsByScope,
   totalFuelCost,
   vehicleBreakdown,
@@ -133,6 +134,35 @@ describe("vehicleBreakdown", () => {
       [fuelInput({ distanceKm: null, deliveryFuelCostPerKm: null, pickupFuelCostPerKm: null })],
     );
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe("mergeActualFuelCosts", () => {
+  const vehicleRow = (overrides: Partial<ReturnType<typeof vehicleBreakdown>[number]> = {}) => ({
+    vehicleId: "v1",
+    vehicleName: "Ford",
+    fuelNet: 100,
+    otherNet: 0,
+    totalNet: 100,
+    totalKm: 50,
+    costPerKmValue: 2,
+    rentalCount: 1,
+    ...overrides,
+  });
+
+  it("dokłada rzeczywisty koszt z dopasowanych faktur do właściwego pojazdu", () => {
+    const rows = mergeActualFuelCosts([vehicleRow()], [{ vehicleId: "v1", amountNet: 40 }, { vehicleId: "v1", amountNet: 30 }]);
+    expect(rows[0].actualFuelNet).toBe(70);
+  });
+
+  it("pojazd bez żadnej faktury -> actualFuelNet null, nie 0", () => {
+    const rows = mergeActualFuelCosts([vehicleRow()], []);
+    expect(rows[0].actualFuelNet).toBeNull();
+  });
+
+  it("faktura innego pojazdu nie wpływa na ten wiersz", () => {
+    const rows = mergeActualFuelCosts([vehicleRow()], [{ vehicleId: "v2", amountNet: 999 }]);
+    expect(rows[0].actualFuelNet).toBeNull();
   });
 });
 

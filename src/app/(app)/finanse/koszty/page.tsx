@@ -6,6 +6,7 @@ import {
   loadCostsInPeriod,
   loadDevicePulseInputs,
   loadDriverLaborInputs,
+  loadFuelInvoiceTotals,
   loadMonthlyCostData,
   loadRentalFuelInputs,
 } from "@/lib/costs/dashboard-load";
@@ -15,6 +16,7 @@ import {
   deviceBreakdown,
   driverBreakdown,
   last6MonthsEnding,
+  mergeActualFuelCosts,
   sumCostsByScope,
   totalFuelCost,
   vehicleBreakdown,
@@ -34,15 +36,17 @@ export default async function CostsPage({
   const period = periodFromParams(sp);
   const cmp = comparisonPeriod(period);
 
-  const [costs, fuelInputs, pulseInputs, driverInputs, revenueRows, cmpCosts, cmpFuelInputs] = await Promise.all([
-    loadCostsInPeriod(period),
-    loadRentalFuelInputs(period),
-    loadDevicePulseInputs(period),
-    loadDriverLaborInputs(period),
-    loadRevenueRows(period),
-    cmp ? loadCostsInPeriod(cmp) : Promise.resolve<CostEntry[]>([]),
-    cmp ? loadRentalFuelInputs(cmp) : Promise.resolve([]),
-  ]);
+  const [costs, fuelInputs, pulseInputs, driverInputs, revenueRows, cmpCosts, cmpFuelInputs, fuelInvoiceTotals] =
+    await Promise.all([
+      loadCostsInPeriod(period),
+      loadRentalFuelInputs(period),
+      loadDevicePulseInputs(period),
+      loadDriverLaborInputs(period),
+      loadRevenueRows(period),
+      cmp ? loadCostsInPeriod(cmp) : Promise.resolve<CostEntry[]>([]),
+      cmp ? loadRentalFuelInputs(cmp) : Promise.resolve([]),
+      loadFuelInvoiceTotals(period),
+    ]);
 
   const scopeTotals = sumCostsByScope(costs);
   const fuelTotal = totalFuelCost(fuelInputs);
@@ -94,7 +98,13 @@ export default async function CostsPage({
     }
   }
 
-  const vehicles = vehicleBreakdown(costs, fuelInputs);
+  const matchedInvoiceTotals = fuelInvoiceTotals.filter(
+    (t): t is { vehicleId: string; amountNet: number } => t.vehicleId !== null,
+  );
+  const vehicles = mergeActualFuelCosts(vehicleBreakdown(costs, fuelInputs), matchedInvoiceTotals);
+  const unassignedFuelInvoiceNet = _round2(
+    fuelInvoiceTotals.filter((t) => t.vehicleId === null).reduce((s, t) => s + t.amountNet, 0),
+  );
   const devices = deviceBreakdown(costs, pulseInputs);
   const drivers = driverBreakdown(driverInputs);
   const categories = categoryRanking(costs, fuelTotal);
@@ -120,6 +130,7 @@ export default async function CostsPage({
       insight={insight}
       categories={categories}
       vehicles={vehicles}
+      unassignedFuelInvoiceNet={unassignedFuelInvoiceNet}
       devices={devices}
       drivers={drivers}
     />

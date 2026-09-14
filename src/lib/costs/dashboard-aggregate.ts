@@ -168,6 +168,31 @@ export function vehicleBreakdown(costs: CostEntry[], fuelInputs: RentalFuelInput
     .sort((a, b) => b.totalNet - a.totalNet);
 }
 
+export type VehicleRowWithActual = VehicleRow & {
+  // Suma DOPASOWANYCH faktur paliwowych (FuelInvoice) w okresie — null gdy
+  // żadna nie wgrana dla tego pojazdu (nie mylić z 0, czyli "wgrane, ale
+  // suma wyszła zerowa"). Weryfikacja szacowanego fuelNet (wzór, patrz
+  // legFuelCost w calc.ts) z rzeczywistością.
+  actualFuelNet: number | null;
+};
+
+// Dokłada rzeczywisty koszt paliwa (z wgranych faktur) do wyliczonego
+// wiersza pojazdu — osobna funkcja, nie część vehicleBreakdown, bo faktury
+// to inne źródło danych (FuelInvoice, nie Cost/Rental) ładowane osobno w
+// dashboard-load.ts. invoiceTotals = już zsumowane per pojazd (tylko
+// DOPASOWANE faktury — nieprzypisane liczą się do floty osobno, patrz
+// unassignedFuelInvoiceNet w page.tsx, nie do żadnego wiersza tutaj).
+export function mergeActualFuelCosts(
+  vehicles: VehicleRow[],
+  invoiceTotals: { vehicleId: string; amountNet: number }[],
+): VehicleRowWithActual[] {
+  const byVehicle = new Map<string, number>();
+  for (const t of invoiceTotals) {
+    byVehicle.set(t.vehicleId, round2((byVehicle.get(t.vehicleId) ?? 0) + t.amountNet));
+  }
+  return vehicles.map((v) => ({ ...v, actualFuelNet: byVehicle.get(v.vehicleId) ?? null }));
+}
+
 export type DeviceCostRow = {
   deviceId: string;
   deviceName: string;

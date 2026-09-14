@@ -16,6 +16,21 @@ export async function loadFuelPricePerLiter(): Promise<number | null> {
   return setting ? Number(setting.value) : null;
 }
 
+// Rzeczywiste faktury paliwowe w okresie (FuelInvoice.invoiceDate) — źródło
+// dla porównania szacowane/rzeczywiste w zakładce Pojazdy (mergeActualFuelCosts
+// w dashboard-aggregate.ts). `vehicleId: null` = faktura nie dopasowana do
+// żadnego pojazdu (admin jeszcze nie poprawił ręcznie w /finanse/koszty/faktury-paliwa),
+// liczy się do floty, nie do konkretnego auta.
+export async function loadFuelInvoiceTotals(period: Period): Promise<{ vehicleId: string | null; amountNet: number }[]> {
+  const invoices = await prisma.fuelInvoice.findMany({
+    where: { invoiceDate: { gte: period.start, lte: period.end } },
+    select: { vehicleId: true, amountNet: true },
+  });
+  return invoices
+    .filter((i): i is typeof i & { amountNet: NonNullable<typeof i.amountNet> } => i.amountNet !== null)
+    .map((i) => ({ vehicleId: i.vehicleId, amountNet: Number(i.amountNet) }));
+}
+
 function localDateKey(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
