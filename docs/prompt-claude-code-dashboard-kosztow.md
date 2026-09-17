@@ -169,11 +169,42 @@ można było rzutem oka odróżnić rodzaj kosztu bez czytania kolumny „Zakres
 
 ## 2. Taksonomia kategorii — dane startowe do zasiania `CostCategory`
 
+**Zweryfikowane przeglądem historii maili** (nie tylko wymyślona na sucho lista) — patrz uzasadnienie
+per kategoria niżej, żeby wiedzieć, co jest potwierdzonym wzorcem realnych kosztów, a co pozostaje
+rozsądnym założeniem bez bezpośredniego potwierdzenia.
+
 | Zakres | Kategorie startowe (seed przy migracji) |
 |---|---|
-| GENERAL | Marketing, Hosting/serwer, Księgowość/prawne, Wynagrodzenia biura, Inne ogólne |
+| GENERAL | Oprogramowanie i subskrypcje, Hosting i domeny, Marketing i reklama, Księgowość/prawne, Wynagrodzenia biura, Inne ogólne |
 | VEHICLE | Serwis/przegląd, Ubezpieczenie, Rata/leasing |
 | DEVICE | Serwis/przegląd, Materiały eksploatacyjne, Wymiana lampy/elementu zużywalnego |
+
+**GENERAL — uzasadnienie zmian względem wcześniejszej wersji:**
+- **„Oprogramowanie i subskrypcje" (nowa kategoria)** — potwierdzone, cztery realne, regularne koszty
+  które wcześniej nie miały wspólnego miejsca: HubSpot (~15 €/mies., 28. dnia), n8n Cloud (29,52 €/mies.,
+  13. dnia, przez Paddle jako „Cloud Starter"), Google Workspace (miesięczna faktura), Microsoft. Bez tej
+  kategorii wszystkie cztery wpadałyby pod „Inne ogólne" — nieczytelne przy analizie.
+- **„Hosting i domeny" (przemianowana z „Hosting/serwer")** — potwierdzone: dhosting.pl, kilka domen
+  (wynajemlasera.pl, zarezerwujlaser.pl, twojaakademiabeauty.pl, kreatywnainzynieria.pl, estegh.pl) +
+  usługa „Elastyczny Web Hosting", ten sam dostawca, często płacone łącznie. Nazwa rozszerzona, żeby nie
+  sugerować, że domeny należą gdzie indziej.
+- **„Marketing i reklama"** — potwierdzone: Google Ads i Facebook/Meta Ads jako osobne, regularne
+  faktury. Bez zmian względem poprzedniej wersji.
+- **„Księgowość/prawne"** — potwierdzone: stała, comiesięczna współpraca z biurem księgowym. Bez zmian.
+- **„Wynagrodzenia biura"** — bez bezpośredniego potwierdzenia w przeglądzie maili (typowe dla
+  wynagrodzeń — idą przelewem/przez listę płac, nie fakturą mailową), ale to standardowy, oczekiwany
+  koszt tej wielkości firmy — zostaje jako rozsądne założenie.
+
+**VEHICLE**: „Ubezpieczenie" potwierdzone wprost (broker BiznesSystem, porównanie ofert PZU/Warta/
+Compensa, przesłane potwierdzenie opłaty do księgowej). „Serwis/przegląd" i „Rata/leasing" — bez
+bezpośredniego potwierdzenia w tym przeglądzie, zostają jako założenie.
+
+**DEVICE**: „Serwis/przegląd" mocno potwierdzone — **ITP S.A. (itpsa.pl)** to realny serwisant Cooltech
+i Alma Harmony (przykład: naprawa płyty w Cooltech, 2000 zł netto, osobno ustalany przegląd Alma).
+Rozważ dopisanie ITP S.A. jako przykładowego dostawcy w opisie tej kategorii w UI, dla jasności przy
+wpisywaniu kosztu. „Materiały eksploatacyjne" i „Wymiana lampy" — bez bezpośredniego potwierdzenia
+mailowego w tym przeglądzie, ale spójne z obserwowanym wzorcem (wymiana zużytej płytki/elementu) —
+zostają jako uzasadnione założenie.
 
 Uwaga: **„Paliwo" celowo nie jest kategorią w tej tabeli** — koszt paliwa powstaje automatycznie, per
 wynajem, z logiki w sekcji 3.1 (osobny mechanizm niż wpisy `Cost`, patrz niżej), więc nie ma potrzeby
