@@ -424,15 +424,27 @@ model RentalFinance {
   // Ostatni błąd/status próby wystawienia (np. "nie znaleziono kontrahenta") —
   // czyszczony przy udanym wystawieniu.
   invoiceError             String?   @db.Text
-  // Fakturownia NIE wie, czy faktura jest zapłacona (brak płatnego połączenia
-  // z bankiem) — status płatności ustalamy sami, przez ręczne dopasowanie
-  // wgranego wyciągu bankowego do wystawionych faktur (dashboard /finanse/faktury).
-  paidAt                   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("rental_finance")
+}
+
+// Status "zapłacona" dla DOWOLNEJ faktury z działu w Fakturowni — CELOWO
+// niezależny od RentalFinance/Rental. Większość faktur w dziale to faktury
+// wystawione ręcznie w Fakturowni, zanim ta integracja powstała (nie mają
+// odpowiadającego wynajmu w tej apce), więc śledzenie płatności musi działać
+// wyłącznie po ID faktury z Fakturowni, nie przez powiązanie z wynajmem.
+// Fakturownia sama nie zna statusu płatności (brak płatnego połączenia z
+// bankiem) — ustalamy to sami: ręczny przełącznik albo dopasowanie
+// wgranego wyciągu bankowego (dashboard /finanse/faktury).
+model FakturowniaPayment {
+  fakturowniaInvoiceId Int      @id
+  paidAt               DateTime
+  updatedAt            DateTime @updatedAt
+
+  @@map("fakturownia_payments")
 }
 
 model PriceRule {

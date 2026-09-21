@@ -11,12 +11,17 @@ function bad(message: string, status = 400) {
 }
 
 // Wgrywanie wyciągu bankowego (CSV z mBanku) — dopasowuje wpływy do
-// NIEZAPŁACONYCH faktur (dowolny okres wystawienia, patrz listInvoices()
-// bez dateFrom/dateTo = period=all — faktura mogła być wystawiona wcześniej
-// niż zapłacona). Jedna faktura z dokładnie jednym kandydatem = od razu
-// oznaczona jako zapłacona; więcej niż jeden kandydat albo brak — zostaje
-// do ręcznego oznaczenia istniejącym przełącznikiem w dashboardzie (bez
-// osobnego ekranu wyboru kandydata, patrz bank-match.ts).
+// NIEZAPŁACONYCH faktur z CAŁEGO działu w Fakturowni (dowolny okres
+// wystawienia, patrz listInvoices() bez dateFrom/dateTo = period=all —
+// faktura mogła być wystawiona wcześniej niż zapłacona; i dowolna faktura,
+// nie tylko wystawiona przez tę apkę — większość faktur w dziale to stare,
+// ręcznie wystawione w Fakturowni). Status "zapłacona" żyje w
+// FakturowniaPayment, keyed po ID faktury z Fakturowni, NIE w RentalFinance
+// (ta apka śledzi dziś tylko pojedyncze wynajmy, nie cały dział). Jedna
+// faktura z dokładnie jednym kandydatem = od razu oznaczona jako zapłacona;
+// więcej niż jeden kandydat albo brak — zostaje do ręcznego oznaczenia
+// istniejącym przełącznikiem w dashboardzie (bez osobnego ekranu wyboru
+// kandydata, patrz bank-match.ts).
 export async function POST(req: NextRequest) {
   const session = await requireAdminSession();
   if (!session) return bad("Brak uprawnień.", 403);
@@ -39,34 +44,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message }, { status: 502 });
   }
 
-  // Tylko faktury RZECZYWIŚCIE powiązane z wynajmem w tej apce (mają
-  // fakturowniaInvoiceId w naszej bazie) mogą zostać oznaczone jako
-  // zapłacone — dział w Fakturowni mógł mieć faktury wystawione ręcznie,
-  // zanim ta integracja powstała, a tych apka nie śledzi i nie ma czego
-  // zaktualizować (wcześniejszy bug: dopasowanie mogło "trafić" w taką
-  // fakturę, updateMany nic nie zmieniał, a komunikat i tak mówił "oznaczono").
+  // Niezapłacone = cały dział MINUS to, co już mamy w FakturowniaPayment —
+  // niezależnie od tego, czy faktura ma odpowiednik w Rental/RentalFinance
+  // (większość nie ma, wystawione ręcznie w Fakturowni zanim ta integracja
+  // powstała).
   const invoiceIds = allInvoices.map((i) => i.id);
-  const trackedRows = invoiceIds.length
-    ? await prisma.rentalFinance.findMany({
-        where: { fakturowniaInvoiceId: { in: invoiceIds } },
-        select: { fakturowniaInvoiceId: true, paidAt: true },
-      })
+  const paidRows = invoiceIds.length
+    ? await prisma.fakturowniaPayment.findMany({ where: { fakturowniaInvoiceId: { in: invoiceIds } } })
     : [];
-  const trackedById = new Map(trackedRows.map((r) => [r.fakturowniaInvoiceId as number, r.paidAt]));
-  const unpaidInvoices = allInvoices.filter((i) => trackedById.has(i.id) && trackedById.get(i.id) == null);
+  const paidIds = new Set(paidRows.map((r) => r.fakturowniaInvoiceId));
+  const unpaidInvoices = allInvoices.filter((i) => !paidIds.has(i.id));
 
   const matches = matchTransactionsToInvoices(transactions, unpaidInvoices);
   const confident = matches.filter((m) => m.candidates.length === 1);
   const ambiguous = matches.filter((m) => m.candidates.length > 1);
 
-  // Faktyczna liczba zaktualizowanych wierszy — NIE ufamy `confident.length`
-  // bezkrytycznie, bo to właśnie ta rozbieżność powodowała fałszywy komunikat
-  // o sukcesie bez realnej zmiany.
+  // Faktyczna liczba zapisanych wierszy — NIE ufamy `confident.length`
+  // bezkrytycznie (createMany zwraca prawdziwy count; skipDuplicates na
+  // wypadek gdyby ta sama faktura pojawiła się dwa razy w matchach, co się
+  // nie powinno zdarzyć, ale nie ufamy temu bezkrytycznie).
   let matchedCount = 0;
   if (confident.length > 0) {
-    const result = await prisma.rentalFinance.updateMany({
-      where: { fakturowniaInvoiceId: { in: confident.map((m) => m.invoiceId) } },
-      data: { paidAt: new Date() },
+    const now = new Date();
+    const result = await prisma.fakturowniaPayment.createMany({
+      data: confident.map((m) => ({ fakturowniaInvoiceId: m.invoiceId, paidAt: now })),
+      skipDuplicates: true,
     });
     matchedCount = result.count;
     if (matchedCount !== confident.length) {
