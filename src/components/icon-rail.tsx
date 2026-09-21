@@ -32,11 +32,31 @@ function BellOffIcon() {
   );
 }
 
+// Paragon/raport — "brak raportu kierowcy" (report-alerts-panel.tsx). Ząbkowana
+// dolna krawędź jak paragon, dwie linijki tekstu w środku.
+function ReceiptIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M6 3.5h12v16.3l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3V3.5Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+      <path d="M8.7 8.5h6.6M8.7 12h6.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const RAIL_TONE = {
   brand: { fg: SHELL.brand, bg: SHELL.brandSoft, badge: SHELL.accent },
   // Ostrzeżenia kalendarza — celowo poza marką (czerwień, nie brand-blue ani
   // terracotta accentu), żeby wyraźnie odróżnić się od Zadań jako "coś pilnego".
   danger: { fg: "#D93025", bg: "#FCE8E6", badge: "#D93025" },
+  // "Brak raportu kierowcy" — fiolet, ten sam co karta (report-alerts-panel.tsx).
+  // Inny odcień niż danger, bo to inny rodzaj pilności (operacyjny follow-up,
+  // nie brakujące dane samego wynajmu) i celowo bez auto-popu.
+  report: { fg: "#6B46C1", bg: "#F3EEFC", badge: "#6B46C1" },
 };
 
 function RailIcon({
@@ -54,7 +74,7 @@ function RailIcon({
   disabled?: boolean;
   onClick?: () => void;
   badge?: number | null;
-  tone?: "brand" | "danger";
+  tone?: "brand" | "danger" | "report";
 }) {
   const t = RAIL_TONE[tone];
   return (
@@ -113,10 +133,26 @@ export function IconRail({
   // Jedna ikonka na oba źródła (kalendarz + przychody, patrz
   // notifications-context.tsx) — badge to suma obu, kolorystyka per typ żyje
   // dopiero w karcie (notifications-panel.tsx), nie na samej ikonce.
-  const { alerts, unpriced, open: notifOpen, show: showNotif, hide: hideNotif } = useNotifications();
+  // "Brak raportu kierowcy" ma OSOBNĄ ikonkę i kartę (report-alerts-panel.tsx)
+  // — celowo bez auto-popu i bez wliczania do powyższego badge'a, na życzenie
+  // użytkownika (to informacja "na żądanie", nie coś co ma wyskakiwać samo
+  // przy wejściu na kalendarz).
+  const {
+    alerts,
+    unpriced,
+    open: notifOpen,
+    show: showNotif,
+    hide: hideNotif,
+    reportAlerts,
+    reportOpen,
+    showReport,
+    hideReport,
+  } = useNotifications();
   const notifCount = alerts.length + unpriced.length;
   const hasNotifications = showNotifications && notifCount > 0;
-  if (!showTasks && !hasNotifications) return null;
+  const reportCount = reportAlerts.length;
+  const hasReportAlerts = showNotifications && reportCount > 0;
+  if (!showTasks && !hasNotifications && !hasReportAlerts) return null;
 
   return (
     <div
@@ -127,11 +163,30 @@ export function IconRail({
         <RailIcon
           tooltip={`Powiadomienia (${notifCount})`}
           open={notifOpen}
-          onClick={() => (notifOpen ? hideNotif() : showNotif())}
+          onClick={() => {
+            hideReport();
+            if (notifOpen) hideNotif();
+            else showNotif();
+          }}
           badge={notifCount}
           tone="danger"
         >
           <WarnIcon />
+        </RailIcon>
+      )}
+      {hasReportAlerts && (
+        <RailIcon
+          tooltip={`Brak raportu kierowcy (${reportCount})`}
+          open={reportOpen}
+          onClick={() => {
+            hideNotif();
+            if (reportOpen) hideReport();
+            else showReport();
+          }}
+          badge={reportCount}
+          tone="report"
+        >
+          <ReceiptIcon />
         </RailIcon>
       )}
       {showTasks && (

@@ -19,19 +19,24 @@ type NotificationsContextValue = {
   unpriced: UnpricedRental[];
   // Ostrzeżenia "brak raportu kierowcy" — wynajmy zakończone, dla których
   // kierowca nic nie zapisał w panelu (patrz GET /api/rentals/report-alerts,
-  // src/lib/report-alerts.ts).
+  // src/lib/report-alerts.ts). CELOWO osobna karta/ikonka (report-alerts-panel.tsx,
+  // icon-rail.tsx) i BEZ auto-popu na /kalendarz — w odróżnieniu od alerts/unpriced
+  // poniżej, to nie jest coś co ma wyskakiwać przy każdym wejściu na kalendarz,
+  // tylko dostępne na żądanie pod osobną ikoną (decyzja użytkownika).
   reportAlerts: ReportAlert[];
-  // Jedna karta na trzy sekcje: `open` = karta w ogóle widoczna; każda sekcja
+  // Karta alerts+unpriced: `open` = karta w ogóle widoczna; każda sekcja
   // rozwija swoją listę osobno.
   open: boolean;
   calendarExpanded: boolean;
   revenueExpanded: boolean;
-  reportExpanded: boolean;
   show: () => void;
   hide: () => void;
   toggleCalendarExpanded: () => void;
   toggleRevenueExpanded: () => void;
-  toggleReportExpanded: () => void;
+  // Osobna, niezależna karta report-alerts (report-alerts-panel.tsx).
+  reportOpen: boolean;
+  showReport: () => void;
+  hideReport: () => void;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -63,22 +68,25 @@ export function NotificationsProvider({
   const [open, setOpen] = useState(false);
   const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [revenueExpanded, setRevenueExpanded] = useState(false);
-  const [reportExpanded, setReportExpanded] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const pathname = usePathname();
 
   // Każde świeże pokazanie karty (auto-pop albo klik w ikonę na pasku) startuje
-  // z trzema sekcjami zwiniętymi — samo powiadomienie, bez list. Rozwinięcie
+  // z obiema sekcjami zwiniętymi — samo powiadomienie, bez list. Rozwinięcie
   // to osobny, świadomy klik na daną sekcję (notifications-panel.tsx).
   const show = useCallback(() => {
     setOpen(true);
     setCalendarExpanded(false);
     setRevenueExpanded(false);
-    setReportExpanded(false);
   }, []);
   const hide = useCallback(() => setOpen(false), []);
   const toggleCalendarExpanded = useCallback(() => setCalendarExpanded((v) => !v), []);
   const toggleRevenueExpanded = useCallback(() => setRevenueExpanded((v) => !v), []);
-  const toggleReportExpanded = useCallback(() => setReportExpanded((v) => !v), []);
+  // Osobna karta, osobna ikonka — nie dzieli stanu z `open` powyżej, żeby dało
+  // się je zamykać/otwierać niezależnie (icon-rail.tsx zamyka jedną przy
+  // otwieraniu drugiej, żeby nie nakładały się w tym samym rogu ekranu).
+  const showReport = useCallback(() => setReportOpen(true), []);
+  const hideReport = useCallback(() => setReportOpen(false), []);
 
   const refresh = useCallback(() => {
     if (!enabled) return;
@@ -124,11 +132,13 @@ export function NotificationsProvider({
       autoOpenedPathRef.current = null;
       return;
     }
-    if (!enabled || (alerts.length === 0 && unpriced.length === 0 && reportAlerts.length === 0)) return;
+    // Celowo BEZ reportAlerts tutaj — ta sekcja nie ma auto-popu (decyzja
+    // użytkownika), tylko klik we własną ikonę na pasku (icon-rail.tsx).
+    if (!enabled || (alerts.length === 0 && unpriced.length === 0)) return;
     if (autoOpenedPathRef.current === pathname) return;
     show();
     autoOpenedPathRef.current = pathname;
-  }, [pathname, enabled, alerts, unpriced, reportAlerts, show]);
+  }, [pathname, enabled, alerts, unpriced, show]);
 
   const alertIds = useMemo(() => new Set(alerts.map((a) => a.id)), [alerts]);
 
@@ -141,12 +151,13 @@ export function NotificationsProvider({
       open,
       calendarExpanded,
       revenueExpanded,
-      reportExpanded,
       show,
       hide,
       toggleCalendarExpanded,
       toggleRevenueExpanded,
-      toggleReportExpanded,
+      reportOpen,
+      showReport,
+      hideReport,
     }),
     [
       alerts,
@@ -156,12 +167,13 @@ export function NotificationsProvider({
       open,
       calendarExpanded,
       revenueExpanded,
-      reportExpanded,
       show,
       hide,
       toggleCalendarExpanded,
       toggleRevenueExpanded,
-      toggleReportExpanded,
+      reportOpen,
+      showReport,
+      hideReport,
     ],
   );
 

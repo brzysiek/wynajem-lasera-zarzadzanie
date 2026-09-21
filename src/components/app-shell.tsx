@@ -10,6 +10,7 @@ import { SHELL } from "@/components/shell-tokens";
 import { CalendarDeviceFilterProvider } from "@/components/calendar-device-filter-context";
 import { NotificationsProvider } from "@/components/notifications-context";
 import { NotificationsPanel } from "@/components/notifications-panel";
+import { ReportAlertsPanel } from "@/components/report-alerts-panel";
 import { FuelPriceReminder } from "@/components/fuel-price-reminder";
 
 // Kosmetyczny stan UI (nie dane biznesowe) — przetrwa odświeżenie strony,
@@ -128,6 +129,7 @@ export function AppShell({
               />
             )}
             {showNotifications && <NotificationsPanel />}
+            {showNotifications && <ReportAlertsPanel />}
           </div>
         </div>
         <FuelPriceReminder role={role} />

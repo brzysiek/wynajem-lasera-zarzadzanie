@@ -9,16 +9,14 @@ import {
   ALERT_WINDOW_DAYS,
   pluralWynajem,
 } from "@/lib/rental-alerts";
-import { REPORT_FIELD_LABEL, REPORT_FIELD_ORDER } from "@/lib/report-alerts";
 import { useNotifications } from "@/components/notifications-context";
 
-// Trzy kolorystyki, celowo różne — kalendarz (czerwień, "brakuje danych o
-// wynajmie"), przychody (bursztyn, "brakuje pieniędzy w prognozie") i raport
-// kierowcy (fiolet, "wynajem się skończył, ale kierowca nic nie zapisał") to
-// różne rodzaje pilności, więc nie powinny wyglądać tak samo mimo wspólnej karty.
+// Dwie kolorystyki, celowo różne — kalendarz (czerwień, "brakuje danych o
+// wynajmie") i przychody (bursztyn, "brakuje pieniędzy w prognozie") to różne
+// rodzaje pilności, więc nie powinny wyglądać tak samo mimo wspólnej karty.
+// ("Brak raportu kierowcy" ma teraz własną ikonę i kartę — report-alerts-panel.tsx.)
 const RED = { text: "#D93025", soft: "#FCE8E6" };
 const AMBER = { text: "#B06000", soft: "#FEF7E0" };
-const VIOLET = { text: "#6B46C1", soft: "#F3EEFC" };
 const NEUTRAL = { text: "#202124", sub: "#5f6368", border: "#e8eaed" };
 
 function wynajmy(n: number): string {
@@ -50,19 +48,8 @@ function Chevron({ expanded, color }: { expanded: boolean; color: string }) {
 // jedna pływająca karta, dwie niezależnie rozwijalne sekcje. Wysokość karty:
 // dopasowana do treści, capped na 40% wysokości okna, scroll wewnątrz.
 export function NotificationsPanel() {
-  const {
-    alerts,
-    unpriced,
-    reportAlerts,
-    open,
-    calendarExpanded,
-    revenueExpanded,
-    reportExpanded,
-    hide,
-    toggleCalendarExpanded,
-    toggleRevenueExpanded,
-    toggleReportExpanded,
-  } = useNotifications();
+  const { alerts, unpriced, open, calendarExpanded, revenueExpanded, hide, toggleCalendarExpanded, toggleRevenueExpanded } =
+    useNotifications();
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Klik poza kartą zamyka ją — to lekka, pływająca karta (nie pełnoekranowy
@@ -80,8 +67,7 @@ export function NotificationsPanel() {
   if (!open) return null;
   const nCal = alerts.length;
   const nRev = unpriced.length;
-  const nRep = reportAlerts.length;
-  if (nCal === 0 && nRev === 0 && nRep === 0) return null;
+  if (nCal === 0 && nRev === 0) return null;
 
   const presentGaps = ALERT_FIELD_ORDER.filter((f) => alerts.some((a) => a.missing.includes(f)))
     .map((f) => ALERT_FIELD_SHORT[f])
@@ -109,7 +95,7 @@ export function NotificationsPanel() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {nCal > 0 && (
-          <div style={{ borderBottom: nRev > 0 || nRep > 0 ? `1px solid ${NEUTRAL.border}` : undefined }}>
+          <div style={{ borderBottom: nRev > 0 ? `1px solid ${NEUTRAL.border}` : undefined }}>
             <button
               type="button"
               onClick={toggleCalendarExpanded}
@@ -164,7 +150,7 @@ export function NotificationsPanel() {
         )}
 
         {nRev > 0 && (
-          <div style={{ borderBottom: nRep > 0 ? `1px solid ${NEUTRAL.border}` : undefined }}>
+          <div>
             <button
               type="button"
               onClick={toggleRevenueExpanded}
@@ -203,61 +189,6 @@ export function NotificationsPanel() {
                         style={{ background: AMBER.soft, color: AMBER.text }}
                       >
                         {r.eventType === "SZKOLENIE" ? "Szkolenie" : "Wynajem"}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {nRep > 0 && (
-          <div>
-            <button
-              type="button"
-              onClick={toggleReportExpanded}
-              aria-expanded={reportExpanded}
-              className="flex w-full items-center justify-between gap-2 py-3 pl-4 pr-9 text-left"
-              style={{ background: VIOLET.soft }}
-            >
-              <span className="text-[13px] font-semibold leading-snug" style={{ color: VIOLET.text }}>
-                🧾 {nRep} {pluralWynajem(nRep)} zakończonych bez raportu kierowcy
-              </span>
-              <Chevron expanded={reportExpanded} color={VIOLET.text} />
-            </button>
-            {reportExpanded && (
-              <ul>
-                {reportAlerts.map((r) => (
-                  <li key={r.id} style={{ borderBottom: `1px solid ${NEUTRAL.border}` }}>
-                    <Link
-                      href={`/kalendarz/wynajem/${r.id}?from=/kalendarz`}
-                      onClick={hide}
-                      className="flex flex-col gap-1 px-4 py-2.5 hover:bg-[#f8f9fa]"
-                    >
-                      <span className="flex items-center gap-2 text-[13px] font-medium" style={{ color: NEUTRAL.text }}>
-                        <span className="h-2 w-2 flex-none rounded-full" style={{ backgroundColor: r.deviceColor }} />
-                        {new Date(r.endsAt).toLocaleDateString("pl-PL", {
-                          weekday: "short",
-                          day: "numeric",
-                          month: "short",
-                        })}
-                        {" · "}
-                        {r.deviceName}
-                      </span>
-                      <span className="truncate text-xs" style={{ color: NEUTRAL.sub }}>
-                        {r.title}
-                      </span>
-                      <span className="flex flex-wrap gap-1">
-                        {REPORT_FIELD_ORDER.filter((f) => r.missing.includes(f)).map((m) => (
-                          <span
-                            key={m}
-                            className="rounded-full px-1.5 py-0.5 text-[10.5px] font-semibold"
-                            style={{ background: VIOLET.soft, color: VIOLET.text }}
-                          >
-                            {REPORT_FIELD_LABEL[m]}
-                          </span>
-                        ))}
                       </span>
                     </Link>
                   </li>
