@@ -7,6 +7,7 @@ const TABS = [
   { href: "/ustawienia/integracje/google", label: "Google Calendar" },
   { href: "/ustawienia/integracje/hubspot", label: "HubSpot" },
   { href: "/ustawienia/integracje/szybkisms", label: "SzybkiSMS" },
+  { href: "/ustawienia/integracje/fakturownia", label: "Fakturownia" },
 ];
 
 export function IntegrationsTabs() {
