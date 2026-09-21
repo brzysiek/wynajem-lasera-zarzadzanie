@@ -41,6 +41,7 @@ export async function loadRevenueRows(period: Period): Promise<RevenueRow[]> {
           totalNet: true,
           paymentMethod: true,
           pulseCalculationStatus: true,
+          confirmedAt: true,
         },
       },
     },
@@ -63,6 +64,7 @@ export async function loadRevenueRows(period: Period): Promise<RevenueRow[]> {
       pulsePending: r.finance.pulseCalculationStatus === "PENDING",
       hubspotContactId: r.hubspotContactId,
       contactLabel: r.contactCompanyCache?.trim() || r.contactNameCache?.trim() || null,
+      confirmed: r.finance.confirmedAt != null,
     });
   }
   return rows;

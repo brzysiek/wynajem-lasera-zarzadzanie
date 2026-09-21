@@ -22,6 +22,10 @@ export type RevenueRow = {
   pulsePending: boolean; // pulseCalculationStatus === "PENDING"
   hubspotContactId: string | null;
   contactLabel: string | null; // contactCompanyCache || contactNameCache
+  // Kierowca kliknął "Potwierdzam odbiór" (RentalFinance.confirmedAt) —
+  // rozróżnia przychód RZECZYWISTY (potwierdzony) od PRELIMINOWANEGO (cena
+  // z rezerwacji, jeszcze bez potwierdzenia) — patrz computeConfirmationSplit.
+  confirmed: boolean;
 };
 
 // Wiersz „Szkolenia" w tabeli urządzeń dostaje ten sztuczny id (sekcja 2).
@@ -61,6 +65,31 @@ export function computeKpis(rows: RevenueRow[]): Kpis {
     trainingCount,
     avgValue: rentalCount === 0 ? null : revenueNet / rentalCount,
     uniqueClients: clientIds.size,
+  };
+}
+
+// --- rzeczywiste vs preliminowane (potwierdzenie odbioru przez kierowcę) ---
+export type ConfirmationSplit = {
+  confirmedNet: number;
+  preliminaryNet: number;
+  totalNet: number;
+  // 0 gdy totalNet <= 0 (nic do podziału) — nie null, żeby UI nie musiało
+  // osobno obsługiwać "brak danych" na pasku (po prostu pusty/zielony pasek).
+  confirmedPct: number;
+};
+
+export function computeConfirmationSplit(rows: RevenueRow[]): ConfirmationSplit {
+  let confirmedNet = 0;
+  let totalNet = 0;
+  for (const r of rows) {
+    totalNet += r.totalNet;
+    if (r.confirmed) confirmedNet += r.totalNet;
+  }
+  return {
+    confirmedNet,
+    preliminaryNet: totalNet - confirmedNet,
+    totalNet,
+    confirmedPct: totalNet > 0 ? round((confirmedNet / totalNet) * 100) : 0,
   };
 }
 

@@ -3,6 +3,7 @@ import {
   bestWorstClientAvg,
   bestWorstUtilization,
   computeClientBreakdown,
+  computeConfirmationSplit,
   computeDeviceBreakdown,
   computeDurationHistogram,
   computeKpis,
@@ -29,6 +30,7 @@ function row(over: Partial<RevenueRow>): RevenueRow {
     pulsePending: false,
     hubspotContactId: "c1",
     contactLabel: "Klient 1",
+    confirmed: false,
     ...over,
   };
 }
@@ -50,6 +52,36 @@ describe("computeKpis", () => {
 
   it("zero wynajmów → avgValue null (bez dzielenia przez zero)", () => {
     expect(computeKpis([]).avgValue).toBeNull();
+  });
+});
+
+describe("computeConfirmationSplit", () => {
+  it("dzieli sumę na potwierdzoną (confirmed) i preliminowaną", () => {
+    const rows = [
+      row({ totalNet: 1500, confirmed: true }),
+      row({ totalNet: 500, confirmed: false }),
+    ];
+    const s = computeConfirmationSplit(rows);
+    expect(s.confirmedNet).toBe(1500);
+    expect(s.preliminaryNet).toBe(500);
+    expect(s.totalNet).toBe(2000);
+    expect(s.confirmedPct).toBe(75);
+  });
+
+  it("wszystko potwierdzone → 100%", () => {
+    const rows = [row({ totalNet: 1000, confirmed: true }), row({ totalNet: 500, confirmed: true })];
+    expect(computeConfirmationSplit(rows).confirmedPct).toBe(100);
+  });
+
+  it("nic niepotwierdzone → 0%", () => {
+    const rows = [row({ totalNet: 1000, confirmed: false })];
+    expect(computeConfirmationSplit(rows).confirmedPct).toBe(0);
+  });
+
+  it("brak wynajmów → 0%, bez dzielenia przez zero", () => {
+    const s = computeConfirmationSplit([]);
+    expect(s.confirmedPct).toBe(0);
+    expect(s.totalNet).toBe(0);
   });
 });
 

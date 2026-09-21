@@ -17,6 +17,7 @@ function row(over: Partial<RevenueRow>): RevenueRow {
     pulsePending: false,
     hubspotContactId: null,
     contactLabel: null,
+    confirmed: false,
     ...over,
   };
 }

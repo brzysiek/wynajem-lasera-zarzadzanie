@@ -9,6 +9,7 @@ import {
   bestWorstClientAvg,
   bestWorstUtilization,
   computeClientBreakdown,
+  computeConfirmationSplit,
   computeDeviceBreakdown,
   computeDurationHistogram,
   computeKpis,
@@ -16,6 +17,7 @@ import {
   pendingPriceCount,
   trendPct,
   type ClientRow,
+  type ConfirmationSplit,
   type RevenueRow,
   type UnpricedRental,
 } from "@/lib/revenue/aggregate";
@@ -102,6 +104,7 @@ export function RevenueDashboard({
   const [tab, setTab] = useState<"urzadzenia" | "klienci" | "heatmap">("urzadzenia");
 
   const kpis = useMemo(() => computeKpis(rows), [rows]);
+  const confirmation = useMemo(() => computeConfirmationSplit(rows), [rows]);
   const devices = useMemo(() => computeDeviceBreakdown(rows, period.dayCount), [rows, period.dayCount]);
   const insight = useMemo(() => bestWorstUtilization(devices), [devices]);
   const durations = useMemo(() => computeDurationHistogram(rows), [rows]);
@@ -257,6 +260,9 @@ export function RevenueDashboard({
           <KpiCard label="Unikalni klienci" amount={fmtNum(kpis.uniqueClients)} sub="&nbsp;" />
         </div>
 
+        {/* ---- rzeczywiste vs preliminowane (potwierdzenie odbioru) ---- */}
+        <ConfirmationBar split={confirmation} />
+
         {/* ---- jeden komunikat pod liczbami: co obniża/uzupełnia sumę ---- */}
         <RevenueNotice pending={pending} unpriced={unpriced} />
 
@@ -317,6 +323,42 @@ function wynajmy(n: number): string {
 }
 function maja(n: number): string {
   return n === 1 ? "ma" : "mają";
+}
+
+// Pasek "rzeczywiste vs preliminowane" — dzieli Przychód netto z paska KPI
+// wyżej na część POTWIERDZONĄ przez kierowcę (RentalFinance.confirmedAt,
+// przycisk "Potwierdzam odbiór" w panelu kierowcy) i PRELIMINOWANĄ (cena z
+// rezerwacji, wynajem się jeszcze nie odbył albo kierowca nie potwierdził).
+// Suma obu = Przychód netto, nic tu nie odejmuje ani nie dodaje do KPI —
+// to tylko rozbicie tej samej liczby. Brak = ukryty (0 wynajmów w okresie).
+function ConfirmationBar({ split }: { split: ConfirmationSplit }) {
+  if (split.totalNet <= 0) return null;
+  return (
+    <div className="mx-4 mt-4 sm:mx-7">
+      <div className="flex items-baseline justify-between text-[12.5px]" style={{ color: C.muted }}>
+        <span>Rzeczywiste vs preliminowane</span>
+        <span className="font-semibold">{split.confirmedPct}% potwierdzone</span>
+      </div>
+      <div className="mt-1.5 flex h-3 overflow-hidden rounded-full" style={{ background: C.border }}>
+        <div style={{ width: `${split.confirmedPct}%`, background: C.green }} />
+        <div style={{ width: `${100 - split.confirmedPct}%`, background: "#F0C674" }} />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[12.5px]" style={{ color: C.text }}>
+        <span>
+          <b className="font-bold" style={{ color: C.green }}>
+            {fmtPln(split.confirmedNet)}
+          </b>{" "}
+          rzeczywiste — kierowca potwierdził odbiór
+        </span>
+        <span>
+          <b className="font-bold" style={{ color: C.amberText }}>
+            {fmtPln(split.preliminaryNet)}
+          </b>{" "}
+          preliminowane
+        </span>
+      </div>
+    </div>
+  );
 }
 
 // Jeden komunikat tuż pod paskiem KPI — mówi, dlaczego pokazana suma może
