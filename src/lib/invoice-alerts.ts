@@ -8,10 +8,14 @@ import { pluralWynajem } from "@/lib/rental-alerts";
 
 export { pluralWynajem };
 
-// Ten sam próg dolny co "brak raportu kierowcy" (src/lib/report-alerts.ts)
-// — obie funkcje (raportowanie i fakturowanie) wystartowały w tej samej
-// sesji, więc nie ma sensu osobno dozować "świeżego tygodnia zaległości".
-export { REPORT_ALERT_SINCE as INVOICE_ALERT_SINCE } from "@/lib/report-alerts";
+// WŁASNY próg dolny, inny niż "brak raportu kierowcy" (REPORT_ALERT_SINCE) —
+// ustalony z użytkownikiem: faktury sprzed 18.09 były wystawiane ręcznie w
+// Fakturowni, z pominięciem tej apki, więc nie mają i nigdy nie będą mieć
+// fakturowniaInvoiceId — oznaczanie ich jako "brak faktury" byłoby fałszywym
+// alarmem. Wynajmy kończące się wcześniej niż ta data w ogóle nie dostają
+// statusu faktury (patrz rentalInvoiceStatus niżej), nie tylko są pomijane
+// w powiadomieniach.
+export const INVOICE_ALERT_SINCE = new Date("2026-09-18T00:00:00.000Z");
 
 export type InvoiceAlert = {
   id: string;
@@ -25,12 +29,15 @@ export type InvoiceAlert = {
 export type InvoiceStatus = "none" | "needed" | "issued";
 
 // Status faktury KONKRETNEGO wynajmu — używane przez kafelki kalendarza.
-// "none" = wynajem się nie skończył, albo VAT niedoliczony (nie dotyczy).
+// "none" = wynajem się nie skończył, kończy się przed INVOICE_ALERT_SINCE,
+// albo VAT niedoliczony (nie dotyczy).
 export function rentalInvoiceStatus(rental: {
   endsAt: string;
   finance?: { vatApplicable: boolean; fakturowniaInvoiceId: number | null } | null;
 }): InvoiceStatus {
-  if (new Date(rental.endsAt) > new Date()) return "none";
+  const endsAt = new Date(rental.endsAt);
+  if (endsAt > new Date()) return "none";
+  if (endsAt < INVOICE_ALERT_SINCE) return "none";
   if (!rental.finance?.vatApplicable) return "none";
   return rental.finance.fakturowniaInvoiceId ? "issued" : "needed";
 }
