@@ -10,18 +10,31 @@ function bad(message: string, status = 400) {
   return NextResponse.json({ message }, { status });
 }
 
+// Stały próg dolny (ustalony z użytkownikiem) — faktury sprzed września nie
+// interesują dopasowywania wyciągów, więc go NIE cofamy w historię. Inaczej
+// niż REPORT_ALERT_SINCE/INVOICE_ALERT_SINCE (powiadomienia) to nie jest
+// "świeży tydzień zaległości od wdrożenia", tylko świadomie wybrana data
+// początku śledzenia płatności — dopasowywanie ma iść tylko naprzód od tej
+// pory, nigdy wstecz.
+const BANK_STATEMENT_SINCE = "2026-09-01";
+
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 // Wgrywanie wyciągu bankowego (CSV z mBanku) — dopasowuje wpływy do
-// NIEZAPŁACONYCH faktur z CAŁEGO działu w Fakturowni (dowolny okres
-// wystawienia, patrz listInvoices() bez dateFrom/dateTo = period=all —
-// faktura mogła być wystawiona wcześniej niż zapłacona; i dowolna faktura,
-// nie tylko wystawiona przez tę apkę — większość faktur w dziale to stare,
-// ręcznie wystawione w Fakturowni). Status "zapłacona" żyje w
-// FakturowniaPayment, keyed po ID faktury z Fakturowni, NIE w RentalFinance
-// (ta apka śledzi dziś tylko pojedyncze wynajmy, nie cały dział). Jedna
-// faktura z dokładnie jednym kandydatem = od razu oznaczona jako zapłacona;
-// więcej niż jeden kandydat albo brak — zostaje do ręcznego oznaczenia
-// istniejącym przełącznikiem w dashboardzie (bez osobnego ekranu wyboru
-// kandydata, patrz bank-match.ts).
+// NIEZAPŁACONYCH faktur z CAŁEGO działu w Fakturowni (od BANK_STATEMENT_SINCE
+// do dziś — faktura mogła być wystawiona wcześniej niż zapłacona w obrębie
+// tego okna, ale nie szukamy dalej wstecz; dowolna faktura, nie tylko
+// wystawiona przez tę apkę — większość faktur w dziale to stare, ręcznie
+// wystawione w Fakturowni). Status "zapłacona" żyje w FakturowniaPayment,
+// keyed po ID faktury z Fakturowni, NIE w RentalFinance (ta apka śledzi dziś
+// tylko pojedyncze wynajmy, nie cały dział). Jedna faktura z dokładnie
+// jednym kandydatem = od razu oznaczona jako zapłacona; więcej niż jeden
+// kandydat albo brak — zostaje do ręcznego oznaczenia istniejącym
+// przełącznikiem w dashboardzie (bez osobnego ekranu wyboru kandydata,
+// patrz bank-match.ts).
 export async function POST(req: NextRequest) {
   const session = await requireAdminSession();
   if (!session) return bad("Brak uprawnień.", 403);
@@ -38,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   let allInvoices;
   try {
-    allInvoices = await listInvoices();
+    allInvoices = await listInvoices({ dateFrom: BANK_STATEMENT_SINCE, dateTo: todayIso() });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ message }, { status: 502 });
