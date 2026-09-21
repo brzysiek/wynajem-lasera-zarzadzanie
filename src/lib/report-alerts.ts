@@ -1,8 +1,8 @@
 // Ostrzeżenia "brak raportu kierowcy" — wynajmy/szkolenia, które się już
-// zakończyły, ale kierowca nie zapisał w panelu żadnych danych rozliczenia
-// (RentalFinance.cashCollected wciąż null) albo brakuje liczników impulsów
-// tam, gdzie są wymagane. Moduł client-safe (bez Prismy) — reguła jest
-// reużywana zarówno przez kafelki siatki kalendarza (calendar-view.tsx,
+// zakończyły, ale kierowca nie kliknął jawnego "Potwierdzam odbiór" w
+// panelu (RentalFinance.confirmedAt wciąż null) albo brakuje liczników
+// impulsów tam, gdzie są wymagane. Moduł client-safe (bez Prismy) — reguła
+// jest reużywana zarówno przez kafelki siatki kalendarza (calendar-view.tsx,
 // liczone z danych już załadowanych do widoku) jak i przez serwerowy
 // GET /api/rentals/report-alerts (src/lib/report-alerts-load.ts).
 import type { DevicePricingCategory, RentalEventType } from "@prisma/client";
@@ -19,19 +19,19 @@ export { pluralWynajem };
 // proces nie działa, a nie coś do automatycznego wygaszenia).
 export const REPORT_ALERT_SINCE = new Date("2026-09-14T00:00:00.000Z");
 
-export type ReportGapField = "cash" | "counters";
+export type ReportGapField = "confirmation" | "counters";
 
 export const REPORT_FIELD_LABEL: Record<ReportGapField, string> = {
-  cash: "brak informacji o płatności",
+  confirmation: "brak potwierdzenia odbioru",
   counters: "brak liczników impulsów",
 };
 
 export const REPORT_FIELD_SHORT: Record<ReportGapField, string> = {
-  cash: "płatność",
+  confirmation: "potwierdzenie",
   counters: "liczniki",
 };
 
-export const REPORT_FIELD_ORDER: ReportGapField[] = ["cash", "counters"];
+export const REPORT_FIELD_ORDER: ReportGapField[] = ["confirmation", "counters"];
 
 export type ReportAlert = {
   id: string;
@@ -63,7 +63,10 @@ export type ReportGapInput = {
   pricingCategory: DevicePricingCategory | null;
   finance: {
     deviceVariant: string | null;
-    cashCollected: boolean | null;
+    // Data/string zależnie od tego, czy woła serwer (Prisma Date) czy klient
+    // (RentalFinanceDto, ISO string) — tu tylko sprawdzane na null, nigdy
+    // formatowane, więc różnica reprezentacji nie ma znaczenia.
+    confirmedAt: Date | string | null;
     pulseCounterStart: number | null;
     pulseCounterEnd: number | null;
   } | null;
@@ -73,7 +76,7 @@ export type ReportGapInput = {
 // zakończył (to sprawdza wywołujący, patrz `rentalNeedsReport` niżej).
 export function computeReportGaps(input: ReportGapInput): ReportGapField[] {
   const gaps: ReportGapField[] = [];
-  if (!input.finance || input.finance.cashCollected === null) gaps.push("cash");
+  if (!input.finance || input.finance.confirmedAt == null) gaps.push("confirmation");
   if (
     needsPulseCounters(input.pricingCategory, input.finance?.deviceVariant ?? null, input.eventType) &&
     (input.finance?.pulseCounterStart == null || input.finance?.pulseCounterEnd == null)

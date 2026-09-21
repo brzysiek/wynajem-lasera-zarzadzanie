@@ -79,6 +79,7 @@ export function DriverFinancePanel({
   const [membraneUsed, setMembraneUsed] = useState<boolean>(finance?.membraneUsed ?? false);
   const [membraneCount, setMembraneCount] = useState<number>(finance?.membraneCount ?? 1);
   const [cashCollected, setCashCollected] = useState<boolean>(finance?.cashCollected ?? false);
+  const [confirmed, setConfirmed] = useState<boolean>(finance?.confirmedAt != null);
   const [transportCash, setTransportCash] = useState<boolean>(finance?.transportCashCollected ?? false);
   const [deliveryMin, setDeliveryMin] = useState(
     finance?.deliveryDurationMinutes != null ? String(finance.deliveryDurationMinutes) : "",
@@ -138,6 +139,16 @@ export function DriverFinancePanel({
     needsCounters && startN != null && endN != null && orderValid ? (endN as number) - (startN as number) : null;
   const awaitingEnd = needsCounters && startN != null && endN == null;
 
+  // Warunki "rozliczenie kompletne" — blokują przycisk potwierdzenia, żeby
+  // `confirmedAt` naprawdę znaczyło "wszystko wypełnione", nie tylko
+  // "kierowca kliknął". Sprawdzamy względem ZAPISANEGO stanu (finance?...),
+  // nie lokalnego, bo lokalny domyślnie startuje jako "false"/pusty i nic by
+  // nie blokował.
+  const countersDone = !needsCounters || pulsesUsed != null;
+  const capDecided = !isDouble || finance?.capUsedHS != null;
+  const membraneDecided = !isCooltech || finance?.membraneUsed != null;
+  const canConfirm = countersDone && capDecided && membraneDecided;
+
   // Czas pracy kierowcy (min) — niezależny od wariantu, opcjonalny.
   const parseMin = (s: string): number | null | undefined => {
     const t = s.trim();
@@ -171,6 +182,7 @@ export function DriverFinancePanel({
     transportCashCollected?: boolean;
     pickupSameVehicle?: boolean;
     pickupVehicleSel?: string;
+    confirmed?: boolean;
   }) {
     const capUsedNow = ov?.capUsed ?? capUsed;
     const capCountNow = ov?.capCount ?? capCount;
@@ -220,6 +232,10 @@ export function DriverFinancePanel({
     }
     if (deliveryMinParsed !== undefined) payload.deliveryDurationMinutes = deliveryMinParsed;
     if (pickupMinParsed !== undefined) payload.pickupDurationMinutes = pickupMinParsed;
+    // Tak samo jak capUsedHS/membraneUsed wyżej — tylko gdy ten zapis
+    // faktycznie dotyczy potwierdzenia (kliknięcie przycisku), nie przy
+    // okazji każdego innego autosave.
+    if (ov?.confirmed !== undefined) payload.confirmed = ov.confirmed;
 
     const key = JSON.stringify(payload);
     if (key === lastSentKey.current) return;
@@ -913,6 +929,51 @@ export function DriverFinancePanel({
 
       {deliveryNotesCard}
       {pickupNotesCard}
+
+      {/* Potwierdzenie odbioru — jedyny jawny, świadomy sygnał "rozliczenie
+          kompletne", niezależny od autosave pojedynczych pól wyżej. Zasila
+          powiadomienia "brak raportu" i podział przychodu na
+          rzeczywisty/preliminowany (biuro). */}
+      <div className={CARD}>
+        {confirmed ? (
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[14px] font-semibold text-[#1E9E6B]">✅ Potwierdzono odbiór</p>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmed(false);
+                void save({ confirmed: false });
+              }}
+              className="flex-none text-[12px] font-medium text-[#6B7280] underline"
+            >
+              Cofnij
+            </button>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmed(true);
+                void save({ confirmed: true });
+              }}
+              disabled={!canConfirm}
+              className="w-full rounded-[10px] bg-[#1E9E6B] py-3 text-[14px] font-bold text-white disabled:opacity-40"
+            >
+              Potwierdzam odbiór — rozliczenie kompletne
+            </button>
+            {!canConfirm && (
+              <p className="mt-2 text-center text-[12px] text-[#B5851E]">
+                Uzupełnij najpierw:{" "}
+                {[!countersDone && "liczniki impulsów", !capDecided && "nakładkę HS", !membraneDecided && "membrany"]
+                  .filter(Boolean)
+                  .join(", ")}
+                .
+              </p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

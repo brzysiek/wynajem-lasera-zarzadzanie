@@ -412,16 +412,14 @@ export function RentalFinanceSection({
   const CHANGE_LINK = "text-xs font-medium text-[#1B6FA8] hover:underline";
 
   // Podsumowanie kierowcy pokazujemy dopiero PO terminie odbioru — nie na
-  // podstawie tego, czy kierowca cokolwiek zapisał (cashCollected leci w
-  // payloadzie przy KAŻDYM jego zapisie, także wcześniejszym, np. uwaga do
-  // dostawy albo podgląd kierowcy odpalony przez biuro), bo to pokazywało
-  // kartę na wynajmach, które się jeszcze nie odbyły.
+  // podstawie tego, czy kierowca cokolwiek zapisał (dawniej: cashCollected,
+  // który leci w payloadzie przy KAŻDYM zapisie, także wcześniejszym, np.
+  // uwaga do dostawy albo podgląd kierowcy odpalony przez biuro — pokazywało
+  // to kartę na wynajmach, które się jeszcze nie odbyły). Teraz jedyne
+  // źródło prawdy to jawne `confirmedAt` — przycisk "Potwierdzam odbiór" w
+  // panelu kierowcy (driver-finance-panel.tsx), niezależny od pojedynczych pól.
   const hasEnded = new Date(endsAt) <= new Date();
-  const driverReported =
-    initialFinance != null &&
-    (initialFinance.cashCollected !== null ||
-      initialFinance.capUsedHS !== null ||
-      initialFinance.membraneUsed !== null);
+  const driverReported = initialFinance?.confirmedAt != null;
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-5">

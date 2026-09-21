@@ -176,6 +176,9 @@ export type RentalFinanceDto = {
   pickupVehicleId: string | null;
   deliveryNotes: string | null;
   pickupNotes: string | null;
+  // Jedyny jawny sygnał "raport kierowcy kompletny" — patrz komentarz przy
+  // RentalFinance.confirmedAt w schema.prisma.
+  confirmedAt: string | null;
   // --- transport ---
   transportPriceNet: string | null;
   transportPaidSeparately: boolean;
@@ -219,6 +222,7 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
     pickupVehicleId: row.pickupVehicleId,
     deliveryNotes: row.deliveryNotes,
     pickupNotes: row.pickupNotes,
+    confirmedAt: row.confirmedAt ? row.confirmedAt.toISOString() : null,
     transportPriceNet: row.transportPriceNet ? row.transportPriceNet.toString() : null,
     transportPaidSeparately: row.transportPaidSeparately,
     transportVatApplicable: row.transportVatApplicable,

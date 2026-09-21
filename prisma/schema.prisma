@@ -393,6 +393,14 @@ model RentalFinance {
   deliveryNotes String? @db.Text
   pickupNotes   String? @db.Text
 
+  // --- potwierdzenie odbioru — JEDYNY jawny, globalny sygnał "rozliczenie
+  // kompletne", niezależny od pojedynczych pól (cashCollected itp., które
+  // zapisują się przy KAŻDYM autosave, nie tylko świadomym zakończeniu).
+  // Ustawiane jednym przyciskiem w panelu kierowcy. Jedyne źródło prawdy dla
+  // "brak raportu" (src/lib/report-alerts.ts) i podziału przychodu na
+  // rzeczywisty/preliminowany (src/lib/revenue/aggregate.ts).
+  confirmedAt DateTime?
+
   // --- transport ---
   // Kwota netto transportu (dawniej wolny tekst na Rental.transportPrice).
   transportPriceNet       Decimal?       @db.Decimal(10, 2)

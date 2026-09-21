@@ -25,6 +25,7 @@ const DRIVER_EDITABLE_FIELDS = [
   "pickupVehicleId",
   "deliveryNotes",
   "pickupNotes",
+  "confirmed",
 ] as const;
 
 const MAX_CAP_COUNT = 20;
@@ -75,6 +76,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let pickupVehicleId: string | null | undefined;
   let deliveryNotes: string | null | undefined;
   let pickupNotes: string | null | undefined;
+  let confirmed: boolean | undefined;
 
   if ("capUsedHS" in body) {
     if (body.capUsedHS !== null && typeof body.capUsedHS !== "boolean") return bad("Nieprawidłowa wartość pola „nakładka HS”.");
@@ -144,6 +146,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (field === "deliveryNotes") deliveryNotes = value;
     else pickupNotes = value;
   }
+  if ("confirmed" in body) {
+    if (typeof body.confirmed !== "boolean") return bad("Nieprawidłowa wartość pola „potwierdzenie odbioru”.");
+    confirmed = body.confirmed;
+  }
 
   const existing = rental.finance;
   const settings = await loadPricingSettings();
@@ -167,6 +173,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     pickupVehicleId !== undefined ? pickupVehicleId : existing?.pickupVehicleId ?? null;
   const effDeliveryNotes = deliveryNotes !== undefined ? deliveryNotes : existing?.deliveryNotes ?? null;
   const effPickupNotes = pickupNotes !== undefined ? pickupNotes : existing?.pickupNotes ?? null;
+
+  // Potwierdzenie odbioru — JEDYNY jawny, globalny sygnał "rozliczenie
+  // kompletne" (niezależny od tego, które pojedyncze pole akurat przyszło w
+  // tym zapisie). `confirmed: true` zapisuje znacznik czasu tylko przy
+  // PIERWSZYM potwierdzeniu (idempotentne przy ponownym true — nie
+  // nadpisuje wcześniejszej daty); `confirmed: false` jawnie cofa
+  // potwierdzenie (np. pomyłka, biuro chce poprawić dane po kierowcy).
+  const effConfirmedAt =
+    confirmed === undefined ? existing?.confirmedAt ?? null : confirmed ? existing?.confirmedAt ?? new Date() : null;
 
   // Pola transportu ustala biuro w sekcji „Finanse" — kierowca ich nie rusza.
   const transportPriceNet = existing?.transportPriceNet ?? parseTransportPrice(rental.transportPrice);
@@ -265,6 +280,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     pickupVehicleId: effPickupVehicleId,
     deliveryNotes: effDeliveryNotes,
     pickupNotes: effPickupNotes,
+    confirmedAt: effConfirmedAt,
     totalNet: computed.totalNet,
     totalGross: computed.totalGross,
     transportTotalNet: computed.transportTotalNet,

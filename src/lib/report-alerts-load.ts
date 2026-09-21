@@ -21,7 +21,7 @@ export async function loadReportAlerts(): Promise<ReportAlert[]> {
       eventType: true,
       device: { select: { name: true, color: true, pricingCategory: true } },
       finance: {
-        select: { deviceVariant: true, cashCollected: true, pulseCounterStart: true, pulseCounterEnd: true },
+        select: { deviceVariant: true, confirmedAt: true, pulseCounterStart: true, pulseCounterEnd: true },
       },
     },
   });
