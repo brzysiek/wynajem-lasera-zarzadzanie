@@ -347,7 +347,8 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
               <tbody>
                 {invoices.map((r) => {
                   const sentToKsef = r.govStatus === "ok";
-                  const ksefError = r.govStatus != null && r.govStatus !== "ok" && !r.govStatus.startsWith("processing");
+                  const ksefProcessing = r.govStatus != null && r.govStatus.startsWith("processing");
+                  const ksefError = r.govStatus != null && r.govStatus !== "ok" && !ksefProcessing;
                   return (
                     <tr key={r.id} className="align-top transition-colors hover:bg-[#F6F9FB]">
                       <td className="border-b px-2 py-2 font-medium" style={{ borderColor: C.border, color: C.text }}>
@@ -366,6 +367,14 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                         {sentToKsef ? (
                           <span className="rounded-full bg-[#E7F6EF] px-2 py-0.5 text-[11px] font-semibold text-[#1E9E6B]" title={r.govId ?? undefined}>
                             wysłana
+                          </span>
+                        ) : ksefProcessing ? (
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                            style={{ background: C.brandSoft, color: C.brand }}
+                            title="Fakturownia przetwarza wysyłkę do KSeF — odśwież stronę za chwilę."
+                          >
+                            wysyłanie…
                           </span>
                         ) : (
                           <button
