@@ -15,6 +15,9 @@ export type TotalsInput = {
   capUsedHS: boolean | null; // nakładka HS, tylko LightSheer "double"
   capCountHS?: number | null; // ile nakładek (domyślnie 1); suma = capFeeNet * count
   capFeeNet: Prisma.Decimal | null;
+  membraneUsed: boolean | null; // membrany, tylko Cooltech
+  membraneCount?: number | null; // ile membran (domyślnie 1); suma = membraneFeeNet * count
+  membraneFeeNet: Prisma.Decimal | null;
   vatApplicable: boolean;
   vatRate: Prisma.Decimal; // w procentach, np. 23
 };
@@ -44,6 +47,10 @@ export function computeTotals(input: TotalsInput): TotalsResult {
   if (input.capUsedHS && input.capFeeNet) {
     const count = Math.max(1, Math.trunc(input.capCountHS ?? 1));
     net = net.plus(input.capFeeNet.times(count));
+  }
+  if (input.membraneUsed && input.membraneFeeNet) {
+    const count = Math.max(1, Math.trunc(input.membraneCount ?? 1));
+    net = net.plus(input.membraneFeeNet.times(count));
   }
 
   const totalNet = round2(net);

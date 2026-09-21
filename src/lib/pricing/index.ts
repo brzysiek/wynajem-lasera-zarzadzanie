@@ -74,6 +74,9 @@ export function recalculateFinance(ctx: PricingContext, state: FinanceState): Co
     capUsedHS: state.capUsedHS,
     capCountHS: state.capCountHS ?? 1,
     capFeeNet: state.capFeeNet,
+    membraneUsed: state.membraneUsed,
+    membraneCount: state.membraneCount ?? 1,
+    membraneFeeNet: state.membraneFeeNet,
     vatApplicable: state.vatApplicable,
     vatRate: state.vatRate,
   });

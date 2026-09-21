@@ -8,7 +8,13 @@ import { PRICING_CATEGORY_VALUES, categoryHasVariants, isAllowedVariant } from "
 // Klucze PricingSetting, które wolno edytować z tej strony (+ z modalu
 // przypomnienia o cenie paliwa, src/components/fuel-price-reminder.tsx —
 // ten sam endpoint, inny UI wejścia).
-const EDITABLE_SETTING_KEYS = ["cap_fee_hs_net", "vat_rate_default", "alma_pulse_rate_net", "fuel_price_per_liter"];
+const EDITABLE_SETTING_KEYS = [
+  "cap_fee_hs_net",
+  "vat_rate_default",
+  "alma_pulse_rate_net",
+  "fuel_price_per_liter",
+  "membrane_fee_cooltech_net",
+];
 
 function decOrNull(raw: unknown): { ok: true; value: Prisma.Decimal } | { ok: false } {
   if (raw === null || raw === undefined || raw === "") return { ok: false };

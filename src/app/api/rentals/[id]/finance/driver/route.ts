@@ -14,6 +14,8 @@ import { resolveVehicleId } from "@/lib/rental-vehicle";
 const DRIVER_EDITABLE_FIELDS = [
   "capUsedHS",
   "capCountHS",
+  "membraneUsed",
+  "membraneCount",
   "pulseCounterStart",
   "pulseCounterEnd",
   "cashCollected",
@@ -26,6 +28,7 @@ const DRIVER_EDITABLE_FIELDS = [
 ] as const;
 
 const MAX_CAP_COUNT = 20;
+const MAX_MEMBRANE_COUNT = 20;
 const MAX_DURATION_MIN = 24 * 60;
 
 function bad(message: string, status = 400) {
@@ -61,6 +64,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // --- walidacja i normalizacja pól z body ---
   let capUsedHS: boolean | null | undefined;
   let capCountHS: number | undefined;
+  let membraneUsed: boolean | null | undefined;
+  let membraneCount: number | undefined;
   let cashCollected: boolean | null | undefined;
   let transportCashCollected: boolean | null | undefined;
   let pulseCounterStart: number | null | undefined;
@@ -81,6 +86,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return bad(`Liczba nakładek HS musi być liczbą całkowitą od 1 do ${MAX_CAP_COUNT}.`);
     }
     capCountHS = num;
+  }
+  if ("membraneUsed" in body) {
+    if (body.membraneUsed !== null && typeof body.membraneUsed !== "boolean") return bad("Nieprawidłowa wartość pola „membrany”.");
+    membraneUsed = body.membraneUsed;
+  }
+  if ("membraneCount" in body) {
+    const num = typeof body.membraneCount === "number" ? body.membraneCount : Number(body.membraneCount);
+    if (!Number.isInteger(num) || num < 1 || num > MAX_MEMBRANE_COUNT) {
+      return bad(`Liczba membran musi być liczbą całkowitą od 1 do ${MAX_MEMBRANE_COUNT}.`);
+    }
+    membraneCount = num;
   }
   if ("cashCollected" in body) {
     if (body.cashCollected !== null && typeof body.cashCollected !== "boolean") return bad("Nieprawidłowa wartość pola „gotówka odebrana”.");
@@ -136,6 +152,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // dotychczasowa wartość z bazy.
   const effCapUsed = capUsedHS !== undefined ? capUsedHS : existing?.capUsedHS ?? null;
   const effCapCount = effCapUsed ? (capCountHS !== undefined ? capCountHS : existing?.capCountHS ?? 1) : 1;
+  const effMembraneUsed = membraneUsed !== undefined ? membraneUsed : existing?.membraneUsed ?? null;
+  const effMembraneCount = effMembraneUsed ? (membraneCount !== undefined ? membraneCount : existing?.membraneCount ?? 1) : 1;
   const effStart = pulseCounterStart !== undefined ? pulseCounterStart : existing?.pulseCounterStart ?? null;
   const effEnd = pulseCounterEnd !== undefined ? pulseCounterEnd : existing?.pulseCounterEnd ?? null;
   const effCash = cashCollected !== undefined ? cashCollected : existing?.cashCollected ?? null;
@@ -161,6 +179,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let capFeeNet = existing?.capFeeNet ?? null;
   if (effCapUsed && capFeeNet == null) {
     capFeeNet = settings.capFeeHsNet;
+  }
+
+  // Snapshot ceny membrany Cooltech — ta sama zasada co nakładka HS wyżej:
+  // tylko przy pierwszym zaznaczeniu, potem zamrożona.
+  let membraneFeeNet = existing?.membraneFeeNet ?? null;
+  if (effMembraneUsed && membraneFeeNet == null) {
+    membraneFeeNet = settings.membraneFeeCooltechNet;
   }
 
   const ctx = await loadPricingContext(rental);
@@ -206,6 +231,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       capUsedHS: effCapUsed,
       capCountHS: effCapCount,
       capFeeNet,
+      membraneUsed: effMembraneUsed,
+      membraneCount: effMembraneCount,
+      membraneFeeNet,
       vatApplicable,
       vatRate,
       transportPriceNet,
@@ -227,6 +255,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     capUsedHS: effCapUsed,
     capCountHS: effCapCount,
     capFeeNet,
+    membraneUsed: effMembraneUsed,
+    membraneCount: effMembraneCount,
+    membraneFeeNet,
     cashCollected: effCash,
     transportCashCollected: effTransportCash,
     deliveryDurationMinutes: effDeliveryMin,

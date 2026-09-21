@@ -27,6 +27,8 @@ function state(over: Partial<FinanceState>): FinanceState {
     pulseCounterEnd: null,
     capUsedHS: null,
     capFeeNet: null,
+    membraneUsed: null,
+    membraneFeeNet: null,
     vatApplicable: false,
     vatRate: D(23),
     transportPriceNet: null,
@@ -167,6 +169,34 @@ describe("recalculateFinance — Alma Harmony (impulsy = dopłata)", () => {
     expect(r.pulseSurchargeNet?.toNumber()).toBe(336); // 5600 * 0.06
     expect(r.pulseCalculationStatus).toBe("CALCULATED");
     expect(r.totalNet.toNumber()).toBe(2336);
+  });
+});
+
+describe("recalculateFinance — Cooltech (membrany = dopłata)", () => {
+  const cooltechCtx = ctx({ pricingCategory: "COOLTECH_FLAT", deviceVariant: null, durationDays: 1 });
+
+  it("membrana zaznaczona → +membraneFeeNet (snapshot podany w state)", () => {
+    const r = recalculateFinance(
+      cooltechCtx,
+      state({ baseRentalPriceNet: D(950), membraneUsed: true, membraneFeeNet: D(70) }),
+    );
+    expect(r.totalNet.toNumber()).toBe(1020);
+  });
+
+  it("2 membrany → membraneFeeNet * count", () => {
+    const r = recalculateFinance(
+      cooltechCtx,
+      state({ baseRentalPriceNet: D(950), membraneUsed: true, membraneCount: 2, membraneFeeNet: D(70) }),
+    );
+    expect(r.totalNet.toNumber()).toBe(1090);
+  });
+
+  it("membrana niezaznaczona → membraneFeeNet pomijane", () => {
+    const r = recalculateFinance(
+      cooltechCtx,
+      state({ baseRentalPriceNet: D(950), membraneUsed: false, membraneFeeNet: D(70) }),
+    );
+    expect(r.totalNet.toNumber()).toBe(950);
   });
 });
 

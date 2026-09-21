@@ -35,6 +35,7 @@ const SETTING_LABELS: Record<string, string> = {
   cap_fee_hs_net: "Cena nakładki HS (netto, zł)",
   vat_rate_default: "Domyślna stawka VAT (%)",
   alma_pulse_rate_net: "Stawka za impuls Alma (netto, zł)",
+  membrane_fee_cooltech_net: "Cena membrany Cooltech (netto, zł)",
 };
 
 type NewRule = { key: string; pricingCategory: DevicePricingCategory; variant: string; durationDays: string; priceNet: string };

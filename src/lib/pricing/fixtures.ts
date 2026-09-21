@@ -80,4 +80,5 @@ export const SETTINGS: PricingSettings = {
   capFeeHsNet: D(70),
   vatRateDefault: D(23),
   almaPulseRateNet: new Prisma.Decimal("0.06"),
+  membraneFeeCooltechNet: D(70),
 };

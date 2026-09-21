@@ -351,6 +351,11 @@ model RentalFinance {
   capCountHS Int      @default(1) // ile nakładek HS zużyto (gdy capUsedHS); kierowca może zmienić z 1 na 2+
   capFeeNet  Decimal? @db.Decimal(10, 2) // snapshot z PricingSetting w momencie zaznaczenia (za 1 szt.)
 
+  // --- membrany Cooltech (tylko COOLTECH_FLAT) — ten sam wzorzec co nakładka HS ---
+  membraneUsed    Boolean?
+  membraneCount   Int      @default(1) // ile membran zużyto (gdy membraneUsed); kierowca może zmienić z 1 na 2+
+  membraneFeeNet  Decimal? @db.Decimal(10, 2) // snapshot z PricingSetting w momencie zaznaczenia (za 1 szt.)
+
   // --- VAT ---
   vatApplicable Boolean @default(false)
   vatRate       Decimal @default(23) @db.Decimal(5, 2) // per-wydarzenie, na wypadek zmiany stawki

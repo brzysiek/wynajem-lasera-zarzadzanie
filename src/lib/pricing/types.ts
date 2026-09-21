@@ -34,6 +34,7 @@ export type PricingSettings = {
   capFeeHsNet: Prisma.Decimal;
   vatRateDefault: Prisma.Decimal;
   almaPulseRateNet: Prisma.Decimal;
+  membraneFeeCooltechNet: Prisma.Decimal;
 };
 
 // Kontekst potrzebny do policzenia finansów jednego wydarzenia — biuro składa
@@ -58,6 +59,9 @@ export type FinanceState = {
   capUsedHS: boolean | null;
   capCountHS?: number | null; // domyślnie 1 gdy pominięte
   capFeeNet: Prisma.Decimal | null;
+  membraneUsed: boolean | null;
+  membraneCount?: number | null; // domyślnie 1 gdy pominięte
+  membraneFeeNet: Prisma.Decimal | null;
   vatApplicable: boolean;
   vatRate: Prisma.Decimal;
   // Kwota netto transportu (Decimal albo null gdy pusta / do uzgodnienia).

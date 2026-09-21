@@ -198,6 +198,8 @@ export function RentalFinanceSection({
         transportVatApplicable: transportVat,
         capFeeNet: null,
         capUsed: false,
+        membraneFeeNet: null, // membrany Cooltech — też po stronie kierowcy
+        membraneUsed: false,
         vatApplicable,
         vatRate,
         isSzkolenie,

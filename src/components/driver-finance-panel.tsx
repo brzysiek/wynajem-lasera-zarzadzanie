@@ -23,6 +23,7 @@ function fmt(n: number): string {
 }
 
 const MAX_CAP_COUNT = 20;
+const MAX_MEMBRANE_COUNT = 20;
 
 // Tokeny z docs/finanse-wynajmu/mockup-modul-finansowy.html (light only).
 const CARD = "rounded-[14px] border border-[#E2E6EC] bg-white px-4 py-3.5";
@@ -39,6 +40,7 @@ export function DriverFinancePanel({
   transportPrice,
   capFeeHsNet,
   almaPulseRateNet,
+  membraneFeeCooltechNet,
   vehicleId,
   vehicleName,
   vehicles,
@@ -53,6 +55,7 @@ export function DriverFinancePanel({
   transportPrice: string | null;
   capFeeHsNet: number;
   almaPulseRateNet: number;
+  membraneFeeCooltechNet: number;
   // Pojazd dostawy — ustala biuro (Rental.vehicleId), kierowca go nie zmienia
   // tutaj, tylko może zaznaczyć INNY pojazd na odbiór (suwak niżej).
   vehicleId: string | null;
@@ -69,6 +72,8 @@ export function DriverFinancePanel({
   const [end, setEnd] = useState(finance?.pulseCounterEnd != null ? String(finance.pulseCounterEnd) : "");
   const [capUsed, setCapUsed] = useState<boolean>(finance?.capUsedHS ?? false);
   const [capCount, setCapCount] = useState<number>(finance?.capCountHS ?? 1);
+  const [membraneUsed, setMembraneUsed] = useState<boolean>(finance?.membraneUsed ?? false);
+  const [membraneCount, setMembraneCount] = useState<number>(finance?.membraneCount ?? 1);
   const [cashCollected, setCashCollected] = useState<boolean>(finance?.cashCollected ?? false);
   const [transportCash, setTransportCash] = useState<boolean>(finance?.transportCashCollected ?? false);
   const [deliveryMin, setDeliveryMin] = useState(
@@ -94,6 +99,7 @@ export function DriverFinancePanel({
   const variant = finance?.deviceVariant ?? null;
   const isFlex = !isSzkolenie && pricingCategory === "LIGHTSHEER_VARIANT" && variant === FLEX_VARIANT;
   const isDouble = !isSzkolenie && variant === DOUBLE_VARIANT;
+  const isCooltech = !isSzkolenie && pricingCategory === "COOLTECH_FLAT";
   const isAlma = !isSzkolenie && pricingCategory === "ALMA_HARMONY";
   const needsCounters = isFlex || isAlma;
 
@@ -140,6 +146,8 @@ export function DriverFinancePanel({
   async function save(ov?: {
     capUsed?: boolean;
     capCount?: number;
+    membraneUsed?: boolean;
+    membraneCount?: number;
     cashCollected?: boolean;
     transportCashCollected?: boolean;
     pickupSameVehicle?: boolean;
@@ -147,6 +155,8 @@ export function DriverFinancePanel({
   }) {
     const capUsedNow = ov?.capUsed ?? capUsed;
     const capCountNow = ov?.capCount ?? capCount;
+    const membraneUsedNow = ov?.membraneUsed ?? membraneUsed;
+    const membraneCountNow = ov?.membraneCount ?? membraneCount;
     const cashNow = ov?.cashCollected ?? cashCollected;
     const transportCashNow = ov?.transportCashCollected ?? transportCash;
     const pickupSameVehicleNow = ov?.pickupSameVehicle ?? pickupSameVehicle;
@@ -165,6 +175,10 @@ export function DriverFinancePanel({
     if (isDouble) {
       payload.capUsedHS = capUsedNow;
       if (capUsedNow) payload.capCountHS = capCountNow;
+    }
+    if (isCooltech) {
+      payload.membraneUsed = membraneUsedNow;
+      if (membraneUsedNow) payload.membraneCount = membraneCountNow;
     }
     if (needsCounters && !countersError) {
       payload.pulseCounterStart = startRaw === "" ? null : Number(startRaw);
@@ -229,6 +243,8 @@ export function DriverFinancePanel({
 
     const capFee = Number(finance.capFeeNet ?? capFeeHsNet) || 0;
     const capCountEff = capUsed ? Math.max(1, capCount) : 1;
+    const membraneFee = Number(finance.membraneFeeNet ?? membraneFeeCooltechNet) || 0;
+    const membraneCountEff = membraneUsed ? Math.max(1, membraneCount) : 1;
     const transportN = isSzkolenie
       ? null
       : parseAmount(finance.transportPriceNet ?? transportPrice);
@@ -245,6 +261,9 @@ export function DriverFinancePanel({
       capFeeNet: capFee,
       capUsed,
       capCount: capCountEff,
+      membraneFeeNet: membraneFee,
+      membraneUsed,
+      membraneCount: membraneCountEff,
       vatApplicable,
       vatRate,
       isSzkolenie,
@@ -266,6 +285,12 @@ export function DriverFinancePanel({
       r.push({
         label: capCountEff > 1 ? `Nakładki HS (${capCountEff} × ${fmt(capFee)} zł)` : "Nakładka HS",
         value: round2(capFee * capCountEff),
+      });
+    }
+    if (membraneUsed && membraneFee) {
+      r.push({
+        label: membraneCountEff > 1 ? `Membrany (${membraneCountEff} × ${fmt(membraneFee)} zł)` : "Membrana",
+        value: round2(membraneFee * membraneCountEff),
       });
     }
     if (vatApplicable) r.push({ label: `VAT ${vatRate}%`, value: round2(t.gross - t.net) });
@@ -291,6 +316,9 @@ export function DriverFinancePanel({
     capFeeHsNet,
     capUsed,
     capCount,
+    membraneFeeCooltechNet,
+    membraneUsed,
+    membraneCount,
     transportPrice,
     needsCounters,
   ]);
@@ -619,6 +647,64 @@ export function DriverFinancePanel({
             )}
           </div>
           {capUsed && capCount >= 4 && (
+            <p className="mt-2 text-[12px] text-[#B5851E]">Nietypowo duża liczba — sprawdź przed zapisaniem.</p>
+          )}
+        </div>
+      )}
+
+      {/* Membrany Cooltech — ten sam wzorzec co nakładka HS wyżej: checkbox =
+          główny przełącznik, stepper obok, tylko gdy zaznaczone. */}
+      {isCooltech && (
+        <div className={CARD}>
+          <p className={`mb-2 ${FIELD_LABEL}`}>Membrany</p>
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex items-center gap-2.5 text-[14px] font-semibold text-[#171A21]">
+              <input
+                type="checkbox"
+                className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
+                checked={membraneUsed}
+                onChange={(e) => {
+                  const v = e.target.checked;
+                  setMembraneUsed(v);
+                  if (!v) setMembraneCount(1);
+                  void save({ membraneUsed: v, membraneCount: v ? membraneCount : 1 });
+                }}
+              />
+              Zużyta
+            </label>
+            {membraneUsed && (
+              <div className="flex flex-none items-center gap-3">
+                <button
+                  type="button"
+                  aria-label="mniej"
+                  disabled={membraneCount <= 1}
+                  onClick={() => {
+                    const v = Math.max(1, membraneCount - 1);
+                    setMembraneCount(v);
+                    void save({ membraneCount: v });
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border-[1.5px] border-[#E2E6EC] text-[15px] font-bold leading-none text-[#171A21] disabled:opacity-40"
+                >
+                  −
+                </button>
+                <span className="min-w-[14px] text-center text-[16px] font-extrabold tabular-nums">{membraneCount}</span>
+                <button
+                  type="button"
+                  aria-label="więcej"
+                  disabled={membraneCount >= MAX_MEMBRANE_COUNT}
+                  onClick={() => {
+                    const v = Math.min(MAX_MEMBRANE_COUNT, membraneCount + 1);
+                    setMembraneCount(v);
+                    void save({ membraneCount: v });
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border-[1.5px] border-[#E2E6EC] text-[15px] font-bold leading-none text-[#171A21] disabled:opacity-40"
+                >
+                  +
+                </button>
+              </div>
+            )}
+          </div>
+          {membraneUsed && membraneCount >= 4 && (
             <p className="mt-2 text-[12px] text-[#B5851E]">Nietypowo duża liczba — sprawdź przed zapisaniem.</p>
           )}
         </div>

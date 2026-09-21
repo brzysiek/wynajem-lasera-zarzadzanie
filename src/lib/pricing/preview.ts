@@ -91,6 +91,9 @@ export function previewTotals(input: {
   capFeeNet: number | null;
   capUsed: boolean;
   capCount?: number; // ile nakładek HS (domyślnie 1)
+  membraneFeeNet: number | null;
+  membraneUsed: boolean;
+  membraneCount?: number; // ile membran Cooltech (domyślnie 1)
   vatApplicable: boolean;
   vatRate: number;
   isSzkolenie: boolean;
@@ -101,6 +104,7 @@ export function previewTotals(input: {
   net += input.pulseSurchargeNet ?? 0;
   if (!input.isSzkolenie && !transportSeparate) net += input.transportNet ?? 0;
   if (input.capUsed) net += (input.capFeeNet ?? 0) * Math.max(1, Math.trunc(input.capCount ?? 1));
+  if (input.membraneUsed) net += (input.membraneFeeNet ?? 0) * Math.max(1, Math.trunc(input.membraneCount ?? 1));
   net = round2(net);
   const gross = input.vatApplicable ? round2(net * (1 + input.vatRate / 100)) : net;
 

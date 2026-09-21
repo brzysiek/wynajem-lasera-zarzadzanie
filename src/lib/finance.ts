@@ -29,6 +29,7 @@ const SETTING_FALLBACKS: Record<keyof PricingSettings, { key: string; value: num
   capFeeHsNet: { key: "cap_fee_hs_net", value: 70 },
   vatRateDefault: { key: "vat_rate_default", value: 23 },
   almaPulseRateNet: { key: "alma_pulse_rate_net", value: 0.06 },
+  membraneFeeCooltechNet: { key: "membrane_fee_cooltech_net", value: 70 },
 };
 
 // Pojedyncze wartości cennika. Fallbacki na wypadek braku wiersza (seed
@@ -44,6 +45,7 @@ export async function loadPricingSettings(): Promise<PricingSettings> {
     capFeeHsNet: read("capFeeHsNet"),
     vatRateDefault: read("vatRateDefault"),
     almaPulseRateNet: read("almaPulseRateNet"),
+    membraneFeeCooltechNet: read("membraneFeeCooltechNet"),
   };
 }
 
@@ -100,6 +102,7 @@ export async function loadFinanceFormContext(): Promise<{
   defaultVatRate: number;
   capFeeHsNet: number;
   almaPulseRateNet: number;
+  membraneFeeCooltechNet: number;
 }> {
   const [rules, tiers, settings] = await Promise.all([
     prisma.priceRule.findMany(),
@@ -109,6 +112,7 @@ export async function loadFinanceFormContext(): Promise<{
   return {
     capFeeHsNet: settings.capFeeHsNet.toNumber(),
     almaPulseRateNet: settings.almaPulseRateNet.toNumber(),
+    membraneFeeCooltechNet: settings.membraneFeeCooltechNet.toNumber(),
     previewPriceRules: rules.map(
       (r): PreviewPriceRule => ({
         pricingCategory: r.pricingCategory,
@@ -157,6 +161,9 @@ export type RentalFinanceDto = {
   capUsedHS: boolean | null;
   capCountHS: number;
   capFeeNet: string | null;
+  membraneUsed: boolean | null;
+  membraneCount: number;
+  membraneFeeNet: string | null;
   vatApplicable: boolean;
   vatRate: string;
   totalNet: string;
@@ -193,6 +200,9 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
     capUsedHS: row.capUsedHS,
     capCountHS: row.capCountHS,
     capFeeNet: row.capFeeNet ? row.capFeeNet.toString() : null,
+    membraneUsed: row.membraneUsed,
+    membraneCount: row.membraneCount,
+    membraneFeeNet: row.membraneFeeNet ? row.membraneFeeNet.toString() : null,
     vatApplicable: row.vatApplicable,
     vatRate: row.vatRate.toString(),
     totalNet: row.totalNet.toString(),
@@ -260,6 +270,7 @@ export async function saveRentalFinance(
 
   const isFlex = !isSzkolenie && ctx.pricingCategory === "LIGHTSHEER_VARIANT" && variant === FLEX_VARIANT;
   const isDouble = !isSzkolenie && variant === DOUBLE_VARIANT;
+  const isCooltech = !isSzkolenie && ctx.pricingCategory === "COOLTECH_FLAT";
   const needsCounters = !isSzkolenie && variantNeedsPulseCounters(ctx.pricingCategory, variant);
   const existing = rental.finance;
 
@@ -305,6 +316,9 @@ export async function saveRentalFinance(
   const capUsedHS = isDouble ? existing?.capUsedHS ?? null : null;
   const capCountHS = isDouble ? existing?.capCountHS ?? 1 : 1;
   const capFeeNet = isDouble ? existing?.capFeeNet ?? null : null;
+  const membraneUsed = isCooltech ? existing?.membraneUsed ?? null : null;
+  const membraneCount = isCooltech ? existing?.membraneCount ?? 1 : 1;
+  const membraneFeeNet = isCooltech ? existing?.membraneFeeNet ?? null : null;
 
   // --- transport ---
   // Kwotę netto bierzemy z inputu biura (klucz obecny → wartość, także pusta
@@ -333,6 +347,9 @@ export async function saveRentalFinance(
       capUsedHS,
       capCountHS,
       capFeeNet,
+      membraneUsed,
+      membraneCount,
+      membraneFeeNet,
       vatApplicable: Boolean(input.vatApplicable),
       vatRate,
       transportPriceNet,
@@ -353,6 +370,9 @@ export async function saveRentalFinance(
     capUsedHS,
     capCountHS,
     capFeeNet,
+    membraneUsed,
+    membraneCount,
+    membraneFeeNet,
     vatApplicable: Boolean(input.vatApplicable),
     vatRate,
     totalNet: computed.totalNet,

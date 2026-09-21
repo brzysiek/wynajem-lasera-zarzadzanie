@@ -108,6 +108,7 @@ export default async function RentalDetailPage({
             transportPrice={rental.transportPrice}
             capFeeHsNet={financeCtx.capFeeHsNet}
             almaPulseRateNet={financeCtx.almaPulseRateNet}
+            membraneFeeCooltechNet={financeCtx.membraneFeeCooltechNet}
             vehicleId={rental.vehicleId}
             vehicleName={rental.vehicle?.name ?? null}
             vehicles={vehicles}

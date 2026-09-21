@@ -15,6 +15,8 @@ const BASE = {
   transportVatApplicable: false,
   capUsedHS: null as boolean | null,
   capFeeNet: null as Prisma.Decimal | null,
+  membraneUsed: null as boolean | null,
+  membraneFeeNet: null as Prisma.Decimal | null,
   vatApplicable: false,
   vatRate: D(23),
 };
@@ -35,6 +37,21 @@ describe("computeTotals", () => {
   it("nakładka niezaznaczona → capFeeNet pomijane", () => {
     const r = computeTotals({ ...BASE, transportPriceNet: D(150), capUsedHS: false, capFeeNet: D(70) });
     expect(n(r.totalNet)).toBe(1650);
+  });
+
+  it("membrany Cooltech: baza + membrana (1500 + 70 = 1570)", () => {
+    const r = computeTotals({ ...BASE, membraneUsed: true, membraneFeeNet: D(70) });
+    expect(n(r.totalNet)).toBe(1570);
+  });
+
+  it("2 membrany: membraneFeeNet * count (1500 + 70*2 = 1640)", () => {
+    const r = computeTotals({ ...BASE, membraneUsed: true, membraneCount: 2, membraneFeeNet: D(70) });
+    expect(n(r.totalNet)).toBe(1640);
+  });
+
+  it("membrana niezaznaczona → membraneFeeNet pomijane", () => {
+    const r = computeTotals({ ...BASE, membraneUsed: false, membraneFeeNet: D(70) });
+    expect(n(r.totalNet)).toBe(1500);
   });
 
   it("dopłata za impulsy Alma dodaje się do bazy", () => {
