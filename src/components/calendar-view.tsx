@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Device, Rental } from "@/components/rental-form";
 import { BASE_PATH } from "@/lib/base-path";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
+import { rentalNeedsReport } from "@/lib/report-alerts";
 import { useNotifications } from "@/components/notifications-context";
 import { useCalendarDeviceFilter } from "@/components/calendar-device-filter-context";
 
@@ -250,6 +251,11 @@ function CalendarWeekRow({
             {alertIds.has(s.rental.id) && (
               <span className="flex-none font-bold" title="Brak kierowcy / kontaktu / telefonu">
                 ⚠
+              </span>
+            )}
+            {rentalNeedsReport(s.rental) && (
+              <span className="flex-none" title="Kierowca nie zaraportował rozliczenia">
+                🧾
               </span>
             )}
             {s.rental.hubspotContactId && <ContactBadge name={s.rental.contactNameCache} />}

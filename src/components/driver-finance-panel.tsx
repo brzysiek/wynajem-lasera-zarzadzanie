@@ -37,6 +37,7 @@ export function DriverFinancePanel({
   finance,
   previewCtx,
   durationDays,
+  endsAt,
   transportPrice,
   capFeeHsNet,
   almaPulseRateNet,
@@ -52,6 +53,9 @@ export function DriverFinancePanel({
   finance: RentalFinanceDto | null;
   previewCtx: PreviewContext;
   durationDays: number;
+  // Koniec wynajmu (ISO) — steruje popołudniowym przypomnieniem o
+  // nakładkach/membranach (patrz `showUsageReminder` niżej).
+  endsAt: string;
   transportPrice: string | null;
   capFeeHsNet: number;
   almaPulseRateNet: number;
@@ -102,6 +106,21 @@ export function DriverFinancePanel({
   const isCooltech = !isSzkolenie && pricingCategory === "COOLTECH_FLAT";
   const isAlma = !isSzkolenie && pricingCategory === "ALMA_HARMONY";
   const needsCounters = isFlex || isAlma;
+
+  // Przypomnienie o nakładce HS / membranach — pojawia się dopiero od godz.
+  // 13:00 w dniu ODBIORU urządzenia (endsAt), bo wcześniej kierowca zwyczajnie
+  // jeszcze nie wie, ile zużył. To próg czasowy, nie okno jednego dnia: jeśli
+  // pole zostanie niepotwierdzone dłużej, przypomnienie zostaje widoczne przy
+  // każdym kolejnym wejściu w kartę, aż kierowca jawnie potwierdzi (checkbox
+  // albo przycisk „Nie było" niżej).
+  const usageReminderThreshold = useMemo(() => {
+    const d = new Date(endsAt);
+    d.setHours(13, 0, 0, 0);
+    return d;
+  }, [endsAt]);
+  const afterReminderThreshold = new Date() >= usageReminderThreshold;
+  const showCapReminder = isDouble && finance?.capUsedHS == null && afterReminderThreshold;
+  const showMembraneReminder = isCooltech && finance?.membraneUsed == null && afterReminderThreshold;
 
   const startRaw = start.trim();
   const endRaw = end.trim();
@@ -172,13 +191,28 @@ export function DriverFinancePanel({
     if (finance?.transportPaidSeparately) {
       payload.transportCashCollected = transportCashNow;
     }
+    // capUsedHS/membraneUsed idą w payloadzie TYLKO gdy ten konkretny zapis
+    // dotyczy tego pola (checkbox albo licznik nakładek/membran) — nie przy
+    // okazji każdego innego zapisu (np. uwagi, liczniki impulsów). Inaczej
+    // domyślne `false` zapisywałoby się jako "potwierdzone nie było" przy
+    // pierwszym przypadkowym autozapisie, zanim kierowca w ogóle spojrzy na
+    // to pole — a wtedy przypomnienie popołudniowe (`showCapReminder` /
+    // `showMembraneReminder`) nigdy by się nie zdążyło pokazać.
     if (isDouble) {
-      payload.capUsedHS = capUsedNow;
-      if (capUsedNow) payload.capCountHS = capCountNow;
+      if (ov?.capUsed !== undefined) {
+        payload.capUsedHS = capUsedNow;
+        if (capUsedNow) payload.capCountHS = capCountNow;
+      } else if (ov?.capCount !== undefined) {
+        payload.capCountHS = capCountNow;
+      }
     }
     if (isCooltech) {
-      payload.membraneUsed = membraneUsedNow;
-      if (membraneUsedNow) payload.membraneCount = membraneCountNow;
+      if (ov?.membraneUsed !== undefined) {
+        payload.membraneUsed = membraneUsedNow;
+        if (membraneUsedNow) payload.membraneCount = membraneCountNow;
+      } else if (ov?.membraneCount !== undefined) {
+        payload.membraneCount = membraneCountNow;
+      }
     }
     if (needsCounters && !countersError) {
       payload.pulseCounterStart = startRaw === "" ? null : Number(startRaw);
@@ -579,6 +613,18 @@ export function DriverFinancePanel({
           zaznaczone. */}
       {isCooltech && (
         <div className={CARD}>
+          {showMembraneReminder && (
+            <div className="mb-2.5 flex items-center justify-between gap-2 rounded-[9px] border border-[#F0DFB6] bg-[#FBF3E1] px-3 py-2 text-[12.5px] text-[#8A6A16]">
+              <span>Zaznacz, czy zużyto membrany</span>
+              <button
+                type="button"
+                onClick={() => void save({ membraneUsed: false })}
+                className="flex-none font-semibold underline"
+              >
+                Nie było
+              </button>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3">
             <label className="flex items-center gap-2.5 text-[14px] font-semibold text-[#171A21]">
               <input
@@ -657,6 +703,18 @@ export function DriverFinancePanel({
       {isDouble && (
         <div className={CARD}>
           <p className={`mb-2 ${FIELD_LABEL}`}>Nakładka HS</p>
+          {showCapReminder && (
+            <div className="mb-2.5 flex items-center justify-between gap-2 rounded-[9px] border border-[#F0DFB6] bg-[#FBF3E1] px-3 py-2 text-[12.5px] text-[#8A6A16]">
+              <span>Zaznacz, czy zużyto nakładkę</span>
+              <button
+                type="button"
+                onClick={() => void save({ capUsed: false })}
+                className="flex-none font-semibold underline"
+              >
+                Nie było
+              </button>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3">
             <label className="flex items-center gap-2.5 text-[14px] font-semibold text-[#171A21]">
               <input

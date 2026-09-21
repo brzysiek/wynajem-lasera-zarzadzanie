@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
 import type { RentalAlert } from "@/lib/rental-alerts";
 import type { UnpricedRental } from "@/lib/revenue/aggregate";
+import type { ReportAlert } from "@/lib/report-alerts";
 
 type NotificationsContextValue = {
   // Ostrzeżenia kalendarza — wynajmy bez kierowcy/kontaktu/telefonu (patrz
@@ -16,20 +17,27 @@ type NotificationsContextValue = {
   // Ostrzeżenia przychodów — wynajmy/szkolenia bez wpisanej kwoty w bieżącym
   // + następnym miesiącu (patrz GET /api/rentals/revenue-alerts).
   unpriced: UnpricedRental[];
-  // Jedna karta na obie sekcje: `open` = karta w ogóle widoczna; każda sekcja
-  // rozwija swoją listę osobno (`calendarExpanded` / `revenueExpanded`).
+  // Ostrzeżenia "brak raportu kierowcy" — wynajmy zakończone, dla których
+  // kierowca nic nie zapisał w panelu (patrz GET /api/rentals/report-alerts,
+  // src/lib/report-alerts.ts).
+  reportAlerts: ReportAlert[];
+  // Jedna karta na trzy sekcje: `open` = karta w ogóle widoczna; każda sekcja
+  // rozwija swoją listę osobno.
   open: boolean;
   calendarExpanded: boolean;
   revenueExpanded: boolean;
+  reportExpanded: boolean;
   show: () => void;
   hide: () => void;
   toggleCalendarExpanded: () => void;
   toggleRevenueExpanded: () => void;
+  toggleReportExpanded: () => void;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
 const EMPTY_ALERTS: RentalAlert[] = [];
 const EMPTY_UNPRICED: UnpricedRental[] = [];
+const EMPTY_REPORT_ALERTS: ReportAlert[] = [];
 
 // Centrum powiadomień admina — JEDNA ikonka + karta na prawym pasku (patrz
 // icon-rail.tsx, notifications-panel.tsx), na razie dwa niezależne źródła:
@@ -51,22 +59,26 @@ export function NotificationsProvider({
 }) {
   const [rawAlerts, setRawAlerts] = useState<RentalAlert[]>(EMPTY_ALERTS);
   const [rawUnpriced, setRawUnpriced] = useState<UnpricedRental[]>(EMPTY_UNPRICED);
+  const [rawReportAlerts, setRawReportAlerts] = useState<ReportAlert[]>(EMPTY_REPORT_ALERTS);
   const [open, setOpen] = useState(false);
   const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [revenueExpanded, setRevenueExpanded] = useState(false);
+  const [reportExpanded, setReportExpanded] = useState(false);
   const pathname = usePathname();
 
   // Każde świeże pokazanie karty (auto-pop albo klik w ikonę na pasku) startuje
-  // z obiema sekcjami zwiniętymi — samo powiadomienie, bez list. Rozwinięcie
+  // z trzema sekcjami zwiniętymi — samo powiadomienie, bez list. Rozwinięcie
   // to osobny, świadomy klik na daną sekcję (notifications-panel.tsx).
   const show = useCallback(() => {
     setOpen(true);
     setCalendarExpanded(false);
     setRevenueExpanded(false);
+    setReportExpanded(false);
   }, []);
   const hide = useCallback(() => setOpen(false), []);
   const toggleCalendarExpanded = useCallback(() => setCalendarExpanded((v) => !v), []);
   const toggleRevenueExpanded = useCallback(() => setRevenueExpanded((v) => !v), []);
+  const toggleReportExpanded = useCallback(() => setReportExpanded((v) => !v), []);
 
   const refresh = useCallback(() => {
     if (!enabled) return;
@@ -77,6 +89,10 @@ export function NotificationsProvider({
     fetch(`${BASE_PATH}/api/rentals/revenue-alerts`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setRawUnpriced(Array.isArray(d?.unpriced) ? d.unpriced : EMPTY_UNPRICED))
+      .catch(() => {});
+    fetch(`${BASE_PATH}/api/rentals/report-alerts`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setRawReportAlerts(Array.isArray(d?.reportAlerts) ? d.reportAlerts : EMPTY_REPORT_ALERTS))
       .catch(() => {});
   }, [enabled]);
 
@@ -93,6 +109,7 @@ export function NotificationsProvider({
 
   const alerts = enabled ? rawAlerts : EMPTY_ALERTS;
   const unpriced = enabled ? rawUnpriced : EMPTY_UNPRICED;
+  const reportAlerts = enabled ? rawReportAlerts : EMPTY_REPORT_ALERTS;
 
   // Auto-pop: raz na każde WEJŚCIE na /kalendarz (świeże ładowanie strony
   // albo nawigacja klientem z innej podstrony) karta sama się pokazuje, jeśli
@@ -107,11 +124,11 @@ export function NotificationsProvider({
       autoOpenedPathRef.current = null;
       return;
     }
-    if (!enabled || (alerts.length === 0 && unpriced.length === 0)) return;
+    if (!enabled || (alerts.length === 0 && unpriced.length === 0 && reportAlerts.length === 0)) return;
     if (autoOpenedPathRef.current === pathname) return;
     show();
     autoOpenedPathRef.current = pathname;
-  }, [pathname, enabled, alerts, unpriced, show]);
+  }, [pathname, enabled, alerts, unpriced, reportAlerts, show]);
 
   const alertIds = useMemo(() => new Set(alerts.map((a) => a.id)), [alerts]);
 
@@ -120,15 +137,32 @@ export function NotificationsProvider({
       alerts,
       alertIds,
       unpriced,
+      reportAlerts,
       open,
       calendarExpanded,
       revenueExpanded,
+      reportExpanded,
       show,
       hide,
       toggleCalendarExpanded,
       toggleRevenueExpanded,
+      toggleReportExpanded,
     }),
-    [alerts, alertIds, unpriced, open, calendarExpanded, revenueExpanded, show, hide, toggleCalendarExpanded, toggleRevenueExpanded],
+    [
+      alerts,
+      alertIds,
+      unpriced,
+      reportAlerts,
+      open,
+      calendarExpanded,
+      revenueExpanded,
+      reportExpanded,
+      show,
+      hide,
+      toggleCalendarExpanded,
+      toggleRevenueExpanded,
+      toggleReportExpanded,
+    ],
   );
 
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;

@@ -105,6 +105,7 @@ export default async function RentalDetailPage({
             finance={financeDto(rental.finance)}
             previewCtx={{ priceRules: financeCtx.previewPriceRules, pulseTiers: financeCtx.previewPulseTiers }}
             durationDays={rentalDurationDays(rental.startsAt, rental.endsAt)}
+            endsAt={rental.endsAt.toISOString()}
             transportPrice={rental.transportPrice}
             capFeeHsNet={financeCtx.capFeeHsNet}
             almaPulseRateNet={financeCtx.almaPulseRateNet}
