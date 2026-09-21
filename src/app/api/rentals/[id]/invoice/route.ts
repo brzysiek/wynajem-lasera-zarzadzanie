@@ -10,8 +10,9 @@ function bad(message: string, status = 400) {
   return NextResponse.json({ message }, { status });
 }
 
-// Wystawia fakturę VAT w Fakturowni dla wynajmu rozliczanego przelewem.
-// Ręczny przycisk (biuro klika w panelu rozliczenia) — nie ma tu żadnej
+// Wystawia fakturę VAT w Fakturowni dla wynajmu z doliczonym VAT (gotówka
+// albo przelew — sposób płatności nie ma znaczenia, liczy się tylko
+// vatApplicable). Ręczny przycisk (biuro klika w panelu rozliczenia) — nie ma tu żadnej
 // automatyki/crona. Dwa różne "nieudane" wyniki: 400/502 = coś poszło źle po
 // stronie API/danych wejściowych; 200 z `found: false` = wynik prawidłowy,
 // tylko kontrahenta nie ma w Fakturowni (biuro wystawia ręcznie).
@@ -23,11 +24,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const rental = await prisma.rental.findUnique({ where: { id }, include: { device: true, finance: true } });
   if (!rental) return bad("Nie znaleziono wynajmu.", 404);
   if (!rental.finance) return bad("Wynajem nie ma jeszcze rozliczenia.");
-  if (rental.finance.paymentMethod !== "TRANSFER") {
-    return bad("Fakturę wystawia się tylko dla rozliczeń przelewem.");
-  }
   // Decyzja biznesowa: brak "doliczyć VAT" = to w ogóle nie jest wynajem,
-  // dla którego wystawia się fakturę (niezależnie od sposobu płatności).
+  // dla którego wystawia się fakturę. Sposób płatności (gotówka/przelew)
+  // NIE jest tu warunkiem — gotówka + VAT też dostaje fakturę.
   if (!rental.finance.vatApplicable) {
     return bad("Fakturę wystawia się tylko dla rozliczeń z doliczonym VAT.");
   }

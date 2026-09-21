@@ -173,8 +173,9 @@ function DriverSummaryCard({
 
       {/* Faktura tylko gdy VAT doliczony — jeśli "doliczyć VAT" nie jest
           zaznaczone, to (decyzja biznesowa) w ogóle nie jest to wynajem, dla
-          którego wystawia się fakturę, niezależnie od sposobu płatności. */}
-      {!rentalIsCash && finance.vatApplicable && (
+          którego wystawia się fakturę. Sposób płatności (gotówka/przelew)
+          NIE jest tu warunkiem — gotówka + VAT też dostaje opcję faktury. */}
+      {finance.vatApplicable && (
         <div className="mt-3 border-t border-[#CFE0F0] pt-2.5">
           {invoiceNumber ? (
             <p className="text-sm font-medium text-green-700">✅ Faktura nr {invoiceNumber} wystawiona</p>
