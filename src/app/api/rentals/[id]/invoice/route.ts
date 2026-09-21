@@ -26,6 +26,11 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (rental.finance.paymentMethod !== "TRANSFER") {
     return bad("Fakturę wystawia się tylko dla rozliczeń przelewem.");
   }
+  // Decyzja biznesowa: brak "doliczyć VAT" = to w ogóle nie jest wynajem,
+  // dla którego wystawia się fakturę (niezależnie od sposobu płatności).
+  if (!rental.finance.vatApplicable) {
+    return bad("Fakturę wystawia się tylko dla rozliczeń z doliczonym VAT.");
+  }
   if (rental.finance.fakturowniaInvoiceId) {
     return bad("Faktura dla tego wynajmu już została wystawiona.");
   }

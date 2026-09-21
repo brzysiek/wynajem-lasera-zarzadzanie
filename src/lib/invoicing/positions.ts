@@ -45,9 +45,11 @@ function rentalDateLabel(startsAt: Date, endsAt: Date): string {
   return days <= 1 ? `w dniu ${formatDate(startsAt)}` : `w dniach ${formatDate(startsAt)}–${formatDate(endsAt)}`;
 }
 
-// UWAGA: `taxLabel` = "zw" gdy vatApplicable=false — to założenie do
-// potwierdzenia z użytkownikiem (może powinno być "np." albo konkretna
-// stawka 0% zamiast zwolnienia — to decyzja księgowa, nie techniczna).
+// `taxLabel` = "zw" gdy vatApplicable=false — w praktyce nieosiągalne z tej
+// apki: POST /api/rentals/[id]/invoice odmawia wystawienia faktury, gdy
+// vatApplicable=false (decyzja biznesowa: brak "doliczyć VAT" = nie jest to
+// wynajem, dla którego wystawia się fakturę). Gałąź zostaje dla poprawności
+// funkcji jako takiej, nie jako realna ścieżka wywołania.
 function toGross(net: Prisma.Decimal, vatApplicable: boolean, vatRate: Prisma.Decimal): Prisma.Decimal {
   return vatApplicable ? round2(net.times(vatRate.div(100).plus(1))) : round2(net);
 }

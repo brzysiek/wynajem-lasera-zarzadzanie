@@ -171,7 +171,10 @@ function DriverSummaryCard({
         {transportSep && payRow("Transport", transportValue, transportIsCash, finance.transportCashCollected)}
       </div>
 
-      {!rentalIsCash && (
+      {/* Faktura tylko gdy VAT doliczony — jeśli "doliczyć VAT" nie jest
+          zaznaczone, to (decyzja biznesowa) w ogóle nie jest to wynajem, dla
+          którego wystawia się fakturę, niezależnie od sposobu płatności. */}
+      {!rentalIsCash && finance.vatApplicable && (
         <div className="mt-3 border-t border-[#CFE0F0] pt-2.5">
           {invoiceNumber ? (
             <p className="text-sm font-medium text-green-700">✅ Faktura nr {invoiceNumber} wystawiona</p>
