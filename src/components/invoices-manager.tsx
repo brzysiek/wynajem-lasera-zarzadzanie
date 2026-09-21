@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 
 type InvoiceRow = {
@@ -55,6 +55,9 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadSummary, setUploadSummary] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     setLoading(true);
@@ -110,6 +113,31 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
     }
   }
 
+  async function handleUploadStatement(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setUploadSummary(null);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", files[0]);
+      const res = await fetch(`${BASE_PATH}/api/fakturownia/bank-statement`, { method: "POST", body: formData });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message || "Nie udało się przetworzyć wyciągu.");
+
+      const bits: string[] = [`rozpoznano ${data.transactionsParsed} operacji`];
+      if (data.autoMatched > 0) bits.push(`${data.autoMatched} faktur oznaczono jako zapłacone`);
+      if (data.ambiguous > 0) bits.push(`${data.ambiguous} niejednoznacznych — oznacz ręcznie`);
+      setUploadSummary(bits.join(" · "));
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Błąd.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   async function togglePaid(row: InvoiceRow) {
     const nextPaid = !row.paidAt;
     setInvoices((rows) => rows.map((r) => (r.id === row.id ? { ...r, paidAt: nextPaid ? new Date().toISOString() : null } : r)));
@@ -141,8 +169,31 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
               płatności bez połączenia z bankiem.
             </p>
           </div>
+          <div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => void handleUploadStatement(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="rounded-lg px-4 py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
+              style={{ background: C.accent }}
+            >
+              {uploading ? "Przetwarzanie…" : "+ Wgraj wyciąg bankowy (CSV)"}
+            </button>
+          </div>
         </div>
 
+        {uploadSummary && (
+          <div className="mx-4 mt-3 rounded-md px-3 py-2 text-[13px] sm:mx-7" style={{ background: C.greenSoft, color: C.green }}>
+            {uploadSummary}
+          </div>
+        )}
         {error && (
           <div className="mx-4 mt-3 rounded-md px-3 py-2 text-[13px] sm:mx-7" style={{ background: C.redSoft, color: C.red }}>
             {error}

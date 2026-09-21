@@ -203,11 +203,13 @@ function toInvoiceSummary(raw: {
   };
 }
 
-// Lista faktur VAT z naszego działu w zadanym okresie (sell_date). Bez
-// statusu płatności — Fakturownia go nie zna bez płatnego połączenia z
-// bankiem (ustalone z użytkownikiem), więc `status`/`paid` z ich API
-// świadomie pomijamy jako niemiarodajne.
-export async function listInvoices(input: { dateFrom: string; dateTo: string }): Promise<FakturowniaInvoiceSummary[]> {
+// Lista faktur VAT z naszego działu. Bez statusu płatności — Fakturownia go
+// nie zna bez płatnego połączenia z bankiem (ustalone z użytkownikiem),
+// więc `status`/`paid` z ich API świadomie pomijamy jako niemiarodajne.
+// Bez `dateFrom`/`dateTo` (np. przy dopasowywaniu wyciągu bankowego, gdzie
+// faktura mogła zostać wystawiona w innym okresie niż zapłacona) pobiera
+// WSZYSTKIE faktury działu (`period=all`).
+export async function listInvoices(input?: { dateFrom: string; dateTo: string }): Promise<FakturowniaInvoiceSummary[]> {
   const { token, account } = requireCredentials();
   const departmentId = requireDepartmentId();
 
@@ -219,11 +221,9 @@ export async function listInvoices(input: { dateFrom: string; dateTo: string }):
       api_token: token,
       department_id: String(departmentId),
       kind: "vat",
-      period: "more",
-      date_from: input.dateFrom,
-      date_to: input.dateTo,
       page: String(page),
       per_page: String(perPage),
+      ...(input ? { period: "more", date_from: input.dateFrom, date_to: input.dateTo } : { period: "all" }),
     });
     const res = await fetch(`${baseUrl(account)}/invoices.json?${params.toString()}`);
     const body = await res.json().catch(() => null);
