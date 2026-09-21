@@ -26,6 +26,9 @@ type StatementResultRow = {
 };
 
 // Paleta premium — ten sam zestaw co fuel-invoices-manager.tsx / cost-entries-manager.tsx.
+// Hover-y (kolejność 5-10% ciemniejsza) idą przez Tailwind className, nie
+// przez ten obiekt — inline style ma wyższy priorytet niż :hover z klasy,
+// więc kolor bazowy + hover muszą być w tym samym miejscu (className).
 const C = {
   surface: "#FFFFFF",
   border: "#E9EDF1",
@@ -189,7 +192,10 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
 
   return (
     <div>
-      <div className="overflow-hidden rounded-[14px] border" style={{ borderColor: C.border, background: C.surface }}>
+      <div
+        className="overflow-hidden rounded-[14px] border shadow-[0_1px_3px_rgba(16,24,32,0.04)]"
+        style={{ borderColor: C.border, background: C.surface }}
+      >
         <div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-[22px] sm:px-7">
           <div>
             <h1 className="m-0 text-[21px] font-normal italic" style={{ color: C.accent }}>
@@ -212,8 +218,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="rounded-lg px-4 py-2.5 text-[13px] font-bold text-white disabled:opacity-50"
-              style={{ background: C.accent }}
+              className="rounded-lg bg-[#E08A5C] px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#C96F3F] disabled:opacity-50 disabled:hover:bg-[#E08A5C]"
             >
               {uploading ? "Przetwarzanie…" : "+ Wgraj wyciąg bankowy (CSV)"}
             </button>
@@ -234,8 +239,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="rounded-md border px-2 py-1 text-[13px]"
-              style={{ borderColor: C.border, color: C.text }}
+              className="rounded-md border border-[#E9EDF1] px-2 py-1 text-[13px] text-[#4A4A4A] transition-colors hover:border-[#D3DAE1] focus:border-[#1B6FA8] focus:outline-none"
             />
           </label>
           <label className="flex items-center gap-1.5 text-[13px]">
@@ -244,8 +248,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className="rounded-md border px-2 py-1 text-[13px]"
-              style={{ borderColor: C.border, color: C.text }}
+              className="rounded-md border border-[#E9EDF1] px-2 py-1 text-[13px] text-[#4A4A4A] transition-colors hover:border-[#D3DAE1] focus:border-[#1B6FA8] focus:outline-none"
             />
           </label>
           <span className="text-[13px]">
@@ -297,7 +300,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                   const sentToKsef = r.govStatus === "ok";
                   const ksefError = r.govStatus != null && r.govStatus !== "ok" && !r.govStatus.startsWith("processing");
                   return (
-                    <tr key={r.id} className="align-top">
+                    <tr key={r.id} className="align-top transition-colors hover:bg-[#F6F9FB]">
                       <td className="border-b px-2 py-2 font-medium" style={{ borderColor: C.border, color: C.text }}>
                         {r.number}
                       </td>
@@ -312,7 +315,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                       </td>
                       <td className="border-b px-2 py-2" style={{ borderColor: C.border }}>
                         {sentToKsef ? (
-                          <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: C.greenSoft, color: C.green }} title={r.govId ?? undefined}>
+                          <span className="rounded-full bg-[#E7F6EF] px-2 py-0.5 text-[11px] font-semibold text-[#1E9E6B]" title={r.govId ?? undefined}>
                             wysłana
                           </span>
                         ) : (
@@ -320,8 +323,11 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                             type="button"
                             onClick={() => void handleSendKsef(r)}
                             disabled={busyId === r.id}
-                            className="rounded-full px-2 py-0.5 text-[11px] font-semibold disabled:opacity-50"
-                            style={{ background: ksefError ? C.redSoft : C.amberSoft, color: ksefError ? C.red : C.amber }}
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+                              ksefError
+                                ? "bg-[#FCE8E6] text-[#D93025] hover:bg-[#F9D2CE]"
+                                : "bg-[#FEF7E0] text-[#B06000] hover:bg-[#FCEEC7]"
+                            }`}
                           >
                             {ksefError ? "błąd — spróbuj ponownie" : "wyślij do KSeF"}
                           </button>
@@ -331,8 +337,11 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                         <button
                           type="button"
                           onClick={() => void togglePaid(r)}
-                          className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                          style={{ background: r.paidAt ? C.greenSoft : C.border, color: r.paidAt ? C.green : C.muted }}
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                            r.paidAt
+                              ? "bg-[#E7F6EF] text-[#1E9E6B] hover:bg-[#D2EFE2]"
+                              : "bg-[#E9EDF1] text-[#6F7378] hover:bg-[#D3DAE1]"
+                          }`}
                         >
                           {r.paidAt ? "zapłacona" : "niezapłacona"}
                         </button>
@@ -342,8 +351,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                           type="button"
                           onClick={() => void handleSendEmail(r)}
                           disabled={busyId === r.id}
-                          className="rounded-md px-2 py-1 text-[12px] font-medium disabled:opacity-50"
-                          style={{ color: C.brand }}
+                          className="rounded-md px-2 py-1 text-[12px] font-medium text-[#1B6FA8] transition-colors hover:bg-[#EAF4FB] disabled:opacity-50"
                         >
                           Wyślij mailem
                         </button>
@@ -399,7 +407,7 @@ function StatementResultsTable({
           return (
             <li
               key={r.invoiceId}
-              className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-[12.5px]"
+              className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-[12.5px] transition-colors hover:bg-[#F6F9FB]"
               style={{ borderColor: C.border }}
             >
               <div className="flex min-w-0 items-center gap-2">
@@ -416,7 +424,7 @@ function StatementResultsTable({
                 </div>
               </div>
               {r.status === "matched" ? (
-                <span className="flex-none rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: C.greenSoft, color: C.green }}>
+                <span className="flex-none rounded-full bg-[#E7F6EF] px-2 py-0.5 text-[11px] font-semibold text-[#1E9E6B]">
                   zapłacona
                 </span>
               ) : (
@@ -424,8 +432,7 @@ function StatementResultsTable({
                   type="button"
                   onClick={() => onConfirm(r)}
                   disabled={busyId === r.invoiceId}
-                  className="flex-none rounded-full px-2 py-0.5 text-[11px] font-semibold disabled:opacity-50"
-                  style={{ background: C.amberSoft, color: C.amber }}
+                  className="flex-none rounded-full bg-[#FEF7E0] px-2 py-0.5 text-[11px] font-semibold text-[#B06000] transition-colors hover:bg-[#FCEEC7] disabled:opacity-50"
                 >
                   oznacz jako zapłaconą
                 </button>
