@@ -74,11 +74,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const invoiceById = new Map(allInvoices.map((i) => [i.id, i]));
-  const matchedNumbers = confident
-    .map((m) => invoiceById.get(m.invoiceId)?.number)
-    .filter((n): n is string => Boolean(n));
-
   logInfo("fakturownia_bank_statement_processed", {
     userId: session.user.id,
     transactionsParsed: transactions.length,
@@ -90,11 +85,31 @@ export async function POST(req: NextRequest) {
     logWarn("fakturownia_bank_statement_ambiguous", { invoiceIds: ambiguous.map((m) => m.invoiceId) });
   }
 
+  // Wynik PER FAKTURA (każda niezapłacona faktura brana pod uwagę przy
+  // dopasowywaniu, nie tylko trafienia) — niezależnie od filtra dat w
+  // głównej tabeli dashboardu, żeby było od razu widać co się stało, bez
+  // przełączania zakresu "Od"/"Do".
+  const matchByInvoiceId = new Map(matches.map((m) => [m.invoiceId, m.candidates]));
+  const matchedIds = new Set(confident.map((m) => m.invoiceId));
+  const results = unpaidInvoices.map((inv) => {
+    const candidates = matchByInvoiceId.get(inv.id) ?? [];
+    const status: "matched" | "ambiguous" | "unmatched" =
+      candidates.length === 1 && matchedIds.has(inv.id) ? "matched" : candidates.length > 1 ? "ambiguous" : "unmatched";
+    return {
+      invoiceId: inv.id,
+      number: inv.number,
+      buyerName: inv.buyerName,
+      priceGross: inv.priceGross,
+      status,
+      candidates,
+    };
+  });
+
   return NextResponse.json({
     transactionsParsed: transactions.length,
     autoMatched: matchedCount,
-    matchedNumbers,
     ambiguous: ambiguous.length,
     noMatch: unpaidInvoices.length - confident.length - ambiguous.length,
+    results,
   });
 }

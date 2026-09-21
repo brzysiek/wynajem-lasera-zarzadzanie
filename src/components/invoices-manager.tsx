@@ -15,6 +15,16 @@ type InvoiceRow = {
   paidAt: string | null;
 };
 
+type StatementCandidate = { date: string; description: string; amount: number };
+type StatementResultRow = {
+  invoiceId: number;
+  number: string;
+  buyerName: string;
+  priceGross: string;
+  status: "matched" | "ambiguous" | "unmatched";
+  candidates: StatementCandidate[];
+};
+
 // Paleta premium — ten sam zestaw co fuel-invoices-manager.tsx / cost-entries-manager.tsx.
 const C = {
   surface: "#FFFFFF",
@@ -56,7 +66,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadSummary, setUploadSummary] = useState<string | null>(null);
+  const [statementResults, setStatementResults] = useState<StatementResultRow[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -116,7 +126,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
   async function handleUploadStatement(files: FileList | null) {
     if (!files || files.length === 0) return;
     setUploading(true);
-    setUploadSummary(null);
+    setStatementResults(null);
     setError(null);
     try {
       const formData = new FormData();
@@ -124,26 +134,38 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
       const res = await fetch(`${BASE_PATH}/api/fakturownia/bank-statement`, { method: "POST", body: formData });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.message || "Nie udało się przetworzyć wyciągu.");
-
-      const bits: string[] = [`rozpoznano ${data.transactionsParsed} operacji`];
-      const numbers: string[] = Array.isArray(data.matchedNumbers) ? data.matchedNumbers : [];
-      if (data.autoMatched > 0) {
-        bits.push(`${data.autoMatched} faktur oznaczono jako zapłacone (${numbers.join(", ")})`);
-      }
-      if (data.ambiguous > 0) bits.push(`${data.ambiguous} niejednoznacznych — oznacz ręcznie`);
-      if (data.autoMatched === 0 && data.ambiguous === 0) bits.push("brak dopasowań do niezapłaconych faktur");
-      // Dopasowanie sprawdza faktury z DOWOLNEGO okresu wystawienia (mogła
-      // być wystawiona wcześniej niż zapłacona) — jeśli oznaczona faktura ma
-      // datę sprzedaży spoza obecnie wybranego zakresu, nie pojawi się w
-      // tabeli poniżej, dopóki nie zmienisz "Od"/"Do".
-      if (data.autoMatched > 0) bits.push("jeśli nie widzisz zmiany w tabeli, sprawdź inny zakres dat");
-      setUploadSummary(bits.join(" · "));
+      setStatementResults(Array.isArray(data.results) ? data.results : []);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Błąd.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  // Ambiguous/unmatched wiersz z tabeli wyników wgrania — admin sam ocenia
+  // (np. widzi 2 kandydatów i wie który to naprawdę), więc to ten sam
+  // przełącznik co "Zapłacona" w głównej tabeli, tylko wywołany stąd.
+  async function confirmStatementRow(row: StatementResultRow) {
+    setBusyId(row.invoiceId);
+    try {
+      const res = await fetch(`${BASE_PATH}/api/fakturownia/invoices/${row.invoiceId}/paid`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paid: true }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        alert(data?.message || "Nie udało się oznaczyć jako zapłaconej.");
+        return;
+      }
+      setStatementResults((rows) =>
+        rows ? rows.map((r) => (r.invoiceId === row.invoiceId ? { ...r, status: "matched" as const } : r)) : rows,
+      );
+      await load();
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -198,11 +220,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
           </div>
         </div>
 
-        {uploadSummary && (
-          <div className="mx-4 mt-3 rounded-md px-3 py-2 text-[13px] sm:mx-7" style={{ background: C.greenSoft, color: C.green }}>
-            {uploadSummary}
-          </div>
-        )}
+        {statementResults && <StatementResultsTable results={statementResults} busyId={busyId} onConfirm={confirmStatementRow} />}
         {error && (
           <div className="mx-4 mt-3 rounded-md px-3 py-2 text-[13px] sm:mx-7" style={{ background: C.redSoft, color: C.red }}>
             {error}
@@ -338,6 +356,84 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// Tabela wyników wgrania wyciągu — CELOWO osobna od głównej tabeli wyżej
+// (i niezależna od jej filtra "Od"/"Do"): dopasowanie sprawdza faktury z
+// dowolnego okresu wystawienia, więc dopasowana faktura może w ogóle nie
+// być widoczna w głównej tabeli, dopóki ktoś nie zmieni zakresu dat. Trzy
+// stany na wiersz — zielony (dopasowano pewnie), żółty (kilka kandydatów,
+// wybiera człowiek), szary (nic nie pasuje) — pokazuje WSZYSTKIE niezapłacone
+// faktury sprawdzone przy tym wgraniu, nie tylko trafienia.
+function StatementResultsTable({
+  results,
+  busyId,
+  onConfirm,
+}: {
+  results: StatementResultRow[];
+  busyId: number | null;
+  onConfirm: (row: StatementResultRow) => void;
+}) {
+  if (results.length === 0) {
+    return (
+      <div className="mx-4 mt-3 rounded-md px-3 py-2 text-[13px] sm:mx-7" style={{ background: C.amberSoft, color: C.amber }}>
+        Rozpoznano operacje z wyciągu, ale nie ma żadnych niezapłaconych faktur do dopasowania.
+      </div>
+    );
+  }
+
+  const dotColor = (status: StatementResultRow["status"]) =>
+    status === "matched" ? C.green : status === "ambiguous" ? C.amber : C.faint;
+
+  return (
+    <div className="mx-4 mt-3 overflow-hidden rounded-[9px] border sm:mx-7" style={{ borderColor: C.border }}>
+      <div className="px-3 py-2 text-[12px] font-semibold" style={{ background: C.brandSoft, color: C.brand }}>
+        Wynik dopasowania wyciągu — {results.filter((r) => r.status === "matched").length} z {results.length}{" "}
+        niezapłaconych faktur dopasowanych automatycznie
+      </div>
+      <ul>
+        {results.map((r) => {
+          const first = r.candidates[0];
+          return (
+            <li
+              key={r.invoiceId}
+              className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-[12.5px]"
+              style={{ borderColor: C.border }}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="h-2 w-2 flex-none rounded-full" style={{ background: dotColor(r.status) }} />
+                <div className="min-w-0">
+                  <p className="truncate font-medium" style={{ color: C.text }}>
+                    {r.number} — {r.buyerName}
+                  </p>
+                  <p style={{ color: C.muted }}>
+                    {r.status === "matched" && first && `${fmtDate(first.date)} · ${fmtPln(String(first.amount), "zł")}`}
+                    {r.status === "ambiguous" && `${r.candidates.length} pasujące wpłaty tej kwoty — wybierz ręcznie`}
+                    {r.status === "unmatched" && "brak dopasowania w wyciągu"}
+                  </p>
+                </div>
+              </div>
+              {r.status === "matched" ? (
+                <span className="flex-none rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: C.greenSoft, color: C.green }}>
+                  zapłacona
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onConfirm(r)}
+                  disabled={busyId === r.invoiceId}
+                  className="flex-none rounded-full px-2 py-0.5 text-[11px] font-semibold disabled:opacity-50"
+                  style={{ background: C.amberSoft, color: C.amber }}
+                >
+                  oznacz jako zapłaconą
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
