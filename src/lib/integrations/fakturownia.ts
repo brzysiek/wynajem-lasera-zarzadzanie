@@ -126,7 +126,14 @@ export async function createInvoice(input: {
 }): Promise<CreatedInvoice> {
   const { token, account } = requireCredentials();
   const departmentId = requireDepartmentId();
-  const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+  // UWAGA: `toISOString()` konwertuje do UTC — serwer działa w Europe/Warsaw
+  // (UTC+1/+2), więc dla dat blisko północy cofnąłby dzień o jeden (np.
+  // endsAt = 19.09 00:00 lokalnie → 18.09 22:00 UTC → "18.09" na fakturze,
+  // dokładnie ten bug). Zamiast tego bierzemy datę kalendarzową z lokalnych
+  // gettery Date (getFullYear/getMonth/getDate), tak jak dayIndex() w
+  // src/lib/pricing/duration.ts z tego samego powodu.
+  const isoDate = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
   const res = await fetch(`${baseUrl(account)}/invoices.json`, {
     method: "POST",
