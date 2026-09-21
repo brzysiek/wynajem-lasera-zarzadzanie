@@ -49,7 +49,7 @@ export function ReportAlertsPanel() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="py-3 pl-4 pr-9" style={{ background: VIOLET.soft }}>
           <span className="text-[13px] font-semibold leading-snug" style={{ color: VIOLET.text }}>
-            🧾 {n} {pluralWynajem(n)} zakończonych bez raportu kierowcy
+            📋 {n} {pluralWynajem(n)} zakończonych bez raportu kierowcy
           </span>
         </div>
         <ul>

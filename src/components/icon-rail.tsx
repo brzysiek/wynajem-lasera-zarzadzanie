@@ -32,9 +32,26 @@ function BellOffIcon() {
   );
 }
 
-// Paragon/raport — "brak raportu kierowcy" (report-alerts-panel.tsx). Ząbkowana
-// dolna krawędź jak paragon, dwie linijki tekstu w środku.
-function ReceiptIcon() {
+// Schowek z listą, przekreślony na czerwono ("brak") — "brak raportu
+// kierowcy" (report-alerts-panel.tsx). CELOWO nie paragon/kartka (ten kształt
+// zarezerwowany pod przyszłe wystawianie faktur VAT, patrz InvoiceIcon niżej)
+// — inny kontekst, inna ikona, żeby się nie myliły. Przekreślenie zawsze
+// czerwone (nie currentColor), niezależnie od tonu ikonki.
+function ClipboardIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="5" y="4.5" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <rect x="9" y="3" width="6" height="3" rx="1" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8.5 11.7h7M8.5 15.2h4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <line x1="4" y1="20.5" x2="20" y2="3.5" stroke="#D93025" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Paragon/kartka z napisem "FV" — zarezerwowane pod przyszłe wystawianie
+// faktur VAT (na razie bez funkcji, patrz wyłączony placeholder niżej w
+// IconRail). Ząbkowana dolna krawędź jak paragon.
+function InvoiceIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
@@ -43,7 +60,9 @@ function ReceiptIcon() {
         strokeWidth="1.7"
         strokeLinejoin="round"
       />
-      <path d="M8.7 8.5h6.6M8.7 12h6.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <text x="12" y="13.5" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="currentColor">
+        FV
+      </text>
     </svg>
   );
 }
@@ -186,7 +205,7 @@ export function IconRail({
           badge={reportCount}
           tone="report"
         >
-          <ReceiptIcon />
+          <ClipboardIcon />
         </RailIcon>
       )}
       {showTasks && (
@@ -198,6 +217,12 @@ export function IconRail({
           (push/dzwonek), która już działa i pokazuje realne dane. */}
       <RailIcon tooltip="Powiadomienia push — wkrótce" disabled>
         <BellOffIcon />
+      </RailIcon>
+      {/* Zarezerwowane miejsce pod przyszłe wystawianie faktur VAT — kształt
+          paragonu/kartki celowo zarezerwowany dla tej funkcji, nie użyty
+          nigdzie indziej (patrz ClipboardIcon vs InvoiceIcon wyżej). */}
+      <RailIcon tooltip="Wystawianie faktur VAT — wkrótce" disabled>
+        <InvoiceIcon />
       </RailIcon>
     </div>
   );

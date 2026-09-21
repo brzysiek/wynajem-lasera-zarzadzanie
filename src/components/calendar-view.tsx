@@ -255,7 +255,7 @@ function CalendarWeekRow({
             )}
             {rentalNeedsReport(s.rental) && (
               <span className="flex-none" title="Kierowca nie zaraportował rozliczenia">
-                🧾
+                📋
               </span>
             )}
             {s.rental.hubspotContactId && <ContactBadge name={s.rental.contactNameCache} />}
