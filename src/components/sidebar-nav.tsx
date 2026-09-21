@@ -17,6 +17,7 @@ const FINANCE_SUB_ITEMS = [
   { href: "/finanse/koszty", label: "Koszty" },
   { href: "/finanse/koszty/wpisy", label: "Wpisy kosztów" },
   { href: "/finanse/koszty/faktury-paliwa", label: "Faktury paliwa" },
+  { href: "/finanse/faktury", label: "Faktury VAT" },
 ];
 
 function CalendarIcon() {

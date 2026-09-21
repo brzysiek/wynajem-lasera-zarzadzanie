@@ -165,3 +165,116 @@ export async function createInvoice(input: {
   logDebug("fakturownia_invoice_created", { id: body?.id, number: body?.number });
   return { id: body.id, number: body.number };
 }
+
+// Podsumowanie faktury z Fakturowni — dashboard `/finanse/faktury` czyta na
+// żywo z tego źródła (nie z naszej bazy), żeby nie duplikować stanu, który i
+// tak może się zmienić po stronie Fakturowni (poprawki, ręczna wysyłka).
+export type FakturowniaInvoiceSummary = {
+  id: number;
+  number: string;
+  buyerName: string;
+  sellDate: string; // YYYY-MM-DD
+  priceGross: string;
+  currency: string;
+  // gov_status: null = niewysłana do KSeF, "ok" = przyjęta, inne = błąd/w toku.
+  govStatus: string | null;
+  govId: string | null; // numer referencyjny UPO, dostępny gdy govStatus === "ok"
+};
+
+function toInvoiceSummary(raw: {
+  id: number;
+  number: string;
+  buyer_name: string;
+  sell_date: string;
+  price_gross: string;
+  currency: string;
+  gov_status: string | null;
+  gov_id: string | null;
+}): FakturowniaInvoiceSummary {
+  return {
+    id: raw.id,
+    number: raw.number,
+    buyerName: raw.buyer_name,
+    sellDate: raw.sell_date,
+    priceGross: raw.price_gross,
+    currency: raw.currency,
+    govStatus: raw.gov_status ?? null,
+    govId: raw.gov_id ?? null,
+  };
+}
+
+// Lista faktur VAT z naszego działu w zadanym okresie (sell_date). Bez
+// statusu płatności — Fakturownia go nie zna bez płatnego połączenia z
+// bankiem (ustalone z użytkownikiem), więc `status`/`paid` z ich API
+// świadomie pomijamy jako niemiarodajne.
+export async function listInvoices(input: { dateFrom: string; dateTo: string }): Promise<FakturowniaInvoiceSummary[]> {
+  const { token, account } = requireCredentials();
+  const departmentId = requireDepartmentId();
+
+  const results: FakturowniaInvoiceSummary[] = [];
+  let page = 1;
+  const perPage = 100;
+  for (;;) {
+    const params = new URLSearchParams({
+      api_token: token,
+      department_id: String(departmentId),
+      kind: "vat",
+      period: "more",
+      date_from: input.dateFrom,
+      date_to: input.dateTo,
+      page: String(page),
+      per_page: String(perPage),
+    });
+    const res = await fetch(`${baseUrl(account)}/invoices.json?${params.toString()}`);
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
+      throw new Error(message || `Fakturownia API zwróciło błąd (HTTP ${res.status}).`);
+    }
+    const list = Array.isArray(body) ? body : [];
+    results.push(...list.map(toInvoiceSummary));
+    if (list.length < perPage) break;
+    page += 1;
+  }
+
+  logDebug("fakturownia_invoices_listed", { count: results.length, ...input });
+  return results;
+}
+
+// Wysyłka JUŻ ISTNIEJĄCEJ faktury do KSeF na żądanie (ręczny przycisk w
+// dashboardzie) — inny mechanizm niż `gov_save_and_send` przy tworzeniu
+// (createInvoice wyżej celowo go nie używa). To jedyne miejsce w kodzie,
+// które świadomie prosi o wysyłkę do KSeF.
+export async function sendInvoiceToKsef(invoiceId: number): Promise<FakturowniaInvoiceSummary> {
+  const { token, account } = requireCredentials();
+  const params = new URLSearchParams({ api_token: token, send_to_ksef: "yes" });
+  const res = await fetch(`${baseUrl(account)}/invoices/${invoiceId}.json?${params.toString()}`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
+    throw new Error(message || `Fakturownia API zwróciło błąd (HTTP ${res.status}).`);
+  }
+  logDebug("fakturownia_invoice_sent_to_ksef", { invoiceId, govStatus: body?.gov_status });
+  return toInvoiceSummary(body);
+}
+
+// Wysyłka faktury mailem do klienta (adres z kartoteki kontrahenta w
+// Fakturowni, chyba że podano `emailTo`) — z załączonym PDF.
+export async function sendInvoiceByEmail(invoiceId: number, emailTo?: string): Promise<void> {
+  const { token, account } = requireCredentials();
+  const res = await fetch(`${baseUrl(account)}/invoices/${invoiceId}/send_by_email.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      api_token: token,
+      email_pdf: true,
+      ...(emailTo ? { email_to: emailTo } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
+    throw new Error(message || `Fakturownia API zwróciło błąd (HTTP ${res.status}).`);
+  }
+  logDebug("fakturownia_invoice_emailed", { invoiceId, emailTo: emailTo ?? "(domyślny z kartoteki)" });
+}
