@@ -258,23 +258,33 @@ export async function sendInvoiceToKsef(invoiceId: number): Promise<FakturowniaI
   return toInvoiceSummary(body);
 }
 
-// Wysyłka faktury mailem do klienta (adres z kartoteki kontrahenta w
-// Fakturowni, chyba że podano `emailTo`) — z załączonym PDF.
-export async function sendInvoiceByEmail(invoiceId: number, emailTo?: string): Promise<void> {
+// Szczegóły JEDNEJ faktury — potrzebne tylko dla pól, których nie ma na
+// liście (listInvoices): e-mail kontrahenta, do wysyłki (patrz
+// src/lib/integrations/gmail.ts — apka NIE wysyła maili przez Fakturownię,
+// tylko tworzy szkic w Gmailu, ustalone z użytkownikiem).
+export type FakturowniaInvoiceDetail = { number: string; buyerName: string; buyerEmail: string | null };
+
+export async function getInvoiceDetail(invoiceId: number): Promise<FakturowniaInvoiceDetail> {
   const { token, account } = requireCredentials();
-  const res = await fetch(`${baseUrl(account)}/invoices/${invoiceId}/send_by_email.json`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({
-      api_token: token,
-      email_pdf: true,
-      ...(emailTo ? { email_to: emailTo } : {}),
-    }),
-  });
+  const res = await fetch(`${baseUrl(account)}/invoices/${invoiceId}.json?api_token=${encodeURIComponent(token)}`);
+  const body = await res.json().catch(() => null);
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
     const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
     throw new Error(message || `Fakturownia API zwróciło błąd (HTTP ${res.status}).`);
   }
-  logDebug("fakturownia_invoice_emailed", { invoiceId, emailTo: emailTo ?? "(domyślny z kartoteki)" });
+  return { number: body.number, buyerName: body.buyer_name, buyerEmail: body.buyer_email || null };
+}
+
+// PDF faktury — używany zarówno do załącznika w szkicu maila
+// (src/lib/integrations/gmail.ts), jak i do podglądu w dashboardzie
+// (GET /api/fakturownia/invoices/[id]/pdf, proxy przez nasz serwer, żeby nie
+// wystawiać tokenu Fakturowni bezpośrednio do przeglądarki).
+export async function getInvoicePdf(invoiceId: number): Promise<Buffer> {
+  const { token, account } = requireCredentials();
+  const res = await fetch(`${baseUrl(account)}/invoices/${invoiceId}.pdf?api_token=${encodeURIComponent(token)}`);
+  if (!res.ok) {
+    throw new Error(`Fakturownia API zwróciło błąd przy pobieraniu PDF-a (HTTP ${res.status}).`);
+  }
+  const arrayBuffer = await res.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }

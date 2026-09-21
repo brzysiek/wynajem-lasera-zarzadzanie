@@ -91,6 +91,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [statementResults, setStatementResults] = useState<StatementResultRow[] | null>(null);
@@ -127,6 +128,12 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
     void loadUploadHistory();
   }, []);
 
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   async function handleSendKsef(row: InvoiceRow) {
     if (!window.confirm(`Wysłać fakturę ${row.number} do KSeF? Tej operacji nie da się cofnąć.`)) return;
     setBusyId(row.id);
@@ -143,17 +150,20 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
     }
   }
 
-  async function handleSendEmail(row: InvoiceRow) {
+  // Szkic w Gmailu, NIE wysyłka — biuro przegląda i wysyła ręcznie (ustalone
+  // z użytkownikiem: wysyłka ma iść z ich skrzynki Workspace, nie przez
+  // Fakturownię). Bez potwierdzenia przed kliknięciem — tworzenie szkicu
+  // jest w pełni odwracalne (można go usunąć w Gmailu), w odróżnieniu od
+  // wysyłki do KSeF.
+  async function handleCreateDraft(row: InvoiceRow) {
     setBusyId(row.id);
     setError(null);
+    setToast(null);
     try {
-      const res = await fetch(`${BASE_PATH}/api/fakturownia/invoices/${row.id}/send-email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
+      const res = await fetch(`${BASE_PATH}/api/fakturownia/invoices/${row.id}/create-draft`, { method: "POST" });
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.message || "Nie udało się wysłać maila.");
+      if (!res.ok) throw new Error(data?.message || "Nie udało się utworzyć szkicu.");
+      setToast(data?.message || "Szkic utworzony.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Błąd.");
     } finally {
@@ -280,6 +290,11 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
             {error}
           </div>
         )}
+        {toast && (
+          <div className="mx-4 mt-3 rounded-md px-3 py-2 text-[13px] sm:mx-7" style={{ background: C.greenSoft, color: C.green }}>
+            {toast}
+          </div>
+        )}
 
         <div className="mt-5 flex flex-wrap items-center gap-3 px-4 sm:px-7" style={{ color: C.muted }}>
           <label className="flex items-center gap-1.5 text-[13px]">
@@ -404,14 +419,23 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                           {r.paidAt ? "zapłacona" : "niezapłacona"}
                         </button>
                       </td>
-                      <td className="border-b px-2 py-2 text-right" style={{ borderColor: C.border }}>
+                      <td className="border-b px-2 py-2 text-right whitespace-nowrap" style={{ borderColor: C.border }}>
+                        <a
+                          href={`${BASE_PATH}/api/fakturownia/invoices/${r.id}/pdf`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-md px-2 py-1 text-[12px] font-medium transition-colors hover:bg-[#EAF4FB]"
+                          style={{ color: C.brand }}
+                        >
+                          PDF
+                        </a>
                         <button
                           type="button"
-                          onClick={() => void handleSendEmail(r)}
+                          onClick={() => void handleCreateDraft(r)}
                           disabled={busyId === r.id}
                           className="rounded-md px-2 py-1 text-[12px] font-medium text-[#1B6FA8] transition-colors hover:bg-[#EAF4FB] disabled:opacity-50"
                         >
-                          Wyślij mailem
+                          Utwórz szkic maila
                         </button>
                       </td>
                     </tr>

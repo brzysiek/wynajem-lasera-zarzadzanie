@@ -38,7 +38,13 @@ function base64url(input: string): string {
   return Buffer.from(input).toString("base64url");
 }
 
-export async function getAccessToken(): Promise<string> {
+// `scope` domyślnie Kalendarz (wywołania w tym pliku) — src/lib/integrations/gmail.ts
+// reużywa TEGO SAMEGO konta serwisowego (te same 3 zmienne w .env) z innym
+// zakresem (gmail.compose). Domain-wide delegation w Google Admin musi mieć
+// dopisane OBA zakresy do tego samego Client ID, nie tylko calendar.
+export async function getAccessToken(
+  scope: string = "https://www.googleapis.com/auth/calendar",
+): Promise<string> {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
   const impersonatedUser = process.env.GOOGLE_IMPERSONATED_USER;
@@ -57,7 +63,7 @@ export async function getAccessToken(): Promise<string> {
   const claims = base64url(
     JSON.stringify({
       iss: email,
-      scope: "https://www.googleapis.com/auth/calendar",
+      scope,
       aud: "https://oauth2.googleapis.com/token",
       sub: impersonatedUser,
       iat: now,
@@ -82,7 +88,7 @@ export async function getAccessToken(): Promise<string> {
     throw new Error(body?.error_description || body?.error || `Google zwrócił błąd autoryzacji (HTTP ${res.status}).`);
   }
 
-  logDebug("google_calendar_token_obtained", { impersonatedUser });
+  logDebug("google_calendar_token_obtained", { impersonatedUser, scope });
   return body.access_token as string;
 }
 

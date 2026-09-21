@@ -63,7 +63,10 @@ export default async function GoogleCalendarIntegrationPage() {
           <li>
             Jako administrator Google Workspace: <Code>admin.google.com → Security → API controls →
             Domain-wide delegation → Add new</Code> → wklej <Code>Client ID</Code> z poprzedniego kroku, w polu
-            „OAuth scopes” wpisz <Code>https://www.googleapis.com/auth/calendar</Code>.
+            „OAuth scopes” wpisz oba zakresy, oddzielone przecinkiem:{" "}
+            <Code>https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/gmail.compose</Code>.
+            Drugi zakres (<Code>gmail.compose</Code>) jest potrzebny do tworzenia szkiców maili z fakturami w
+            module Faktury — bez niego przycisk „Utwórz szkic maila” tam nie zadziała.
           </li>
           <li>
             Wybierz konto Workspace, które ma być właścicielem/współdzielącym 7 kalendarzy urządzeń (np.{" "}
@@ -89,6 +92,22 @@ GOOGLE_IMPERSONATED_USER=biuro@twojadomena.pl`}</Pre>
             Google o zmianach w kalendarzu) — na razie może zostać pusty.
           </li>
         </Steps>
+      </section>
+
+      <section className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-1 text-lg font-semibold text-gray-900">Szkice maili z fakturami (Gmail)</h2>
+        <p className="mb-3 text-sm text-gray-500">
+          To samo konto serwisowe co Kalendarz — tylko z dodatkowym zakresem{" "}
+          <Code>gmail.compose</Code> (krok wyżej). W module Faktury przycisk „Utwórz szkic maila” tworzy szkic w
+          Gmailu konta <Code>GOOGLE_IMPERSONATED_USER</Code>. Wysyłka NIE dzieje się automatycznie — biuro
+          przegląda szkic i wysyła go ręcznie z Gmaila.
+        </p>
+        <p className="text-sm text-gray-500">
+          Nadawcą szkicu jest <Code>rozliczenia@wynajemlasera.pl</Code> — to musi być skonfigurowany alias „wysyłaj
+          jako” w ustawieniach Gmaila konta <Code>GOOGLE_IMPERSONATED_USER</Code> (
+          <Code>Ustawienia → Konta i importowanie → Wysyłaj pocztę jako</Code>), inaczej Gmail odrzuci szkic z
+          nieautoryzowanym nadawcą.
+        </p>
       </section>
     </div>
   );
