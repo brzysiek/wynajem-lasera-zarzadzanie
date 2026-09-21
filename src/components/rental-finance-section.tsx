@@ -94,6 +94,86 @@ function Badge({ text, cls }: { text: string; cls: string }) {
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{text}</span>;
 }
 
+// Co zrobił kierowca po zrealizowaniu wynajmu — biuro tego dotąd nigdzie nie
+// widziało (dane leżały tylko w panelu kierowcy). Czytelnie na górze sekcji
+// Finanse, zanim admin w ogóle dotknie edytowalnych pól: czy i ile gotówki
+// pobrano (albo — gdy przelew — na jaką kwotę wystawić fakturę), ile
+// nakładek HS / membran zużyto, jakie liczniki impulsów. Pokazuje się
+// dopiero gdy kierowca faktycznie otworzył i zapisał swój panel —
+// `cashCollected` jest wysyłane przy KAŻDYM jego zapisie (patrz
+// driver-finance-panel.tsx save()), więc `!= null` to niezawodny sygnał
+// "kierowca już tu był", nie tylko "biuro przygotowało rozliczenie".
+function DriverSummaryCard({ finance, isSzkolenie }: { finance: RentalFinanceDto; isSzkolenie: boolean }) {
+  const rentalValue = finance.vatApplicable ? Number(finance.totalGross) || 0 : Number(finance.totalNet) || 0;
+  const rentalIsCash = finance.paymentMethod === "CASH";
+
+  const transportSep = !isSzkolenie && finance.transportPaidSeparately;
+  const transportValue = finance.transportVatApplicable
+    ? Number(finance.transportTotalGross) || 0
+    : Number(finance.transportTotalNet) || 0;
+  const transportIsCash = transportSep && finance.transportPaymentMethod !== "TRANSFER";
+
+  const payRow = (label: string, value: number, isCash: boolean, collected: boolean | null) => (
+    <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-700">
+      <span>
+        {label}: <b className="font-semibold text-gray-900">{fmt(value)} zł</b>
+      </span>
+      {isCash ? (
+        <Badge
+          text={collected ? "💵 Gotówka pobrana" : "💵 Gotówka jeszcze nie pobrana"}
+          cls={collected ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}
+        />
+      ) : (
+        <Badge text={`🏦 Do faktury: ${fmt(value)} zł`} cls="bg-blue-100 text-blue-700" />
+      )}
+    </div>
+  );
+
+  return (
+    <div className="mb-4 rounded-lg border border-[#CFE0F0] bg-[#EAF4FB] p-4">
+      <p className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-[#1B6FA8]">Podsumowanie kierowcy</p>
+
+      <div className="flex flex-col gap-1.5">
+        {payRow(transportSep ? "Wynajem" : "Wartość wynajmu", rentalValue, rentalIsCash, finance.cashCollected)}
+        {transportSep && payRow("Transport", transportValue, transportIsCash, finance.transportCashCollected)}
+      </div>
+
+      {(finance.capUsedHS != null || finance.membraneUsed != null) && (
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-[#CFE0F0] pt-2.5 text-sm text-gray-700">
+          {finance.capUsedHS != null && (
+            <span>
+              Nakładka HS:{" "}
+              <b className="font-semibold text-gray-900">
+                {finance.capUsedHS ? `użyta ×${finance.capCountHS}` : "nie użyta"}
+              </b>
+            </span>
+          )}
+          {finance.membraneUsed != null && (
+            <span>
+              Membrany:{" "}
+              <b className="font-semibold text-gray-900">
+                {finance.membraneUsed ? `użyte ×${finance.membraneCount}` : "nie użyte"}
+              </b>
+            </span>
+          )}
+        </div>
+      )}
+
+      {(finance.pulseCounterStart != null || finance.pulseCounterEnd != null) && (
+        <div className="mt-1.5 text-sm text-gray-700">
+          Liczniki impulsów:{" "}
+          <b className="font-semibold text-gray-900">
+            {finance.pulseCounterStart ?? "—"} → {finance.pulseCounterEnd ?? "—"}
+          </b>
+          {finance.pulseCounterStart != null && finance.pulseCounterEnd != null && (
+            <span> ({finance.pulseCounterEnd - finance.pulseCounterStart} impulsów)</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function RentalFinanceSection({
   eventType,
   pricingCategory,
@@ -241,6 +321,10 @@ export function RentalFinanceSection({
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-5">
       <p className="mb-3 text-sm font-medium text-gray-700">Finanse</p>
+
+      {initialFinance && initialFinance.cashCollected !== null && (
+        <DriverSummaryCard finance={initialFinance} isSzkolenie={isSzkolenie} />
+      )}
 
       {!isSzkolenie && deviceVariantOptions.length > 0 && (
         <label className="mb-4 flex flex-col gap-1 text-sm text-gray-700">

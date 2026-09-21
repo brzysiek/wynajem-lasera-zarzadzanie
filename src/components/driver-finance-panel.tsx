@@ -574,6 +574,64 @@ export function DriverFinancePanel({
 
       {statusLine}
 
+      {/* Membrany Cooltech — proste pole nad rozbiciem kwoty, bez nagłówka
+          karty; stepper obok checkboxa doprecyzowuje ilość, tylko gdy
+          zaznaczone. */}
+      {isCooltech && (
+        <div className={CARD}>
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex items-center gap-2.5 text-[14px] font-semibold text-[#171A21]">
+              <input
+                type="checkbox"
+                className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
+                checked={membraneUsed}
+                onChange={(e) => {
+                  const v = e.target.checked;
+                  setMembraneUsed(v);
+                  if (!v) setMembraneCount(1);
+                  void save({ membraneUsed: v, membraneCount: v ? membraneCount : 1 });
+                }}
+              />
+              Zużyto membrany
+            </label>
+            {membraneUsed && (
+              <div className="flex flex-none items-center gap-3">
+                <button
+                  type="button"
+                  aria-label="mniej"
+                  disabled={membraneCount <= 1}
+                  onClick={() => {
+                    const v = Math.max(1, membraneCount - 1);
+                    setMembraneCount(v);
+                    void save({ membraneCount: v });
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border-[1.5px] border-[#E2E6EC] text-[15px] font-bold leading-none text-[#171A21] disabled:opacity-40"
+                >
+                  −
+                </button>
+                <span className="min-w-[14px] text-center text-[16px] font-extrabold tabular-nums">{membraneCount}</span>
+                <button
+                  type="button"
+                  aria-label="więcej"
+                  disabled={membraneCount >= MAX_MEMBRANE_COUNT}
+                  onClick={() => {
+                    const v = Math.min(MAX_MEMBRANE_COUNT, membraneCount + 1);
+                    setMembraneCount(v);
+                    void save({ membraneCount: v });
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border-[1.5px] border-[#E2E6EC] text-[15px] font-bold leading-none text-[#171A21] disabled:opacity-40"
+                >
+                  +
+                </button>
+              </div>
+            )}
+          </div>
+          {membraneUsed && membraneCount >= 4 && (
+            <p className="mt-2 text-[12px] text-[#B5851E]">Nietypowo duża liczba — sprawdź przed zapisaniem.</p>
+          )}
+        </div>
+      )}
+
       {/* Rozbicie kwoty — domyślnie zwinięte */}
       <details className="group rounded-[14px] border border-[#E2E6EC] bg-white">
         <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-3.5 text-[13.5px] font-semibold text-[#6B7280] [&::-webkit-details-marker]:hidden">
@@ -647,64 +705,6 @@ export function DriverFinancePanel({
             )}
           </div>
           {capUsed && capCount >= 4 && (
-            <p className="mt-2 text-[12px] text-[#B5851E]">Nietypowo duża liczba — sprawdź przed zapisaniem.</p>
-          )}
-        </div>
-      )}
-
-      {/* Membrany Cooltech — ten sam wzorzec co nakładka HS wyżej: checkbox =
-          główny przełącznik, stepper obok, tylko gdy zaznaczone. */}
-      {isCooltech && (
-        <div className={CARD}>
-          <p className={`mb-2 ${FIELD_LABEL}`}>Membrany</p>
-          <div className="flex items-center justify-between gap-3">
-            <label className="flex items-center gap-2.5 text-[14px] font-semibold text-[#171A21]">
-              <input
-                type="checkbox"
-                className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
-                checked={membraneUsed}
-                onChange={(e) => {
-                  const v = e.target.checked;
-                  setMembraneUsed(v);
-                  if (!v) setMembraneCount(1);
-                  void save({ membraneUsed: v, membraneCount: v ? membraneCount : 1 });
-                }}
-              />
-              Zużyta
-            </label>
-            {membraneUsed && (
-              <div className="flex flex-none items-center gap-3">
-                <button
-                  type="button"
-                  aria-label="mniej"
-                  disabled={membraneCount <= 1}
-                  onClick={() => {
-                    const v = Math.max(1, membraneCount - 1);
-                    setMembraneCount(v);
-                    void save({ membraneCount: v });
-                  }}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border-[1.5px] border-[#E2E6EC] text-[15px] font-bold leading-none text-[#171A21] disabled:opacity-40"
-                >
-                  −
-                </button>
-                <span className="min-w-[14px] text-center text-[16px] font-extrabold tabular-nums">{membraneCount}</span>
-                <button
-                  type="button"
-                  aria-label="więcej"
-                  disabled={membraneCount >= MAX_MEMBRANE_COUNT}
-                  onClick={() => {
-                    const v = Math.min(MAX_MEMBRANE_COUNT, membraneCount + 1);
-                    setMembraneCount(v);
-                    void save({ membraneCount: v });
-                  }}
-                  className="flex h-7 w-7 items-center justify-center rounded-full border-[1.5px] border-[#E2E6EC] text-[15px] font-bold leading-none text-[#171A21] disabled:opacity-40"
-                >
-                  +
-                </button>
-              </div>
-            )}
-          </div>
-          {membraneUsed && membraneCount >= 4 && (
             <p className="mt-2 text-[12px] text-[#B5851E]">Nietypowo duża liczba — sprawdź przed zapisaniem.</p>
           )}
         </div>
