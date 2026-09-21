@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { DevicePricingCategory, PaymentMethod, RentalEventType } from "@prisma/client";
+import { BASE_PATH } from "@/lib/base-path";
 import type { RentalFinanceDto } from "@/lib/finance";
 import { DOUBLE_VARIANT, FLEX_VARIANT, variantLabel } from "@/lib/pricing/variants";
 import {
@@ -99,9 +100,45 @@ function Badge({ text, cls }: { text: string; cls: string }) {
 // Finanse, zanim admin w ogóle dotknie edytowalnych pól: czy i ile gotówki
 // pobrano (albo — gdy przelew — na jaką kwotę wystawić fakturę), ile
 // nakładek HS / membran zużyto, jakie liczniki impulsów.
-function DriverSummaryCard({ finance, isSzkolenie }: { finance: RentalFinanceDto; isSzkolenie: boolean }) {
+function DriverSummaryCard({
+  finance,
+  isSzkolenie,
+  rentalId,
+}: {
+  finance: RentalFinanceDto;
+  isSzkolenie: boolean;
+  rentalId: string;
+}) {
   const rentalValue = finance.vatApplicable ? Number(finance.totalGross) || 0 : Number(finance.totalNet) || 0;
   const rentalIsCash = finance.paymentMethod === "CASH";
+
+  // Wystawianie faktury (Fakturownia) — ręczny przycisk, tylko dla przelewu.
+  // Stan lokalny, bo `finance` to jednorazowy snapshot z serwera (bez
+  // odświeżenia strony) — po udanym wystawieniu nadpisujemy numer faktury
+  // tutaj, żeby przycisk zniknął bez przeładowania.
+  const [invoiceNumber, setInvoiceNumber] = useState<string | null>(finance.fakturowniaInvoiceNumber);
+  const [invoiceMessage, setInvoiceMessage] = useState<string | null>(finance.invoiceError);
+  const [issuing, setIssuing] = useState(false);
+
+  async function handleIssueInvoice() {
+    setIssuing(true);
+    setInvoiceMessage(null);
+    try {
+      const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}/invoice`, { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setInvoiceMessage(data?.message ?? "Nie udało się wystawić faktury.");
+      } else if (data?.found === false) {
+        setInvoiceMessage(data?.message ?? "Nie znaleziono kontrahenta w Fakturowni.");
+      } else {
+        setInvoiceNumber(data?.finance?.fakturowniaInvoiceNumber ?? null);
+      }
+    } catch {
+      setInvoiceMessage("Brak połączenia z serwerem.");
+    } finally {
+      setIssuing(false);
+    }
+  }
 
   const transportSep = !isSzkolenie && finance.transportPaidSeparately;
   const transportValue = finance.transportVatApplicable
@@ -133,6 +170,26 @@ function DriverSummaryCard({ finance, isSzkolenie }: { finance: RentalFinanceDto
         {payRow(transportSep ? "Wynajem" : "Wartość wynajmu", rentalValue, rentalIsCash, finance.cashCollected)}
         {transportSep && payRow("Transport", transportValue, transportIsCash, finance.transportCashCollected)}
       </div>
+
+      {!rentalIsCash && (
+        <div className="mt-3 border-t border-[#CFE0F0] pt-2.5">
+          {invoiceNumber ? (
+            <p className="text-sm font-medium text-green-700">✅ Faktura nr {invoiceNumber} wystawiona</p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleIssueInvoice()}
+                disabled={issuing}
+                className="rounded-md bg-[#1B6FA8] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
+              >
+                {issuing ? "Wystawianie…" : "Wystaw fakturę"}
+              </button>
+              {invoiceMessage && <span className="text-sm text-amber-700">{invoiceMessage}</span>}
+            </div>
+          )}
+        </div>
+      )}
 
       {(finance.capUsedHS != null || finance.membraneUsed != null) && (
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 border-t border-[#CFE0F0] pt-2.5 text-sm text-gray-700">
@@ -171,6 +228,7 @@ function DriverSummaryCard({ finance, isSzkolenie }: { finance: RentalFinanceDto
 }
 
 export function RentalFinanceSection({
+  rentalId,
   eventType,
   pricingCategory,
   deviceVariantOptions,
@@ -185,6 +243,10 @@ export function RentalFinanceSection({
   endsAt,
   onChange,
 }: {
+  // null dla nowego (jeszcze niezapisanego) wynajmu — DriverSummaryCard i tak
+  // się wtedy nie renderuje (initialFinance jest null), więc przycisk
+  // "Wystaw fakturę" nigdy nie potrzebuje rentalId w tym stanie.
+  rentalId: string | null;
   eventType: RentalEventType;
   pricingCategory: DevicePricingCategory | null;
   deviceVariantOptions: string[];
@@ -335,8 +397,8 @@ export function RentalFinanceSection({
     <div className="rounded-lg border border-gray-200 bg-white p-5">
       <p className="mb-3 text-sm font-medium text-gray-700">Finanse</p>
 
-      {hasEnded && initialFinance && (driverReported ? (
-        <DriverSummaryCard finance={initialFinance} isSzkolenie={isSzkolenie} />
+      {hasEnded && initialFinance && rentalId && (driverReported ? (
+        <DriverSummaryCard finance={initialFinance} isSzkolenie={isSzkolenie} rentalId={rentalId} />
       ) : (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Termin wynajmu minął, ale kierowca jeszcze nie zaraportował odbioru.

@@ -202,6 +202,9 @@ model Rental {
   contactAddressCache String?   @db.Text
   // raw "ustalona_cena_transportu" from the HubSpot contact, refreshed on assign
   contactTransportPriceCache String?
+  // NIP kontrahenta z HubSpot, refreshed on assign — podstawa wyszukania
+  // kontrahenta w Fakturowni przy wystawianiu faktury (RentalFinance.invoiceError itd.)
+  contactNipCache String?
   deliveryAddress     String?   @db.Text
   deliveryTime        String?
   pickupTime          String?
@@ -402,6 +405,16 @@ model RentalFinance {
   // Zdenormalizowana suma transportu (tylko gdy transportPaidSeparately).
   transportTotalNet       Decimal?       @db.Decimal(10, 2)
   transportTotalGross     Decimal?       @db.Decimal(10, 2)
+
+  // --- faktura VAT (Fakturownia) — wystawiana ręcznym przyciskiem przez biuro,
+  // tylko dla paymentMethod = TRANSFER. Wysyłka do KSeF NIE jest tu obsługiwana
+  // (ma zostać ręczna, poza tą apką) — patrz src/lib/integrations/fakturownia.ts.
+  fakturowniaInvoiceId     Int?
+  fakturowniaInvoiceNumber String?
+  invoiceIssuedAt          DateTime?
+  // Ostatni błąd/status próby wystawienia (np. "nie znaleziono kontrahenta") —
+  // czyszczony przy udanym wystawieniu.
+  invoiceError             String?   @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

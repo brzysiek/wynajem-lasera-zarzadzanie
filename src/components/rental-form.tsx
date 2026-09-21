@@ -1177,6 +1177,7 @@ export function RentalForm({
           <div className="flex flex-col gap-4">
             {canManageFinance && (
               <RentalFinanceSection
+                rentalId={rental?.id ?? null}
                 eventType={eventType}
                 pricingCategory={device?.pricingCategory ?? null}
                 deviceVariantOptions={device?.variantOptions ?? []}

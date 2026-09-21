@@ -1,4 +1,5 @@
 import { logDebug } from "@/lib/logger";
+import type { InvoicePosition } from "@/lib/invoicing/positions";
 
 export type IntegrationTestResult = { ok: boolean; message: string };
 
@@ -69,10 +70,91 @@ export async function testFakturowniaConnection(): Promise<IntegrationTestResult
   }
 }
 
-// UWAGA: wystawianie faktur (findClientByTaxNo / createInvoice) celowo
-// jeszcze nie ma tu implementacji — czeka na ustalenie z użytkownikiem:
-// tytułu pozycji na fakturze i department_id, z którego mają być wystawiane
-// (patrz lista z testFakturowniaConnection powyżej). KSeF: OMIJAMY przez
-// nieustawianie `gov_save_and_send` w payloadzie POST /invoices.json — samo
-// pominięcie tej flagi wystarczy, dopóki na koncie nie jest włączone
-// automatyczne wysyłanie (Fakturownia → Ustawienia → KSeF, nie przez API).
+function requireDepartmentId(): number {
+  const id = getFakturowniaDepartmentId();
+  if (!id) {
+    throw new Error("Brak FAKTUROWNIA_DEPARTMENT_ID — skonfiguruj dział w Ustawieniach → Integracje.");
+  }
+  return id;
+}
+
+// Fakturownia szuka po `tax_no` w formacie czystych cyfr (bez myślników) —
+// NIP z HubSpot/formularza może przyjść z myślnikami ("123-456-32-18"),
+// więc normalizujemy przed zapytaniem.
+function normalizeTaxNo(raw: string): string {
+  return raw.replace(/[^0-9]/g, "");
+}
+
+export type FakturowniaClient = { id: number; name: string };
+
+export async function findClientByTaxNo(taxNo: string): Promise<FakturowniaClient | null> {
+  const { token, account } = requireCredentials();
+  const normalized = normalizeTaxNo(taxNo);
+  if (!normalized) return null;
+
+  const res = await fetch(
+    `${baseUrl(account)}/clients.json?tax_no=${encodeURIComponent(normalized)}&api_token=${encodeURIComponent(token)}`,
+  );
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
+    throw new Error(message || `Fakturownia API zwróciło błąd (HTTP ${res.status}).`);
+  }
+
+  const list = Array.isArray(body) ? body : [];
+  if (list.length === 0) return null;
+  const first = list[0] as { id: number; name: string };
+  logDebug("fakturownia_client_found", { taxNo: normalized, clientId: first.id });
+  return { id: first.id, name: first.name };
+}
+
+export type CreatedInvoice = { id: number; number: string };
+
+// Wystawia fakturę VAT z ustalonego działu (department_id) dla znalezionego
+// wcześniej kontrahenta. CELOWO bez `gov_save_and_send` w payloadzie — apka
+// ma tylko WYSTAWIĆ fakturę, wysyłka do KSeF zostaje ręczna, poza tą apką
+// (ustalone z użytkownikiem). Fakturownia domyślnie NIE wysyła faktur
+// utworzonych przez API do KSeF, dopóki na koncie nie jest włączone
+// auto-wysyłanie (ustawienie po stronie Fakturowni, nie przez API) — samo
+// pominięcie tej flagi więc wystarcza, ale nie jest jedyną linią obrony:
+// gdyby kiedyś ktoś włączył auto-wysyłanie na koncie, ta funkcja i tak nigdy
+// świadomie nie prosi o wysyłkę.
+export async function createInvoice(input: {
+  clientId: number;
+  sellDate: Date;
+  positions: InvoicePosition[];
+}): Promise<CreatedInvoice> {
+  const { token, account } = requireCredentials();
+  const departmentId = requireDepartmentId();
+  const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+
+  const res = await fetch(`${baseUrl(account)}/invoices.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      api_token: token,
+      invoice: {
+        kind: "vat",
+        department_id: departmentId,
+        client_id: input.clientId,
+        sell_date: isoDate(input.sellDate),
+        issue_date: isoDate(new Date()),
+        positions: input.positions.map((p) => ({
+          name: p.name,
+          quantity: p.quantity,
+          tax: p.taxLabel,
+          total_price_gross: p.totalPriceGross.toNumber(),
+        })),
+      },
+    }),
+  });
+
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
+    throw new Error(message || `Fakturownia API zwróciło błąd (HTTP ${res.status}).`);
+  }
+
+  logDebug("fakturownia_invoice_created", { id: body?.id, number: body?.number });
+  return { id: body.id, number: body.number };
+}

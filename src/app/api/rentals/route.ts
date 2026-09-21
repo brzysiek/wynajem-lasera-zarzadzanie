@@ -177,6 +177,7 @@ export async function POST(req: NextRequest) {
             contactCompanyCache: contact.company,
             contactAddressCache: formatHubspotAddress(contact),
             contactTransportPriceCache: contact.transportPrice,
+            contactNipCache: contact.nip,
             // Backfill the rental's own field only if nothing was typed on the form.
             ...(transportPrice ? {} : { transportPrice: contact.transportPrice }),
             contactDistanceKm: distanceToSave,

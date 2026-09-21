@@ -184,6 +184,11 @@ export type RentalFinanceDto = {
   transportCashCollected: boolean | null;
   transportTotalNet: string | null;
   transportTotalGross: string | null;
+  // --- faktura VAT (Fakturownia) ---
+  fakturowniaInvoiceId: number | null;
+  fakturowniaInvoiceNumber: string | null;
+  invoiceIssuedAt: string | null;
+  invoiceError: string | null;
 };
 
 export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
@@ -221,6 +226,10 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
     transportCashCollected: row.transportCashCollected,
     transportTotalNet: row.transportTotalNet ? row.transportTotalNet.toString() : null,
     transportTotalGross: row.transportTotalGross ? row.transportTotalGross.toString() : null,
+    fakturowniaInvoiceId: row.fakturowniaInvoiceId,
+    fakturowniaInvoiceNumber: row.fakturowniaInvoiceNumber,
+    invoiceIssuedAt: row.invoiceIssuedAt ? row.invoiceIssuedAt.toISOString() : null,
+    invoiceError: row.invoiceError,
   };
 }
 
