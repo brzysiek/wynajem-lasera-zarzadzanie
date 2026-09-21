@@ -98,11 +98,7 @@ function Badge({ text, cls }: { text: string; cls: string }) {
 // widziało (dane leżały tylko w panelu kierowcy). Czytelnie na górze sekcji
 // Finanse, zanim admin w ogóle dotknie edytowalnych pól: czy i ile gotówki
 // pobrano (albo — gdy przelew — na jaką kwotę wystawić fakturę), ile
-// nakładek HS / membran zużyto, jakie liczniki impulsów. Pokazuje się
-// dopiero gdy kierowca faktycznie otworzył i zapisał swój panel —
-// `cashCollected` jest wysyłane przy KAŻDYM jego zapisie (patrz
-// driver-finance-panel.tsx save()), więc `!= null` to niezawodny sygnał
-// "kierowca już tu był", nie tylko "biuro przygotowało rozliczenie".
+// nakładek HS / membran zużyto, jakie liczniki impulsów.
 function DriverSummaryCard({ finance, isSzkolenie }: { finance: RentalFinanceDto; isSzkolenie: boolean }) {
   const rentalValue = finance.vatApplicable ? Number(finance.totalGross) || 0 : Number(finance.totalNet) || 0;
   const rentalIsCash = finance.paymentMethod === "CASH";
@@ -186,6 +182,7 @@ export function RentalFinanceSection({
   previewPulseTiers,
   defaultVatRate,
   initialFinance,
+  endsAt,
   onChange,
 }: {
   eventType: RentalEventType;
@@ -202,6 +199,10 @@ export function RentalFinanceSection({
   previewPulseTiers: PreviewPulseTier[];
   defaultVatRate: number;
   initialFinance: RentalFinanceDto | null;
+  // Termin wynajmu (koniec = data odbioru) — decyduje, czy w ogóle pokazać
+  // podsumowanie kierowcy (DriverSummaryCard niżej), nie samo istnienie
+  // danych kierowcy (patrz komentarz przy DriverSummaryCard).
+  endsAt: string;
   onChange: (payload: FinancePayload) => void;
 }) {
   const isSzkolenie = eventType === "SZKOLENIE";
@@ -318,13 +319,29 @@ export function RentalFinanceSection({
   const FILLED = "flex items-center justify-between rounded-md border border-gray-200 bg-gray-50";
   const CHANGE_LINK = "text-xs font-medium text-[#1B6FA8] hover:underline";
 
+  // Podsumowanie kierowcy pokazujemy dopiero PO terminie odbioru — nie na
+  // podstawie tego, czy kierowca cokolwiek zapisał (cashCollected leci w
+  // payloadzie przy KAŻDYM jego zapisie, także wcześniejszym, np. uwaga do
+  // dostawy albo podgląd kierowcy odpalony przez biuro), bo to pokazywało
+  // kartę na wynajmach, które się jeszcze nie odbyły.
+  const hasEnded = new Date(endsAt) <= new Date();
+  const driverReported =
+    initialFinance != null &&
+    (initialFinance.cashCollected !== null ||
+      initialFinance.capUsedHS !== null ||
+      initialFinance.membraneUsed !== null);
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-5">
       <p className="mb-3 text-sm font-medium text-gray-700">Finanse</p>
 
-      {initialFinance && initialFinance.cashCollected !== null && (
+      {hasEnded && initialFinance && (driverReported ? (
         <DriverSummaryCard finance={initialFinance} isSzkolenie={isSzkolenie} />
-      )}
+      ) : (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Termin wynajmu minął, ale kierowca jeszcze nie zaraportował odbioru.
+        </div>
+      ))}
 
       {!isSzkolenie && deviceVariantOptions.length > 0 && (
         <label className="mb-4 flex flex-col gap-1 text-sm text-gray-700">

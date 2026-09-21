@@ -1188,6 +1188,7 @@ export function RentalForm({
                 previewPulseTiers={previewPulseTiers}
                 defaultVatRate={defaultVatRate}
                 initialFinance={rental?.finance ?? null}
+                endsAt={endsAt}
                 onChange={handleFinanceChange}
               />
             )}
