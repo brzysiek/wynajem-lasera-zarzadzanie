@@ -126,8 +126,17 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
       if (!res.ok) throw new Error(data?.message || "Nie udało się przetworzyć wyciągu.");
 
       const bits: string[] = [`rozpoznano ${data.transactionsParsed} operacji`];
-      if (data.autoMatched > 0) bits.push(`${data.autoMatched} faktur oznaczono jako zapłacone`);
+      const numbers: string[] = Array.isArray(data.matchedNumbers) ? data.matchedNumbers : [];
+      if (data.autoMatched > 0) {
+        bits.push(`${data.autoMatched} faktur oznaczono jako zapłacone (${numbers.join(", ")})`);
+      }
       if (data.ambiguous > 0) bits.push(`${data.ambiguous} niejednoznacznych — oznacz ręcznie`);
+      if (data.autoMatched === 0 && data.ambiguous === 0) bits.push("brak dopasowań do niezapłaconych faktur");
+      // Dopasowanie sprawdza faktury z DOWOLNEGO okresu wystawienia (mogła
+      // być wystawiona wcześniej niż zapłacona) — jeśli oznaczona faktura ma
+      // datę sprzedaży spoza obecnie wybranego zakresu, nie pojawi się w
+      // tabeli poniżej, dopóki nie zmienisz "Od"/"Do".
+      if (data.autoMatched > 0) bits.push("jeśli nie widzisz zmiany w tabeli, sprawdź inny zakres dat");
       setUploadSummary(bits.join(" · "));
       await load();
     } catch (e) {

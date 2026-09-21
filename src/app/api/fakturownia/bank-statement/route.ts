@@ -39,32 +39,51 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message }, { status: 502 });
   }
 
+  // Tylko faktury RZECZYWIŚCIE powiązane z wynajmem w tej apce (mają
+  // fakturowniaInvoiceId w naszej bazie) mogą zostać oznaczone jako
+  // zapłacone — dział w Fakturowni mógł mieć faktury wystawione ręcznie,
+  // zanim ta integracja powstała, a tych apka nie śledzi i nie ma czego
+  // zaktualizować (wcześniejszy bug: dopasowanie mogło "trafić" w taką
+  // fakturę, updateMany nic nie zmieniał, a komunikat i tak mówił "oznaczono").
   const invoiceIds = allInvoices.map((i) => i.id);
-  const paidRows = invoiceIds.length
+  const trackedRows = invoiceIds.length
     ? await prisma.rentalFinance.findMany({
-        where: { fakturowniaInvoiceId: { in: invoiceIds }, paidAt: { not: null } },
-        select: { fakturowniaInvoiceId: true },
+        where: { fakturowniaInvoiceId: { in: invoiceIds } },
+        select: { fakturowniaInvoiceId: true, paidAt: true },
       })
     : [];
-  const paidIds = new Set(paidRows.map((r) => r.fakturowniaInvoiceId));
-  const unpaidInvoices = allInvoices.filter((i) => !paidIds.has(i.id));
+  const trackedById = new Map(trackedRows.map((r) => [r.fakturowniaInvoiceId as number, r.paidAt]));
+  const unpaidInvoices = allInvoices.filter((i) => trackedById.has(i.id) && trackedById.get(i.id) == null);
 
   const matches = matchTransactionsToInvoices(transactions, unpaidInvoices);
   const confident = matches.filter((m) => m.candidates.length === 1);
   const ambiguous = matches.filter((m) => m.candidates.length > 1);
 
+  // Faktyczna liczba zaktualizowanych wierszy — NIE ufamy `confident.length`
+  // bezkrytycznie, bo to właśnie ta rozbieżność powodowała fałszywy komunikat
+  // o sukcesie bez realnej zmiany.
+  let matchedCount = 0;
   if (confident.length > 0) {
-    await prisma.rentalFinance.updateMany({
+    const result = await prisma.rentalFinance.updateMany({
       where: { fakturowniaInvoiceId: { in: confident.map((m) => m.invoiceId) } },
       data: { paidAt: new Date() },
     });
+    matchedCount = result.count;
+    if (matchedCount !== confident.length) {
+      logWarn("fakturownia_bank_statement_count_mismatch", { expected: confident.length, actual: matchedCount });
+    }
   }
+
+  const invoiceById = new Map(allInvoices.map((i) => [i.id, i]));
+  const matchedNumbers = confident
+    .map((m) => invoiceById.get(m.invoiceId)?.number)
+    .filter((n): n is string => Boolean(n));
 
   logInfo("fakturownia_bank_statement_processed", {
     userId: session.user.id,
     transactionsParsed: transactions.length,
     unpaidInvoices: unpaidInvoices.length,
-    autoMatched: confident.length,
+    autoMatched: matchedCount,
     ambiguous: ambiguous.length,
   });
   if (ambiguous.length > 0) {
@@ -73,7 +92,8 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     transactionsParsed: transactions.length,
-    autoMatched: confident.length,
+    autoMatched: matchedCount,
+    matchedNumbers,
     ambiguous: ambiguous.length,
     noMatch: unpaidInvoices.length - confident.length - ambiguous.length,
   });
