@@ -2,6 +2,7 @@
 
 import { SHELL } from "@/components/shell-tokens";
 import { useNotifications } from "@/components/notifications-context";
+import { ClipboardIcon, InvoiceIcon } from "@/components/status-icons";
 
 function WarnIcon() {
   return (
@@ -32,41 +33,6 @@ function BellOffIcon() {
   );
 }
 
-// Schowek z listą, przekreślony na czerwono ("brak") — "brak raportu
-// kierowcy" (report-alerts-panel.tsx). CELOWO nie paragon/kartka (ten kształt
-// zarezerwowany pod przyszłe wystawianie faktur VAT, patrz InvoiceIcon niżej)
-// — inny kontekst, inna ikona, żeby się nie myliły. Przekreślenie zawsze
-// czerwone (nie currentColor), niezależnie od tonu ikonki.
-function ClipboardIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="5" y="4.5" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.8" />
-      <rect x="9" y="3" width="6" height="3" rx="1" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M8.5 11.7h7M8.5 15.2h4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="4" y1="20.5" x2="20" y2="3.5" stroke="#D93025" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-// Paragon/kartka z napisem "FV" — zarezerwowane pod przyszłe wystawianie
-// faktur VAT (na razie bez funkcji, patrz wyłączony placeholder niżej w
-// IconRail). Ząbkowana dolna krawędź jak paragon.
-function InvoiceIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M6 3.5h12v16.3l-2-1.3-2 1.3-2-1.3-2 1.3-2-1.3-2 1.3V3.5Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
-      <text x="12" y="13.5" textAnchor="middle" fontSize="7.5" fontWeight="700" fill="currentColor">
-        FV
-      </text>
-    </svg>
-  );
-}
-
 const RAIL_TONE = {
   brand: { fg: SHELL.brand, bg: SHELL.brandSoft, badge: SHELL.accent },
   // Ostrzeżenia kalendarza — celowo poza marką (czerwień, nie brand-blue ani
@@ -76,6 +42,10 @@ const RAIL_TONE = {
   // Inny odcień niż danger, bo to inny rodzaj pilności (operacyjny follow-up,
   // nie brakujące dane samego wynajmu) i celowo bez auto-popu.
   report: { fg: "#6B46C1", bg: "#F3EEFC", badge: "#6B46C1" },
+  // "Brak faktury" — rdzawy pomarańcz, ten sam co karta (invoice-alerts-panel.tsx).
+  // Trzeci, odrębny odcień — inny temat niż dane wynajmu (danger) i inny niż
+  // raport kierowcy (report), też bez auto-popu.
+  invoice: { fg: "#C2410C", bg: "#FFF1E8", badge: "#C2410C" },
 };
 
 function RailIcon({
@@ -93,7 +63,7 @@ function RailIcon({
   disabled?: boolean;
   onClick?: () => void;
   badge?: number | null;
-  tone?: "brand" | "danger" | "report";
+  tone?: "brand" | "danger" | "report" | "invoice";
 }) {
   const t = RAIL_TONE[tone];
   return (
@@ -152,10 +122,11 @@ export function IconRail({
   // Jedna ikonka na oba źródła (kalendarz + przychody, patrz
   // notifications-context.tsx) — badge to suma obu, kolorystyka per typ żyje
   // dopiero w karcie (notifications-panel.tsx), nie na samej ikonce.
-  // "Brak raportu kierowcy" ma OSOBNĄ ikonkę i kartę (report-alerts-panel.tsx)
-  // — celowo bez auto-popu i bez wliczania do powyższego badge'a, na życzenie
-  // użytkownika (to informacja "na żądanie", nie coś co ma wyskakiwać samo
-  // przy wejściu na kalendarz).
+  // "Brak raportu kierowcy" i "brak faktury" mają OSOBNE ikonki i karty
+  // (report-alerts-panel.tsx, invoice-alerts-panel.tsx) — celowo bez
+  // auto-popu i bez wliczania do powyższego badge'a, na życzenie użytkownika
+  // (to informacja "na żądanie", nie coś co ma wyskakiwać samo przy wejściu
+  // na kalendarz).
   const {
     alerts,
     unpriced,
@@ -166,26 +137,52 @@ export function IconRail({
     reportOpen,
     showReport,
     hideReport,
+    invoiceAlerts,
+    invoiceOpen,
+    showInvoice,
+    hideInvoice,
   } = useNotifications();
   const notifCount = alerts.length + unpriced.length;
   const hasNotifications = showNotifications && notifCount > 0;
   const reportCount = reportAlerts.length;
   const hasReportAlerts = showNotifications && reportCount > 0;
-  if (!showTasks && !hasNotifications && !hasReportAlerts) return null;
+  const invoiceCount = invoiceAlerts.length;
+  const hasInvoiceAlerts = showNotifications && invoiceCount > 0;
+  const hasAnyAlertIcon = hasNotifications || hasReportAlerts || hasInvoiceAlerts;
+  if (!showTasks && !hasAnyAlertIcon) return null;
+
+  // Klik w jedną z trzech kart powiadomień zamyka pozostałe dwie — żeby się
+  // nie nakładały w tym samym rogu ekranu (wszystkie trzy karty kotwiczą się
+  // w tym samym miejscu, patrz *-alerts-panel.tsx).
+  function closeOtherCards(except: "notif" | "report" | "invoice") {
+    if (except !== "notif") hideNotif();
+    if (except !== "report") hideReport();
+    if (except !== "invoice") hideInvoice();
+  }
 
   return (
     <div
       className="hidden w-14 shrink-0 flex-col items-center gap-1.5 py-3.5 md:flex"
       style={{ background: SHELL.surface, borderLeft: `1px solid ${SHELL.border}` }}
     >
+      {showTasks && (
+        <RailIcon tooltip="Zadania" open={tasksOpen} onClick={onToggleTasks} badge={openTaskCount}>
+          <TasksIcon />
+        </RailIcon>
+      )}
+      {/* Subtelny separator — Zadania to osobny, "roboczy" kanał (lista do
+          zrobienia przez użytkownika), poniżej są powiadomienia o brakach w
+          danych wynajmów. Tylko gdy jest cokolwiek do oddzielenia. */}
+      {showTasks && hasAnyAlertIcon && (
+        <div className="my-0.5 h-px w-6 rounded-full" style={{ background: SHELL.border }} />
+      )}
       {hasNotifications && (
         <RailIcon
           tooltip={`Powiadomienia (${notifCount})`}
           open={notifOpen}
           onClick={() => {
-            hideReport();
-            if (notifOpen) hideNotif();
-            else showNotif();
+            closeOtherCards("notif");
+            if (!notifOpen) showNotif();
           }}
           badge={notifCount}
           tone="danger"
@@ -198,9 +195,8 @@ export function IconRail({
           tooltip={`Brak raportu kierowcy (${reportCount})`}
           open={reportOpen}
           onClick={() => {
-            hideNotif();
-            if (reportOpen) hideReport();
-            else showReport();
+            closeOtherCards("report");
+            if (!reportOpen) showReport();
           }}
           badge={reportCount}
           tone="report"
@@ -208,21 +204,24 @@ export function IconRail({
           <ClipboardIcon />
         </RailIcon>
       )}
-      {showTasks && (
-        <RailIcon tooltip="Zadania" open={tasksOpen} onClick={onToggleTasks} badge={openTaskCount}>
-          <TasksIcon />
+      {hasInvoiceAlerts && (
+        <RailIcon
+          tooltip={`Brak faktury (${invoiceCount})`}
+          open={invoiceOpen}
+          onClick={() => {
+            closeOtherCards("invoice");
+            if (!invoiceOpen) showInvoice();
+          }}
+          badge={invoiceCount}
+          tone="invoice"
+        >
+          <InvoiceIcon />
         </RailIcon>
       )}
-      {/* Osobny, wyłączony placeholder — inny kanał niż powyższa ikona
-          (push/dzwonek), która już działa i pokazuje realne dane. */}
+      {/* Osobny, wyłączony placeholder — inny kanał niż powyższe ikony
+          (push/dzwonek), które już działają i pokazują realne dane. */}
       <RailIcon tooltip="Powiadomienia push — wkrótce" disabled>
         <BellOffIcon />
-      </RailIcon>
-      {/* Zarezerwowane miejsce pod przyszłe wystawianie faktur VAT — kształt
-          paragonu/kartki celowo zarezerwowany dla tej funkcji, nie użyty
-          nigdzie indziej (patrz ClipboardIcon vs InvoiceIcon wyżej). */}
-      <RailIcon tooltip="Wystawianie faktur VAT — wkrótce" disabled>
-        <InvoiceIcon />
       </RailIcon>
     </div>
   );

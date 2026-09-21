@@ -11,6 +11,7 @@ import { CalendarDeviceFilterProvider } from "@/components/calendar-device-filte
 import { NotificationsProvider } from "@/components/notifications-context";
 import { NotificationsPanel } from "@/components/notifications-panel";
 import { ReportAlertsPanel } from "@/components/report-alerts-panel";
+import { InvoiceAlertsPanel } from "@/components/invoice-alerts-panel";
 import { FuelPriceReminder } from "@/components/fuel-price-reminder";
 
 // Kosmetyczny stan UI (nie dane biznesowe) — przetrwa odświeżenie strony,
@@ -130,6 +131,7 @@ export function AppShell({
             )}
             {showNotifications && <NotificationsPanel />}
             {showNotifications && <ReportAlertsPanel />}
+            {showNotifications && <InvoiceAlertsPanel />}
           </div>
         </div>
         <FuelPriceReminder role={role} />

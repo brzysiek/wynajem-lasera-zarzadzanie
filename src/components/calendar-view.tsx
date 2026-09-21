@@ -6,8 +6,10 @@ import type { Device, Rental } from "@/components/rental-form";
 import { BASE_PATH } from "@/lib/base-path";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { rentalNeedsReport } from "@/lib/report-alerts";
+import { rentalInvoiceStatus } from "@/lib/invoice-alerts";
 import { useNotifications } from "@/components/notifications-context";
 import { useCalendarDeviceFilter } from "@/components/calendar-device-filter-context";
+import { ClipboardIcon, InvoiceIcon } from "@/components/status-icons";
 
 type RawRental = Rental & { device: Device };
 
@@ -255,9 +257,22 @@ function CalendarWeekRow({
             )}
             {rentalNeedsReport(s.rental) && (
               <span className="flex-none" title="Kierowca nie zaraportował rozliczenia">
-                📋
+                <ClipboardIcon size={14} />
               </span>
             )}
+            {(() => {
+              const invoiceStatus = rentalInvoiceStatus(s.rental);
+              if (invoiceStatus === "none") return null;
+              return (
+                <span
+                  className="flex-none"
+                  style={{ color: invoiceStatus === "issued" ? "#15803D" : "#D93025" }}
+                  title={invoiceStatus === "issued" ? "Faktura wystawiona" : "Brak wystawionej faktury"}
+                >
+                  <InvoiceIcon size={14} />
+                </span>
+              );
+            })()}
             {s.rental.hubspotContactId && <ContactBadge name={s.rental.contactNameCache} />}
             {s.rental.driver && <DriverBadge name={s.rental.driver.name} />}
             <span className="truncate">

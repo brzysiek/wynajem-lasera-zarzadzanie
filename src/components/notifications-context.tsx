@@ -6,6 +6,7 @@ import { BASE_PATH } from "@/lib/base-path";
 import type { RentalAlert } from "@/lib/rental-alerts";
 import type { UnpricedRental } from "@/lib/revenue/aggregate";
 import type { ReportAlert } from "@/lib/report-alerts";
+import type { InvoiceAlert } from "@/lib/invoice-alerts";
 
 type NotificationsContextValue = {
   // Ostrzeżenia kalendarza — wynajmy bez kierowcy/kontaktu/telefonu (patrz
@@ -24,6 +25,10 @@ type NotificationsContextValue = {
   // poniżej, to nie jest coś co ma wyskakiwać przy każdym wejściu na kalendarz,
   // tylko dostępne na żądanie pod osobną ikoną (decyzja użytkownika).
   reportAlerts: ReportAlert[];
+  // Ostrzeżenia "brak faktury" — wynajmy zakończone, z VAT, bez wystawionej
+  // faktury (patrz GET /api/rentals/invoice-alerts, src/lib/invoice-alerts.ts).
+  // Ten sam wzorzec co reportAlerts — osobna karta/ikonka, bez auto-popu.
+  invoiceAlerts: InvoiceAlert[];
   // Karta alerts+unpriced: `open` = karta w ogóle widoczna; każda sekcja
   // rozwija swoją listę osobno.
   open: boolean;
@@ -37,12 +42,17 @@ type NotificationsContextValue = {
   reportOpen: boolean;
   showReport: () => void;
   hideReport: () => void;
+  // Osobna, niezależna karta invoice-alerts (invoice-alerts-panel.tsx).
+  invoiceOpen: boolean;
+  showInvoice: () => void;
+  hideInvoice: () => void;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
 const EMPTY_ALERTS: RentalAlert[] = [];
 const EMPTY_UNPRICED: UnpricedRental[] = [];
 const EMPTY_REPORT_ALERTS: ReportAlert[] = [];
+const EMPTY_INVOICE_ALERTS: InvoiceAlert[] = [];
 
 // Centrum powiadomień admina — JEDNA ikonka + karta na prawym pasku (patrz
 // icon-rail.tsx, notifications-panel.tsx), na razie dwa niezależne źródła:
@@ -65,10 +75,12 @@ export function NotificationsProvider({
   const [rawAlerts, setRawAlerts] = useState<RentalAlert[]>(EMPTY_ALERTS);
   const [rawUnpriced, setRawUnpriced] = useState<UnpricedRental[]>(EMPTY_UNPRICED);
   const [rawReportAlerts, setRawReportAlerts] = useState<ReportAlert[]>(EMPTY_REPORT_ALERTS);
+  const [rawInvoiceAlerts, setRawInvoiceAlerts] = useState<InvoiceAlert[]>(EMPTY_INVOICE_ALERTS);
   const [open, setOpen] = useState(false);
   const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [revenueExpanded, setRevenueExpanded] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
   const pathname = usePathname();
 
   // Każde świeże pokazanie karty (auto-pop albo klik w ikonę na pasku) startuje
@@ -87,6 +99,8 @@ export function NotificationsProvider({
   // otwieraniu drugiej, żeby nie nakładały się w tym samym rogu ekranu).
   const showReport = useCallback(() => setReportOpen(true), []);
   const hideReport = useCallback(() => setReportOpen(false), []);
+  const showInvoice = useCallback(() => setInvoiceOpen(true), []);
+  const hideInvoice = useCallback(() => setInvoiceOpen(false), []);
 
   const refresh = useCallback(() => {
     if (!enabled) return;
@@ -101,6 +115,10 @@ export function NotificationsProvider({
     fetch(`${BASE_PATH}/api/rentals/report-alerts`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setRawReportAlerts(Array.isArray(d?.reportAlerts) ? d.reportAlerts : EMPTY_REPORT_ALERTS))
+      .catch(() => {});
+    fetch(`${BASE_PATH}/api/rentals/invoice-alerts`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setRawInvoiceAlerts(Array.isArray(d?.invoiceAlerts) ? d.invoiceAlerts : EMPTY_INVOICE_ALERTS))
       .catch(() => {});
   }, [enabled]);
 
@@ -118,6 +136,7 @@ export function NotificationsProvider({
   const alerts = enabled ? rawAlerts : EMPTY_ALERTS;
   const unpriced = enabled ? rawUnpriced : EMPTY_UNPRICED;
   const reportAlerts = enabled ? rawReportAlerts : EMPTY_REPORT_ALERTS;
+  const invoiceAlerts = enabled ? rawInvoiceAlerts : EMPTY_INVOICE_ALERTS;
 
   // Auto-pop: raz na każde WEJŚCIE na /kalendarz (świeże ładowanie strony
   // albo nawigacja klientem z innej podstrony) karta sama się pokazuje, jeśli
@@ -148,6 +167,7 @@ export function NotificationsProvider({
       alertIds,
       unpriced,
       reportAlerts,
+      invoiceAlerts,
       open,
       calendarExpanded,
       revenueExpanded,
@@ -158,12 +178,16 @@ export function NotificationsProvider({
       reportOpen,
       showReport,
       hideReport,
+      invoiceOpen,
+      showInvoice,
+      hideInvoice,
     }),
     [
       alerts,
       alertIds,
       unpriced,
       reportAlerts,
+      invoiceAlerts,
       open,
       calendarExpanded,
       revenueExpanded,
@@ -174,6 +198,9 @@ export function NotificationsProvider({
       reportOpen,
       showReport,
       hideReport,
+      invoiceOpen,
+      showInvoice,
+      hideInvoice,
     ],
   );
 
