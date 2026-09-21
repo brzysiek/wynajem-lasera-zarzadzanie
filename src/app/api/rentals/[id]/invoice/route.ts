@@ -96,3 +96,25 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ message }, { status: 502 });
   }
 }
+
+// Czyści zapisany numer faktury (nie rusza niczego w Fakturowni) — dla
+// sytuacji, gdy faktura została skasowana/skorygowana po stronie Fakturowni
+// i trzeba wystawić nową dla tego samego wynajmu. Bez tego POST wyżej
+// odmawia (fakturowniaInvoiceId już ustawiony).
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await requireStaffSession();
+  if (!session) return bad("Brak uprawnień.", 403);
+
+  const { id } = await params;
+  const rental = await prisma.rental.findUnique({ where: { id }, include: { finance: true } });
+  if (!rental) return bad("Nie znaleziono wynajmu.", 404);
+  if (!rental.finance) return bad("Wynajem nie ma jeszcze rozliczenia.");
+
+  const updated = await prisma.rentalFinance.update({
+    where: { rentalId: id },
+    data: { fakturowniaInvoiceId: null, fakturowniaInvoiceNumber: null, invoiceIssuedAt: null, invoiceError: null },
+  });
+
+  logInfo("fakturownia_invoice_reset", { userId: session.user.id, rentalId: id });
+  return NextResponse.json({ finance: financeDto(updated) });
+}

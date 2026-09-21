@@ -119,6 +119,7 @@ function DriverSummaryCard({
   const [invoiceNumber, setInvoiceNumber] = useState<string | null>(finance.fakturowniaInvoiceNumber);
   const [invoiceMessage, setInvoiceMessage] = useState<string | null>(finance.invoiceError);
   const [issuing, setIssuing] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   async function handleIssueInvoice() {
     setIssuing(true);
@@ -137,6 +138,21 @@ function DriverSummaryCard({
       setInvoiceMessage("Brak połączenia z serwerem.");
     } finally {
       setIssuing(false);
+    }
+  }
+
+  // Faktura mogła zostać skasowana/skorygowana po stronie Fakturowni — to
+  // czyści tylko zapis numeru tutaj (nie rusza niczego w Fakturowni), żeby
+  // dało się wystawić nową dla tego samego wynajmu.
+  async function handleResetInvoice() {
+    if (!window.confirm("Zresetować zapisany numer faktury i pozwolić wystawić nową dla tego wynajmu?")) return;
+    setResetting(true);
+    try {
+      await fetch(`${BASE_PATH}/api/rentals/${rentalId}/invoice`, { method: "DELETE" });
+      setInvoiceNumber(null);
+      setInvoiceMessage(null);
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -178,7 +194,17 @@ function DriverSummaryCard({
       {finance.vatApplicable && (
         <div className="mt-3 border-t border-[#CFE0F0] pt-2.5">
           {invoiceNumber ? (
-            <p className="text-sm font-medium text-green-700">✅ Faktura nr {invoiceNumber} wystawiona</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-medium text-green-700">✅ Faktura nr {invoiceNumber} wystawiona</p>
+              <button
+                type="button"
+                onClick={() => void handleResetInvoice()}
+                disabled={resetting}
+                className="text-xs font-medium text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
+              >
+                {resetting ? "Resetowanie…" : "Faktura skasowana w Fakturowni? Wystaw ponownie"}
+              </button>
+            </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
               <button
