@@ -447,6 +447,23 @@ model FakturowniaPayment {
   @@map("fakturownia_payments")
 }
 
+// Historia wgranych wyciągów bankowych (/finanse/faktury) — bez tego wynik
+// wgrania znikał po odświeżeniu strony, nie było śladu KIEDY i JAKI plik
+// wgrano. Same liczby podsumowania (nie pełna lista dopasowań per wiersz —
+// te i tak są odtwarzalne na żądanie z Fakturowni + FakturowniaPayment).
+model BankStatementUpload {
+  id                 String   @id @default(cuid())
+  fileName           String
+  uploadedAt         DateTime @default(now())
+  uploadedByUserId   String?
+  transactionsParsed Int
+  autoMatched        Int
+  ambiguous          Int
+  noMatch            Int
+
+  @@map("bank_statement_uploads")
+}
+
 model PriceRule {
   id              String                @id @default(cuid())
   pricingCategory DevicePricingCategory

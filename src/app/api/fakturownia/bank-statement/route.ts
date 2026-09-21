@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
   const file = form?.get("file");
   if (!file || typeof file === "string") return bad("Brak pliku CSV.");
 
+  const fileName = file.name || "wyciąg.csv";
   const csvText = await file.text();
   const transactions = parseBankStatementCsv(csvText);
   if (transactions.length === 0) {
@@ -120,11 +121,49 @@ export async function POST(req: NextRequest) {
     };
   });
 
+  const noMatch = unpaidInvoices.length - confident.length - ambiguous.length;
+
+  const upload = await prisma.bankStatementUpload.create({
+    data: {
+      fileName,
+      uploadedByUserId: session.user.id,
+      transactionsParsed: transactions.length,
+      autoMatched: matchedCount,
+      ambiguous: ambiguous.length,
+      noMatch,
+    },
+  });
+
   return NextResponse.json({
     transactionsParsed: transactions.length,
     autoMatched: matchedCount,
     ambiguous: ambiguous.length,
-    noMatch: unpaidInvoices.length - confident.length - ambiguous.length,
+    noMatch,
     results,
+    upload: { id: upload.id, fileName: upload.fileName, uploadedAt: upload.uploadedAt.toISOString() },
+  });
+}
+
+// Historia wgrań (ostatnie 15) — żeby było widać KIEDY i JAKI plik wgrano,
+// nie tylko wynik ostatniego wgrania, który znika po odświeżeniu strony.
+export async function GET() {
+  const session = await requireAdminSession();
+  if (!session) return bad("Brak uprawnień.", 403);
+
+  const uploads = await prisma.bankStatementUpload.findMany({
+    orderBy: { uploadedAt: "desc" },
+    take: 15,
+  });
+
+  return NextResponse.json({
+    uploads: uploads.map((u) => ({
+      id: u.id,
+      fileName: u.fileName,
+      uploadedAt: u.uploadedAt.toISOString(),
+      transactionsParsed: u.transactionsParsed,
+      autoMatched: u.autoMatched,
+      ambiguous: u.ambiguous,
+      noMatch: u.noMatch,
+    })),
   });
 }

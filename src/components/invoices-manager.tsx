@@ -25,6 +25,16 @@ type StatementResultRow = {
   candidates: StatementCandidate[];
 };
 
+type UploadHistoryRow = {
+  id: string;
+  fileName: string;
+  uploadedAt: string;
+  transactionsParsed: number;
+  autoMatched: number;
+  ambiguous: number;
+  noMatch: number;
+};
+
 // Paleta premium — ten sam zestaw co fuel-invoices-manager.tsx / cost-entries-manager.tsx.
 // Hover-y (kolejność 5-10% ciemniejsza) idą przez Tailwind className, nie
 // przez ten obiekt — inline style ma wyższy priorytet niż :hover z klasy,
@@ -55,6 +65,20 @@ function fmtDate(iso: string): string {
   const [y, m, d] = iso.slice(0, 10).split("-");
   return y && m && d ? `${d}.${m}.${y}` : "—";
 }
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function UploadIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 15V4M12 4l-4 4M12 4l4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 // Faktury VAT — dane NA ŻYWO z Fakturowni (nie z naszej bazy, żeby nie
 // duplikować stanu który może się zmienić po ich stronie), dział ustalony w
@@ -70,6 +94,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
   const [busyId, setBusyId] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [statementResults, setStatementResults] = useState<StatementResultRow[] | null>(null);
+  const [uploadHistory, setUploadHistory] = useState<UploadHistoryRow[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -87,10 +112,20 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
     }
   }
 
+  async function loadUploadHistory() {
+    const res = await fetch(`${BASE_PATH}/api/fakturownia/bank-statement`, { cache: "no-store" });
+    const data = await res.json().catch(() => null);
+    if (res.ok) setUploadHistory(Array.isArray(data?.uploads) ? data.uploads : []);
+  }
+
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to]);
+
+  useEffect(() => {
+    void loadUploadHistory();
+  }, []);
 
   async function handleSendKsef(row: InvoiceRow) {
     if (!window.confirm(`Wysłać fakturę ${row.number} do KSeF? Tej operacji nie da się cofnąć.`)) return;
@@ -138,7 +173,7 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.message || "Nie udało się przetworzyć wyciągu.");
       setStatementResults(Array.isArray(data.results) ? data.results : []);
-      await load();
+      await Promise.all([load(), loadUploadHistory()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Błąd.");
     } finally {
@@ -191,48 +226,62 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
   const unpaidCount = invoices.filter((r) => !r.paidAt).length;
 
   return (
-    <div>
+    <div className="flex flex-col gap-4">
       <div
         className="overflow-hidden rounded-[14px] border shadow-[0_1px_3px_rgba(16,24,32,0.04)]"
         style={{ borderColor: C.border, background: C.surface }}
       >
-        <div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-[22px] sm:px-7">
-          <div>
-            <h1 className="m-0 text-[21px] font-normal italic" style={{ color: C.accent }}>
-              Faktury VAT
-            </h1>
-            <p className="mt-1 text-[13px]" style={{ color: C.muted }}>
-              Dane na żywo z Fakturowni. „Zapłacona” to jedyna kolumna z naszej bazy — Fakturownia nie zna statusu
-              płatności bez połączenia z bankiem.
-            </p>
+        <div className="px-4 pt-[22px] sm:px-7">
+          <h1 className="m-0 text-[21px] font-normal italic" style={{ color: C.accent }}>
+            Faktury VAT
+          </h1>
+          <p className="mt-1 text-[13px]" style={{ color: C.muted }}>
+            Dane na żywo z Fakturowni. „Zapłacona” to jedyna kolumna z naszej bazy — Fakturownia nie zna statusu
+            płatności bez połączenia z bankiem.
+          </p>
+        </div>
+
+        {/* ---- karta wgrywania wyciągu ---- */}
+        <div className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border p-4 sm:mx-7" style={{ borderColor: C.border }}>
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 flex-none items-center justify-center rounded-[10px]" style={{ background: C.brandSoft, color: C.brand }}>
+              <UploadIcon />
+            </div>
+            <div>
+              <p className="text-[14.5px] font-bold" style={{ color: C.text }}>
+                Wyciąg bankowy
+              </p>
+              <p className="text-[12.5px]" style={{ color: C.muted }}>
+                Wgraj CSV z mBanku, żeby dopasować wpłaty do faktur
+              </p>
+            </div>
           </div>
-          <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={(e) => void handleUploadStatement(e.target.files)}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="rounded-lg bg-[#E08A5C] px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#C96F3F] disabled:opacity-50 disabled:hover:bg-[#E08A5C]"
-            >
-              {uploading ? "Przetwarzanie…" : "+ Wgraj wyciąg bankowy (CSV)"}
-            </button>
-          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => void handleUploadStatement(e.target.files)}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex-none rounded-lg bg-[#1B6FA8] px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#14567F] disabled:opacity-50 disabled:hover:bg-[#1B6FA8]"
+          >
+            {uploading ? "Przetwarzanie…" : "Wgraj plik"}
+          </button>
         </div>
 
         {statementResults && <StatementResultsTable results={statementResults} busyId={busyId} onConfirm={confirmStatementRow} />}
+        {uploadHistory.length > 0 && <UploadHistoryList uploads={uploadHistory} />}
         {error && (
           <div className="mx-4 mt-3 rounded-md px-3 py-2 text-[13px] sm:mx-7" style={{ background: C.redSoft, color: C.red }}>
             {error}
           </div>
         )}
 
-        <div className="mt-4 flex flex-wrap items-center gap-3 px-4 sm:px-7" style={{ color: C.muted }}>
+        <div className="mt-5 flex flex-wrap items-center gap-3 px-4 sm:px-7" style={{ color: C.muted }}>
           <label className="flex items-center gap-1.5 text-[13px]">
             Od
             <input
@@ -386,61 +435,120 @@ function StatementResultsTable({
 }) {
   if (results.length === 0) {
     return (
-      <div className="mx-4 mt-3 rounded-md px-3 py-2 text-[13px] sm:mx-7" style={{ background: C.amberSoft, color: C.amber }}>
+      <div className="mx-4 mt-4 rounded-md px-3 py-2 text-[13px] sm:mx-7" style={{ background: C.amberSoft, color: C.amber }}>
         Rozpoznano operacje z wyciągu, ale nie ma żadnych niezapłaconych faktur do dopasowania.
       </div>
     );
   }
 
-  const dotColor = (status: StatementResultRow["status"]) =>
-    status === "matched" ? C.green : status === "ambiguous" ? C.amber : C.faint;
-
   return (
-    <div className="mx-4 mt-3 overflow-hidden rounded-[9px] border sm:mx-7" style={{ borderColor: C.border }}>
-      <div className="px-3 py-2 text-[12px] font-semibold" style={{ background: C.brandSoft, color: C.brand }}>
-        Wynik dopasowania wyciągu — {results.filter((r) => r.status === "matched").length} z {results.length}{" "}
-        niezapłaconych faktur dopasowanych automatycznie
+    <div className="mx-4 mt-5 sm:mx-7">
+      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12.5px]" style={{ color: C.muted }}>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 flex-none rounded-full" style={{ background: C.green }} />
+          Dopasowano automatycznie
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 flex-none rounded-full" style={{ background: C.amber }} />
+          Kilka pasujących wpłat
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 flex-none rounded-full" style={{ background: C.faint }} />
+          Brak dopasowania
+        </span>
       </div>
-      <ul>
-        {results.map((r) => {
+
+      <div className="overflow-hidden rounded-[12px] border" style={{ borderColor: C.border }}>
+        {results.map((r, i) => {
           const first = r.candidates[0];
+          const actionLabel = r.status === "ambiguous" ? "Wybierz" : r.status === "unmatched" ? "Oznacz ręcznie" : null;
+          const dotColor = r.status === "matched" ? C.green : r.status === "ambiguous" ? C.amber : C.faint;
           return (
-            <li
+            <div
               key={r.invoiceId}
-              className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2 text-[12.5px] transition-colors hover:bg-[#F6F9FB]"
-              style={{ borderColor: C.border }}
+              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 text-[13px] transition-colors hover:bg-[#F6F9FB]"
+              style={i > 0 ? { borderTop: `1px solid ${C.border}` } : undefined}
             >
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="h-2 w-2 flex-none rounded-full" style={{ background: dotColor(r.status) }} />
-                <div className="min-w-0">
-                  <p className="truncate font-medium" style={{ color: C.text }}>
-                    {r.number} — {r.buyerName}
-                  </p>
-                  <p style={{ color: C.muted }}>
-                    {r.status === "matched" && first && `${fmtDate(first.date)} · ${fmtPln(String(first.amount), "zł")}`}
-                    {r.status === "ambiguous" && `${r.candidates.length} pasujące wpłaty tej kwoty — wybierz ręcznie`}
-                    {r.status === "unmatched" && "brak dopasowania w wyciągu"}
-                  </p>
+              <div className="min-w-0" style={{ flex: "1 1 220px" }}>
+                <p className="truncate font-bold" style={{ color: C.text }}>
+                  {r.buyerName}
+                </p>
+                <p className="text-[12px]" style={{ color: C.muted }}>
+                  {r.number} · {fmtPln(r.priceGross, "zł")}
+                </p>
+              </div>
+              <div className="min-w-0" style={{ flex: "1 1 220px" }}>
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 flex-none rounded-full" style={{ background: dotColor }} />
+                  <div className="min-w-0">
+                    <p className="truncate" style={{ color: C.text }}>
+                      {r.status === "matched" && "Dopasowano"}
+                      {r.status === "ambiguous" && `${r.candidates.length} pasujące wpłaty tej kwoty`}
+                      {r.status === "unmatched" && "Brak dopasowania w wyciągu"}
+                    </p>
+                    <p className="text-[12px]" style={{ color: C.muted }}>
+                      {r.status === "matched" && first && `${fmtDate(first.date)} · ${fmtPln(String(first.amount), "zł")}`}
+                      {r.status === "ambiguous" &&
+                        r.candidates.map((c) => fmtDate(c.date)).join(" i ") + ` · ${fmtPln(r.priceGross, "zł")}`}
+                    </p>
+                  </div>
                 </div>
               </div>
-              {r.status === "matched" ? (
-                <span className="flex-none rounded-full bg-[#E7F6EF] px-2 py-0.5 text-[11px] font-semibold text-[#1E9E6B]">
-                  zapłacona
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onConfirm(r)}
-                  disabled={busyId === r.invoiceId}
-                  className="flex-none rounded-full bg-[#FEF7E0] px-2 py-0.5 text-[11px] font-semibold text-[#B06000] transition-colors hover:bg-[#FCEEC7] disabled:opacity-50"
-                >
-                  oznacz jako zapłaconą
-                </button>
-              )}
-            </li>
+              <div className="flex-none">
+                {actionLabel ? (
+                  <button
+                    type="button"
+                    onClick={() => onConfirm(r)}
+                    disabled={busyId === r.invoiceId}
+                    className="rounded-lg border px-3.5 py-2 text-[12.5px] font-semibold transition-colors disabled:opacity-50"
+                    style={{ borderColor: C.border, color: C.text }}
+                  >
+                    {actionLabel}
+                  </button>
+                ) : (
+                  <span className="rounded-lg border px-3.5 py-2 text-[12.5px] font-semibold" style={{ borderColor: C.greenSoft, background: C.greenSoft, color: C.green }}>
+                    Potwierdzono
+                  </span>
+                )}
+              </div>
+            </div>
           );
         })}
-      </ul>
+      </div>
+    </div>
+  );
+}
+
+// Historia wgrań — bez tego wynik wgrania znikał po odświeżeniu strony, nie
+// było śladu KIEDY i JAKI plik wgrano (zgłoszony brak). Zawsze widoczna,
+// niezależnie od tego czy właśnie coś wgrano w tej sesji przeglądarki.
+function UploadHistoryList({ uploads }: { uploads: UploadHistoryRow[] }) {
+  return (
+    <div className="mx-4 mt-5 sm:mx-7">
+      <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.04em]" style={{ color: C.faint }}>
+        Historia wgrań
+      </p>
+      <div className="overflow-hidden rounded-[12px] border" style={{ borderColor: C.border }}>
+        {uploads.map((u, i) => (
+          <div
+            key={u.id}
+            className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-[12.5px] transition-colors hover:bg-[#F6F9FB]"
+            style={i > 0 ? { borderTop: `1px solid ${C.border}` } : undefined}
+          >
+            <div className="flex min-w-0 items-center gap-2" style={{ color: C.text }}>
+              <span className="flex-none font-semibold tabular-nums" style={{ color: C.muted }}>
+                {fmtDateTime(u.uploadedAt)}
+              </span>
+              <span className="truncate">{u.fileName}</span>
+            </div>
+            <span style={{ color: C.muted }}>
+              {u.transactionsParsed} operacji
+              {u.autoMatched > 0 && <span style={{ color: C.green }}> · {u.autoMatched} dopasowano</span>}
+              {u.ambiguous > 0 && <span style={{ color: C.amber }}> · {u.ambiguous} niejednoznacznych</span>}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
