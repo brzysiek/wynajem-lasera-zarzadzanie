@@ -15,6 +15,26 @@ function bad(message: string, status = 400) {
   return NextResponse.json({ message }, { status });
 }
 
+function fmtPlDate(d: Date): string {
+  return d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+// "15.10.2026" dla jednodniowego wynajmu, "15–17.10.2026" (ten sam
+// miesiąc/rok) albo "28.09.2026–02.10.2026" (różny miesiąc/rok) dla
+// kilkudniowego — treść dopasowuje "w dniu"/"w terminie" do tego, czy to
+// zakres, czy pojedynczy dzień (ustalone z użytkownikiem).
+function formatRentalDateForEmail(startsAt: Date, endsAt: Date): { text: string; isRange: boolean } {
+  if (startsAt.toDateString() === endsAt.toDateString()) {
+    return { text: fmtPlDate(startsAt), isRange: false };
+  }
+  const sameMonthYear = startsAt.getMonth() === endsAt.getMonth() && startsAt.getFullYear() === endsAt.getFullYear();
+  if (sameMonthYear) {
+    const startDay = startsAt.toLocaleDateString("pl-PL", { day: "2-digit" });
+    return { text: `${startDay}–${fmtPlDate(endsAt)}`, isRange: true };
+  }
+  return { text: `${fmtPlDate(startsAt)}–${fmtPlDate(endsAt)}`, isRange: true };
+}
+
 // Tworzy SZKIC maila z fakturą PDF w Gmailu (kontakt@wynajemlasera.pl,
 // nadawca rozliczenia@) — apka NIGDY nie wysyła sama, biuro przegląda i
 // wysyła ręcznie z Gmaila. Zastępuje wcześniejszą wysyłkę przez Fakturownię
@@ -50,13 +70,26 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       );
     }
 
+    const { text: rentalDate, isRange } = formatRentalDateForEmail(rentalFinance.rental.startsAt, rentalFinance.rental.endsAt);
+
     const detail = await getInvoiceDetail(invoiceId);
     const pdf = await getInvoicePdf(invoiceId);
     const draft = await createInvoiceEmailDraft({
       from: DRAFT_FROM,
       to: email,
-      subject: `Faktura ${detail.number} — WynajemLasera.pl`,
-      html: `<p>Dzień dobry,</p><p>W załączeniu przesyłamy fakturę ${detail.number}.</p><p>Pozdrawiamy,<br>WynajemLasera.pl</p>`,
+      subject: `WynajemLasera.pl – faktura za wynajem ${rentalDate}`,
+      html: [
+        "<p>Dzień dobry,</p>",
+        `<p>dziękujemy za skorzystanie z naszych usług ${isRange ? "w terminie" : "w dniu"} ${rentalDate}.</p>`,
+        "<p>W załączeniu przesyłamy fakturę w formacie PDF, wystawioną w KSeF. Dane do płatności znajdą Państwo w dokumencie.</p>",
+        "<p>W razie pytań pozostajemy do dyspozycji. Do zobaczenia przy kolejnym wynajmie! 🙂</p>",
+        "<p>Pozdrawiamy serdecznie,<br>",
+        "Zespół WynajemLasera.pl<br>",
+        "tel: 533 333 778<br>",
+        '<a href="mailto:kontakt@wynajemlasera.pl">kontakt@wynajemlasera.pl</a><br>',
+        '<a href="https://www.wynajemlasera.pl">www.wynajemlasera.pl</a></p>',
+        "<p>Twoje BEAUTY w rękach Profesjonalistów!</p>",
+      ].join(""),
       attachment: { filename: `faktura-${detail.number.replace(/\//g, "-")}.pdf`, data: pdf },
     });
 
