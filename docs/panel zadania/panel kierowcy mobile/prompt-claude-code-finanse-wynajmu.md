@@ -31,6 +31,19 @@ repo — zatrzymaj się i zapytaj, nie zgaduj.** W szczególności: nazwy/identy
 urządzeń w tabeli `Device`, dokładny kształt istniejącego `Setting` (typ pola `value`), oraz to, jak
 dziś (jeśli w ogóle) obsługiwane są szkolenia w tym panelu.
 
+**Dwa świadome odchylenia od zewnętrznie dostarczonego promptu (ustalone z właścicielem produktu
+2026-09-22 — nie cofać bez ponownego pytania):**
+- **Nazwa pola potwierdzenia odbioru to `confirmedAt`, nie `settlementConfirmedAt`.** Semantyka
+  identyczna z opisaną w 3.6a (jeden znacznik czasu, przy `CASH` oznacza też odebranie gotówki) — pole
+  powstało w tym repo wcześniej niż ta wersja promptu, więc zostaje pod dotychczasową nazwą zamiast
+  migracji-rename bez żadnej zmiany zachowania.
+- **Karta kierowcy zostaje na autosave per pole** (`onBlur`/`onChange`), **nie** na modelu „jeden zapis
+  dopiero po kliknięciu przycisku potwierdzenia" z 4.4 punkt 8. Powód: liczniki impulsów wpisuje się w
+  dwóch wizytach — początkowy przy dostawie rano, końcowy przy odbiorze wieczorem — więc zebranie
+  wszystkiego pod jeden końcowy klik zgubiłoby poranny wpis, jeśli kierowca nie wróci do tej samej
+  sesji/urządzenia przed odbiorem. Sam przycisk potwierdzenia (sticky, dynamiczna etykieta, zielony
+  pasek „Cofnij") działa dokładnie jak opisano — wysyła tylko `confirmed`, nie cały formularz.
+
 ---
 
 ## 1. Model danych — zmiany w Prisma
