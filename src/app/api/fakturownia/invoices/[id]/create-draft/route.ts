@@ -11,6 +11,39 @@ import { logInfo, logError } from "@/lib/logger";
 // biznesowa (który adres wysyła faktury), nie dane dostępowe integracji.
 const DRAFT_FROM = "rozliczenia@wynajemlasera.pl";
 
+// Stopka HTML dostarczona przez użytkownika (dostarczono jako
+// stopka_rozliczenia_snippet_1.html) — logo hostowane na wynajemlasera.pl
+// (zewnętrzny https URL, nie załącznik), więc bez potrzeby osadzania obrazka
+// w wiadomości. Doklejana PO treści/podpisie tekstowym w html poniżej, nie
+// zamiast niego.
+const RECEIVABLES_SIGNATURE_HTML = `<table cellpadding="0" cellspacing="0" border="0" style="font-family: Arial, Helvetica, sans-serif; color: #1a1a1a; border-collapse: collapse;">
+  <tr>
+    <td style="vertical-align: middle; padding-right: 28px;">
+      <a href="https://www.wynajemlasera.pl">
+        <img src="https://wynajemlasera.pl/wp-content/uploads/2025/02/wynajem-lasera-logo.png" alt="WynajemLasera.pl" height="56" style="display: block; height: 56px; border: 0;">
+      </a>
+    </td>
+
+    <td style="vertical-align: middle; padding: 0 28px 0 0; border-left: 2px solid #BA7517;">
+      <div style="padding-left: 28px;">
+        <div style="font-size: 11px; color: #BA7517; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px;">Dział rozliczeń</div>
+        <div style="font-size: 13px; line-height: 1.7; color: #1a1a1a;">
+          <a href="tel:+48531574115" style="color: #1a1a1a; text-decoration: none;">(+48) 531 574 115</a><br>
+          <a href="mailto:rozliczenia@wynajemlasera.pl" style="color: #185FA5; text-decoration: none;">rozliczenia@wynajemlasera.pl</a>
+        </div>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td colspan="2" style="padding-top: 22px;">
+      <div style="font-size: 11px; color: #999999; line-height: 1.6;">
+        EsteGH Sp. z o.o. &middot; ul. Pobory 29A, 32-050 Skawina &middot; NIP 9442285599 &middot; KRS 0001071483
+      </div>
+    </td>
+  </tr>
+</table>`;
+
 function bad(message: string, status = 400) {
   return NextResponse.json({ message }, { status });
 }
@@ -89,6 +122,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
         '<a href="mailto:kontakt@wynajemlasera.pl">kontakt@wynajemlasera.pl</a><br>',
         '<a href="https://www.wynajemlasera.pl">www.wynajemlasera.pl</a></p>',
         "<p>Twoje BEAUTY w rękach Profesjonalistów!</p>",
+        '<p style="margin: 0 0 24px;"></p>',
+        RECEIVABLES_SIGNATURE_HTML,
       ].join(""),
       attachment: { filename: `faktura-${detail.number.replace(/\//g, "-")}.pdf`, data: pdf },
     });
