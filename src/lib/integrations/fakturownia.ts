@@ -258,11 +258,12 @@ export async function sendInvoiceToKsef(invoiceId: number): Promise<FakturowniaI
   return toInvoiceSummary(body);
 }
 
-// Szczegóły JEDNEJ faktury — potrzebne tylko dla pól, których nie ma na
-// liście (listInvoices): e-mail kontrahenta, do wysyłki (patrz
-// src/lib/integrations/gmail.ts — apka NIE wysyła maili przez Fakturownię,
-// tylko tworzy szkic w Gmailu, ustalone z użytkownikiem).
-export type FakturowniaInvoiceDetail = { number: string; buyerName: string; buyerEmail: string | null };
+// Szczegóły JEDNEJ faktury — dziś potrzebny tylko numer (temat/nazwa pliku
+// szkicu maila, patrz src/lib/integrations/gmail.ts). CELOWO nie zwraca już
+// e-maila kontrahenta z Fakturowni — ustalone z użytkownikiem: adres do
+// szkicu ma pochodzić wyłącznie z HubSpota (Rental.contactEmailCache), bo
+// karta kontrahenta w Fakturowni bywa nieaktualna/wpisana ręcznie.
+export type FakturowniaInvoiceDetail = { number: string };
 
 export async function getInvoiceDetail(invoiceId: number): Promise<FakturowniaInvoiceDetail> {
   const { token, account } = requireCredentials();
@@ -272,7 +273,7 @@ export async function getInvoiceDetail(invoiceId: number): Promise<FakturowniaIn
     const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
     throw new Error(message || `Fakturownia API zwróciło błąd (HTTP ${res.status}).`);
   }
-  return { number: body.number, buyerName: body.buyer_name, buyerEmail: body.buyer_email || null };
+  return { number: body.number };
 }
 
 // PDF faktury — używany zarówno do załącznika w szkicu maila

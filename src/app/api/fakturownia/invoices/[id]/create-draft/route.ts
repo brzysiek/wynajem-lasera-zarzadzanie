@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/auth-guards";
+import { prisma } from "@/lib/prisma";
 import { getInvoiceDetail, getInvoicePdf } from "@/lib/integrations/fakturownia";
 import { createInvoiceEmailDraft } from "@/lib/integrations/gmail";
 import { logInfo, logError } from "@/lib/logger";
@@ -28,15 +29,32 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!Number.isInteger(invoiceId)) return bad("Nieprawidłowe ID faktury.");
 
   try {
-    const detail = await getInvoiceDetail(invoiceId);
-    if (!detail.buyerEmail) {
-      return bad("Kontrahent nie ma wpisanego adresu e-mail w Fakturowni — uzupełnij go tam i spróbuj ponownie.");
+    // Adres e-mail bierzemy WYŁĄCZNIE z HubSpota (Rental.contactEmailCache),
+    // nigdy z karty kontrahenta w Fakturowni — ustalone z użytkownikiem:
+    // Fakturownia bywa nieaktualna/wpisywana ręcznie, HubSpot jest źródłem
+    // prawdy dla danych kontaktowych. Wymaga więc, żeby ta faktura była
+    // powiązana z wynajmem w tej apce (RentalFinance.fakturowniaInvoiceId) —
+    // starsze faktury wystawione ręcznie w Fakturowni z pominięciem apki nie
+    // mają takiego powiązania i szkic się dla nich nie utworzy.
+    const rentalFinance = await prisma.rentalFinance.findFirst({
+      where: { fakturowniaInvoiceId: invoiceId },
+      include: { rental: true },
+    });
+    if (!rentalFinance) {
+      return bad("Ta faktura nie jest powiązana z wynajmem w tej apce — nie znamy adresu e-mail z HubSpota.");
+    }
+    const email = rentalFinance.rental.contactEmailCache?.trim();
+    if (!email) {
+      return bad(
+        "Kontakt HubSpot dla tego wynajmu nie ma zapisanego adresu e-mail — uzupełnij w HubSpot i odśwież kontakt na wynajmie.",
+      );
     }
 
+    const detail = await getInvoiceDetail(invoiceId);
     const pdf = await getInvoicePdf(invoiceId);
     const draft = await createInvoiceEmailDraft({
       from: DRAFT_FROM,
-      to: detail.buyerEmail,
+      to: email,
       subject: `Faktura ${detail.number} — WynajemLasera.pl`,
       html: `<p>Dzień dobry,</p><p>W załączeniu przesyłamy fakturę ${detail.number}.</p><p>Pozdrawiamy,<br>WynajemLasera.pl</p>`,
       attachment: { filename: `faktura-${detail.number.replace(/\//g, "-")}.pdf`, data: pdf },
