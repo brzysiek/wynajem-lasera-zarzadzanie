@@ -63,6 +63,20 @@
   .pay-banner .transfer-sub{ font-size:13px; opacity:.9; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,.25); }
   .pay-banner .transfer-sub b{ font-weight:700; }
 
+  .pay-banner details.breakdown-banner{ margin-top:14px; background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.28); border-radius:var(--radius-sm); overflow:hidden; text-align:left; }
+  .pay-banner details.breakdown-banner summary{ list-style:none; padding:10px 12px; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:6px; }
+  .pay-banner details.breakdown-banner summary::-webkit-details-marker{ display:none; }
+  .pay-banner details.breakdown-banner summary .chev{ transition:transform .15s; font-size:10px; }
+  .pay-banner details.breakdown-banner[open] summary .chev{ transform:rotate(90deg); }
+  .breakdown-rows-banner{ padding:0 12px 10px; }
+  .breakdown-rows-banner .row2{ display:flex; justify-content:space-between; font-size:12.5px; padding:4px 0; }
+  .breakdown-rows-banner .row2 span:last-child{ font-weight:700; }
+  .breakdown-rows-banner .row2.total{ border-top:1px solid rgba(255,255,255,.25); margin-top:3px; padding-top:7px; font-weight:700; }
+
+  .confirmed-bar{ display:flex; align-items:center; justify-content:space-between; background:#E7F7F0; border:1px solid #BFE8D6; border-radius:var(--radius-sm); padding:13px 16px; }
+  .confirmed-bar .check{ color:var(--transfer-deep); font-size:14px; font-weight:700; display:flex; align-items:center; gap:7px; }
+  .confirmed-bar .undo{ color:var(--brand); font-size:13px; font-weight:600; text-decoration:underline; cursor:pointer; }
+
   .card{ background:var(--surface); margin:0 14px 12px; border-radius:var(--radius); border:1px solid var(--border); overflow:hidden; }
   .card .card-pad{ padding:14px 16px; }
   .field-label{ font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text-faint); margin-bottom:6px; }
@@ -169,7 +183,15 @@
                 <div class="method">💵 Gotówka</div>
                 <div class="amount">1 790 zł</div>
                 <div class="caption">do odebrania od klientki</div>
-                <div class="collect-row"><input type="checkbox" /> Gotówka odebrana</div>
+                <details class="breakdown-banner">
+                  <summary><span class="chev">▸</span> Rozbicie kwoty</summary>
+                  <div class="breakdown-rows-banner">
+                    <div class="row2"><span>Wynajem</span><span>1 500 zł</span></div>
+                    <div class="row2"><span>Transport</span><span>150 zł</span></div>
+                    <div class="row2"><span>Nakładki HS (2 × 70 zł)</span><span>140 zł</span></div>
+                    <div class="row2 total"><span>Razem netto</span><span>1 790 zł</span></div>
+                  </div>
+                </details>
               </div>
 
               <div class="card">
@@ -183,18 +205,6 @@
               </div>
 
               <div class="office-note"><span>💬</span><span><b>Uwaga z biura:</b> domofon nie działa, dzwonić na telefon po przyjeździe.</span></div>
-
-              <div class="card">
-                <details class="breakdown">
-                  <summary><span class="chev">▸</span> Rozbicie kwoty</summary>
-                  <div class="breakdown-rows">
-                    <div class="row2"><span>Wynajem</span><span>1 500 zł</span></div>
-                    <div class="row2"><span>Transport</span><span>150 zł</span></div>
-                    <div class="row2"><span>Nakładki HS (2 × 70 zł)</span><span>140 zł</span></div>
-                    <div class="row2 total"><span>Razem netto</span><span>1 790 zł</span></div>
-                  </div>
-                </details>
-              </div>
 
               <div class="card">
                 <div class="card-pad">
@@ -213,10 +223,16 @@
               <div class="card"><div class="add-note-row"><span class="plus">+</span> Dodaj uwagę</div></div>
               <div class="bottom-spacer"></div>
             </div>
-            <div class="sticky-footer"><button class="btn-save">Zapisz</button></div>
+            <div class="sticky-footer">
+              <button class="btn-save" id="btn-cash" onclick="confirmPickup('cash')">Potwierdzam odbiór gotówki i urządzenia</button>
+              <div class="confirmed-bar" id="confirmed-cash" style="display:none;">
+                <span class="check">✅ Potwierdzono odbiór</span>
+                <span class="undo" onclick="undoPickup('cash')">Cofnij</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="note">Checkbox = główny przełącznik, jak wcześniej. Stepper obok (nie pod spodem) doprecyzowuje ilość tylko gdy zaznaczone — domyślnie 1 szt., tu pokazane 2 szt., stąd 140 zł w rozbiciu i w sumie.</div>
+        <div class="note">Checkbox „Gotówka odebrana" usunięty z górnego kafelka — jeden przycisk na dole robi teraz jedno i drugie naraz. Kliknij przycisk, żeby zobaczyć stan potwierdzony.</div>
       </div>
 
       <div class="col">
@@ -236,6 +252,15 @@
                 <div class="method">🏦 Przelew</div>
                 <div class="transfer-message">Nie musisz pobierać<br/>gotówki</div>
                 <div class="transfer-sub">Wartość wynajmu: <b>2 340 zł</b> — rozliczona przelewem</div>
+                <details class="breakdown-banner">
+                  <summary><span class="chev">▸</span> Rozbicie kwoty</summary>
+                  <div class="breakdown-rows-banner">
+                    <div class="row2"><span>Wynajem</span><span>2 000 zł</span></div>
+                    <div class="row2"><span>Dopłata za impulsy</span><span>240 zł</span></div>
+                    <div class="row2"><span>Transport</span><span>100 zł</span></div>
+                    <div class="row2 total"><span>Razem netto</span><span>2 340 zł</span></div>
+                  </div>
+                </details>
               </div>
 
               <div class="card">
@@ -246,18 +271,6 @@
                   <div class="action-row">📍 ul. Długa 4, Wieliczka</div>
                   <div class="plain-row">🕘 dostawa 10:00 · odbiór 16:00</div>
                 </div>
-              </div>
-
-              <div class="card">
-                <details class="breakdown">
-                  <summary><span class="chev">▸</span> Rozbicie kwoty</summary>
-                  <div class="breakdown-rows">
-                    <div class="row2"><span>Wynajem</span><span>2 000 zł</span></div>
-                    <div class="row2"><span>Dopłata za impulsy</span><span>240 zł</span></div>
-                    <div class="row2"><span>Transport</span><span>100 zł</span></div>
-                    <div class="row2 total"><span>Razem netto</span><span>2 340 zł</span></div>
-                  </div>
-                </details>
               </div>
 
               <div class="card">
@@ -273,10 +286,16 @@
               <div class="card"><div class="add-note-row"><span class="plus">+</span> Dodaj uwagę</div></div>
               <div class="bottom-spacer"></div>
             </div>
-            <div class="sticky-footer"><button class="btn-save">Zapisz</button></div>
+            <div class="sticky-footer">
+              <button class="btn-save" id="btn-transfer" onclick="confirmPickup('transfer')">Potwierdzam odbiór urządzenia</button>
+              <div class="confirmed-bar" id="confirmed-transfer" style="display:none;">
+                <span class="check">✅ Potwierdzono odbiór</span>
+                <span class="undo" onclick="undoPickup('transfer')">Cofnij</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="note">Baner zielony = „nic nie musisz robić z gotówką". Kwota zostaje widoczna, ale jako drugorzędna linia, nie jako główny nagłówek.</div>
+        <div class="note">Baner zielony = „nic nie musisz robić z gotówką". Rozbicie kwoty teraz w tym samym kafelku co suma — kliknij przycisk na dole, żeby zobaczyć stan potwierdzony.</div>
       </div>
 
     </div>
@@ -344,6 +363,17 @@
       </div>
     </div>
   </div>
+
+  <script>
+    function confirmPickup(id){
+      document.getElementById('btn-' + id).style.display = 'none';
+      document.getElementById('confirmed-' + id).style.display = 'flex';
+    }
+    function undoPickup(id){
+      document.getElementById('confirmed-' + id).style.display = 'none';
+      document.getElementById('btn-' + id).style.display = 'block';
+    }
+  </script>
 
 </body>
 </html>

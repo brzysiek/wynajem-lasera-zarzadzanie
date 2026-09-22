@@ -145,7 +145,11 @@ model RentalFinance {
 
   // --- płatność ---
   paymentMethod  PaymentMethod
-  cashCollected  Boolean?   // potwierdzenie odbioru gotówki przez kierowcę
+  // Brak osobnego pola "gotówka odebrana": przy CASH gotówkę uznajemy za
+  // odebraną dokładnie wtedy, gdy confirmedAt != null (patrz 4.4/5) — jeden
+  // sticky przycisk w panelu kierowcy robi obie rzeczy naraz, żeby te dwa
+  // stany nie mogły się rozjechać.
+  confirmedAt    DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -395,7 +399,7 @@ finansowego:
 - `rental.transportPrice` **pomijany** w kalkulacji `totalNet` dla szkoleń — ustalona cena szkolenia
   jest kwotą całościową, transport nie jest osobną pozycją (potwierdzone przez klienta — inaczej niż
   przy wynajmie).
-- VAT, sposób płatności, `cashCollected` — działają identycznie jak przy wynajmie.
+- VAT, sposób płatności, potwierdzenie odbioru (`confirmedAt`) — działają identycznie jak przy wynajmie.
 
 Jeśli w trakcie implementacji okaże się, że szkolenia dziś w ogóle nie mają reprezentacji w
 `Rental`/kalendarzu (np. są prowadzone poza tym panelem) — zatrzymaj się i zapytaj, zanim dodasz
@@ -529,18 +533,13 @@ sugestia — traktuj to jako wymaganie projektowe, nie tylko listę pól do umie
 │      1 790 zł                    │
 │      do odebrania                │
 │                                   │
-│   [ ] Gotówka odebrana           │
-│                                   │
+│   ▸ Rozbicie kwoty (zwinięte)    │
+│      — w tym samym kafelku       │
 ├─────────────────────────────────┤
 │ Klientka                         │
 │ Anna Kowalska  ·  📞 501 234 567 │
 │ ul. Kwiatowa 12, Kraków           │
 │ dostawa 9:00 · odbiór 17:00       │
-├─────────────────────────────────┤
-│ ▸ Rozbicie kwoty (zwinięte)      │
-│    Wynajem            1 500 zł   │
-│    Transport             150 zł  │
-│    Nakładki HS (2×70zł)  140 zł  │
 ├─────────────────────────────────┤
 │ Nakładka HS                      │
 │ [x] Zużyta       [ − ] 2 [ + ]   │
@@ -549,10 +548,18 @@ sugestia — traktuj to jako wymaganie projektowe, nie tylko listę pól do umie
 │ ┌───────────────────────────┐   │
 │ │                           │   │
 │ └───────────────────────────┘   │
-├─────────────────────────────────┤
-│         [ Zapisz ]               │
+├─────────────────────────────────┤ ← sticky, zawsze widoczny bez scrolla
+│ [Potwierdzam odbiór gotówki      │
+│  i urządzenia]                   │
 └─────────────────────────────────┘
 ```
+
+Po kliknięciu przycisk zamienia się w zielony pasek „✅ Potwierdzono odbiór" z linkiem „Cofnij" (patrz
+`mockup-master-finanse-wynajmu.html`, `#confirmed-cash`/`#confirmed-transfer`). Etykieta przycisku zależy
+od tego, czy jest jakakolwiek gotówka do odebrania (wynajem CASH i/lub transport rozliczany osobno
+gotówką): „Potwierdzam odbiór gotówki i urządzenia" gdy tak, „Potwierdzam odbiór urządzenia" gdy cała
+płatność idzie przelewem. Osobny checkbox „Gotówka odebrana" celowo **nie istnieje** — przy CASH to
+samo kliknięcie oznacza jedno i drugie, więc dwie kontrolki nie mogą się już rozjechać.
 
 **Nagłówek musi zawsze pokazywać cztery rzeczy razem**: nazwę urządzenia, zakres dat, liczbę dni i —
 jeśli urządzenie ma warianty — czytelną etykietę wybranego wariantu (nie sam klucz typu `double`).
@@ -578,8 +585,8 @@ Zasady:
   kierowca przeczyta tekst — np. wyrazisty kolor (czerwień/pomarańcz) dla `CASH` z dużą kwotą, stonowany
   kolor (zieleń/szarość) dla `TRANSFER` z komunikatem „nie pobieraj gotówki", sekcja finansowa poniżej
   może być wtedy mniej eksponowana/zwinięta.
-- **Rozbicie kwoty jest domyślnie zwinięte** (`▸`, rozwijane jednym tapnięciem) — kierowcę interesuje
-  suma, nie księgowość.
+- **Rozbicie kwoty jest domyślnie zwinięte** (`▸`, rozwijane jednym tapnięciem) i żyje **w kolorowym
+  kafelku banera**, obok kwoty, której dotyczy — nie w osobnej białej karcie niżej.
 - **Pola specyficzne dla urządzenia (nakładka HS, liczniki impulsów) pokazują się wyłącznie, gdy
   dotyczą danego urządzenia/wariantu.** Przy ET400, Cooltechu, ResurFX ta sekcja w ogóle nie istnieje
   w DOM-ie — formularz się nie rozrasta bez potrzeby.
@@ -604,12 +611,13 @@ Zasady:
    poprawy.
 5. Po poprawnych licznikach: etykieta zmienia się z „tymczasowa" na „wyliczona"
    (`pulseCalculationStatus = CALCULATED`), suma na górze aktualizuje się o wynik z logiki 3.2/3.3.
-6. „Gotówka odebrana" — pole **niezależne** od reszty, kierowca może je zaznaczyć w dowolnym momencie
-   (np. przy standardowej taryfie zna kwotę od razu i nie musi czekać na liczniki).
-7. Uwagi kierowcy — opcjonalne pole tekstowe.
-8. **Jeden przycisk „Zapisz" na dole, wysyła wszystkie zmienione pola w jednym requeście** — celowo
-   bez autozapisu przy każdym polu (`onBlur`/`onChange`). W terenie zdarza się słabszy zasięg; jeden
-   jasny moment zapisu jest bezpieczniejszy niż rozjechane, częściowo zapisane stany pośrednie.
+6. Uwagi kierowcy — opcjonalne pole tekstowe.
+7. **Przycisk potwierdzenia jest sticky na dole ekranu** (zawsze widoczny, bez przewijania do końca
+   strony) i wysyła `confirmed: true` — jedyny jawny sygnał „rozliczenie kompletne", niezależny od
+   autosave pojedynczych pól wyżej (te zapisują się na bieżąco, `onBlur`/`onChange`, bez osobnego
+   przycisku „Zapisz"). Po kliknięciu zamienia się w zielony pasek „✅ Potwierdzono odbiór" z „Cofnij".
+   Przy `PaymentMethod.CASH` to samo kliknięcie oznacza też odbiór gotówki (patrz uwaga o
+   `confirmedAt` w 1.4) — stąd dynamiczna etykieta przycisku, nie osobny checkbox.
 
 ---
 
@@ -619,12 +627,13 @@ To jest **zmiana modelu bezpieczeństwa**, nie tylko UI — potwierdzona świado
 produktu, ale wdroż ją precyzyjnie, bo dziś rola KIEROWCA jest w 100% zablokowana na poziomie API
 (`src/proxy.ts` + `requireStaffSession()`), a to się zmienia punktowo.
 
-- KIEROWCA dostaje prawo edycji **wyłącznie** następujących pól, **wyłącznie** na wydarzeniach, gdzie
-  `rental.driverId === session.user.id`:
-  - `RentalFinance.capCountUsed`
-  - `RentalFinance.pulseCounterStart`, `pulseCounterEnd`
-  - `RentalFinance.cashCollected`
-  - `Rental.driverNotes`
+- KIEROWCA dostaje prawo edycji **wyłącznie** pól z jawnej whitelisty, **wyłącznie** na wydarzeniach,
+  gdzie `rental.driverId === session.user.id`. Whitelista żyje w kodzie
+  (`DRIVER_EDITABLE_FIELDS` w `src/app/api/rentals/[id]/finance/driver/route.ts`), nie tutaj — nie
+  duplikuj jej w tym dokumencie, żeby nie mogła się z kodem rozjechać. Zawiera m.in. liczniki impulsów,
+  nakładkę HS/membrany (+ ich liczba), `confirmed` (potwierdzenie odbioru — patrz 4.4), gotówkę za
+  transport, czas pracy i uwagi kierowcy PER ETAP (`deliveryNotes`/`pickupNotes`). **Nie** zawiera
+  osobnego pola „gotówka odebrana" — przy CASH wynika ono z `confirmed`.
 - Nic więcej — żadnych innych pól `Rental`/`RentalFinance`, żadnego tworzenia/usuwania, żadnych innych
   wydarzeń (nawet w trybie odczytu poza tym, co już dziś widzi).
 - Egzekwuj to **server-side** w API route (nowy guard, np. `requireDriverFieldEditSession()` w

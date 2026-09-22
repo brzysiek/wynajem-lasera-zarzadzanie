@@ -183,7 +183,10 @@ function DriverSummaryCard({
       <p className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-[#1B6FA8]">Podsumowanie kierowcy</p>
 
       <div className="flex flex-col gap-1.5">
-        {payRow(transportSep ? "Wynajem" : "Wartość wynajmu", rentalValue, rentalIsCash, finance.cashCollected)}
+        {/* "Gotówka pobrana" dla wynajmu wynika teraz wprost z potwierdzenia
+            odbioru (finance.confirmedAt) — przy CASH jeden przycisk kierowcy
+            robi obie rzeczy naraz, nie ma już osobnego pola cashCollected. */}
+        {payRow(transportSep ? "Wynajem" : "Wartość wynajmu", rentalValue, rentalIsCash, finance.confirmedAt != null)}
         {transportSep && payRow("Transport", transportValue, transportIsCash, finance.transportCashCollected)}
       </div>
 

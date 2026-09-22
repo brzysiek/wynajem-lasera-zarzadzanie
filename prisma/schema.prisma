@@ -370,7 +370,6 @@ model RentalFinance {
 
   // --- płatność WYNAJMU ---
   paymentMethod PaymentMethod
-  cashCollected Boolean? // potwierdzenie odbioru gotówki (wynajem) przez kierowcę
 
   // --- czas pracy kierowcy (minuty) — wpisywany ręcznie przez KIEROWCĘ ---
   // Tylko zbieranie danych pod przyszły moduł kosztów bezpośrednich; nigdzie
@@ -394,10 +393,13 @@ model RentalFinance {
   pickupNotes   String? @db.Text
 
   // --- potwierdzenie odbioru — JEDYNY jawny, globalny sygnał "rozliczenie
-  // kompletne", niezależny od pojedynczych pól (cashCollected itp., które
+  // kompletne", niezależny od pojedynczych pól (nakładka/membrana itp., które
   // zapisują się przy KAŻDYM autosave, nie tylko świadomym zakończeniu).
-  // Ustawiane jednym przyciskiem w panelu kierowcy. Jedyne źródło prawdy dla
-  // "brak raportu" (src/lib/report-alerts.ts) i podziału przychodu na
+  // Ustawiane jednym, sticky przyciskiem na dole panelu kierowcy — przy
+  // płatności gotówką ten sam klik oznacza też "gotówka odebrana" (nie ma już
+  // osobnego pola cashCollected: przy PaymentMethod.CASH gotówkę uznajemy za
+  // odebraną dokładnie wtedy, gdy confirmedAt != null). Jedyne źródło prawdy
+  // dla "brak raportu" (src/lib/report-alerts.ts) i podziału przychodu na
   // rzeczywisty/preliminowany (src/lib/revenue/aggregate.ts).
   confirmedAt DateTime?
 

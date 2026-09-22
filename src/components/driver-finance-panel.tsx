@@ -78,7 +78,6 @@ export function DriverFinancePanel({
   const [capCount, setCapCount] = useState<number>(finance?.capCountHS ?? 1);
   const [membraneUsed, setMembraneUsed] = useState<boolean>(finance?.membraneUsed ?? false);
   const [membraneCount, setMembraneCount] = useState<number>(finance?.membraneCount ?? 1);
-  const [cashCollected, setCashCollected] = useState<boolean>(finance?.cashCollected ?? false);
   const [confirmed, setConfirmed] = useState<boolean>(finance?.confirmedAt != null);
   const [transportCash, setTransportCash] = useState<boolean>(finance?.transportCashCollected ?? false);
   const [deliveryMin, setDeliveryMin] = useState(
@@ -178,7 +177,6 @@ export function DriverFinancePanel({
     capCount?: number;
     membraneUsed?: boolean;
     membraneCount?: number;
-    cashCollected?: boolean;
     transportCashCollected?: boolean;
     pickupSameVehicle?: boolean;
     pickupVehicleSel?: string;
@@ -188,7 +186,6 @@ export function DriverFinancePanel({
     const capCountNow = ov?.capCount ?? capCount;
     const membraneUsedNow = ov?.membraneUsed ?? membraneUsed;
     const membraneCountNow = ov?.membraneCount ?? membraneCount;
-    const cashNow = ov?.cashCollected ?? cashCollected;
     const transportCashNow = ov?.transportCashCollected ?? transportCash;
     const pickupSameVehicleNow = ov?.pickupSameVehicle ?? pickupSameVehicle;
     const pickupVehicleSelNow = ov?.pickupVehicleSel ?? pickupVehicleSel;
@@ -196,7 +193,6 @@ export function DriverFinancePanel({
     const payload: Record<string, unknown> = {
       deliveryNotes: deliveryNotes.trim() || null,
       pickupNotes: pickupNotes.trim() || null,
-      cashCollected: cashNow,
     };
     const pickupVehicleIdNow = pickupSameVehicleNow ? null : pickupVehicleSelNow || null;
     if (pickupVehicleIdNow !== initialPickupVehicleId) payload.pickupVehicleId = pickupVehicleIdNow;
@@ -528,6 +524,36 @@ export function DriverFinancePanel({
     </label>
   );
 
+  // Rozbicie kwoty — teraz w kolorowym kafelku banera (obok kwoty, której
+  // dotyczy), nie w osobnej białej karcie niżej. Domyślnie zwinięte, jak
+  // wcześniej. Ten sam `rows`/`net`/`gross` co dawna karta.
+  const breakdownBanner = (
+    <details className="group mt-3 rounded-[9px] border border-white/[0.28] bg-white/[0.14] text-left">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2.5 text-[13px] font-semibold [&::-webkit-details-marker]:hidden">
+        <span className="text-[10px] transition-transform group-open:rotate-90">▸</span>
+        Rozbicie kwoty
+      </summary>
+      <div className="px-3 pb-2.5 text-[12.5px]">
+        {rows.map((r) => (
+          <div key={r.label} className="flex justify-between py-[3px]">
+            <span>{r.label}</span>
+            <span className="font-bold tabular-nums">{fmt(r.value)} zł</span>
+          </div>
+        ))}
+        <div className="mt-0.5 flex justify-between border-t border-white/[0.25] pt-[7px] font-bold">
+          <span>{finance.vatApplicable ? "Razem brutto" : "Razem netto"}</span>
+          <span className="tabular-nums">{fmt(finance.vatApplicable ? gross : net)} zł</span>
+        </div>
+      </div>
+    </details>
+  );
+
+  // Etykieta przycisku potwierdzenia — jedno kliknięcie robi za kierowcę
+  // dwie rzeczy naraz, gdy jest gotówka do odebrania (wynajem gotówką i/lub
+  // transport gotówką), więc mówi to wprost zamiast udawać, że chodzi tylko o
+  // sprzęt.
+  const confirmLabel = cashTotal > 0 ? "Potwierdzam odbiór gotówki i urządzenia" : "Potwierdzam odbiór urządzenia";
+
   return (
     <div className="flex flex-col gap-3">
       {/* Banner płatności — pierwsza rzecz, jaką widzi kierowca (mockup-master).
@@ -560,18 +586,7 @@ export function DriverFinancePanel({
               </div>
             )}
 
-            <label className="mt-3 flex items-center gap-2.5 rounded-[9px] border border-white/[0.28] bg-white/[0.14] px-3 py-2.5 text-left text-[13px] font-semibold">
-              <input
-                type="checkbox"
-                className="h-[19px] w-[19px] flex-none accent-[#2F6FD1]"
-                checked={cashCollected}
-                onChange={(e) => {
-                  setCashCollected(e.target.checked);
-                  void save({ cashCollected: e.target.checked });
-                }}
-              />
-              {transportSep ? "Gotówka za wynajem odebrana" : "Gotówka odebrana"}
-            </label>
+            {breakdownBanner}
             {transportIsCash && transportCashCheckbox}
           </>
         )}
@@ -584,6 +599,7 @@ export function DriverFinancePanel({
             <div className="mt-1 text-[12.5px] opacity-90">
               Wynajem <b className="font-bold">{fmt(rentalValue)} zł</b> — rozliczony przelewem
             </div>
+            {breakdownBanner}
 
             <div className="mt-3 rounded-[11px] border border-white/[0.4] bg-white/[0.18] px-3 py-3">
               <div className="text-[11.5px] font-bold uppercase tracking-[0.05em] opacity-95">
@@ -616,6 +632,7 @@ export function DriverFinancePanel({
                 kwota tymczasowa — uzupełnij liczniki impulsów poniżej
               </div>
             )}
+            {breakdownBanner}
           </>
         )}
       </div>
@@ -624,9 +641,8 @@ export function DriverFinancePanel({
 
       {statusLine}
 
-      {/* Membrany Cooltech — proste pole nad rozbiciem kwoty, bez nagłówka
-          karty; stepper obok checkboxa doprecyzowuje ilość, tylko gdy
-          zaznaczone. */}
+      {/* Membrany Cooltech — proste pole bez nagłówka karty; stepper obok
+          checkboxa doprecyzowuje ilość, tylko gdy zaznaczone. */}
       {isCooltech && (
         <div className={CARD}>
           {showMembraneReminder && (
@@ -693,26 +709,6 @@ export function DriverFinancePanel({
           )}
         </div>
       )}
-
-      {/* Rozbicie kwoty — domyślnie zwinięte */}
-      <details className="group rounded-[14px] border border-[#E2E6EC] bg-white">
-        <summary className="flex cursor-pointer list-none items-center gap-1.5 px-4 py-3.5 text-[13.5px] font-semibold text-[#6B7280] [&::-webkit-details-marker]:hidden">
-          <span className="text-[10px] transition-transform group-open:rotate-90">▸</span>
-          Rozbicie kwoty
-        </summary>
-        <div className="px-4 pb-3.5 text-[13.5px]">
-          {rows.map((r) => (
-            <div key={r.label} className="flex justify-between py-[5px] text-[#171A21]">
-              <span>{r.label}</span>
-              <span className="font-semibold tabular-nums">{fmt(r.value)} zł</span>
-            </div>
-          ))}
-          <div className="mt-1 flex justify-between border-t border-[#E2E6EC] pt-2.5 font-bold text-[#171A21]">
-            <span>{finance.vatApplicable ? "Razem brutto" : "Razem netto"}</span>
-            <span className="tabular-nums">{fmt(finance.vatApplicable ? gross : net)} zł</span>
-          </div>
-        </div>
-      </details>
 
       {/* Nakładka HS — tylko podwójna głowica. Checkbox = główny przełącznik,
           stepper obok (nie pod spodem) doprecyzowuje ilość, tylko gdy zaznaczone. */}
@@ -933,18 +929,22 @@ export function DriverFinancePanel({
       {/* Potwierdzenie odbioru — jedyny jawny, świadomy sygnał "rozliczenie
           kompletne", niezależny od autosave pojedynczych pól wyżej. Zasila
           powiadomienia "brak raportu" i podział przychodu na
-          rzeczywisty/preliminowany (biuro). */}
-      <div className={CARD}>
+          rzeczywisty/preliminowany (biuro). Sticky na dole ekranu (jak
+          mockup-master-finanse-wynajmu.html) — kierowca nie musi przewijać do
+          końca, żeby potwierdzić. Przy CASH ten sam klik oznacza też "gotówka
+          odebrana" — stąd etykieta przycisku (`confirmLabel`) i brak już
+          osobnego checkboxa w banerze wyżej. */}
+      <div className="sticky bottom-0 -mx-4 bg-gradient-to-t from-[#F1F3F6] from-60% to-transparent px-4 pb-[18px] pt-3.5">
         {confirmed ? (
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[14px] font-semibold text-[#1E9E6B]">✅ Potwierdzono odbiór</p>
+          <div className="flex items-center justify-between gap-2 rounded-[9px] border border-[#BFE8D6] bg-[#E7F7F0] px-4 py-[13px]">
+            <p className="text-[14px] font-bold text-[#12724F]">✅ Potwierdzono odbiór</p>
             <button
               type="button"
               onClick={() => {
                 setConfirmed(false);
                 void save({ confirmed: false });
               }}
-              className="flex-none text-[12px] font-medium text-[#6B7280] underline"
+              className="flex-none text-[13px] font-semibold text-[#2F6FD1] underline"
             >
               Cofnij
             </button>
@@ -958,9 +958,9 @@ export function DriverFinancePanel({
                 void save({ confirmed: true });
               }}
               disabled={!canConfirm}
-              className="w-full rounded-[10px] bg-[#1E9E6B] py-3 text-[14px] font-bold text-white disabled:opacity-40"
+              className="w-full rounded-[10px] bg-[#171A21] py-[13px] text-[15px] font-bold text-white shadow-[0_8px_20px_-6px_rgba(23,26,33,0.4)] disabled:opacity-40"
             >
-              Potwierdzam odbiór — rozliczenie kompletne
+              {confirmLabel}
             </button>
             {!canConfirm && (
               <p className="mt-2 text-center text-[12px] text-[#B5851E]">

@@ -169,7 +169,6 @@ export type RentalFinanceDto = {
   totalNet: string;
   totalGross: string;
   paymentMethod: PaymentMethod;
-  cashCollected: boolean | null;
   deliveryDurationMinutes: number | null;
   pickupDurationMinutes: number | null;
   // null = odbiór tym samym pojazdem co Rental.vehicleId (domyślne).
@@ -216,7 +215,6 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
     totalNet: row.totalNet.toString(),
     totalGross: row.totalGross.toString(),
     paymentMethod: row.paymentMethod,
-    cashCollected: row.cashCollected,
     deliveryDurationMinutes: row.deliveryDurationMinutes,
     pickupDurationMinutes: row.pickupDurationMinutes,
     pickupVehicleId: row.pickupVehicleId,
@@ -404,7 +402,6 @@ export async function saveRentalFinance(
     create: {
       rentalId: rental.id,
       ...data,
-      cashCollected: existing?.cashCollected ?? null,
       transportCashCollected: existing?.transportCashCollected ?? null,
     },
     update: data,

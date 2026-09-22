@@ -18,7 +18,6 @@ const DRIVER_EDITABLE_FIELDS = [
   "membraneCount",
   "pulseCounterStart",
   "pulseCounterEnd",
-  "cashCollected",
   "transportCashCollected",
   "deliveryDurationMinutes",
   "pickupDurationMinutes",
@@ -67,7 +66,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   let capCountHS: number | undefined;
   let membraneUsed: boolean | null | undefined;
   let membraneCount: number | undefined;
-  let cashCollected: boolean | null | undefined;
   let transportCashCollected: boolean | null | undefined;
   let pulseCounterStart: number | null | undefined;
   let pulseCounterEnd: number | null | undefined;
@@ -99,10 +97,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return bad(`Liczba membran musi być liczbą całkowitą od 1 do ${MAX_MEMBRANE_COUNT}.`);
     }
     membraneCount = num;
-  }
-  if ("cashCollected" in body) {
-    if (body.cashCollected !== null && typeof body.cashCollected !== "boolean") return bad("Nieprawidłowa wartość pola „gotówka odebrana”.");
-    cashCollected = body.cashCollected;
   }
   if ("transportCashCollected" in body) {
     if (body.transportCashCollected !== null && typeof body.transportCashCollected !== "boolean") {
@@ -162,7 +156,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const effMembraneCount = effMembraneUsed ? (membraneCount !== undefined ? membraneCount : existing?.membraneCount ?? 1) : 1;
   const effStart = pulseCounterStart !== undefined ? pulseCounterStart : existing?.pulseCounterStart ?? null;
   const effEnd = pulseCounterEnd !== undefined ? pulseCounterEnd : existing?.pulseCounterEnd ?? null;
-  const effCash = cashCollected !== undefined ? cashCollected : existing?.cashCollected ?? null;
   const effTransportCash =
     transportCashCollected !== undefined ? transportCashCollected : existing?.transportCashCollected ?? null;
   const effDeliveryMin =
@@ -273,7 +266,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     membraneUsed: effMembraneUsed,
     membraneCount: effMembraneCount,
     membraneFeeNet,
-    cashCollected: effCash,
     transportCashCollected: effTransportCash,
     deliveryDurationMinutes: effDeliveryMin,
     pickupDurationMinutes: effPickupMin,
