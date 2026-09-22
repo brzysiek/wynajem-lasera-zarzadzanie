@@ -926,53 +926,62 @@ export function DriverFinancePanel({
       {deliveryNotesCard}
       {pickupNotesCard}
 
+      {/* Odstęp pod stałym paskiem na dole — bez tego ostatnia karta (uwaga do
+          odbioru) chowałaby się częściowo pod paskiem. Wysokość z zapasem na
+          komunikat "uzupełnij najpierw..." pod przyciskiem. */}
+      <div className="h-24" aria-hidden="true" />
+
       {/* Potwierdzenie odbioru — jedyny jawny, świadomy sygnał "rozliczenie
           kompletne", niezależny od autosave pojedynczych pól wyżej. Zasila
           powiadomienia "brak raportu" i podział przychodu na
-          rzeczywisty/preliminowany (biuro). Sticky na dole ekranu (jak
-          mockup-master-finanse-wynajmu.html) — kierowca nie musi przewijać do
-          końca, żeby potwierdzić. Przy CASH ten sam klik oznacza też "gotówka
-          odebrana" — stąd etykieta przycisku (`confirmLabel`) i brak już
-          osobnego checkboxa w banerze wyżej. */}
-      <div className="sticky bottom-0 -mx-4 bg-gradient-to-t from-[#F1F3F6] from-60% to-transparent px-4 pb-[18px] pt-3.5">
-        {confirmed ? (
-          <div className="flex items-center justify-between gap-2 rounded-[9px] border border-[#BFE8D6] bg-[#E7F7F0] px-4 py-[13px]">
-            <p className="text-[14px] font-bold text-[#12724F]">✅ Potwierdzono odbiór</p>
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmed(false);
-                void save({ confirmed: false });
-              }}
-              className="flex-none text-[13px] font-semibold text-[#2F6FD1] underline"
-            >
-              Cofnij
-            </button>
-          </div>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmed(true);
-                void save({ confirmed: true });
-              }}
-              disabled={!canConfirm}
-              className="w-full rounded-[10px] bg-[#171A21] py-[13px] text-[15px] font-bold text-white shadow-[0_8px_20px_-6px_rgba(23,26,33,0.4)] disabled:opacity-40"
-            >
-              {confirmLabel}
-            </button>
-            {!canConfirm && (
-              <p className="mt-2 text-center text-[12px] text-[#B5851E]">
-                Uzupełnij najpierw:{" "}
-                {[!countersDone && "liczniki impulsów", !capDecided && "nakładkę HS", !membraneDecided && "membrany"]
-                  .filter(Boolean)
-                  .join(", ")}
-                .
-              </p>
-            )}
-          </>
-        )}
+          rzeczywisty/preliminowany (biuro). CELOWO `fixed`, nie `sticky` —
+          kierowca ma to widzieć na ekranie OD RAZU, nie dopiero po przewinięciu
+          do końca karty (jak mockup-master-finanse-wynajmu.html, gdzie to
+          osobny pasek pod scrollowalną treścią, nie element w jej strumieniu).
+          Przy CASH ten sam klik oznacza też "gotówka odebrana" — stąd
+          etykieta przycisku (`confirmLabel`) i brak już osobnego checkboxa w
+          banerze wyżej. */}
+      <div className="fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-[#F1F3F6] from-55% to-transparent pb-[18px] pt-5">
+        <div className="mx-auto max-w-md px-4">
+          {confirmed ? (
+            <div className="flex items-center justify-between gap-2 rounded-[10px] border border-[#BFE8D6] bg-[#E7F7F0] px-4 py-[13px] shadow-[0_8px_20px_-6px_rgba(23,26,33,0.25)]">
+              <p className="text-[14px] font-bold text-[#12724F]">✅ Potwierdzono odbiór</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmed(false);
+                  void save({ confirmed: false });
+                }}
+                className="flex-none text-[13px] font-semibold text-[#2F6FD1] underline"
+              >
+                Cofnij
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmed(true);
+                  void save({ confirmed: true });
+                }}
+                disabled={!canConfirm}
+                className="w-full rounded-[10px] bg-[#171A21] py-[15px] text-[15.5px] font-bold text-white shadow-[0_10px_26px_-8px_rgba(23,26,33,0.55)] disabled:opacity-40"
+              >
+                {confirmLabel}
+              </button>
+              {!canConfirm && (
+                <p className="mt-2 text-center text-[12px] text-[#B5851E]">
+                  Uzupełnij najpierw:{" "}
+                  {[!countersDone && "liczniki impulsów", !capDecided && "nakładkę HS", !membraneDecided && "membrany"]
+                    .filter(Boolean)
+                    .join(", ")}
+                  .
+                </p>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

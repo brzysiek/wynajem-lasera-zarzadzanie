@@ -41,8 +41,17 @@ dziś (jeśli w ogóle) obsługiwane są szkolenia w tym panelu.
   dopiero po kliknięciu przycisku potwierdzenia" z 4.4 punkt 8. Powód: liczniki impulsów wpisuje się w
   dwóch wizytach — początkowy przy dostawie rano, końcowy przy odbiorze wieczorem — więc zebranie
   wszystkiego pod jeden końcowy klik zgubiłoby poranny wpis, jeśli kierowca nie wróci do tej samej
-  sesji/urządzenia przed odbiorem. Sam przycisk potwierdzenia (sticky, dynamiczna etykieta, zielony
-  pasek „Cofnij") działa dokładnie jak opisano — wysyła tylko `confirmed`, nie cały formularz.
+  sesji/urządzenia przed odbiorem. Sam przycisk potwierdzenia (dynamiczna etykieta, zielony pasek
+  „Cofnij") działa dokładnie jak opisano — wysyła tylko `confirmed`, nie cały formularz.
+- **Przycisk potwierdzenia jest `position: fixed`, nie `position: sticky`** — mimo że mockup i
+  wcześniejsza wersja tej sekcji mówią „sticky”/`.sticky-footer`. W mockupie HTML to działa jako
+  sticky, bo `.phone-screen` ma własny, ograniczony wysokościowo kontener scrolla
+  (`.scroll-area{overflow-y:auto}`) z paskiem jako osobnym elementem POZA nim — w realnej apce
+  (`app-shell.tsx`, `<main className="overflow-y-auto">`) treść i przycisk żyją w tym samym,
+  długim strumieniu przewijania, więc `sticky` przypinał się dopiero pod koniec listy kart (trzeba
+  było do niego przewinąć — zgłoszone jako błąd). `fixed` (viewport, `inset-x-0 bottom-0`) jest
+  widoczny od razu, niezależnie od pozycji scrolla; nad nim jest odstęp (`spacer`, ok. 96px) w
+  strumieniu treści, żeby ostatnia karta się pod nim nie chowała.
 
 ---
 
