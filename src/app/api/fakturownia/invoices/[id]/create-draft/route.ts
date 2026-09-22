@@ -48,6 +48,14 @@ function bad(message: string, status = 400) {
   return NextResponse.json({ message }, { status });
 }
 
+// Jawny margines na każdym akapicie — Gmail (przy szkicach tworzonych przez
+// API, nie przez własne okno pisania) potrafi zignorować domyślny margines
+// przeglądarki na gołym <p>, przez co treść się skleja bez odstępów
+// (zgłoszone: "Dzień dobry,dziękujemy..." bez przerwy).
+function p(inner: string): string {
+  return `<p style="margin:0 0 16px;">${inner}</p>`;
+}
+
 function fmtPlDate(d: Date): string {
   return d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
@@ -112,17 +120,11 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       to: email,
       subject: `WynajemLasera.pl – faktura za wynajem ${rentalDate}`,
       html: [
-        "<p>Dzień dobry,</p>",
-        `<p>dziękujemy za skorzystanie z naszych usług ${isRange ? "w terminie" : "w dniu"} ${rentalDate}.</p>`,
-        "<p>W załączeniu przesyłamy fakturę w formacie PDF, wystawioną w KSeF. Dane do płatności znajdą Państwo w dokumencie.</p>",
-        "<p>W razie pytań pozostajemy do dyspozycji. Do zobaczenia przy kolejnym wynajmie! 🙂</p>",
-        "<p>Pozdrawiamy serdecznie,<br>",
-        "Zespół WynajemLasera.pl<br>",
-        "tel: 533 333 778<br>",
-        '<a href="mailto:kontakt@wynajemlasera.pl">kontakt@wynajemlasera.pl</a><br>',
-        '<a href="https://www.wynajemlasera.pl">www.wynajemlasera.pl</a></p>',
-        "<p>Twoje BEAUTY w rękach Profesjonalistów!</p>",
-        '<p style="margin: 0 0 24px;"></p>',
+        p("Dzień dobry,"),
+        p(`dziękujemy za skorzystanie z naszych usług ${isRange ? "w terminie" : "w dniu"} ${rentalDate}.`),
+        p("W załączeniu przesyłamy fakturę w formacie PDF, wystawioną w KSeF. Dane do płatności znajdą Państwo w dokumencie."),
+        p("W razie pytań pozostajemy do dyspozycji. Do zobaczenia przy kolejnym wynajmie! 🙂"),
+        p("Pozdrawiamy serdecznie,"),
         RECEIVABLES_SIGNATURE_HTML,
       ].join(""),
       attachment: { filename: `faktura-${detail.number.replace(/\//g, "-")}.pdf`, data: pdf },
