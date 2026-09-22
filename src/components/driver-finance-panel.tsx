@@ -369,17 +369,24 @@ export function DriverFinancePanel({
     needsCounters,
   ]);
 
-  const statusLine = (
-    <div className="min-h-[1rem] text-center text-[11px]">
-      {saveState === "saving" && <span className="text-[#6B7280]">Zapisywanie…</span>}
-      {saveState === "saved" && <span className="text-[#1E9E6B]">Zapisano ✓</span>}
-      {saveState === "error" && (
-        <button type="button" onClick={() => void save()} className="font-semibold text-[#E15A2B] underline">
-          {saveError ?? "Nie zapisano"} — dotknij, aby ponowić
-        </button>
-      )}
-    </div>
-  );
+  // `null` przy stanie "idle" (czyli niemal zawsze) — CELOWO bez zarezerwowanej
+  // wysokości "na zapas": to prawie zawsze puste miejsce między kartą klientki
+  // a nakładką/membraną marnowało widoczny ekran telefonu (zgłoszone jako
+  // "przerwa większa niż gdzie indziej"). Kosztem jest drobne przesunięcie
+  // treści niżej o ~1 linię przy samym momencie zapisu — akceptowalne, bo
+  // trwa ułamek sekundy, w odróżnieniu od stale marnowanego miejsca.
+  const statusLine =
+    saveState === "idle" ? null : (
+      <div className="text-center text-[11px]">
+        {saveState === "saving" && <span className="text-[#6B7280]">Zapisywanie…</span>}
+        {saveState === "saved" && <span className="text-[#1E9E6B]">Zapisano ✓</span>}
+        {saveState === "error" && (
+          <button type="button" onClick={() => void save()} className="font-semibold text-[#E15A2B] underline">
+            {saveError ?? "Nie zapisano"} — dotknij, aby ponowić
+          </button>
+        )}
+      </div>
+    );
 
   // Uwaga kierowcy PER ETAP (dostawa / odbiór) — dawniej jedna wspólna;
   // osobno, bo dostawa i odbiór bywają zupełnie inną sytuacją (np. dostawa
