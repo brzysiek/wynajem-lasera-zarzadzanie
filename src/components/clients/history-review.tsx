@@ -4,18 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { APP_CSS_VARS } from "@/components/shell-tokens";
-import type { ReviewClient, ReviewData, ReviewGroup } from "@/lib/history/review-load";
-import { SearchIcon } from "./ui";
+import type { ReviewClient, ReviewData, ReviewGroup, ReviewInvoice } from "@/lib/history/review-load";
+import { formatNip } from "@/lib/clients/labels";
+import { SearchIcon, fmtMoney } from "./ui";
 import { NewClientDialog, api } from "./client-forms";
 
 // /klienci/dopasowania — jednorazowy przegląd historii z kalendarzy (prompt
 // 3, 2.4). Zaprojektowany na minimum klikania: jedna decyzja = cała grupa
 // (wszystkie wydarzenia o tym samym znormalizowanym tytule), najlepsza
 // propozycja zaznaczona domyślnie, zbiorcze potwierdzanie, „Cofnij” w
-// komunikacie po każdej decyzji.
+// komunikacie po każdej decyzji. Zakładka „Faktury” — faktury z Fakturowni
+// bez pewnego dopasowania (prompt 3B), pojedynczo, bo jest ich mało.
 
-type Tab = "SUGGESTED" | "UNMATCHED" | "AUTO" | "CONFIRMED" | "IGNORED";
-const TABS: { key: Tab; label: string; hint: string }[] = [
+type GroupTab = "SUGGESTED" | "UNMATCHED" | "AUTO" | "CONFIRMED" | "IGNORED";
+type Tab = GroupTab | "INVOICES";
+const TABS: { key: GroupTab; label: string; hint: string }[] = [
   { key: "SUGGESTED", label: "Do potwierdzenia", hint: "Panel ma propozycję klienta — potwierdź albo wybierz innego." },
   { key: "UNMATCHED", label: "Bez dopasowania", hint: "Brak pewnej propozycji — wybierz klienta, dodaj nowego albo pomiń." },
   { key: "AUTO", label: "Automatyczne", hint: "Przypisane automatycznie (telefon, e-mail, NIP albo bardzo zgodna nazwa) — do wyrywkowej kontroli." },
@@ -30,7 +33,22 @@ const METHOD_LABEL: Record<string, string> = {
   NIP: "NIP z opisu",
   NAME_AUTO: "zgodna nazwa",
   MANUAL: "decyzja biura",
+  RENTAL: "wynajem z panelu",
 };
+
+type InvoiceFilter = "todo" | "assigned" | "ignored";
+const INVOICE_FILTERS: { key: InvoiceFilter; label: string; states: ReviewInvoice["state"][] }[] = [
+  { key: "todo", label: "Do decyzji", states: ["SUGGESTED", "UNMATCHED"] },
+  { key: "assigned", label: "Przypisane", states: ["AUTO", "CONFIRMED"] },
+  { key: "ignored", label: "Pominięte", states: ["IGNORED"] },
+];
+
+function invoicesWord(n: number) {
+  if (n === 1) return "faktura";
+  const l = n % 10;
+  const t = n % 100;
+  return l >= 2 && l <= 4 && (t < 12 || t > 14) ? "faktury" : "faktur";
+}
 
 function monthYear(iso: string) {
   const d = new Date(iso);
@@ -322,11 +340,144 @@ function GroupRow({
   );
 }
 
-type Toast = { text: string; undoKeys?: string[]; error?: boolean };
+function InvoiceRow({
+  inv,
+  clientsById,
+  clients,
+  chosen,
+  onChoose,
+  busy,
+  onAssign,
+  onIgnore,
+  onReset,
+  onNewClient,
+}: {
+  inv: ReviewInvoice;
+  clientsById: Map<string, ReviewClient>;
+  clients: ReviewClient[];
+  chosen: string | null;
+  onChoose: (id: string) => void;
+  busy: boolean;
+  onAssign: (clientId: string) => void;
+  onIgnore: () => void;
+  onReset: () => void;
+  onNewClient: () => void;
+}) {
+  const [picker, setPicker] = useState(false);
+  const todo = inv.state === "SUGGESTED" || inv.state === "UNMATCHED";
+  const assigned = inv.clientId ? clientsById.get(inv.clientId) : null;
+  const pick = chosen ?? inv.candidates[0]?.clientId ?? null;
+
+  return (
+    <li className={`border-b border-[var(--c-border)] px-4 py-3 last:border-0 ${busy ? "opacity-50" : ""}`}>
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-grow basis-[260px]">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-[15px] font-semibold text-[var(--c-navy)]">{inv.buyerName || "(bez nabywcy)"}</span>
+            {inv.fromPanel && (
+              <span className="rounded-md bg-[var(--c-brand-soft)] px-1.5 py-0.5 text-[11px] text-[var(--c-brand-deep)]">z panelu</span>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs text-[var(--c-muted)]">
+            <span className="text-[var(--c-text)]">{inv.number}</span> · {fmtDay(inv.sellDate)} ·{" "}
+            <b className="font-semibold text-[var(--c-text)] tabular-nums">{fmtMoney(inv.totalNet)}</b> netto
+            {inv.buyerTaxNo && <span className="whitespace-nowrap"> · NIP {formatNip(inv.buyerTaxNo)}</span>}
+          </p>
+          {inv.positions && <p className="mt-0.5 line-clamp-1 text-xs text-[var(--c-faint)]" title={inv.positions}>{inv.positions}</p>}
+        </div>
+
+        <div className="flex min-w-0 flex-grow basis-[240px] flex-wrap items-center gap-1.5">
+          {inv.state === "SUGGESTED" &&
+            inv.candidates.map((c) => {
+              const cl = clientsById.get(c.clientId);
+              if (!cl) return null;
+              const on = pick === c.clientId;
+              return (
+                <button
+                  key={c.clientId}
+                  type="button"
+                  onClick={() => onChoose(c.clientId)}
+                  aria-pressed={on}
+                  title={[cl.person, cl.city].filter(Boolean).join(" · ")}
+                  className={`flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                    on
+                      ? "border-[var(--c-brand)] bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)]"
+                      : "border-[var(--c-border)] bg-white text-[var(--c-text)] hover:border-[var(--c-brand)]"
+                  }`}
+                >
+                  <span className="truncate font-medium">{cl.name}</span>
+                  {cl.city && <span className="hidden text-[var(--c-muted)] sm:inline">{cl.city}</span>}
+                  <span className="font-semibold tabular-nums">{pct(c.score)}</span>
+                </button>
+              );
+            })}
+          {assigned && !todo && (
+            <span className="flex min-w-0 items-center gap-2 text-sm">
+              <span className="text-[var(--c-muted)]">→</span>
+              <Link href={`/klienci/${assigned.id}`} className="truncate font-semibold text-[var(--c-brand-deep)] hover:underline">
+                {assigned.name}
+              </Link>
+              <span className="whitespace-nowrap rounded-md bg-[var(--c-green-soft)] px-1.5 py-0.5 text-[11px] text-[var(--c-green-deep)]">
+                {inv.method === "NIP" ? "zgodny NIP" : (METHOD_LABEL[inv.method ?? ""] ?? "przypisane")}
+                {inv.method === "NAME_AUTO" && ` ${pct(inv.score)}`}
+              </span>
+            </span>
+          )}
+        </div>
+
+        <div className="relative flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1.5">
+          {inv.state === "SUGGESTED" && pick && (
+            <button type="button" disabled={busy} className={BTN_PRIMARY} onClick={() => onAssign(pick)}>
+              Potwierdź
+            </button>
+          )}
+          {inv.method !== "RENTAL" && (
+            <button type="button" disabled={busy} className={BTN} onClick={() => setPicker((v) => !v)}>
+              {todo ? (inv.state === "SUGGESTED" ? "Inny klient…" : "Wybierz klienta…") : "Zmień…"}
+            </button>
+          )}
+          {todo && (
+            <button type="button" disabled={busy} className={BTN} onClick={onNewClient}>
+              + Nowy klient
+            </button>
+          )}
+          {inv.state !== "IGNORED" && inv.method !== "RENTAL" && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onIgnore}
+              className="h-8 whitespace-nowrap rounded-lg px-2 text-[13px] text-[var(--c-muted)] transition-colors hover:bg-[var(--c-bg)] hover:text-[var(--c-text)] disabled:opacity-40"
+              title="Faktura nie dotyczy klienta z bazy (np. sprzedaż jednorazowa)"
+            >
+              Pomiń
+            </button>
+          )}
+          {inv.manual && (
+            <button type="button" disabled={busy} className={BTN} onClick={onReset} title="Wraca do dopasowania automatycznego">
+              {inv.state === "IGNORED" ? "Przywróć" : "Cofnij"}
+            </button>
+          )}
+          {picker && (
+            <ClientPicker
+              clients={clients}
+              onClose={() => setPicker(false)}
+              onPick={(id) => {
+                setPicker(false);
+                onAssign(id);
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+type Toast = { text: string; error?: boolean; undo?: () => void; action?: { label: string; run: () => void } };
 
 export function HistoryReview({ data }: { data: ReviewData }) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("SUGGESTED");
+  const [tab, setTab] = useState<Tab>(data.totals.events === 0 && data.invoices.length > 0 ? "INVOICES" : "SUGGESTED");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("count");
   const [limit, setLimit] = useState(40);
@@ -336,23 +487,45 @@ export function HistoryReview({ data }: { data: ReviewData }) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<Toast | null>(null);
   const [newFor, setNewFor] = useState<ReviewGroup | null>(null);
+  const [newForInvoice, setNewForInvoice] = useState<ReviewInvoice | null>(null);
+  const [invFilter, setInvFilter] = useState<InvoiceFilter>("todo");
   const [rematching, setRematching] = useState(false);
 
   const clientsById = useMemo(() => new Map(data.clients.map((c) => [c.id, c])), [data.clients]);
 
   useEffect(() => {
     if (!toast || toast.error) return;
-    const t = setTimeout(() => setToast(null), 8000);
+    // Z akcją (np. „Wpisz NIP”) dłużej — trzeba zdążyć przeczytać i kliknąć.
+    const t = setTimeout(() => setToast(null), toast.action ? 20000 : 8000);
     return () => clearTimeout(t);
   }, [toast]);
 
   const byTab = useMemo(() => {
-    const m: Record<Tab, ReviewGroup[]> = { SUGGESTED: [], UNMATCHED: [], AUTO: [], CONFIRMED: [], IGNORED: [] };
-    for (const g of data.groups) if (!hidden.has(g.id)) m[g.state as Tab].push(g);
+    const m: Record<GroupTab, ReviewGroup[]> = { SUGGESTED: [], UNMATCHED: [], AUTO: [], CONFIRMED: [], IGNORED: [] };
+    for (const g of data.groups) if (!hidden.has(g.id)) m[g.state as GroupTab].push(g);
     return m;
   }, [data.groups, hidden]);
 
+  const invoicesByFilter = useMemo(() => {
+    const m: Record<InvoiceFilter, ReviewInvoice[]> = { todo: [], assigned: [], ignored: [] };
+    for (const inv of data.invoices) {
+      if (hidden.has(inv.id)) continue;
+      const f = INVOICE_FILTERS.find((x) => x.states.includes(inv.state));
+      if (f) m[f.key].push(inv);
+    }
+    return m;
+  }, [data.invoices, hidden]);
+
+  const visibleInvoices = useMemo(() => {
+    const s = query.trim().toLowerCase();
+    if (s.length < 2) return invoicesByFilter[invFilter];
+    return invoicesByFilter[invFilter].filter((i) =>
+      [i.number, i.buyerName, i.buyerTaxNo, i.clientId ? clientsById.get(i.clientId)?.name : ""].join(" ").toLowerCase().includes(s),
+    );
+  }, [invoicesByFilter, invFilter, query, clientsById]);
+
   const visible = useMemo(() => {
+    if (tab === "INVOICES") return [];
     const s = query.trim().toLowerCase();
     const list = byTab[tab].filter((g) => {
       if (s.length < 2) return true;
@@ -397,7 +570,52 @@ export function HistoryReview({ data }: { data: ReviewData }) {
         : body.action === "ignore"
           ? `Pominięto ${n} ${eventsWord(n)}.`
           : `Przywrócono ${n} ${eventsWord(n)} do dopasowania automatycznego.`;
-    setToast({ text, undoKeys: body.action === "reset" ? undefined : keys });
+    setToast({ text, undo: body.action === "reset" ? undefined : () => void undo(keys) });
+    router.refresh();
+  }
+
+  async function decideInvoices(invs: ReviewInvoice[], body: { action: "assign"; clientId: string } | { action: "ignore" } | { action: "reset" }) {
+    const ids = invs.map((i) => i.id);
+    setBusy((b) => new Set([...b, ...ids]));
+    const { ok, data: res } = await api<{ invoices: number; nipSuggestion: { clientId: string; clientName: string; nip: string } | null }>(
+      "/api/history/invoices/decide",
+      "POST",
+      { ...body, ids },
+    );
+    setBusy((b) => new Set([...b].filter((id) => !ids.includes(id))));
+    if (!ok) return setToast({ text: res.message ?? "Nie udało się zapisać decyzji.", error: true });
+    setHidden((h) => new Set([...h, ...ids]));
+    const n = res.invoices;
+    const undoInvoices = async () => {
+      setToast(null);
+      const r = await api("/api/history/invoices/decide", "POST", { action: "reset", ids });
+      if (!r.ok) return setToast({ text: r.data.message ?? "Nie udało się cofnąć.", error: true });
+      setHidden(new Set());
+      setToast({ text: "Cofnięto." });
+      router.refresh();
+    };
+    const nip = res.nipSuggestion;
+    setToast({
+      text:
+        body.action === "assign"
+          ? `Przypisano ${n} ${invoicesWord(n)} do: ${nip?.clientName ?? clientsById.get(body.clientId)?.name ?? "klienta"}.${
+              nip ? ` Klient nie ma NIP — wpisać ${nip.nip} z faktury?` : ""
+            }`
+          : body.action === "ignore"
+            ? `Pominięto ${n} ${invoicesWord(n)}.`
+            : `Przywrócono ${n} ${invoicesWord(n)} do dopasowania automatycznego.`,
+      undo: body.action === "reset" ? undefined : () => void undoInvoices(),
+      action: nip
+        ? {
+            label: "Wpisz NIP",
+            run: async () => {
+              const r = await api(`/api/clients/${nip.clientId}`, "PATCH", { nip: nip.nip });
+              setToast(r.ok ? { text: `Wpisano NIP na kartę: ${nip.clientName}. Kolejne faktury dopasują się same.` } : { text: r.data.message ?? "Nie udało się zapisać NIP.", error: true });
+              if (r.ok) router.refresh();
+            },
+          }
+        : undefined,
+    });
     router.refresh();
   }
 
@@ -438,7 +656,7 @@ export function HistoryReview({ data }: { data: ReviewData }) {
   const selectable = tab === "SUGGESTED" || tab === "UNMATCHED";
   const allSelected = selectable && pageItems.length > 0 && pageItems.every((g) => selected.has(g.id));
   const selectedGroups = visible.filter((g) => selected.has(g.id));
-  const tabInfo = TABS.find((t) => t.key === tab)!;
+  const tabInfo = tab === "INVOICES" ? null : TABS.find((t) => t.key === tab)!;
 
   return (
     <div style={APP_CSS_VARS} className="flex flex-col gap-[18px] text-[var(--c-text)]">
@@ -450,8 +668,8 @@ export function HistoryReview({ data }: { data: ReviewData }) {
           </Link>
           <h1 className="m-0 text-[26px] font-semibold text-[var(--c-navy)]">Dopasowania historii</h1>
           <p className="mt-0.5 text-[13px] text-[var(--c-muted)]">
-            Wydarzenia z kalendarzy urządzeń sprzed synchronizacji. Przypisz je do klientów — wtedy liczą się do statusu,
-            liczby wynajmów i „klient od”.
+            Wydarzenia z kalendarzy urządzeń sprzed synchronizacji i faktury z Fakturowni. Przypisz je do klientów — wtedy
+            liczą się do statusu, liczby wynajmów i „klient od”.
           </p>
         </div>
         <button type="button" onClick={() => void rematch()} disabled={rematching} className={BTN} title="Np. po dodaniu nowych klientów lub osób kontaktowych">
@@ -459,21 +677,25 @@ export function HistoryReview({ data }: { data: ReviewData }) {
         </button>
       </div>
 
-      {data.totals.events === 0 ? (
+      {data.totals.events === 0 && data.invoices.length === 0 ? (
         <div className="rounded-xl border border-[var(--c-border)] bg-white px-6 py-10 text-center">
           <p className="text-[15px] font-semibold text-[var(--c-navy)]">Historia nie została jeszcze zaimportowana</p>
           <p className="mt-1 text-sm text-[var(--c-muted)]">
             Administrator uruchamia import w{" "}
             <Link href="/ustawienia/integracje/google" className="text-[var(--c-brand-deep)] underline">
               Ustawienia → Integracje → Google
-            </Link>
-            .
+            </Link>{" "}
+            (kalendarze) i{" "}
+            <Link href="/ustawienia/integracje/fakturownia" className="text-[var(--c-brand-deep)] underline">
+              Fakturownia
+            </Link>{" "}
+            (faktury).
           </p>
         </div>
       ) : (
         <>
           {/* Postęp */}
-          <div className="rounded-xl border border-[var(--c-border)] bg-white px-4 py-3">
+          <div className={`rounded-xl border border-[var(--c-border)] bg-white px-4 py-3 ${data.totals.events === 0 ? "hidden" : ""}`}>
             <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
               <span>
                 Przypisano <b className="font-semibold tabular-nums">{done}</b> z <b className="font-semibold tabular-nums">{total}</b>{" "}
@@ -481,6 +703,7 @@ export function HistoryReview({ data }: { data: ReviewData }) {
               </span>
               <span className="text-xs text-[var(--c-muted)]">
                 {byTab.SUGGESTED.length} grup do potwierdzenia · {byTab.UNMATCHED.length} bez dopasowania
+                {invoicesByFilter.todo.length > 0 && ` · ${invoicesByFilter.todo.length} ${invoicesWord(invoicesByFilter.todo.length)} do decyzji`}
               </span>
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--c-bg)]">
@@ -517,24 +740,70 @@ export function HistoryReview({ data }: { data: ReviewData }) {
                 </button>
               );
             })}
+            {data.invoices.length > 0 && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === "INVOICES"}
+                onClick={() => switchTab("INVOICES")}
+                className={`-mb-px ml-auto flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${
+                  tab === "INVOICES"
+                    ? "border-[var(--c-purple)] font-semibold text-[var(--c-purple-deep)]"
+                    : "border-transparent text-[var(--c-muted)] hover:text-[var(--c-text)]"
+                }`}
+              >
+                Faktury
+                <span
+                  className={`rounded-full px-1.5 text-[11px] tabular-nums ${
+                    invoicesByFilter.todo.length > 0 ? "bg-[var(--c-purple-soft)] text-[var(--c-purple-deep)]" : "bg-[var(--c-bg)] text-[var(--c-muted)]"
+                  }`}
+                >
+                  {invoicesByFilter.todo.length}
+                </span>
+              </button>
+            )}
           </div>
 
-          <p className="-mt-2 text-[13px] text-[var(--c-muted)]">{tabInfo.hint}</p>
+          <p className="-mt-2 text-[13px] text-[var(--c-muted)]">
+            {tabInfo
+              ? tabInfo.hint
+              : "Faktury z Fakturowni. Dopasowane po NIP przypisują się same; tu zostają te, które trzeba wskazać. Po przypisaniu panel zaproponuje wpisanie NIP na kartę klienta."}
+          </p>
 
           {/* Pasek narzędzi */}
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex h-9 min-w-[220px] flex-grow items-center gap-2 rounded-[10px] border border-[var(--c-border)] bg-white px-3 transition-colors focus-within:border-[var(--c-brand)] sm:max-w-[360px]">
               <SearchIcon size={15} className="flex-none text-[var(--c-muted)]" />
-              <span className="sr-only">Szukaj w tytułach</span>
+              <span className="sr-only">Szukaj</span>
               <input
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Szukaj w tytułach…"
+                placeholder={tab === "INVOICES" ? "Szukaj: nabywca, numer, NIP…" : "Szukaj w tytułach…"}
                 className="min-w-0 flex-grow bg-transparent text-sm outline-none placeholder:text-[var(--c-faint)]"
               />
             </label>
+            {tab === "INVOICES" && (
+              <div className="flex gap-1">
+                {INVOICE_FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    aria-pressed={invFilter === f.key}
+                    onClick={() => setInvFilter(f.key)}
+                    className={`h-8 rounded-full border px-3 text-[13px] transition-colors ${
+                      invFilter === f.key
+                        ? "border-[var(--c-brand)] bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)]"
+                        : "border-[var(--c-border)] bg-white text-[var(--c-text)] hover:border-[var(--c-brand)]"
+                    }`}
+                  >
+                    {f.label} <span className="tabular-nums text-[var(--c-muted)]">{invoicesByFilter[f.key].length}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <select
+              hidden={tab === "INVOICES"}
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
               aria-label="Sortowanie"
@@ -572,8 +841,34 @@ export function HistoryReview({ data }: { data: ReviewData }) {
             )}
           </div>
 
+          {/* Lista faktur */}
+          {tab === "INVOICES" &&
+            (visibleInvoices.length === 0 ? (
+              <div className="rounded-xl border border-[var(--c-border)] bg-white px-6 py-8 text-center text-sm text-[var(--c-muted)]">
+                {query.trim().length >= 2 ? "Brak faktur pasujących do wyszukiwania." : invFilter === "todo" ? "Wszystkie faktury przypisane. 🎉" : "Brak faktur."}
+              </div>
+            ) : (
+              <ul className="rounded-xl border border-[var(--c-border)] bg-white">
+                {visibleInvoices.map((inv) => (
+                  <InvoiceRow
+                    key={inv.id}
+                    inv={inv}
+                    clientsById={clientsById}
+                    clients={data.clients}
+                    chosen={chosen.get(inv.id) ?? null}
+                    onChoose={(id) => setChosen((m) => new Map(m).set(inv.id, id))}
+                    busy={busy.has(inv.id)}
+                    onAssign={(clientId) => void decideInvoices([inv], { action: "assign", clientId })}
+                    onIgnore={() => void decideInvoices([inv], { action: "ignore" })}
+                    onReset={() => void decideInvoices([inv], { action: "reset" })}
+                    onNewClient={() => setNewForInvoice(inv)}
+                  />
+                ))}
+              </ul>
+            ))}
+
           {/* Lista grup */}
-          {visible.length === 0 ? (
+          {tab === "INVOICES" ? null : visible.length === 0 ? (
             <div className="rounded-xl border border-[var(--c-border)] bg-white px-6 py-8 text-center text-sm text-[var(--c-muted)]">
               {query.trim().length >= 2
                 ? "Brak grup pasujących do wyszukiwania."
@@ -626,8 +921,13 @@ export function HistoryReview({ data }: { data: ReviewData }) {
           }`}
         >
           <span>{toast.text}</span>
-          {toast.undoKeys && (
-            <button type="button" onClick={() => void undo(toast.undoKeys!)} className="font-semibold underline underline-offset-2">
+          {toast.action && (
+            <button type="button" onClick={toast.action.run} className="whitespace-nowrap rounded-md bg-white/15 px-2 py-0.5 font-semibold hover:bg-white/25">
+              {toast.action.label}
+            </button>
+          )}
+          {toast.undo && (
+            <button type="button" onClick={toast.undo} className="font-semibold underline underline-offset-2">
               Cofnij
             </button>
           )}
@@ -635,6 +935,21 @@ export function HistoryReview({ data }: { data: ReviewData }) {
             ✕
           </button>
         </div>
+      )}
+
+      {newForInvoice && (
+        <NewClientDialog
+          initialName={newForInvoice.buyerName}
+          hint={`Po zapisaniu faktura ${newForInvoice.number} zostanie przypisana do nowego klienta${
+            newForInvoice.buyerTaxNo ? `, a panel zaproponuje wpisanie NIP ${newForInvoice.buyerTaxNo}` : ""
+          }. Dodaj osobę kontaktową.`}
+          onClose={() => setNewForInvoice(null)}
+          onCreated={(id) => {
+            const inv = newForInvoice;
+            setNewForInvoice(null);
+            void decideInvoices([inv], { action: "assign", clientId: id });
+          }}
+        />
       )}
 
       {newFor && (

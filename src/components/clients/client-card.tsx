@@ -76,6 +76,26 @@ function HistoryRow({ item }: { item: ClientHistoryItem }) {
       </div>
     );
   }
+  if (item.kind === "invoice") {
+    return (
+      <div className="flex gap-2.5" title={item.positions ?? undefined}>
+        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[var(--c-purple-soft)] text-[11px] font-bold text-[var(--c-purple-deep)]">
+          F
+        </span>
+        <span className="min-w-0 flex-grow">
+          <span className="block truncate text-[13px] text-[var(--c-text)]">
+            Faktura {item.number}
+            {item.positions && <span className="text-[var(--c-muted)]"> — {item.positions}</span>}
+          </span>
+          <span className="flex gap-1.5 text-[11px] text-[var(--c-muted)]">
+            {fmtDate(item.at)}
+            <span>· {fmtMoney(item.totalNet)} netto</span>
+            {item.fromPanel && <span>· z panelu</span>}
+          </span>
+        </span>
+      </div>
+    );
+  }
   const sms = item.channel === "SMS";
   return (
     <div className="flex gap-2.5">
@@ -395,6 +415,11 @@ export function ClientCard({
               {new Date(s.firstSeenAt).toLocaleDateString("pl-PL", { month: "2-digit", year: "numeric" })}
             </b>
             {detail.history.some((h) => h.kind === "history") && " · z historią z kalendarzy"}
+            {s.invoicesCount > 0 && (
+              <>
+                {" · "}faktury: <b className="font-semibold text-[var(--c-text)]">{fmtMoney(s.invoicedNet)}</b> netto ({s.invoicesCount})
+              </>
+            )}
           </p>
         )}
 

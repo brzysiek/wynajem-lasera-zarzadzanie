@@ -27,14 +27,33 @@ export type ReviewGroup = {
 
 export type ReviewClient = { id: string; name: string; city: string | null; person: string | null };
 
+// Faktura z Fakturowni (prompt 3B) — faktur jest mało, więc bez grupowania.
+export type ReviewInvoice = {
+  id: string;
+  number: string;
+  sellDate: string;
+  buyerName: string;
+  buyerTaxNo: string | null;
+  totalNet: number;
+  positions: string | null;
+  state: MatchState;
+  clientId: string | null;
+  method: MatchMethod | null;
+  score: number | null;
+  candidates: MatchCandidate[];
+  manual: boolean;
+  fromPanel: boolean;
+};
+
 export type ReviewData = {
   groups: ReviewGroup[];
+  invoices: ReviewInvoice[];
   clients: ReviewClient[];
   totals: { events: number; relevant: number; assigned: number };
 };
 
 export async function loadHistoryReview(): Promise<ReviewData> {
-  const [rows, clients] = await Promise.all([
+  const [rows, clients, invoices] = await Promise.all([
     prisma.rentalHistory.findMany({
       orderBy: { startsAt: "desc" },
       select: {
@@ -59,6 +78,25 @@ export async function loadHistoryReview(): Promise<ReviewData> {
         name: true,
         city: true,
         contacts: { select: { firstName: true, lastName: true }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], take: 1 },
+      },
+    }),
+    prisma.clientInvoice.findMany({
+      orderBy: { sellDate: "desc" },
+      select: {
+        id: true,
+        number: true,
+        sellDate: true,
+        buyerName: true,
+        buyerTaxNo: true,
+        totalNet: true,
+        positionsSummary: true,
+        matchState: true,
+        clientId: true,
+        matchMethod: true,
+        matchScore: true,
+        candidates: true,
+        matchedByUserId: true,
+        rentalId: true,
       },
     }),
   ]);
@@ -113,6 +151,22 @@ export async function loadHistoryReview(): Promise<ReviewData> {
       titles: [...titleCounts.entries()].sort((a, b) => b[1] - a[1]).map(([title, count]) => ({ title, count })),
       devices: [...deviceSet],
     })),
+    invoices: invoices.map((i) => ({
+      id: i.id,
+      number: i.number,
+      sellDate: i.sellDate.toISOString(),
+      buyerName: i.buyerName,
+      buyerTaxNo: i.buyerTaxNo,
+      totalNet: Number(i.totalNet.toString()),
+      positions: i.positionsSummary,
+      state: i.matchState,
+      clientId: i.clientId,
+      method: i.matchMethod,
+      score: i.matchScore,
+      candidates: Array.isArray(i.candidates) ? (i.candidates as MatchCandidate[]) : [],
+      manual: i.matchedByUserId != null,
+      fromPanel: i.rentalId != null,
+    })),
     clients: clients.map((c) => {
       const p = c.contacts[0];
       const person = p ? [p.firstName, p.lastName].filter(Boolean).join(" ") || null : null;
@@ -122,8 +176,13 @@ export async function loadHistoryReview(): Promise<ReviewData> {
   };
 }
 
-// Ile wydarzeń z historii kalendarzy czeka na decyzję biura (licznik przy
+// Ile wydarzeń z historii kalendarzy i faktur czeka na decyzję biura (licznik przy
 // przycisku „Dopasowania historii” na liście klientów).
 export async function countPendingHistory(): Promise<number> {
-  return prisma.rentalHistory.count({ where: { matchState: { in: ["SUGGESTED", "UNMATCHED"] } } });
+  const pending = { matchState: { in: ["SUGGESTED", "UNMATCHED"] } } as const;
+  const [events, invoices] = await Promise.all([
+    prisma.rentalHistory.count({ where: { matchState: { in: [...pending.matchState.in] } } }),
+    prisma.clientInvoice.count({ where: { matchState: { in: [...pending.matchState.in] } } }),
+  ]);
+  return events + invoices;
 }

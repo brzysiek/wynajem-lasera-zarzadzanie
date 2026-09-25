@@ -708,6 +708,7 @@ model Client {
   rentals  Rental[]
   history  RentalHistory[]
   aliases  ClientAlias[]
+  invoices ClientInvoice[]
 
   @@index([nip])
   @@index([name])
@@ -749,6 +750,7 @@ enum HistoryMatchMethod {
   PHONE // numer telefonu w opisie wydarzenia
   NAME_AUTO // dopasowanie nazwy powyżej progu pewności
   MANUAL // potwierdzone / wybrane ręcznie przez biuro
+  RENTAL // faktura wystawiona z panelu dla wynajmu (RentalFinance.fakturowniaInvoiceId)
 }
 
 enum HistoryMatchState {
@@ -802,4 +804,36 @@ model ClientAlias {
 
   @@index([clientId])
   @@map("client_aliases")
+}
+
+// Faktury z Fakturowni jako historia klienta (prompt 3B). Kopia metadanych —
+// dashboard /finanse/faktury dalej czyta Fakturownię na żywo i tej tabeli
+// nie używa.
+model ClientInvoice {
+  id                   String              @id @default(cuid())
+  fakturowniaInvoiceId Int                 @unique
+  number               String
+  issueDate            DateTime
+  sellDate             DateTime // data sprzedaży = data usługi — porównanie z wynajmami (±7 dni)
+  buyerName            String
+  buyerTaxNo           String? // znormalizowany NIP (same cyfry)
+  buyerKey             String              @db.VarChar(191) // znormalizowana nazwa nabywcy — alias / dopasowanie
+  totalNet             Decimal             @db.Decimal(10, 2)
+  totalGross           Decimal             @db.Decimal(10, 2)
+  positionsSummary     String?             @db.Text // nazwy pozycji — do rozpoznania urządzenia
+  clientId             String?
+  client               Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  rentalId             String? // faktura wynajmu z panelu — nie liczona drugi raz
+  candidates           Json?
+  matchMethod          HistoryMatchMethod?
+  matchState           HistoryMatchState   @default(UNMATCHED)
+  matchScore           Float?
+  matchedByUserId      String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([clientId])
+  @@index([buyerTaxNo])
+  @@index([matchState])
+  @@map("client_invoices")
 }

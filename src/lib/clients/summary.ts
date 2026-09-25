@@ -3,6 +3,7 @@
 // zależności (vitest bez aliasu "@/").
 import { computeClientStatus, daysAgo, isRealizedRental, type ClientStatus } from "./status";
 import type { DeviceInterestKey } from "./labels";
+import { invoiceOnlyRentalDates } from "../history/invoices";
 
 export type ClientRentalFact = {
   startsAt: Date;
@@ -15,6 +16,14 @@ export type ClientRentalFact = {
   historical?: boolean; // z historii kalendarzy (bez kwot) — status.ts
 };
 
+// Faktura z Fakturowni przypisana do klienta (AUTO/CONFIRMED, prompt 3B).
+export type ClientInvoiceFact = {
+  sellDate: Date;
+  totalNet: number;
+  hasRental: boolean; // wystawiona z panelu dla wynajmu — ten wynajem już jest w rentals
+  interest: DeviceInterestKey | null;
+};
+
 export type ClientSummary = {
   status: ClientStatus;
   rentals12m: number;
@@ -24,6 +33,10 @@ export type ClientSummary = {
   firstSeenAt: Date | null;
   revenueNet: number;
   avgRentalNet: number | null;
+  // Suma netto przypisanych faktur (także sprzed panelu) — osobno od
+  // revenueNet, które zostaje zgodne z modułem Przychody.
+  invoicedNet: number;
+  invoicesCount: number;
   favoriteDevice: DeviceInterestKey | null;
   rentedDevices: DeviceInterestKey[]; // od najczęściej wynajmowanego
 };
@@ -37,9 +50,24 @@ export type ClientSummary = {
 export function summarizeClient(input: {
   statusOverride: "NIE_KONTAKTOWAC" | null;
   rentals: ClientRentalFact[];
+  invoices?: ClientInvoiceFact[];
   today: Date;
 }): ClientSummary {
-  const realized = input.rentals.filter(isRealizedRental).sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime());
+  const invoices = input.invoices ?? [];
+  const realizedRentals = input.rentals.filter(isRealizedRental);
+  // Faktura bez wynajmu w pobliżu (±7 dni) = wynajem, którego nie ma w
+  // kalendarzu (prompt 3, sekcja 5 pkt 3). Urządzenie — z pozycji faktury.
+  const invoiceRentals: ClientRentalFact[] = invoiceOnlyRentalDates(invoices, realizedRentals).map((date) => ({
+    startsAt: date,
+    endsAt: date,
+    eventType: "WYNAJEM",
+    deletedInGoogle: false,
+    confirmedAt: null,
+    totalNet: null,
+    interest: invoices.find((i) => i.sellDate.getTime() === date.getTime())?.interest ?? null,
+    historical: true,
+  }));
+  const realized = [...realizedRentals, ...invoiceRentals].sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime());
   const status = computeClientStatus({
     statusOverride: input.statusOverride,
     realizedRentalDates: realized.map((r) => r.startsAt),
@@ -53,8 +81,12 @@ export function summarizeClient(input: {
   for (const r of realized) if (r.interest) counts.set(r.interest, (counts.get(r.interest) ?? 0) + 1);
   const rentedDevices = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
 
-  const past = input.rentals.filter((r) => !r.deletedInGoogle && r.startsAt <= input.today);
-  const firstSeenAt = past.length ? new Date(Math.min(...past.map((r) => r.startsAt.getTime()))) : null;
+  const pastTimes = [
+    ...input.rentals.filter((r) => !r.deletedInGoogle && r.startsAt <= input.today).map((r) => r.startsAt.getTime()),
+    ...invoices.map((i) => i.sellDate.getTime()),
+  ];
+  const firstSeenAt = pastTimes.length ? new Date(Math.min(...pastTimes)) : null;
+  const invoicedNet = Math.round(invoices.reduce((s, i) => s + i.totalNet, 0) * 100) / 100;
 
   return {
     status,
@@ -64,6 +96,8 @@ export function summarizeClient(input: {
     firstSeenAt,
     revenueNet,
     avgRentalNet: finished.length ? Math.round((revenueNet / finished.length) * 100) / 100 : null,
+    invoicedNet,
+    invoicesCount: invoices.length,
     favoriteDevice: rentedDevices[0] ?? null,
     rentedDevices,
   };

@@ -104,4 +104,23 @@ describe("summarizeClient", () => {
     });
     expect(s.status).toBe("NOWY");
   });
+
+  it("faktury: dowód wynajmu tylko bez wynajmu w pobliżu, suma osobno od przychodu", () => {
+    const s = summarizeClient({
+      statusOverride: null,
+      rentals: [rental({ startsAt: day(2026, 6, 10), totalNet: 1500 })],
+      invoices: [
+        { sellDate: day(2026, 6, 12), totalNet: 1500, hasRental: false, interest: "LIGHTSHEER" }, // przy wynajmie
+        { sellDate: day(2026, 2, 1), totalNet: 900, hasRental: false, interest: "ALMA_HARMONY" }, // osobny wynajem
+      ],
+      today,
+    });
+    expect(s.rentalsTotal).toBe(2);
+    expect(s.status).toBe("STALY");
+    expect(s.revenueNet).toBe(1500);
+    expect(s.invoicedNet).toBe(2400);
+    expect(s.invoicesCount).toBe(2);
+    expect(s.firstSeenAt).toEqual(day(2026, 2, 1));
+    expect(s.rentedDevices).toContain("ALMA_HARMONY");
+  });
 });

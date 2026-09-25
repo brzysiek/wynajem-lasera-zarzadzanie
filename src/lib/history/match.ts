@@ -27,7 +27,7 @@ export const MATCH_CONFIG = {
   maxCandidates: 3,
 };
 
-export type MatchMethod = "NIP" | "EMAIL" | "PHONE" | "NAME_AUTO" | "MANUAL";
+export type MatchMethod = "NIP" | "EMAIL" | "PHONE" | "NAME_AUTO" | "MANUAL" | "RENTAL";
 export type MatchState = "AUTO" | "SUGGESTED" | "CONFIRMED" | "IGNORED" | "UNMATCHED";
 
 export type MatchClient = {

@@ -2,7 +2,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getHubspotContactUrl } from "@/lib/integrations/hubspot";
 import { CATEGORY_TO_INTEREST, DEVICE_INTEREST_KEYS, type ClinicTypeKey, type DeviceInterestKey, type SourceKey } from "@/lib/clients/labels";
-import { summarizeClient, type ClientRentalFact } from "@/lib/clients/summary";
+import { summarizeClient, type ClientInvoiceFact, type ClientRentalFact } from "@/lib/clients/summary";
+import { interestsFromText } from "@/lib/history/invoices";
 import type { ClientStatus } from "@/lib/clients/status";
 
 // Odczyt modułu Klienci (serwer). ZAWIERA PRZYCHÓD — wołać wyłącznie z
@@ -70,6 +71,20 @@ function historyToFact(h: HistoryFactRow): ClientRentalFact {
   };
 }
 
+// Faktury przypisane do klienta (prompt 3B) — dowód wynajmu, gdy nie ma go
+// w kalendarzu (summary.ts), i suma „zafakturowano”.
+const INVOICE_FACT_WHERE: Prisma.ClientInvoiceWhereInput = { matchState: { in: ["AUTO", "CONFIRMED"] } };
+const INVOICE_FACT_SELECT = { sellDate: true, totalNet: true, rentalId: true, positionsSummary: true } as const;
+
+function invoiceToFact(i: { sellDate: Date; totalNet: { toString(): string }; rentalId: string | null; positionsSummary: string | null }): ClientInvoiceFact {
+  return {
+    sellDate: i.sellDate,
+    totalNet: Number(i.totalNet.toString()),
+    hasRental: i.rentalId != null,
+    interest: interestsFromText(i.positionsSummary).find((k) => k !== "SZKOLENIE") ?? null,
+  };
+}
+
 function parseInterests(v: unknown): DeviceInterestKey[] {
   return Array.isArray(v) ? v.filter((x): x is DeviceInterestKey => DEVICE_INTEREST_KEYS.includes(x as DeviceInterestKey)) : [];
 }
@@ -123,6 +138,7 @@ export async function loadClientRows(today = new Date()): Promise<ClientListRow[
       },
       rentals: { select: RENTAL_FACT_SELECT },
       history: { where: HISTORY_FACT_WHERE, select: HISTORY_FACT_SELECT },
+      invoices: { where: INVOICE_FACT_WHERE, select: INVOICE_FACT_SELECT },
     },
   });
 
@@ -130,6 +146,7 @@ export async function loadClientRows(today = new Date()): Promise<ClientListRow[
     const summary = summarizeClient({
       statusOverride: c.statusOverride,
       rentals: [...(c.rentals as RentalFactRow[]).map(toFact), ...c.history.map(historyToFact)],
+      invoices: c.invoices.map(invoiceToFact),
       today,
     });
     const primary = c.contacts[0] ?? null;
@@ -191,7 +208,9 @@ export type ClientHistoryItem =
     }
   | { kind: "message"; id: string; at: string; channel: string; body: string; failed: boolean }
   // Wydarzenie z historii kalendarzy (prompt 3A) — bez kwot.
-  | { kind: "history"; id: string; at: string; title: string; deviceName: string; eventType: "WYNAJEM" | "SZKOLENIE" };
+  | { kind: "history"; id: string; at: string; title: string; deviceName: string; eventType: "WYNAJEM" | "SZKOLENIE" }
+  // Faktura z Fakturowni (prompt 3B) — data sprzedaży, kwota netto.
+  | { kind: "invoice"; id: string; at: string; number: string; totalNet: number; positions: string | null; fromPanel: boolean };
 
 export type ClientDetail = {
   id: string;
@@ -223,6 +242,8 @@ export type ClientDetail = {
     firstSeenAt: string | null;
     revenueNet: number;
     avgRentalNet: number | null;
+    invoicedNet: number;
+    invoicesCount: number;
     favoriteDevice: DeviceInterestKey | null;
   };
   history: ClientHistoryItem[];
@@ -248,6 +269,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
         orderBy: { startsAt: "desc" },
         select: { ...HISTORY_FACT_SELECT, id: true, title: true, device: { select: { name: true, pricingCategory: true } } },
       },
+      invoices: { where: INVOICE_FACT_WHERE, orderBy: { sellDate: "desc" }, select: { ...INVOICE_FACT_SELECT, id: true, number: true } },
     },
   });
   if (!c) return null;
@@ -255,6 +277,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
   const summary = summarizeClient({
     statusOverride: c.statusOverride,
     rentals: [...(c.rentals as unknown as RentalFactRow[]).map(toFact), ...c.history.map(historyToFact)],
+    invoices: c.invoices.map(invoiceToFact),
     today,
   });
 
@@ -309,6 +332,17 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       eventType: h.kind === "SZKOLENIE" ? "SZKOLENIE" : "WYNAJEM",
     });
   }
+  for (const i of c.invoices) {
+    history.push({
+      kind: "invoice",
+      id: i.id,
+      at: i.sellDate.toISOString(),
+      number: i.number,
+      totalNet: Number(i.totalNet.toString()),
+      positions: i.positionsSummary,
+      fromPanel: i.rentalId != null,
+    });
+  }
   history.sort((a, b) => b.at.localeCompare(a.at));
 
   return {
@@ -352,6 +386,8 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       firstSeenAt: summary.firstSeenAt?.toISOString() ?? null,
       revenueNet: summary.revenueNet,
       avgRentalNet: summary.avgRentalNet,
+      invoicedNet: summary.invoicedNet,
+      invoicesCount: summary.invoicesCount,
       favoriteDevice: summary.favoriteDevice,
     },
     history,

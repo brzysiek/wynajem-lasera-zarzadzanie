@@ -16,6 +16,10 @@ export const TECH_WORDS = new Set([
   // urządzenia i zabiegi (nazwy z kalendarzy)
   "lightsheer", "light", "sheer", "ls", "quattro", "kwatro", "desire", "alma", "harmony", "xl", "ipixel", "pixel",
   "dye", "vl", "cooltech", "krio", "kriolipoliza", "resur", "resurfx", "fx", "observ", "et", "et400", "laser",
+  // formy prawne z nazw nabywców na fakturach („… Sp. z o.o.”, „… s.c.”, „PHU …”)
+  "sp", "spolka", "o", "oo", "zoo", "s", "c", "sc", "sa", "ska", "jawna", "komandytowa", "cywilna", "ograniczona",
+  "ograniczonej", "odpowiedzialnoscia", "odpowiedzialnosci", "phu", "fhu", "ppuh", "pphu", "phuh", "firma",
+  "handlowo", "uslugowa", "uslugowe", "przedsiebiorstwo",
 ]);
 
 // Tytuł zawierający któreś z tych słów to nie wynajem u klienta (serwis,

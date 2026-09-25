@@ -302,3 +302,73 @@ export async function getInvoicePdf(invoiceId: number): Promise<Buffer> {
   const arrayBuffer = await res.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }
+
+// Historia klienta (CRM, prompt 3B): WSZYSTKIE faktury VAT działu z polami
+// potrzebnymi do dopasowania (NIP nabywcy, netto). Osobna funkcja, żeby nie
+// zmieniać kształtu FakturowniaInvoiceSummary używanego przez dashboard faktur.
+export type FakturowniaHistoryInvoice = {
+  id: number;
+  number: string;
+  issueDate: string; // YYYY-MM-DD
+  sellDate: string; // YYYY-MM-DD
+  buyerName: string;
+  buyerTaxNo: string | null;
+  priceNet: string;
+  priceGross: string;
+  // Lista faktur zwykle nie zawiera pozycji — wtedy null i trzeba je doczytać
+  // przez getInvoicePositionNames.
+  positionNames: string[] | null;
+};
+
+export async function listInvoicesForHistory(): Promise<FakturowniaHistoryInvoice[]> {
+  const { token, account } = requireCredentials();
+  const departmentId = requireDepartmentId();
+  const results: FakturowniaHistoryInvoice[] = [];
+  const perPage = 100;
+  for (let page = 1; ; page++) {
+    const params = new URLSearchParams({
+      api_token: token,
+      department_id: String(departmentId),
+      kind: "vat",
+      period: "all",
+      page: String(page),
+      per_page: String(perPage),
+    });
+    const res = await fetch(`${baseUrl(account)}/invoices.json?${params.toString()}`);
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
+      throw new Error(message || `Fakturownia API zwróciło błąd (HTTP ${res.status}).`);
+    }
+    const list: Record<string, unknown>[] = Array.isArray(body) ? body : [];
+    for (const raw of list) {
+      const positions = Array.isArray(raw.positions) ? (raw.positions as { name?: string }[]) : null;
+      results.push({
+        id: Number(raw.id),
+        number: String(raw.number ?? ""),
+        issueDate: String(raw.issue_date ?? raw.sell_date ?? ""),
+        sellDate: String(raw.sell_date ?? raw.issue_date ?? ""),
+        buyerName: String(raw.buyer_name ?? ""),
+        buyerTaxNo: raw.buyer_tax_no ? String(raw.buyer_tax_no) : null,
+        priceNet: String(raw.price_net ?? "0"),
+        priceGross: String(raw.price_gross ?? "0"),
+        positionNames: positions ? positions.map((p) => String(p.name ?? "")).filter(Boolean) : null,
+      });
+    }
+    if (list.length < perPage) break;
+  }
+  logDebug("fakturownia_history_invoices_listed", { count: results.length });
+  return results;
+}
+
+export async function getInvoicePositionNames(invoiceId: number): Promise<string[]> {
+  const { token, account } = requireCredentials();
+  const res = await fetch(`${baseUrl(account)}/invoices/${invoiceId}.json?api_token=${encodeURIComponent(token)}`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
+    throw new Error(message || `Fakturownia API zwróciło błąd (HTTP ${res.status}).`);
+  }
+  const positions: { name?: string }[] = Array.isArray(body?.positions) ? body.positions : [];
+  return positions.map((p) => String(p.name ?? "")).filter(Boolean);
+}
