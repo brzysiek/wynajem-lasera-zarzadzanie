@@ -300,6 +300,14 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
+            title={
+              uploadHistory.length > 0
+                ? [
+                    "Ostatnio wgrywane pliki:",
+                    ...uploadHistory.slice(0, 3).map((u) => `${fmtDateTime(u.uploadedAt)} — ${u.fileName}`),
+                  ].join("\n")
+                : "Jeszcze nie wgrano żadnego wyciągu."
+            }
             className="flex-none rounded-lg bg-[#1B6FA8] px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#14567F] disabled:opacity-50 disabled:hover:bg-[#1B6FA8]"
           >
             {uploading ? "Przetwarzanie…" : "Wgraj plik"}
