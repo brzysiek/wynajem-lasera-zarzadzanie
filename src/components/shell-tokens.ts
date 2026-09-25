@@ -46,6 +46,63 @@ export const APP = {
   redSoft: "#FCE8E6",
 } as const;
 
+// Chipy statusu klienta (moduł Klienci, docs/crm/mockup-klienci.html) —
+// celowo neutralne względem chipów pilności z Zadań. Tło z palety APP, a
+// ciemniejsze odcienie tekstu (greenDeep/accentDeep) dopisane tu, bo APP
+// ich nie ma. `dot` = kropka na kafelkach segmentów nad listą.
+// Ciemne odcienie tekstu na miękkich tłach APP (chipy, awatary) — APP ma
+// tylko wersje „soft” i podstawowe, a tekst na soft-tle wymaga ciemniejszego
+// odcienia tego samego koloru dla kontrastu.
+export const APP_DEEP = {
+  green: "#15754F",
+  accent: "#8A4414",
+  gold: "#8A6414",
+  purple: "#5B2BB5",
+} as const;
+
+export const CLIENT_STATUS_COLORS = {
+  POTENCJALNY: { bg: APP.bg, fg: APP.sidebarText, dot: APP.textFaint, strike: false },
+  NOWY: { bg: APP.brandSoft, fg: APP.brandDeep, dot: APP.brand, strike: false },
+  STALY: { bg: APP.greenSoft, fg: APP_DEEP.green, dot: APP.green, strike: false },
+  USPIONY: { bg: APP.accentSoft, fg: APP_DEEP.accent, dot: APP.accent, strike: false },
+  BYLY: { bg: APP.border, fg: APP.text, dot: APP.textMuted, strike: false },
+  NIE_KONTAKTOWAC: { bg: APP.bg, fg: APP.textMuted, dot: APP.textFaint, strike: true },
+} as const;
+
+// Paleta APP jako zmienne CSS — ustawiane na korzeniu strony, żeby klasy
+// Tailwind mogły z nich korzystać także w stanach :hover/:focus
+// (np. `hover:bg-[var(--c-brand-soft)]`). Styl inline zawsze wygrywa z
+// :hover z klasy, więc kolory interaktywnych elementów NIE mogą iść przez
+// `style` — a hexów nie przepisujemy, bo źródłem prawdy jest APP.
+export const APP_CSS_VARS = {
+  "--c-brand": APP.brand,
+  "--c-brand-soft": APP.brandSoft,
+  "--c-brand-deep": APP.brandDeep,
+  "--c-accent": APP.accent,
+  "--c-accent-soft": APP.accentSoft,
+  "--c-bg": APP.bg,
+  "--c-surface": APP.surface,
+  "--c-border": APP.border,
+  "--c-text": APP.text,
+  "--c-muted": APP.textMuted,
+  "--c-faint": APP.textFaint,
+  "--c-sidebar-text": APP.sidebarText,
+  "--c-navy": APP.navy,
+  "--c-navy-soft": APP.navySoft,
+  "--c-gold": APP.gold,
+  "--c-gold-soft": APP.goldSoft,
+  "--c-purple": APP.purple,
+  "--c-purple-soft": APP.purpleSoft,
+  "--c-green": APP.green,
+  "--c-green-soft": APP.greenSoft,
+  "--c-red": APP.red,
+  "--c-red-soft": APP.redSoft,
+  "--c-green-deep": APP_DEEP.green,
+  "--c-accent-deep": APP_DEEP.accent,
+  "--c-gold-deep": APP_DEEP.gold,
+  "--c-purple-deep": APP_DEEP.purple,
+} as CSSProperties;
+
 // Klasa na kontener, który ma renderować się krojem Jost (--font-jost,
 // wystawionym w layout.tsx). Odkąd Jost jest krojem całej aplikacji
 // (globals.css), ten helper jest już w większości zbędny — zostaje dla

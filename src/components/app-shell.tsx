@@ -109,7 +109,17 @@ export function AppShell({
               }
               style={isFullWidth ? undefined : { background: SHELL.bg }}
             >
-              <div className={isFullWidth ? undefined : "mx-auto max-w-6xl px-4 py-6 md:px-[30px] md:py-[26px]"}>
+              <div
+                className={
+                  isFullWidth
+                    ? undefined
+                    : // Klienci: lista + karta klienta obok siebie (docs/crm/mockup-klienci.html)
+                      // potrzebują szerokości ekranu, nie wąskiej kolumny max-w-6xl.
+                      pathname.startsWith("/klienci")
+                      ? "px-4 py-6 md:px-[30px] md:py-[26px]"
+                      : "mx-auto max-w-6xl px-4 py-6 md:px-[30px] md:py-[26px]"
+                }
+              >
                 {children}
               </div>
             </main>
