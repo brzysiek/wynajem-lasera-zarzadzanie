@@ -135,6 +135,14 @@ export async function createInvoice(input: {
   const isoDate = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+  const issueDate = new Date();
+  // Termin płatności — jawnie 7 dni od wystawienia, niezależnie od domyślnego
+  // szablonu na koncie Fakturowni (który dawał 1 dzień — zgłoszone jako za
+  // krótkie). `payment_to` jako konkretna data, nie liczba dni, żeby nie
+  // zależeć od interpretacji tego pola przez Fakturownię.
+  const paymentTo = new Date(issueDate);
+  paymentTo.setDate(paymentTo.getDate() + 7);
+
   const res = await fetch(`${baseUrl(account)}/invoices.json`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -145,7 +153,8 @@ export async function createInvoice(input: {
         department_id: departmentId,
         client_id: input.clientId,
         sell_date: isoDate(input.sellDate),
-        issue_date: isoDate(new Date()),
+        issue_date: isoDate(issueDate),
+        payment_to: isoDate(paymentTo),
         positions: input.positions.map((p) => ({
           name: p.name,
           quantity: p.quantity,
