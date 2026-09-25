@@ -20,6 +20,19 @@ export function ClipboardIcon({ size = 18 }: { size?: number }) {
   );
 }
 
+// Koperta przekreślona na czerwono ("brak") — "kontrahent bez maila w
+// HubSpot", ten sam wzorzec przekreślenia co ClipboardIcon wyżej (zawsze
+// czerwone, nie currentColor).
+export function MailMissingIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M4.5 6.7l7.5 5.8 7.5-5.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="3" y1="19.5" x2="21" y2="4.5" stroke="#D93025" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // Paragon/kartka z napisem "FV" — status faktury VAT. Kolor (czerwony =
 // brak faktury, zielony = wystawiona) ustawia wywołujący przez `currentColor`.
 export function InvoiceIcon({ size = 18 }: { size?: number }) {

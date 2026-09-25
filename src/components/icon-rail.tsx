@@ -2,7 +2,7 @@
 
 import { SHELL } from "@/components/shell-tokens";
 import { useNotifications } from "@/components/notifications-context";
-import { ClipboardIcon, InvoiceIcon } from "@/components/status-icons";
+import { ClipboardIcon, InvoiceIcon, MailMissingIcon } from "@/components/status-icons";
 
 function WarnIcon() {
   return (
@@ -46,6 +46,10 @@ const RAIL_TONE = {
   // Trzeci, odrębny odcień — inny temat niż dane wynajmu (danger) i inny niż
   // raport kierowcy (report), też bez auto-popu.
   invoice: { fg: "#C2410C", bg: "#FFF1E8", badge: "#C2410C" },
+  // "Brak maila kontrahenta" — róż/malina, ten sam co karta
+  // (missing-email-alerts-panel.tsx). Czwarty, odrębny odcień — blokuje
+  // wysyłkę faktury/przypomnienia, więc inny temat niż samo "brak faktury".
+  mail: { fg: "#9F1239", bg: "#FFE4EC", badge: "#9F1239" },
 };
 
 function RailIcon({
@@ -63,7 +67,7 @@ function RailIcon({
   disabled?: boolean;
   onClick?: () => void;
   badge?: number | null;
-  tone?: "brand" | "danger" | "report" | "invoice";
+  tone?: "brand" | "danger" | "report" | "invoice" | "mail";
 }) {
   const t = RAIL_TONE[tone];
   return (
@@ -141,6 +145,10 @@ export function IconRail({
     invoiceOpen,
     showInvoice,
     hideInvoice,
+    missingEmailAlerts,
+    missingEmailOpen,
+    showMissingEmail,
+    hideMissingEmail,
   } = useNotifications();
   const notifCount = alerts.length + unpriced.length;
   const hasNotifications = showNotifications && notifCount > 0;
@@ -148,16 +156,19 @@ export function IconRail({
   const hasReportAlerts = showNotifications && reportCount > 0;
   const invoiceCount = invoiceAlerts.length;
   const hasInvoiceAlerts = showNotifications && invoiceCount > 0;
-  const hasAnyAlertIcon = hasNotifications || hasReportAlerts || hasInvoiceAlerts;
+  const missingEmailCount = missingEmailAlerts.length;
+  const hasMissingEmailAlerts = showNotifications && missingEmailCount > 0;
+  const hasAnyAlertIcon = hasNotifications || hasReportAlerts || hasInvoiceAlerts || hasMissingEmailAlerts;
   if (!showTasks && !hasAnyAlertIcon) return null;
 
-  // Klik w jedną z trzech kart powiadomień zamyka pozostałe dwie — żeby się
-  // nie nakładały w tym samym rogu ekranu (wszystkie trzy karty kotwiczą się
-  // w tym samym miejscu, patrz *-alerts-panel.tsx).
-  function closeOtherCards(except: "notif" | "report" | "invoice") {
+  // Klik w jedną z czterech kart powiadomień zamyka pozostałe — żeby się nie
+  // nakładały w tym samym rogu ekranu (wszystkie kotwiczą się w tym samym
+  // miejscu, patrz *-alerts-panel.tsx).
+  function closeOtherCards(except: "notif" | "report" | "invoice" | "mail") {
     if (except !== "notif") hideNotif();
     if (except !== "report") hideReport();
     if (except !== "invoice") hideInvoice();
+    if (except !== "mail") hideMissingEmail();
   }
 
   return (
@@ -216,6 +227,20 @@ export function IconRail({
           tone="invoice"
         >
           <InvoiceIcon />
+        </RailIcon>
+      )}
+      {hasMissingEmailAlerts && (
+        <RailIcon
+          tooltip={`Brak maila kontrahenta (${missingEmailCount})`}
+          open={missingEmailOpen}
+          onClick={() => {
+            closeOtherCards("mail");
+            if (!missingEmailOpen) showMissingEmail();
+          }}
+          badge={missingEmailCount}
+          tone="mail"
+        >
+          <MailMissingIcon />
         </RailIcon>
       )}
       {/* Osobny, wyłączony placeholder — inny kanał niż powyższe ikony

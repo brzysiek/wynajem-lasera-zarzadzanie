@@ -7,6 +7,7 @@ import type { RentalAlert } from "@/lib/rental-alerts";
 import type { UnpricedRental } from "@/lib/revenue/aggregate";
 import type { ReportAlert } from "@/lib/report-alerts";
 import type { InvoiceAlert } from "@/lib/invoice-alerts";
+import type { MissingEmailAlert } from "@/lib/missing-email-alerts";
 
 type NotificationsContextValue = {
   // Ostrzeżenia kalendarza — wynajmy bez kierowcy/kontaktu/telefonu (patrz
@@ -29,6 +30,12 @@ type NotificationsContextValue = {
   // faktury (patrz GET /api/rentals/invoice-alerts, src/lib/invoice-alerts.ts).
   // Ten sam wzorzec co reportAlerts — osobna karta/ikonka, bez auto-popu.
   invoiceAlerts: InvoiceAlert[];
+  // Ostrzeżenia "brak maila kontrahenta" — wynajmy z VAT, których kontakt w
+  // HubSpot nie ma zapisanego e-maila (patrz GET /api/rentals/missing-email-alerts,
+  // src/lib/missing-email-alerts.ts) — bez tego nie da się wysłać szkicu
+  // faktury/przypomnienia. Ten sam wzorzec co reportAlerts/invoiceAlerts —
+  // osobna karta/ikonka, bez auto-popu.
+  missingEmailAlerts: MissingEmailAlert[];
   // Karta alerts+unpriced: `open` = karta w ogóle widoczna; każda sekcja
   // rozwija swoją listę osobno.
   open: boolean;
@@ -46,6 +53,10 @@ type NotificationsContextValue = {
   invoiceOpen: boolean;
   showInvoice: () => void;
   hideInvoice: () => void;
+  // Osobna, niezależna karta missing-email-alerts (missing-email-alerts-panel.tsx).
+  missingEmailOpen: boolean;
+  showMissingEmail: () => void;
+  hideMissingEmail: () => void;
 };
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
@@ -53,6 +64,7 @@ const EMPTY_ALERTS: RentalAlert[] = [];
 const EMPTY_UNPRICED: UnpricedRental[] = [];
 const EMPTY_REPORT_ALERTS: ReportAlert[] = [];
 const EMPTY_INVOICE_ALERTS: InvoiceAlert[] = [];
+const EMPTY_MISSING_EMAIL_ALERTS: MissingEmailAlert[] = [];
 
 // Centrum powiadomień admina — JEDNA ikonka + karta na prawym pasku (patrz
 // icon-rail.tsx, notifications-panel.tsx), na razie dwa niezależne źródła:
@@ -76,11 +88,13 @@ export function NotificationsProvider({
   const [rawUnpriced, setRawUnpriced] = useState<UnpricedRental[]>(EMPTY_UNPRICED);
   const [rawReportAlerts, setRawReportAlerts] = useState<ReportAlert[]>(EMPTY_REPORT_ALERTS);
   const [rawInvoiceAlerts, setRawInvoiceAlerts] = useState<InvoiceAlert[]>(EMPTY_INVOICE_ALERTS);
+  const [rawMissingEmailAlerts, setRawMissingEmailAlerts] = useState<MissingEmailAlert[]>(EMPTY_MISSING_EMAIL_ALERTS);
   const [open, setOpen] = useState(false);
   const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [revenueExpanded, setRevenueExpanded] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [missingEmailOpen, setMissingEmailOpen] = useState(false);
   const pathname = usePathname();
 
   // Każde świeże pokazanie karty (auto-pop albo klik w ikonę na pasku) startuje
@@ -101,6 +115,8 @@ export function NotificationsProvider({
   const hideReport = useCallback(() => setReportOpen(false), []);
   const showInvoice = useCallback(() => setInvoiceOpen(true), []);
   const hideInvoice = useCallback(() => setInvoiceOpen(false), []);
+  const showMissingEmail = useCallback(() => setMissingEmailOpen(true), []);
+  const hideMissingEmail = useCallback(() => setMissingEmailOpen(false), []);
 
   const refresh = useCallback(() => {
     if (!enabled) return;
@@ -120,6 +136,12 @@ export function NotificationsProvider({
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setRawInvoiceAlerts(Array.isArray(d?.invoiceAlerts) ? d.invoiceAlerts : EMPTY_INVOICE_ALERTS))
       .catch(() => {});
+    fetch(`${BASE_PATH}/api/rentals/missing-email-alerts`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) =>
+        setRawMissingEmailAlerts(Array.isArray(d?.missingEmailAlerts) ? d.missingEmailAlerts : EMPTY_MISSING_EMAIL_ALERTS),
+      )
+      .catch(() => {});
   }, [enabled]);
 
   useEffect(() => {
@@ -137,6 +159,7 @@ export function NotificationsProvider({
   const unpriced = enabled ? rawUnpriced : EMPTY_UNPRICED;
   const reportAlerts = enabled ? rawReportAlerts : EMPTY_REPORT_ALERTS;
   const invoiceAlerts = enabled ? rawInvoiceAlerts : EMPTY_INVOICE_ALERTS;
+  const missingEmailAlerts = enabled ? rawMissingEmailAlerts : EMPTY_MISSING_EMAIL_ALERTS;
 
   // Auto-pop: raz na każde WEJŚCIE na /kalendarz (świeże ładowanie strony
   // albo nawigacja klientem z innej podstrony) karta sama się pokazuje, jeśli
@@ -168,6 +191,7 @@ export function NotificationsProvider({
       unpriced,
       reportAlerts,
       invoiceAlerts,
+      missingEmailAlerts,
       open,
       calendarExpanded,
       revenueExpanded,
@@ -181,6 +205,9 @@ export function NotificationsProvider({
       invoiceOpen,
       showInvoice,
       hideInvoice,
+      missingEmailOpen,
+      showMissingEmail,
+      hideMissingEmail,
     }),
     [
       alerts,
@@ -188,6 +215,7 @@ export function NotificationsProvider({
       unpriced,
       reportAlerts,
       invoiceAlerts,
+      missingEmailAlerts,
       open,
       calendarExpanded,
       revenueExpanded,
@@ -201,6 +229,9 @@ export function NotificationsProvider({
       invoiceOpen,
       showInvoice,
       hideInvoice,
+      missingEmailOpen,
+      showMissingEmail,
+      hideMissingEmail,
     ],
   );
 

@@ -455,41 +455,43 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                             const overdue = daysPastDue(r.paymentTo);
                             if (overdue <= 0) return null;
                             return (
-                              <p className="mt-1 text-[11px] font-semibold" style={{ color: C.red }}>
+                              <p className="mt-0.5 text-[10px] font-medium" style={{ color: C.red }}>
                                 {overdue === 1 ? "1 dzień" : `${overdue} dni`} po terminie
                               </p>
                             );
                           })()}
                       </td>
-                      <td className="border-b px-2 py-2 text-right whitespace-nowrap" style={{ borderColor: C.border }}>
-                        <a
-                          href={`${BASE_PATH}/api/fakturownia/invoices/${r.id}/pdf`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-md px-2 py-1 text-[12px] font-medium transition-colors hover:bg-[#EAF4FB]"
-                          style={{ color: C.brand }}
-                        >
-                          PDF
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => void handleCreateDraft(r)}
-                          disabled={busyId === r.id}
-                          className="rounded-md px-2 py-1 text-[12px] font-medium text-[#1B6FA8] transition-colors hover:bg-[#EAF4FB] disabled:opacity-50"
-                        >
-                          Utwórz szkic maila
-                        </button>
-                        {!r.paidAt && (
+                      <td className="border-b px-2 py-2" style={{ borderColor: C.border }}>
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          <a
+                            href={`${BASE_PATH}/api/fakturownia/invoices/${r.id}/pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-md px-2 py-1 text-[12px] font-medium whitespace-nowrap transition-colors hover:bg-[#EAF4FB]"
+                            style={{ color: C.brand }}
+                          >
+                            PDF
+                          </a>
                           <button
                             type="button"
-                            onClick={() => void handleRemindDraft(r)}
+                            onClick={() => void handleCreateDraft(r)}
                             disabled={busyId === r.id}
-                            className="rounded-md px-2 py-1 text-[12px] font-medium transition-colors hover:bg-[#FCE8E6] disabled:opacity-50"
-                            style={{ color: C.red }}
+                            className="rounded-md px-2 py-1 text-[12px] font-medium whitespace-nowrap text-[#1B6FA8] transition-colors hover:bg-[#EAF4FB] disabled:opacity-50"
                           >
-                            Przypomnienie
+                            Szkic maila
                           </button>
-                        )}
+                          {!r.paidAt && (
+                            <button
+                              type="button"
+                              onClick={() => void handleRemindDraft(r)}
+                              disabled={busyId === r.id}
+                              className="rounded-md px-2 py-1 text-[12px] font-medium whitespace-nowrap transition-colors hover:bg-[#FCE8E6] disabled:opacity-50"
+                              style={{ color: C.red }}
+                            >
+                              Przypomnienie
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
