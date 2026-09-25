@@ -232,14 +232,25 @@ model Rental {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
+  // Klient z bazy panelu (CRM, etap 1). Na razie tylko DODANE obok
+  // hubspotContactId i contact*Cache — te pola dalej zasilają przychody,
+  // faktury, przypomnienia i alerty; zmienia się jedynie ich źródło w
+  // późniejszym kroku. SetNull: usunięcie klienta nigdy nie usuwa wynajmu.
+  clientId        String?
+  clientContactId String?
+
   device        Device         @relation(fields: [deviceId], references: [id])
   driver        User?          @relation("RentalDriver", fields: [driverId], references: [id])
   vehicle       Vehicle?       @relation(fields: [vehicleId], references: [id])
+  client        Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientContact ClientContact? @relation(fields: [clientContactId], references: [id], onDelete: SetNull)
   reminderRules ReminderRule[]
   messages      Message[]
   finance       RentalFinance?
 
   @@unique([googleCalendarId, googleEventId])
+  @@index([clientId])
+  @@index([clientContactId])
   @@map("rentals")
 }
 
@@ -622,4 +633,104 @@ model FuelInvoice {
   @@index([vehicleId])
   @@index([invoiceDate])
   @@map("fuel_invoices")
+}
+
+// ---------------------------------------------------------------------------
+// CRM — klienci (etap 1, docs: prompt-claude-code-crm-1-klienci.md)
+// ---------------------------------------------------------------------------
+// Na razie wyłącznie DODANE: żaden istniejący ekran ani zapytanie ich nie
+// czyta. Status klienta (Potencjalny/Nowy/Stały/…) NIE jest tu zapisywany —
+// liczony przy odczycie z historii wynajmów (src/lib/clients/status.ts).
+
+// Jedyna ręczna wartość statusu — reszta statusów wynika z wynajmów.
+enum ClientStatusOverride {
+  NIE_KONTAKTOWAC
+}
+
+enum DeviceInterest {
+  LIGHTSHEER // Desire / Quattro / Light
+  LIGHTSHEER_ET400
+  ALMA_HARMONY
+  COOLTECH
+  RESURFX
+  OBSERV
+  SZKOLENIE
+}
+
+enum ClientSource {
+  FORMULARZ_WWW
+  TELEFON
+  POLECENIE
+  GOOGLE_ADS
+  META
+  POWRACAJACY
+  INNE
+}
+
+enum ClinicType {
+  GABINET_KOSMETOLOGICZNY
+  KLINIKA_MEDYCYNY_ESTETYCZNEJ
+  SALON_BEAUTY
+  KOSMETOLOG_MOBILNY
+  INNE
+}
+
+// Gabinet / firma. Gdy klientka nie ma firmy, klient jest jednoosobowy, a
+// `name` to jej imię i nazwisko.
+model Client {
+  id                String                @id @default(cuid())
+  name              String
+  nip               String? // tylko cyfry — normalizowane przy zapisie
+  street            String?
+  zip               String?
+  city              String?
+  country           String?               @default("Polska")
+  transportPriceNet Decimal?              @db.Decimal(10, 2) // dawne HubSpot „ustalona_cena_transportu”
+  distanceKm        Decimal?              @db.Decimal(6, 1) // ostatnia znana odległość (z wynajmów)
+  clinicType        ClinicType?
+  source            ClientSource?
+  deviceInterests   Json? // DeviceInterest[]
+  statusOverride    ClientStatusOverride?
+  notes             String?               @db.Text
+
+  // Mapowanie na HubSpot — import, deduplikacja i link „Otwórz w HubSpot” w
+  // okresie przejściowym. hubspotSnapshot = wartości pól z ostatniej udanej
+  // synchronizacji, podstawa scalania zmian bez cichego nadpisywania.
+  hubspotCompanyId String? @unique
+  legacyHubspotTag String? // surowa wartość HubSpot „tagi” — tylko do wglądu
+  hubspotSnapshot  Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contacts ClientContact[]
+  rentals  Rental[]
+
+  @@index([nip])
+  @@index([name])
+  @@map("clients")
+}
+
+model ClientContact {
+  id               String  @id @default(cuid())
+  clientId         String
+  client           Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  firstName        String?
+  lastName         String?
+  phone            String? // E.164 (+48…), normalizePolishPhone z src/lib/reminders.ts
+  email            String?
+  role             String? // np. „właścicielka”, „kosmetolog”
+  isPrimary        Boolean @default(false) // dokładnie jedna główna osoba na klienta
+  hubspotContactId String? @unique
+  hubspotSnapshot  Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rentals Rental[]
+
+  @@index([clientId])
+  @@index([email])
+  @@index([phone])
+  @@map("client_contacts")
 }
