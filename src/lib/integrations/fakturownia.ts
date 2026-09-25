@@ -183,6 +183,7 @@ export type FakturowniaInvoiceSummary = {
   number: string;
   buyerName: string;
   sellDate: string; // YYYY-MM-DD
+  paymentTo: string; // YYYY-MM-DD — termin płatności (patrz createInvoice: zawsze 7 dni od wystawienia)
   priceGross: string;
   currency: string;
   // gov_status: null = niewysłana do KSeF, "ok" = przyjęta, inne = błąd/w toku.
@@ -195,6 +196,7 @@ function toInvoiceSummary(raw: {
   number: string;
   buyer_name: string;
   sell_date: string;
+  payment_to: string;
   price_gross: string;
   currency: string;
   gov_status: string | null;
@@ -205,6 +207,7 @@ function toInvoiceSummary(raw: {
     number: raw.number,
     buyerName: raw.buyer_name,
     sellDate: raw.sell_date,
+    paymentTo: raw.payment_to,
     priceGross: raw.price_gross,
     currency: raw.currency,
     govStatus: raw.gov_status ?? null,
@@ -267,12 +270,13 @@ export async function sendInvoiceToKsef(invoiceId: number): Promise<FakturowniaI
   return toInvoiceSummary(body);
 }
 
-// Szczegóły JEDNEJ faktury — dziś potrzebny tylko numer (temat/nazwa pliku
-// szkicu maila, patrz src/lib/integrations/gmail.ts). CELOWO nie zwraca już
-// e-maila kontrahenta z Fakturowni — ustalone z użytkownikiem: adres do
-// szkicu ma pochodzić wyłącznie z HubSpota (Rental.contactEmailCache), bo
-// karta kontrahenta w Fakturowni bywa nieaktualna/wpisana ręcznie.
-export type FakturowniaInvoiceDetail = { number: string };
+// Szczegóły JEDNEJ faktury — numer (temat/nazwa pliku szkicu maila) i termin
+// płatności (przypomnienie o płatności, patrz remind-draft/route.ts). CELOWO
+// nie zwraca e-maila kontrahenta z Fakturowni — ustalone z użytkownikiem:
+// adres do szkicu ma pochodzić wyłącznie z HubSpota
+// (Rental.contactEmailCache), bo karta kontrahenta w Fakturowni bywa
+// nieaktualna/wpisana ręcznie.
+export type FakturowniaInvoiceDetail = { number: string; paymentTo: string };
 
 export async function getInvoiceDetail(invoiceId: number): Promise<FakturowniaInvoiceDetail> {
   const { token, account } = requireCredentials();
@@ -282,7 +286,7 @@ export async function getInvoiceDetail(invoiceId: number): Promise<FakturowniaIn
     const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
     throw new Error(message || `Fakturownia API zwróciło błąd (HTTP ${res.status}).`);
   }
-  return { number: body.number };
+  return { number: body.number, paymentTo: body.payment_to };
 }
 
 // PDF faktury — używany zarówno do załącznika w szkicu maila

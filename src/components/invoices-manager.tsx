@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
+import { daysPastDue } from "@/lib/invoicing/email-template";
 
 type InvoiceRow = {
   id: number;
   number: string;
   buyerName: string;
   sellDate: string;
+  paymentTo: string;
   priceGross: string;
   currency: string;
   govStatus: string | null;
@@ -164,6 +166,27 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.message || "Nie udało się utworzyć szkicu.");
       setToast(data?.message || "Szkic utworzony.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Błąd.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // Ten sam mechanizm szkicu co handleCreateDraft, tylko z inną treścią
+  // (przypomnienie zamiast pierwszej wysyłki) — patrz remind-draft/route.ts.
+  // Backend i tak odrzuci, jeśli faktura w międzyczasie została oznaczona
+  // jako zapłacona; przycisk dodatkowo w ogóle się nie pokazuje dla
+  // zapłaconych (patrz render niżej).
+  async function handleRemindDraft(row: InvoiceRow) {
+    setBusyId(row.id);
+    setError(null);
+    setToast(null);
+    try {
+      const res = await fetch(`${BASE_PATH}/api/fakturownia/invoices/${row.id}/remind-draft`, { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message || "Nie udało się utworzyć przypomnienia.");
+      setToast(data?.message || "Szkic przypomnienia utworzony.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Błąd.");
     } finally {
@@ -418,6 +441,17 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                         >
                           {r.paidAt ? "zapłacona" : "niezapłacona"}
                         </button>
+                        {!r.paidAt &&
+                          r.paymentTo &&
+                          (() => {
+                            const overdue = daysPastDue(r.paymentTo);
+                            if (overdue <= 0) return null;
+                            return (
+                              <p className="mt-1 text-[11px] font-semibold" style={{ color: C.red }}>
+                                {overdue === 1 ? "1 dzień" : `${overdue} dni`} po terminie
+                              </p>
+                            );
+                          })()}
                       </td>
                       <td className="border-b px-2 py-2 text-right whitespace-nowrap" style={{ borderColor: C.border }}>
                         <a
@@ -437,6 +471,17 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                         >
                           Utwórz szkic maila
                         </button>
+                        {!r.paidAt && (
+                          <button
+                            type="button"
+                            onClick={() => void handleRemindDraft(r)}
+                            disabled={busyId === r.id}
+                            className="rounded-md px-2 py-1 text-[12px] font-medium transition-colors hover:bg-[#FCE8E6] disabled:opacity-50"
+                            style={{ color: C.red }}
+                          >
+                            Przypomnienie
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
