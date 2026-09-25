@@ -23,16 +23,15 @@ export type HubspotContactDetail = HubspotContactSummary & {
 // Custom contact property holding the agreed transport price for this client.
 const TRANSPORT_PRICE_PROPERTY = "ustalona_cena_transportu";
 // Custom contact property holding the client's NIP (tax ID) — potrzebny do
-// wyszukania kontrahenta w Fakturowni. UWAGA: nazwa właściwości do
-// potwierdzenia w HubSpot (Ustawienia → Właściwości → wyszukaj "NIP" →
-// nazwa wewnętrzna) — "nip" to założenie, nie zweryfikowany fakt.
+// wyszukania kontrahenta w Fakturowni. Zweryfikowane przez API 25.09.2026:
+// właściwość kontaktu `nip` (typ number); firmy HubSpot NIP-u nie mają.
 const NIP_PROPERTY = "nip";
 
 export function getHubspotConfigStatus(): { configured: boolean } {
   return { configured: Boolean(process.env.HUBSPOT_ACCESS_TOKEN) };
 }
 
-function requireToken(): string {
+export function requireToken(): string {
   const token = process.env.HUBSPOT_ACCESS_TOKEN;
   if (!token) {
     throw new Error("Brak HUBSPOT_ACCESS_TOKEN — skonfiguruj token w Ustawieniach → Integracje.");

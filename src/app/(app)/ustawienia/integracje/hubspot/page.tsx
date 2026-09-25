@@ -1,5 +1,6 @@
 import { getHubspotConfigStatus } from "@/lib/integrations/hubspot";
 import { HubspotPanel } from "@/components/hubspot-panel";
+import { HubspotImportPanel } from "@/components/hubspot-import-panel";
 
 function Code({ children }: { children: string }) {
   return <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800">{children}</code>;
@@ -15,6 +16,7 @@ export default async function HubspotIntegrationPage() {
   return (
     <div>
       <HubspotPanel initiallyConfigured={hubspotConfigured} />
+      <HubspotImportPanel configured={hubspotConfigured} />
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">
         <h2 className="mb-1 text-lg font-semibold text-gray-900">HubSpot — jak przygotować dane dostępowe</h2>
