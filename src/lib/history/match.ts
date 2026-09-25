@@ -24,6 +24,15 @@ export const MATCH_CONFIG = {
   // AUTO tylko, gdy tytuł zawiera większość którejś nazwy klienta — samo imię
   // plus miasto („Mariola Spytkowice”) zostaje propozycją.
   autoMinVariant: 0.75,
+  // Tytuł zawiera CAŁĄ charakterystyczną nazwę klienta (potwierdzony wcześniej
+  // tytuł albo nazwa/osoba z ≥ 2 słów) — wynik co najmniej tyle, nawet gdy
+  // w tytule są dodatkowe słowa („SHA tym razem okulary”).
+  containedScore: 0.93,
+  // „Charakterystyczna” = suma wag słów ≥ tyle × waga najrzadszego słowa;
+  // odcina ogólniki typu samo „Anna”.
+  distinctiveWeight: 0.8,
+  // Waga słowa-szumu (patrz noiseTokens w buildMatcher) względem najrzadszego.
+  noiseWeight: 0.15,
   maxCandidates: 3,
 };
 
@@ -83,7 +92,9 @@ export function tokensMatch(a: string, b: string): boolean {
 
 type Indexed = {
   id: string;
-  variants: string[][]; // nazwa firmy + każda osoba kontaktowa
+  // Nazwa firmy + każda osoba kontaktowa + tytuły potwierdzone przez biuro
+  // (aliasy — nauczone warianty zapisu, np. „nowy sacz nurek”).
+  variants: { tokens: string[]; learned: boolean }[];
   cityTokens: string[];
   pool: string[]; // wszystkie tokeny klienta (bez miasta)
 };
@@ -97,6 +108,10 @@ export function buildMatcher(
   aliases: Map<string, string>, // znormalizowany klucz → clientId
   normalizePhone: (raw: string) => string | null,
   config = MATCH_CONFIG,
+  // Słowa z wielu RÓŻNYCH tytułów w kalendarzach, nienależące do żadnego
+  // klienta („razem”, „okulary”, „nowa”…) — liczone z danych przez
+  // wywołującego. Ważą mało, żeby nie zaniżały dopasowania.
+  noiseTokens: Set<string> = new Set(),
 ) {
   const byPhone = new Map<string, string>();
   const byEmail = new Map<string, string>();
@@ -106,19 +121,27 @@ export function buildMatcher(
 
   for (const c of clients) {
     if (c.nip) byNip.set(c.nip.replace(/\D/g, ""), c.id);
-    const variants = [tokensOf(c.name)];
+    const variants: Indexed["variants"] = [{ tokens: tokensOf(c.name), learned: false }];
     for (const p of c.contacts) {
       if (p.email) byEmail.set(p.email.trim().toLowerCase(), c.id);
       const phone = p.phone ? normalizePhone(p.phone) : null;
       if (phone) byPhone.set(phone, c.id);
       const person = tokensOf([p.firstName, p.lastName].filter(Boolean).join(" "));
-      if (person.length) variants.push(person);
+      if (person.length) variants.push({ tokens: person, learned: false });
     }
-    const nonEmpty = variants.filter((v) => v.length > 0);
-    const pool = [...new Set(nonEmpty.flat())];
-    const cityTokens = tokensOf(c.city);
-    indexed.push({ id: c.id, variants: nonEmpty, cityTokens, pool });
-    for (const t of new Set([...pool, ...cityTokens])) df.set(t, (df.get(t) ?? 0) + 1);
+    indexed.push({ id: c.id, variants: variants.filter((v) => v.tokens.length > 0), cityTokens: tokensOf(c.city), pool: [] });
+  }
+  // Aliasy jako nauczone warianty nazwy klienta.
+  const byId = new Map(indexed.map((c) => [c.id, c]));
+  for (const [alias, clientId] of aliases) {
+    const c = byId.get(clientId);
+    const tokens = alias.split(" ").filter(Boolean);
+    if (c && tokens.length) c.variants.push({ tokens, learned: true });
+  }
+  for (const c of indexed) {
+    // Z aliasów do puli idą tylko słowa, które nie są miastem klienta.
+    c.pool = [...new Set(c.variants.flatMap((v) => v.tokens))].filter((t) => !c.cityTokens.includes(t) || c.variants.some((v) => !v.learned && v.tokens.includes(t)));
+    for (const t of new Set([...c.pool, ...c.cityTokens])) df.set(t, (df.get(t) ?? 0) + 1);
   }
 
   const n = Math.max(1, clients.length);
@@ -127,7 +150,8 @@ export function buildMatcher(
   // Orlova” nie może dopasować się do „Marii Kowalskiej” tylko przez imię.
   const weight = (t: string) => {
     const d = df.get(t);
-    return d ? Math.log(1 + n / d) : maxWeight;
+    if (d) return Math.log(1 + n / d);
+    return noiseTokens.has(t) ? maxWeight * config.noiseWeight : maxWeight;
   };
   const found = (t: string, list: string[]) => list.some((x) => tokensMatch(t, x));
 
@@ -141,13 +165,18 @@ export function buildMatcher(
     const titleCoverage = titleTotal ? titleCovered / titleTotal : 0;
 
     let variantCoverage = 0;
+    let contained = false;
     for (const v of c.variants) {
-      const total = v.reduce((s, t) => s + weight(t), 0);
-      const covered = v.reduce((s, t) => s + (found(t, title) ? weight(t) : 0), 0);
-      if (total) variantCoverage = Math.max(variantCoverage, covered / total);
+      const total = v.tokens.reduce((s, t) => s + weight(t), 0);
+      const covered = v.tokens.reduce((s, t) => s + (found(t, title) ? weight(t) : 0), 0);
+      if (!total) continue;
+      variantCoverage = Math.max(variantCoverage, covered / total);
+      const distinctive = total >= config.distinctiveWeight * maxWeight && v.tokens.every((t) => t.length >= 3);
+      if (covered === total && distinctive && (v.learned || v.tokens.length >= 2)) contained = true;
     }
 
-    const score = 0.6 * titleCoverage + 0.4 * variantCoverage + (cityHit ? config.cityBonus : 0);
+    let score = 0.6 * titleCoverage + 0.4 * variantCoverage + (cityHit ? config.cityBonus : 0);
+    if (contained) score = Math.max(score, config.containedScore);
     return { score: Math.min(1, Math.round(score * 1000) / 1000), variant: variantCoverage };
   }
 

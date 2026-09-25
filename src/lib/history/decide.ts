@@ -27,7 +27,15 @@ export function parseDecideBody(body: unknown): DecideAction | string {
   return "Nieznana akcja.";
 }
 
-export async function applyDecision(d: DecideAction, userId: string): Promise<{ events: number }> {
+const ASSIGNED = { matchState: { in: ["AUTO", "CONFIRMED"] } } as const;
+
+// Ile wydarzeń jest przypisanych do klientów (AUTO/CONFIRMED) — do komunikatu
+// „…i N kolejnych przypisało się samo” po przeliczeniu.
+export async function countAssignedHistory(): Promise<number> {
+  return prisma.rentalHistory.count({ where: { matchState: { in: [...ASSIGNED.matchState.in] } } });
+}
+
+export async function applyDecision(d: DecideAction, userId: string): Promise<{ events: number; autoAssigned: number }> {
   if (d.action === "assign") {
     const client = await prisma.client.findUnique({ where: { id: d.clientId }, select: { id: true } });
     if (!client) throw new Error("Klient nie istnieje.");
@@ -54,7 +62,12 @@ export async function applyDecision(d: DecideAction, userId: string): Promise<{ 
         },
       });
     });
-    return { events: res.count };
+    // Nowy alias od razu uczy dopasowanie — przeliczamy resztę historii, żeby
+    // podobne tytuły („Nurek Nowy Sącz” po potwierdzeniu „Nowy Sącz Nurek”)
+    // przypisały się same.
+    const before = await countAssignedHistory();
+    await rematchHistory();
+    return { events: res.count, autoAssigned: Math.max(0, (await countAssignedHistory()) - before) };
   }
 
   if (d.action === "ignore") {
@@ -62,7 +75,7 @@ export async function applyDecision(d: DecideAction, userId: string): Promise<{ 
       where: { titleKey: { in: d.keys } },
       data: { clientId: null, matchState: "IGNORED", matchMethod: null, matchScore: null, matchedByUserId: userId },
     });
-    return { events: res.count };
+    return { events: res.count, autoAssigned: 0 };
   }
 
   // Cofnięcie decyzji: alias znika, wiersze wracają do dopasowania automatycznego.
@@ -71,5 +84,5 @@ export async function applyDecision(d: DecideAction, userId: string): Promise<{ 
     return tx.rentalHistory.updateMany({ where: { titleKey: { in: d.keys } }, data: { matchedByUserId: null } });
   });
   await rematchHistory();
-  return { events: res.count };
+  return { events: res.count, autoAssigned: 0 };
 }

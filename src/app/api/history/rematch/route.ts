@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { rematchHistory } from "@/lib/history/calendar-import";
+import { countAssignedHistory } from "@/lib/history/decide";
 import { rematchInvoices } from "@/lib/history/invoice-import";
 import { logError, logInfo } from "@/lib/logger";
 
@@ -11,9 +12,11 @@ export async function POST() {
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   try {
+    const before = await countAssignedHistory();
     const changed = (await rematchHistory()) + (await rematchInvoices());
-    logInfo("history_rematch", { userId: session.user.id, changed });
-    return NextResponse.json({ changed });
+    const newlyAssigned = Math.max(0, (await countAssignedHistory()) - before);
+    logInfo("history_rematch", { userId: session.user.id, changed, newlyAssigned });
+    return NextResponse.json({ changed, newlyAssigned });
   } catch (err) {
     logError("history_rematch_failed", err, { userId: session.user.id });
     return NextResponse.json({ message: err instanceof Error ? err.message : String(err) }, { status: 500 });

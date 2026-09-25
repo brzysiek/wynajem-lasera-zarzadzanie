@@ -81,8 +81,12 @@ async function fetchHistoricalEvents(now = new Date()) {
 
 // Dopasowanie liczone raz na klucz tytułu — opis z telefonem / e-mailem /
 // NIP-em (rzadki) liczony osobno, bo to najmocniejszy sygnał.
+// Słowo występujące w tylu RÓŻNYCH tytułach (i nienależące do żadnego
+// klienta) to szum wpisywany przez biuro („razem”, „okulary”, „nowa”…).
+const NOISE_MIN_KEYS = 5;
+
 export async function loadClassifier() {
-  const [clients, aliases] = await Promise.all([
+  const [clients, aliases, keys, ignored] = await Promise.all([
     prisma.client.findMany({
       select: {
         id: true,
@@ -93,13 +97,24 @@ export async function loadClassifier() {
       },
     }),
     prisma.clientAlias.findMany({ select: { alias: true, clientId: true } }),
+    prisma.rentalHistory.findMany({ distinct: ["titleKey"], select: { titleKey: true } }),
+    // Tytuły, które biuro świadomie pominęło — nowe wydarzenia z tym samym
+    // tytułem też są pomijane.
+    prisma.rentalHistory.findMany({ where: { matchState: "IGNORED", matchedByUserId: { not: null } }, distinct: ["titleKey"], select: { titleKey: true } }),
   ]);
-  const match = buildMatcher(clients, new Map(aliases.map((a) => [a.alias, a.clientId])), normalizePolishPhone);
+  const tokenKeys = new Map<string, number>();
+  for (const { titleKey } of keys) for (const t of new Set(titleKey.split(" ").filter(Boolean))) tokenKeys.set(t, (tokenKeys.get(t) ?? 0) + 1);
+  const noise = new Set([...tokenKeys].filter(([, n]) => n >= NOISE_MIN_KEYS).map(([t]) => t));
+  const ignoredKeys = new Set(ignored.map((r) => r.titleKey).filter(Boolean));
+  const match = buildMatcher(clients, new Map(aliases.map((a) => [a.alias, a.clientId])), normalizePolishPhone, undefined, noise);
   const byKey = new Map<string, ReturnType<typeof match>>();
 
   return function classify(title: string, description: string | null): Classification {
     const n = normalizeTitle(title);
     if (n.kind === "INNE") {
+      return { kind: n.kind, titleKey: n.key, clientId: null, matchMethod: null, matchState: "IGNORED", matchScore: null, candidates: [] };
+    }
+    if (ignoredKeys.has(n.key)) {
       return { kind: n.kind, titleKey: n.key, clientId: null, matchMethod: null, matchState: "IGNORED", matchScore: null, candidates: [] };
     }
     const signals = extractSignals(`${title}\n${description ?? ""}`, normalizePolishPhone);

@@ -104,4 +104,41 @@ describe("buildMatcher", () => {
   it("pusty klucz", () => {
     expect(match("").state).toBe("UNMATCHED");
   });
+
+  describe("uczenie z decyzji biura", () => {
+    const learned = buildMatcher(
+      clients,
+      new Map([
+        ["kuter port nieznanowice", "mariola"],
+        ["sha", "sha"],
+        ["nowy sacz nurek", "kolber"],
+        ["anna", "anna1"], // ogólnik — nie może przypisywać automatycznie
+      ]),
+      phone,
+    );
+
+    it("potwierdzony tytuł w innej kolejności słów → AUTO", () => {
+      expect(learned(key("Nurek Nowy Sącz 2 gł."))).toMatchObject({ clientId: "kolber", state: "AUTO" });
+    });
+
+    it("potwierdzony tytuł zawarty w dłuższym → AUTO", () => {
+      expect(learned(key("SHA 1 gł. Tym razem + okulary"))).toMatchObject({ clientId: "sha", state: "AUTO" });
+      expect(learned(key("Kuter Port Nieznanowice nowa klientka"))).toMatchObject({ clientId: "mariola", state: "AUTO" });
+    });
+
+    it("ogólny alias (samo imię) nie przypisuje automatycznie", () => {
+      expect(learned(key("Anna Orlova"))).not.toMatchObject({ state: "AUTO" });
+    });
+  });
+
+  it("pełne imię i nazwisko w dłuższym tytule → AUTO", () => {
+    expect(match(key("Anna Pawlik tym razem okulary"))).toMatchObject({ clientId: "anna2", state: "AUTO" });
+  });
+
+  it("słowa-szum z danych nie zaniżają dopasowania", () => {
+    const withNoise = buildMatcher(clients, new Map(), phone, undefined, new Set(["okulary", "nowa"]));
+    const r = withNoise(key("Kolber okulary nowa"));
+    expect(r.candidates[0]?.clientId).toBe("kolber");
+    expect(match(key("Kolber okulary nowa")).state).toBe("UNMATCHED");
+  });
 });

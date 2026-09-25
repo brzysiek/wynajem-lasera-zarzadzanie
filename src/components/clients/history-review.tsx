@@ -555,7 +555,7 @@ export function HistoryReview({ data }: { data: ReviewData }) {
     const ids = groups.map((g) => g.id);
     const keys = [...new Set(groups.map((g) => g.key))];
     setBusy((b) => new Set([...b, ...ids]));
-    const { ok, data: res } = await api<{ events: number }>("/api/history/decide", "POST", { ...body, keys });
+    const { ok, data: res } = await api<{ events: number; autoAssigned: number }>("/api/history/decide", "POST", { ...body, keys });
     setBusy((b) => new Set([...b].filter((id) => !ids.includes(id))));
     if (!ok) {
       setToast({ text: res.message ?? "Nie udało się zapisać decyzji.", error: true });
@@ -566,7 +566,13 @@ export function HistoryReview({ data }: { data: ReviewData }) {
     const n = res.events;
     const text =
       body.action === "assign"
-        ? `Przypisano ${n} ${eventsWord(n)} do: ${clientsById.get(body.clientId)?.name ?? "klienta"}.`
+        ? `Przypisano ${n} ${eventsWord(n)} do: ${clientsById.get(body.clientId)?.name ?? "klienta"}.${
+            res.autoAssigned > 0
+              ? ` Dzięki temu ${res.autoAssigned} ${eventsWord(res.autoAssigned)} ${
+                  eventsWord(res.autoAssigned) === "wydarzenia" ? "przypisały się same" : "przypisało się samo"
+                }.`
+              : ""
+          }`
         : body.action === "ignore"
           ? `Pominięto ${n} ${eventsWord(n)}.`
           : `Przywrócono ${n} ${eventsWord(n)} do dopasowania automatycznego.`;
@@ -644,11 +650,17 @@ export function HistoryReview({ data }: { data: ReviewData }) {
 
   async function rematch() {
     setRematching(true);
-    const { ok, data: res } = await api<{ changed: number }>("/api/history/rematch", "POST");
+    const { ok, data: res } = await api<{ changed: number; newlyAssigned: number }>("/api/history/rematch", "POST");
     setRematching(false);
     if (!ok) return setToast({ text: res.message ?? "Nie udało się przeliczyć.", error: true });
     setHidden(new Set());
-    setToast({ text: res.changed ? `Zaktualizowano ${res.changed} ${eventsWord(res.changed)}.` : "Bez zmian — dopasowania są aktualne." });
+    setToast({
+      text: res.newlyAssigned
+        ? `Przypisano automatycznie ${res.newlyAssigned} kolejnych ${eventsWord(res.newlyAssigned)} (na podstawie Twoich decyzji).`
+        : res.changed
+          ? `Zaktualizowano propozycje dla ${res.changed} ${eventsWord(res.changed)}.`
+          : "Bez zmian — dopasowania są aktualne.",
+    });
     router.refresh();
   }
 
@@ -672,8 +684,8 @@ export function HistoryReview({ data }: { data: ReviewData }) {
             liczą się do statusu, liczby wynajmów i „klient od”.
           </p>
         </div>
-        <button type="button" onClick={() => void rematch()} disabled={rematching} className={BTN} title="Np. po dodaniu nowych klientów lub osób kontaktowych">
-          {rematching ? "Przeliczanie…" : "Przelicz automatycznie"}
+        <button type="button" onClick={() => void rematch()} disabled={rematching} className={BTN} title="Uczy się z Twoich potwierdzeń i przypisuje podobne tytuły. Twoje decyzje zostają nietknięte.">
+          {rematching ? "Przeliczanie…" : "Przelicz na podstawie decyzji"}
         </button>
       </div>
 
