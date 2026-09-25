@@ -22,10 +22,14 @@ export function isRealizedRental(rental: {
   deletedInGoogle: boolean;
   endsAt: Date;
   confirmedAt: Date | null;
+  // Wydarzenie z historii kalendarzy (rental_history, prompt 3A) przypisane
+  // automatycznie albo potwierdzone przez biuro — z definicji odbyte.
+  historical?: boolean;
 }): boolean {
   // Szkolenia nie liczą się do statusu klienta (spec, sekcja 2).
   if (rental.eventType !== "WYNAJEM") return false;
   if (rental.deletedInGoogle) return false;
+  if (rental.historical) return true;
   if (rental.confirmedAt) return true;
   return rental.endsAt <= CONFIRMATION_TRACKED_SINCE;
 }

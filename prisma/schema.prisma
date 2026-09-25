@@ -186,6 +186,7 @@ model Device {
   rentals  Rental[]
   syncLogs SyncLog[]
   costs    Cost[]
+  history  RentalHistory[]
 
   @@map("devices")
 }
@@ -705,6 +706,8 @@ model Client {
 
   contacts ClientContact[]
   rentals  Rental[]
+  history  RentalHistory[]
+  aliases  ClientAlias[]
 
   @@index([nip])
   @@index([name])
@@ -733,4 +736,70 @@ model ClientContact {
   @@index([email])
   @@index([phone])
   @@map("client_contacts")
+}
+
+// ---------------------------------------------------------------------------
+// CRM — historia klienta (docs/crm/prompt-claude-code-crm-3-historia.md).
+// Warstwa TYLKO DO ODCZYTU: osobne tabele, nigdy Rental — historia nie może
+// uruchomić przypomnień SMS, alertów, zadań kierowcy ani zmienić przychodów.
+
+enum HistoryMatchMethod {
+  NIP // faktura: NIP nabywcy = Client.nip
+  EMAIL // adres e-mail osoby kontaktowej
+  PHONE // numer telefonu w opisie wydarzenia
+  NAME_AUTO // dopasowanie nazwy powyżej progu pewności
+  MANUAL // potwierdzone / wybrane ręcznie przez biuro
+}
+
+enum HistoryMatchState {
+  AUTO // przypisane automatycznie (wysoka pewność)
+  SUGGESTED // propozycja do potwierdzenia
+  CONFIRMED // potwierdzone przez człowieka
+  IGNORED // nie dotyczy klienta (serwis, blokada terminu, prywatne)
+  UNMATCHED // brak propozycji
+}
+
+// Wydarzenie z kalendarza urządzenia sprzed okna synchronizacji (device-sync.ts).
+model RentalHistory {
+  id               String              @id @default(cuid())
+  deviceId         String
+  device           Device              @relation(fields: [deviceId], references: [id])
+  googleCalendarId String
+  googleEventId    String
+  title            String
+  description      String?             @db.Text
+  startsAt         DateTime
+  endsAt           DateTime
+  kind             String // "WYNAJEM" | "SZKOLENIE" | "INNE" — src/lib/history/normalize-title.ts
+  // Znormalizowany tytuł — klucz grupowania na /klienci/dopasowania i aliasów.
+  titleKey         String              @db.VarChar(191)
+  // Kandydaci dla SUGGESTED: [{ clientId, score }] (maks. 3).
+  candidates       Json?
+  clientId         String?
+  client           Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  matchMethod      HistoryMatchMethod?
+  matchState       HistoryMatchState   @default(UNMATCHED)
+  matchScore       Float?
+  matchedByUserId  String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@unique([googleCalendarId, googleEventId])
+  @@index([clientId])
+  @@index([matchState])
+  @@index([titleKey])
+  @@map("rental_history")
+}
+
+// Nauczone z potwierdzeń: znormalizowany tytuł → klient (prompt 3, 2.3 pkt 4).
+model ClientAlias {
+  id              String   @id @default(cuid())
+  clientId        String
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  alias           String   @unique @db.VarChar(191)
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@index([clientId])
+  @@map("client_aliases")
 }

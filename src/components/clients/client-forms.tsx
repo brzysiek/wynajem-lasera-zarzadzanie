@@ -411,8 +411,18 @@ export function SmsComposer({
 
 // ------------------------------------------------------------------ nowy klient
 
-export function NewClientDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
-  const [f, setF] = useState({ name: "", firstName: "", lastName: "", phone: "", email: "", street: "", zip: "", city: "" });
+export function NewClientDialog({
+  onClose,
+  onCreated,
+  initialName = "",
+  hint,
+}: {
+  onClose: () => void;
+  onCreated: (id: string) => void;
+  initialName?: string;
+  hint?: string;
+}) {
+  const [f, setF] = useState({ name: initialName, firstName: "", lastName: "", phone: "", email: "", street: "", zip: "", city: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -442,7 +452,7 @@ export function NewClientDialog({ onClose, onCreated }: { onClose: () => void; o
       <div className="relative flex w-full max-w-[460px] flex-col gap-3 rounded-2xl bg-white p-6 shadow-[0_12px_40px_rgba(0,0,0,0.2)]">
         <div>
           <h2 className="m-0 text-lg font-semibold text-[var(--c-navy)]">Nowy klient</h2>
-          <p className="text-xs text-[var(--c-muted)]">Minimum na start — resztę uzupełnisz na karcie klienta.</p>
+          <p className="text-xs text-[var(--c-muted)]">{hint ?? "Minimum na start — resztę uzupełnisz na karcie klienta."}</p>
         </div>
         <label className={LABEL}>
           Nazwa gabinetu <span className="font-normal text-[var(--c-faint)]">(puste = klientka prywatna)</span>

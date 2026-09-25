@@ -116,7 +116,16 @@ function FilterSelect<T extends string>({
   );
 }
 
-export function ClientsManager({ rows, initialSelectedId }: { rows: ClientListRow[]; initialSelectedId: string | null }) {
+export function ClientsManager({
+  rows,
+  initialSelectedId,
+  pendingHistory = 0,
+}: {
+  rows: ClientListRow[];
+  initialSelectedId: string | null;
+  // Wydarzenia z historii kalendarzy czekające na przypisanie (prompt 3A).
+  pendingHistory?: number;
+}) {
   const router = useRouter();
   const wide = useMediaQuery("(min-width: 1280px)");
 
@@ -265,6 +274,18 @@ export function ClientsManager({ rows, initialSelectedId }: { rows: ClientListRo
                 {rows.length} {rows.length === 1 ? "klient" : "klientów"} · status liczony z historii wynajmów
               </p>
             </div>
+            <Link
+              href="/klienci/dopasowania"
+              className="flex h-[34px] items-center gap-1.5 rounded-lg border border-[var(--c-border)] bg-white px-3 text-[13px] text-[var(--c-text)] transition-colors hover:border-[var(--c-brand)] hover:text-[var(--c-brand-deep)]"
+              title="Przypisz historyczne wydarzenia z kalendarzy do klientów"
+            >
+              Dopasowania historii
+              {pendingHistory > 0 && (
+                <span className="rounded-full bg-[var(--c-accent-soft)] px-1.5 text-[11px] font-semibold tabular-nums text-[var(--c-accent-deep)]">
+                  {pendingHistory}
+                </span>
+              )}
+            </Link>
             <button
               type="button"
               onClick={() => exportCsv(visible)}

@@ -77,4 +77,31 @@ describe("summarizeClient", () => {
     expect(s.rentalsTotal).toBe(2);
     expect(s.avgRentalNet).toBe(1000);
   });
+
+  it("historia z kalendarzy liczy się do statusu i „klient od”, ale nie do przychodu", () => {
+    const s = summarizeClient({
+      statusOverride: null,
+      rentals: [
+        rental({ startsAt: day(2026, 9, 10), totalNet: 1500 }),
+        rental({ startsAt: day(2026, 6, 1), totalNet: null, historical: true }),
+        rental({ startsAt: day(2024, 3, 5), totalNet: null, historical: true }),
+        rental({ startsAt: day(2025, 1, 1), totalNet: null, historical: true, eventType: "SZKOLENIE", interest: null }),
+      ],
+      today,
+    });
+    expect(s.status).toBe("STALY");
+    expect(s.rentalsTotal).toBe(3); // szkolenie się nie liczy
+    expect(s.firstSeenAt).toEqual(day(2024, 3, 5));
+    expect(s.revenueNet).toBe(1500);
+    expect(s.avgRentalNet).toBe(1500);
+  });
+
+  it("historyczny wynajem po 22.09 bez potwierdzenia też jest zrealizowany", () => {
+    const s = summarizeClient({
+      statusOverride: null,
+      rentals: [rental({ startsAt: day(2026, 9, 25), totalNet: null, historical: true })],
+      today,
+    });
+    expect(s.status).toBe("NOWY");
+  });
 });

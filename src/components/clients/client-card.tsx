@@ -58,6 +58,24 @@ function HistoryRow({ item }: { item: ClientHistoryItem }) {
       </Link>
     );
   }
+  if (item.kind === "history") {
+    return (
+      <div className="flex gap-2.5" title={`Tytuł w kalendarzu: ${item.title}`}>
+        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[var(--c-bg)] text-[11px] font-bold text-[var(--c-muted)]">
+          {item.eventType === "SZKOLENIE" ? "K" : "R"}
+        </span>
+        <span className="min-w-0 flex-grow">
+          <span className="block text-[13px] text-[var(--c-text)]">
+            {item.eventType === "SZKOLENIE" ? "Szkolenie" : "Wynajem"} {item.deviceName}
+          </span>
+          <span className="flex gap-1.5 text-[11px] text-[var(--c-muted)]">
+            {fmtDate(item.at)}
+            <span>· z kalendarza</span>
+          </span>
+        </span>
+      </div>
+    );
+  }
   const sms = item.channel === "SMS";
   return (
     <div className="flex gap-2.5">
@@ -370,6 +388,15 @@ export function ClientCard({
           <Stat label="Ostatni wynajem" value={s.lastRentalAt ? fmtDate(s.lastRentalAt) : "—"} sub={s.lastRentalAt ? fmtAgo(s.lastRentalAt) : undefined} />
           <Stat label="Ulubione urządzenie" value={s.favoriteDevice ? DEVICE_INTEREST_LABEL[s.favoriteDevice] : "—"} />
         </div>
+        {s.firstSeenAt && (
+          <p className="-mt-2.5 text-xs text-[var(--c-muted)]">
+            Klient od{" "}
+            <b className="font-semibold text-[var(--c-text)]">
+              {new Date(s.firstSeenAt).toLocaleDateString("pl-PL", { month: "2-digit", year: "numeric" })}
+            </b>
+            {detail.history.some((h) => h.kind === "history") && " · z historią z kalendarzy"}
+          </p>
+        )}
 
         {detail.notes && panel !== "note" && (
           <button

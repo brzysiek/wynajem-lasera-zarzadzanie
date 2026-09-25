@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getHubspotContactUrl } from "@/lib/integrations/hubspot";
 import { CATEGORY_TO_INTEREST, DEVICE_INTEREST_KEYS, type ClinicTypeKey, type DeviceInterestKey, type SourceKey } from "@/lib/clients/labels";
@@ -37,6 +38,35 @@ function toFact(r: RentalFactRow): ClientRentalFact {
     confirmedAt: r.finance?.confirmedAt ?? null,
     totalNet: r.finance ? Number(r.finance.totalNet.toString()) : null,
     interest: r.device.pricingCategory ? (CATEGORY_TO_INTEREST[r.device.pricingCategory] ?? null) : null,
+  };
+}
+
+// Historia z kalendarzy (prompt 3A): liczą się tylko wpisy przypisane
+// automatycznie albo potwierdzone — propozycje (SUGGESTED) dopiero po
+// potwierdzeniu. Bez kwot: nie wpływają na przychód.
+const HISTORY_FACT_WHERE: Prisma.RentalHistoryWhereInput = {
+  matchState: { in: ["AUTO", "CONFIRMED"] },
+  kind: { in: ["WYNAJEM", "SZKOLENIE"] },
+};
+const HISTORY_FACT_SELECT = {
+  startsAt: true,
+  endsAt: true,
+  kind: true,
+  device: { select: { pricingCategory: true } },
+} as const;
+
+type HistoryFactRow = { startsAt: Date; endsAt: Date; kind: string; device: { pricingCategory: string | null } };
+
+function historyToFact(h: HistoryFactRow): ClientRentalFact {
+  return {
+    startsAt: h.startsAt,
+    endsAt: h.endsAt,
+    eventType: h.kind === "SZKOLENIE" ? "SZKOLENIE" : "WYNAJEM",
+    deletedInGoogle: false,
+    confirmedAt: null,
+    totalNet: null,
+    interest: h.device.pricingCategory ? (CATEGORY_TO_INTEREST[h.device.pricingCategory] ?? null) : null,
+    historical: true,
   };
 }
 
@@ -92,13 +122,14 @@ export async function loadClientRows(today = new Date()): Promise<ClientListRow[
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
       },
       rentals: { select: RENTAL_FACT_SELECT },
+      history: { where: HISTORY_FACT_WHERE, select: HISTORY_FACT_SELECT },
     },
   });
 
   return clients.map((c) => {
     const summary = summarizeClient({
       statusOverride: c.statusOverride,
-      rentals: (c.rentals as RentalFactRow[]).map(toFact),
+      rentals: [...(c.rentals as RentalFactRow[]).map(toFact), ...c.history.map(historyToFact)],
       today,
     });
     const primary = c.contacts[0] ?? null;
@@ -158,7 +189,9 @@ export type ClientHistoryItem =
       upcoming: boolean;
       deleted: boolean;
     }
-  | { kind: "message"; id: string; at: string; channel: string; body: string; failed: boolean };
+  | { kind: "message"; id: string; at: string; channel: string; body: string; failed: boolean }
+  // Wydarzenie z historii kalendarzy (prompt 3A) — bez kwot.
+  | { kind: "history"; id: string; at: string; title: string; deviceName: string; eventType: "WYNAJEM" | "SZKOLENIE" };
 
 export type ClientDetail = {
   id: string;
@@ -187,6 +220,7 @@ export type ClientDetail = {
     rentals12m: number;
     rentalsTotal: number;
     lastRentalAt: string | null;
+    firstSeenAt: string | null;
     revenueNet: number;
     avgRentalNet: number | null;
     favoriteDevice: DeviceInterestKey | null;
@@ -209,13 +243,18 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
           messages: { select: { id: true, channel: true, body: true, status: true, sentAt: true } },
         },
       },
+      history: {
+        where: HISTORY_FACT_WHERE,
+        orderBy: { startsAt: "desc" },
+        select: { ...HISTORY_FACT_SELECT, id: true, title: true, device: { select: { name: true, pricingCategory: true } } },
+      },
     },
   });
   if (!c) return null;
 
   const summary = summarizeClient({
     statusOverride: c.statusOverride,
-    rentals: (c.rentals as unknown as RentalFactRow[]).map(toFact),
+    rentals: [...(c.rentals as unknown as RentalFactRow[]).map(toFact), ...c.history.map(historyToFact)],
     today,
   });
 
@@ -260,6 +299,16 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       });
     }
   }
+  for (const h of c.history) {
+    history.push({
+      kind: "history",
+      id: h.id,
+      at: h.startsAt.toISOString(),
+      title: h.title,
+      deviceName: h.device.name,
+      eventType: h.kind === "SZKOLENIE" ? "SZKOLENIE" : "WYNAJEM",
+    });
+  }
   history.sort((a, b) => b.at.localeCompare(a.at));
 
   return {
@@ -300,6 +349,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       rentals12m: summary.rentals12m,
       rentalsTotal: summary.rentalsTotal,
       lastRentalAt: summary.lastRentalAt?.toISOString() ?? null,
+      firstSeenAt: summary.firstSeenAt?.toISOString() ?? null,
       revenueNet: summary.revenueNet,
       avgRentalNet: summary.avgRentalNet,
       favoriteDevice: summary.favoriteDevice,

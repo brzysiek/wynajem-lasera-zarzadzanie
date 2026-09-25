@@ -1,5 +1,6 @@
 import { getGoogleCalendarConfigStatus } from "@/lib/integrations/google-calendar";
 import { GoogleCalendarPanel } from "@/components/google-calendar-panel";
+import { CalendarHistoryImportPanel } from "@/components/calendar-history-import-panel";
 
 function Code({ children }: { children: string }) {
   return <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800">{children}</code>;
@@ -28,6 +29,8 @@ export default async function GoogleCalendarIntegrationPage() {
         Dane logowania Google (klucz service accounta) ustawia się bezpośrednio w <Code>.env</Code> na serwerze —
         panel wyżej tylko testuje, czy działają.
       </div>
+
+      <CalendarHistoryImportPanel />
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">
         <h2 className="mb-1 text-lg font-semibold text-gray-900">Google Calendar — jak przygotować dane dostępowe</h2>

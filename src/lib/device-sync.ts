@@ -3,7 +3,7 @@ import { listCalendarEvents } from "@/lib/integrations/google-calendar";
 
 // Wide enough to cover realistic bookings without pulling a device's entire
 // history on every sync — full incremental sync (syncToken) is a later stage.
-const SYNC_PAST_DAYS = 30;
+export const SYNC_PAST_DAYS = 30;
 const SYNC_FUTURE_DAYS = 365;
 
 export type DeviceSyncResult = {

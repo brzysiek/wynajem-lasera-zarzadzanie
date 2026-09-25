@@ -12,6 +12,7 @@ export type ClientRentalFact = {
   confirmedAt: Date | null;
   totalNet: number | null; // null = wynajem bez rozliczenia (RentalFinance)
   interest: DeviceInterestKey | null; // kategoria wynajętego urządzenia
+  historical?: boolean; // z historii kalendarzy (bez kwot) — status.ts
 };
 
 export type ClientSummary = {
@@ -19,6 +20,8 @@ export type ClientSummary = {
   rentals12m: number;
   rentalsTotal: number;
   lastRentalAt: Date | null;
+  // „Klient od” — najwcześniejszy odbyty wynajem lub szkolenie (także z historii).
+  firstSeenAt: Date | null;
   revenueNet: number;
   avgRentalNet: number | null;
   favoriteDevice: DeviceInterestKey | null;
@@ -50,11 +53,15 @@ export function summarizeClient(input: {
   for (const r of realized) if (r.interest) counts.set(r.interest, (counts.get(r.interest) ?? 0) + 1);
   const rentedDevices = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
 
+  const past = input.rentals.filter((r) => !r.deletedInGoogle && r.startsAt <= input.today);
+  const firstSeenAt = past.length ? new Date(Math.min(...past.map((r) => r.startsAt.getTime()))) : null;
+
   return {
     status,
     rentals12m: realized.filter((r) => daysAgo(r.startsAt, input.today) <= 365).length,
     rentalsTotal: realized.length,
     lastRentalAt: realized[0]?.startsAt ?? null,
+    firstSeenAt,
     revenueNet,
     avgRentalNet: finished.length ? Math.round((revenueNet / finished.length) * 100) / 100 : null,
     favoriteDevice: rentedDevices[0] ?? null,
