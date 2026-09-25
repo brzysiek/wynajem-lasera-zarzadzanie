@@ -16,6 +16,7 @@ export default async function UsersSettingsPage() {
       canActAsDriver: true,
       grammaticalGender: true,
       hourlyRate: true,
+      driverColor: true,
       invitedAt: true,
       activatedAt: true,
       createdAt: true,

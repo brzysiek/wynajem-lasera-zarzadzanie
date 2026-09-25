@@ -274,7 +274,7 @@ function CalendarWeekRow({
               );
             })()}
             {s.rental.hubspotContactId && <ContactBadge name={s.rental.contactNameCache} />}
-            {s.rental.driver && <DriverBadge name={s.rental.driver.name} />}
+            {s.rental.driver && <DriverBadge name={s.rental.driver.name} color={s.rental.driver.driverColor} />}
             <span className="truncate">
               {variant === "week" && !s.rental.allDay
                 ? `${formatTime(s.rental.startsAt)}–${formatTime(s.rental.endsAt)} ${withDeliveryTimePrefix(s.rental.title, s.rental.deliveryTime)}`
@@ -297,10 +297,13 @@ function ContactBadge({ name }: { name?: string | null }) {
 }
 
 // Steering-wheel icon; the SVG <title> is the hover tooltip (same native
-// mechanism as ContactBadge) and names the assigned driver.
-function DriverBadge({ name }: { name: string }) {
+// mechanism as ContactBadge) and names the assigned driver. Colored per
+// kierowca (User.driverColor, set in /ustawienia/uzytkownicy) so the tile
+// says WHO at a glance, without needing to hover — falls back to the tile's
+// own text color when no color is assigned yet.
+function DriverBadge({ name, color }: { name: string; color: string | null }) {
   return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3 flex-none">
+    <svg viewBox="0 0 20 20" fill={color ?? "currentColor"} className="h-3 w-3 flex-none">
       <title>{`Kierowca: ${name}`}</title>
       <path
         fillRule="evenodd"

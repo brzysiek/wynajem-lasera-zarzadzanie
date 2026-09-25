@@ -13,7 +13,7 @@ import { saveRentalFinance } from "@/lib/finance";
 
 const RENTAL_INCLUDE = {
   device: true,
-  driver: { select: { id: true, name: true } },
+  driver: { select: { id: true, name: true, driverColor: true } },
   vehicle: { select: { id: true, name: true } },
   finance: true,
   reminderRules: { orderBy: { daysBefore: "asc" as const } },

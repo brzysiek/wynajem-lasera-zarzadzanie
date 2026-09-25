@@ -32,7 +32,7 @@ function deviceDto<T extends { variantOptions: unknown }>(d: T) {
 
 const RENTAL_INCLUDE = {
   device: true,
-  driver: { select: { id: true, name: true } },
+  driver: { select: { id: true, name: true, driverColor: true } },
   vehicle: { select: { id: true, name: true } },
   finance: true,
   reminderRules: { orderBy: { daysBefore: "asc" as const } },
@@ -128,7 +128,11 @@ export default async function RentalDetailPage({
     getAllReminderTemplates(),
     listSmsTemplates(),
     isAdmin
-      ? prisma.user.findMany({ where: { role: "KIEROWCA" }, orderBy: { name: "asc" }, select: { id: true, name: true } })
+      ? prisma.user.findMany({
+          where: { role: "KIEROWCA" },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, driverColor: true },
+        })
       : Promise.resolve([]),
     isAdmin
       ? prisma.vehicle.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })

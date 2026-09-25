@@ -28,7 +28,11 @@ export default async function NewRentalPage({
     }),
     getAllReminderTemplates(),
     isAdmin
-      ? prisma.user.findMany({ where: { role: "KIEROWCA" }, orderBy: { name: "asc" }, select: { id: true, name: true } })
+      ? prisma.user.findMany({
+          where: { role: "KIEROWCA" },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, driverColor: true },
+        })
       : Promise.resolve([]),
     isAdmin
       ? prisma.vehicle.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } })

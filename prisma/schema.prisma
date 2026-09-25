@@ -107,6 +107,12 @@ model User {
   // właściciela tej stawki. Sprawdzaj to przy każdym endpointzie zwracanym
   // tej roli, nie tylko ukrywaj w UI.
   hourlyRate   Decimal?  @db.Decimal(8, 2)
+  // Kolor ikony kierownicy na kafelkach kalendarza (rola KIEROWCA) — żeby
+  // dało się odróżnić przypisanego kierowcę na pierwszy rzut oka, bez
+  // najeżdżania kursorem na tooltip (zgłoszone przez użytkownika). Hex
+  // string jak Device.color; null = brak przypisanego koloru (neutralny
+  // wygląd ikony, jak dotychczas).
+  driverColor  String?
   invitedAt    DateTime?
   activatedAt  DateTime?
   createdAt    DateTime  @default(now())

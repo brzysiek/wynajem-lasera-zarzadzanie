@@ -18,6 +18,8 @@ type User = {
   // dostępnym samej roli KIEROWCA (docs/prompt-claude-code-dashboard-kosztow.md
   // sekcja 1.4). Ta strona jest ADMIN-only, więc bezpieczna.
   hourlyRate: string | null;
+  // Kolor ikony kierownicy na kafelkach kalendarza — tylko dla roli KIEROWCA.
+  driverColor: string | null;
   invitedAt: string | null;
   activatedAt: string | null;
   createdAt: string;
@@ -196,6 +198,7 @@ function EditForm({
   const [canActAsDriver, setCanActAsDriver] = useState(user.canActAsDriver);
   const [gender, setGender] = useState<Gender | "">(user.grammaticalGender ?? "");
   const [hourlyRate, setHourlyRate] = useState(user.hourlyRate ?? "");
+  const [driverColor, setDriverColor] = useState(user.driverColor ?? "#2563EB");
   const [changingPassword, setChangingPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -234,6 +237,7 @@ function EditForm({
       canActAsDriver?: boolean;
       grammaticalGender?: Gender | null;
       hourlyRate?: number | null;
+      driverColor?: string | null;
     } = {};
     if (name !== user.name) body.name = name;
     if (email !== user.email) body.email = email;
@@ -243,6 +247,9 @@ function EditForm({
     if ((gender || null) !== (user.grammaticalGender ?? null)) body.grammaticalGender = gender || null;
     if (role === "KIEROWCA" && hourlyRate.trim() !== (user.hourlyRate ?? "")) {
       body.hourlyRate = hourlyRateValue;
+    }
+    if (role === "KIEROWCA" && driverColor !== (user.driverColor ?? "#2563EB")) {
+      body.driverColor = driverColor;
     }
     if (changingPassword) body.password = password;
 
@@ -331,19 +338,31 @@ function EditForm({
       )}
 
       {role === "KIEROWCA" && (
-        <label className="mt-3 flex flex-col gap-1 text-sm text-gray-700 sm:max-w-[220px]">
-          Stawka godzinowa (zł)
-          <input
-            value={hourlyRate}
-            onChange={(e) => setHourlyRate(e.target.value)}
-            inputMode="decimal"
-            placeholder="np. 30"
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-          />
-          <span className="text-xs text-gray-400">
-            Do wyliczenia kosztu pracy w Finanse → Koszty. Widoczne wyłącznie dla ADMINA — nigdy dla samego kierowcy.
-          </span>
-        </label>
+        <div className="mt-3 flex flex-wrap gap-4">
+          <label className="flex flex-col gap-1 text-sm text-gray-700 sm:max-w-[220px]">
+            Stawka godzinowa (zł)
+            <input
+              value={hourlyRate}
+              onChange={(e) => setHourlyRate(e.target.value)}
+              inputMode="decimal"
+              placeholder="np. 30"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            />
+            <span className="text-xs text-gray-400">
+              Do wyliczenia kosztu pracy w Finanse → Koszty. Widoczne wyłącznie dla ADMINA — nigdy dla samego kierowcy.
+            </span>
+          </label>
+          <label className="flex flex-col gap-1 text-sm text-gray-700">
+            Kolor na kalendarzu
+            <input
+              type="color"
+              value={driverColor}
+              onChange={(e) => setDriverColor(e.target.value)}
+              className="h-9 w-20 rounded-md border border-gray-300"
+            />
+            <span className="text-xs text-gray-400">Kolor ikonki kierownicy na kafelkach wynajmów tego kierowcy.</span>
+          </label>
+        </div>
       )}
 
       <div className="mt-3">

@@ -5,6 +5,7 @@ import { requireAdminSession } from "@/lib/auth-guards";
 import { logInfo, logWarn } from "@/lib/logger";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const MIN_PASSWORD_LENGTH = 8;
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -29,6 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     canActAsDriver?: boolean;
     grammaticalGender?: "M" | "F" | null;
     hourlyRate?: number | null;
+    driverColor?: string | null;
   } = {};
 
   if (typeof body?.name === "string" && body.name.trim()) {
@@ -84,6 +86,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
+  // Kolor ikony kierownicy na kafelkach kalendarza (KIEROWCA) — żeby dało się
+  // odróżnić przypisanego kierowcę bez najeżdżania kursorem na tooltip. Bez
+  // ograniczenia do roli KIEROWCA — nieszkodliwe, jeśli ktoś ustawi kolor
+  // zanim/po zmianie roli, po prostu nigdzie się nie wyświetli.
+  if ("driverColor" in (body ?? {})) {
+    if (body.driverColor === null) {
+      data.driverColor = null;
+    } else if (typeof body.driverColor === "string" && HEX_COLOR_PATTERN.test(body.driverColor)) {
+      data.driverColor = body.driverColor;
+    } else {
+      return NextResponse.json({ message: "Kolor musi być w formacie hex, np. #2563EB." }, { status: 400 });
+    }
+  }
+
   if (typeof body?.password === "string" && body.password) {
     if (body.password.length < MIN_PASSWORD_LENGTH) {
       return NextResponse.json(
@@ -114,6 +130,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       canActAsDriver: updated.canActAsDriver,
       grammaticalGender: updated.grammaticalGender,
       hourlyRate: updated.hourlyRate !== null ? updated.hourlyRate.toString() : null,
+      driverColor: updated.driverColor,
       invitedAt: updated.invitedAt,
       activatedAt: updated.activatedAt,
       createdAt: updated.createdAt,

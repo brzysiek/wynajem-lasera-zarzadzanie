@@ -25,7 +25,10 @@ export type Device = {
   variantOptions?: string[];
 };
 
-export type DriverOption = { id: string; name: string };
+// driverColor: null = brak przypisanego koloru — ikona kierownicy na
+// kafelku kalendarza wraca do neutralnego wyglądu (patrz DriverBadge w
+// calendar-view.tsx).
+export type DriverOption = { id: string; name: string; driverColor: string | null };
 export type VehicleOption = { id: string; name: string };
 
 export type ReminderDays = 1 | 3 | 7;
