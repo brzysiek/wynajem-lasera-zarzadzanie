@@ -1,31 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Jost } from "next/font/google";
+import "./fonts/fonts.css";
 import "./globals.css";
 import { Providers } from "./providers";
 import { AppFooter } from "@/components/app-footer";
 import { BASE_PATH } from "@/lib/base-path";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-// Rebranding — Jost jest teraz krojem CAŁEJ aplikacji (patrz globals.css,
-// `body { font-family: var(--font-jost) }`), spójnym z wynajemlasera.pl.
-// Zaczęło się jako czcionka wyłącznie powłoki (docs/prompt-claude-code-powloka-aplikacji.md
-// sekcja 3), rozszerzone na treść stron przy osobnym zleceniu "premium" na
-// całą paletę (src/components/shell-tokens.ts, teraz też App).
-const jost = Jost({
-  variable: "--font-jost",
-  weight: ["300", "400", "500", "600"],
-  style: ["normal", "italic"],
-  subsets: ["latin", "latin-ext"],
-});
+// Czcionki (Jost — krój CAŁEJ aplikacji, spójny z wynajemlasera.pl; Geist /
+// Geist Mono) ładowane z plików w repozytorium: src/app/fonts/fonts.css.
+// Wcześniej next/font/google pobierał je z Google przy każdym buildzie i
+// wdrożenie padało, gdy Google Fonts zwróciło nietypową odpowiedź.
 
 export const metadata: Metadata = {
   title: "WynajemLasera.pl — Panel",
@@ -61,7 +44,7 @@ export default function RootLayout({
   const isDev = process.env.NODE_ENV !== "production";
 
   return (
-    <html lang="pl" className={`${geistSans.variable} ${geistMono.variable} ${jost.variable} h-full antialiased`}>
+    <html lang="pl" className="h-full antialiased">
       <body className={`min-h-full flex flex-col text-gray-900 ${isDev ? "bg-amber-50" : "bg-[#F2F4F6]"}`}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Providers>{children}</Providers>
