@@ -219,6 +219,22 @@ describe("trasy API a rola AGENT", () => {
     expect(server).toContain('agent?.role !== "AGENT"');
   });
 
+  it("agent przydziela zadania tylko osobom z agentAssignable (Tomek, Ania)", () => {
+    const body = (method: string, route: string) => all.find((h) => h.method === method && h.route === route)!.body;
+    for (const [m, r] of [
+      ["POST", "tasks"],
+      ["PATCH", "tasks/[id]"],
+      ["POST", "clients/[id]/tasks"],
+      ["POST", "leads/[id]/task"],
+    ]) {
+      expect(body(m, r), `${m} ${r}`).toContain("agentMayAssign(");
+    }
+    expect(body("GET", "tasks/assignees")).toContain("agentAssignees()");
+    const tools = readFileSync(join(__dirname, "mcp", "tools.ts"), "utf8");
+    expect(tools).toContain("const people = await agentAssignees();");
+    expect(readFileSync(join(__dirname, "agent-api", "assignees.ts"), "utf8")).toContain("agentAssignable: true");
+  });
+
   it("zapisy agenta z ograniczeniami mają je w kodzie", () => {
     const body = (method: string, route: string) => writes.find((h) => h.method === method && h.route === route)!.body;
     // Zmiana klienta i osoby: wspólna logika w src/lib/clients/update.ts.

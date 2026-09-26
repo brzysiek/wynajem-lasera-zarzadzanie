@@ -14,6 +14,7 @@ type User = {
   email: string;
   role: Role;
   canActAsDriver: boolean;
+  agentAssignable: boolean;
   grammaticalGender: Gender | null;
   // Tylko dla roli KIEROWCA — nigdy nie pojawia się w żadnym widoku/API
   // dostępnym samej roli KIEROWCA (docs/prompt-claude-code-dashboard-kosztow.md
@@ -199,6 +200,7 @@ function EditForm({
   const [email, setEmail] = useState(user.email);
   const [role, setRole] = useState(user.role);
   const [canActAsDriver, setCanActAsDriver] = useState(user.canActAsDriver);
+  const [agentAssignable, setAgentAssignable] = useState(user.agentAssignable);
   const [gender, setGender] = useState<Gender | "">(user.grammaticalGender ?? "");
   const [hourlyRate, setHourlyRate] = useState(user.hourlyRate ?? "");
   const [driverColor, setDriverColor] = useState(user.driverColor ?? "#2563EB");
@@ -238,6 +240,7 @@ function EditForm({
       password?: string;
       role?: Role;
       canActAsDriver?: boolean;
+      agentAssignable?: boolean;
       grammaticalGender?: Gender | null;
       hourlyRate?: number | null;
       driverColor?: string | null;
@@ -247,6 +250,8 @@ function EditForm({
     if (!isSelf && role !== user.role) body.role = role;
     const effectiveCanDrive = role !== "KIEROWCA" && role !== "AGENT" && canActAsDriver;
     if (effectiveCanDrive !== user.canActAsDriver) body.canActAsDriver = effectiveCanDrive;
+    const effectiveAssignable = (role === "ADMIN" || role === "STAFF") && agentAssignable;
+    if (effectiveAssignable !== user.agentAssignable) body.agentAssignable = effectiveAssignable;
     if ((gender || null) !== (user.grammaticalGender ?? null)) body.grammaticalGender = gender || null;
     if (role === "KIEROWCA" && hourlyRate.trim() !== (user.hourlyRate ?? "")) {
       body.hourlyRate = hourlyRateValue;
@@ -337,6 +342,16 @@ function EditForm({
                 Zmiana zadziała dopiero po Twoim ponownym zalogowaniu.
               </span>
             )}
+          </span>
+        </label>
+      )}
+
+      {(role === "ADMIN" || role === "STAFF") && (
+        <label className="mt-3 flex items-start gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={agentAssignable} onChange={(e) => setAgentAssignable(e.target.checked)} className="mt-0.5" />
+          <span>
+            Agent AI może przydzielać zadania
+            <span className="block text-xs text-gray-400">Klaudiusz może tworzyć zadania z tą osobą jako odpowiedzialną.</span>
           </span>
         </label>
       )}

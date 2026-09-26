@@ -28,6 +28,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     activatedAt?: Date;
     role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
     canActAsDriver?: boolean;
+    agentAssignable?: boolean;
     grammaticalGender?: "M" | "F" | null;
     hourlyRate?: number | null;
     driverColor?: string | null;
@@ -62,6 +63,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body?.canActAsDriver === "boolean") {
     data.canActAsDriver = body.canActAsDriver;
   }
+  // Czy agent AI może przydzielać tej osobie zadania — tylko osoby z biura.
+  if (typeof body?.agentAssignable === "boolean") data.agentAssignable = body.agentAssignable;
+  const roleAfter = data.role ?? target.role;
+  if (roleAfter !== "ADMIN" && roleAfter !== "STAFF") data.agentAssignable = false;
   // Agent AI nigdy nie przełącza się w tryb kierowcy.
   if ((data.role ?? target.role) === "AGENT") data.canActAsDriver = false;
 
@@ -130,6 +135,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       email: updated.email,
       role: updated.role,
       canActAsDriver: updated.canActAsDriver,
+      agentAssignable: updated.agentAssignable,
       grammaticalGender: updated.grammaticalGender,
       hourlyRate: updated.hourlyRate !== null ? updated.hourlyRate.toString() : null,
       driverColor: updated.driverColor,

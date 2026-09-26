@@ -102,6 +102,9 @@ model User {
   // ADMIN/STAFF z tą flagą mogą przełączyć aplikację w „podgląd kierowcy"
   // (rola efektywna, bez zmiany roli w bazie) — patrz src/lib/effective-role.ts.
   canActAsDriver Boolean @default(false)
+  // Agent AI (rola AGENT) może przydzielać tej osobie zadania — ustawia
+  // ADMIN w Ustawienia → Użytkownicy. Domyślnie nie.
+  agentAssignable Boolean @default(false)
   // Płeć gramatyczna — do odmiany „zlecił"/„zleciła" w liście zadań.
   grammaticalGender GrammaticalGender?
   // Stawka za godzinę pracy — TYLKO rola KIEROWCA, null dla innych. REGUŁA

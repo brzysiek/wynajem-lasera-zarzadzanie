@@ -4,6 +4,7 @@ import { loadLeadRows, loadStaffUsers } from "@/lib/leads/load";
 import { lastDealsSync } from "@/lib/leads/hubspot-sync";
 import { leadStats } from "@/lib/leads/today";
 import { LeadsManager } from "@/components/leads/leads-manager";
+import { agentAssignees } from "@/lib/agent-api/assignees";
 
 // Sygnały — miejsce pracy biura nad zapytaniami klientów (CRM, prompt 2A).
 // ADMIN/STAFF, jak moduł Klienci; KIEROWCA przekierowany.
@@ -12,7 +13,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   const { id } = await searchParams;
   const [rows, users, lastSync, clients] = await Promise.all([
     loadLeadRows(),
-    loadStaffUsers(),
+    // Agent przydziela zadania tylko wskazanym osobom (Tomek, Ania).
+    session.user.role === "AGENT" ? agentAssignees() : loadStaffUsers(),
     lastDealsSync(),
     prisma.client.findMany({
       where: { archivedAt: null },

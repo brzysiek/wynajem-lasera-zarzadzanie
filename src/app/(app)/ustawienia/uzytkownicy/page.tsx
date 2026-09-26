@@ -14,6 +14,7 @@ export default async function UsersSettingsPage() {
       email: true,
       role: true,
       canActAsDriver: true,
+      agentAssignable: true,
       grammaticalGender: true,
       hourlyRate: true,
       driverColor: true,

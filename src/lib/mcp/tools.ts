@@ -25,6 +25,7 @@ import { isStatus, parseProposalInput, type ProposalInput } from "@/lib/porzadki
 import { createRemark, listRemarks, parseRemarkInput, updateRemark, type RemarkInput } from "@/lib/porzadki/remarks";
 import { normalizeRemarkBody } from "@/lib/agent-api/remark-body";
 import { taskDto } from "@/lib/tasks";
+import { agentAssignees } from "@/lib/agent-api/assignees";
 import { listAutoClasses, listChangeProposals, submitProposals } from "@/lib/porzadki/change-proposals";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
@@ -81,7 +82,7 @@ function withoutKeys(a: Args, keys: string[]): Args {
 
 // Odpowiedzialny za zadanie: id albo imię/nazwa osoby z biura (ADMIN/STAFF).
 async function officePerson(ref: string): Promise<{ id: string; name: string }> {
-  const people = await prisma.user.findMany({ where: { role: { in: ["ADMIN", "STAFF"] } }, select: { id: true, name: true } });
+  const people = await agentAssignees();
   const low = ref.toLowerCase();
   const hit = people.find((p) => p.id === ref) ?? people.find((p) => p.name.toLowerCase() === low) ?? people.find((p) => p.name.toLowerCase().startsWith(low));
   if (!hit) throw new AgentApiError(`Nie znam osoby „${ref}” w biurze. Dostępne: ${people.map((p) => p.name).join(", ")}.`);
@@ -404,10 +405,10 @@ export const TOOLS: McpTool[] = [
   {
     name: "osoby_biura",
     title: "Osoby z biura",
-    description: "Komu można przypisać zadanie (administratorzy i pracownicy).",
+    description: "Komu można przypisać zadanie (osoby wskazane przez administratora — dziś Tomek i Ania).",
     inputSchema: obj({}),
     readOnly: true,
-    run: async () => ({ people: await prisma.user.findMany({ where: { role: { in: ["ADMIN", "STAFF"] } }, orderBy: { name: "asc" }, select: { id: true, name: true } }) }),
+    run: async () => ({ people: await agentAssignees() }),
   },
 
   // ------------------------------------------------------------- zapis

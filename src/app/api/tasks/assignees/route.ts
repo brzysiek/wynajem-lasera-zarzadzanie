@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth-guards";
 import { OFFICE_AND_AGENT } from "@/lib/permissions";
+import { agentAssignees } from "@/lib/agent-api/assignees";
 
 // Osoby, którym można przypisać zadanie (ADMIN/STAFF — ta sama reguła co
 // assigneeIsAllowed w /api/tasks). Tylko id i imię — dla panelu Zadań, także
@@ -9,6 +10,8 @@ import { OFFICE_AND_AGENT } from "@/lib/permissions";
 export async function GET() {
   const session = await requireSession(OFFICE_AND_AGENT);
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
+  // Agent widzi tylko osoby, którym może przydzielać zadania.
+  if (session.user.role === "AGENT") return NextResponse.json({ users: await agentAssignees() });
   const users = await prisma.user.findMany({
     where: { role: { in: ["ADMIN", "STAFF"] } },
     orderBy: { name: "asc" },

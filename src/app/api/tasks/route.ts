@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireStaffSession } from "@/lib/auth-guards";
 import { OFFICE_AND_AGENT } from "@/lib/permissions";
+import { AGENT_ASSIGNEE_MESSAGE, agentMayAssign } from "@/lib/agent-api/assignees";
 import { toLogValue } from "@/lib/changelog/diff";
 import { recordChanges } from "@/lib/changelog/record";
 import { logInfo } from "@/lib/logger";
@@ -56,8 +57,9 @@ export async function POST(req: NextRequest) {
     assigneeId = body.assigneeId;
   }
   const isAgent = session.user.role === "AGENT";
-  // Agent przygotowuje zadania dla biura — zawsze z odpowiedzialnym.
-  if (isAgent && !assigneeId) return NextResponse.json({ message: "Wskaż, komu przypisać zadanie." }, { status: 400 });
+  // Agent przygotowuje zadania dla biura — zawsze z odpowiedzialnym, i tylko
+  // dla osób z włączonym „agentAssignable” (Tomek, Ania).
+  if (isAgent && !(await agentMayAssign(assigneeId))) return NextResponse.json({ message: AGENT_ASSIGNEE_MESSAGE }, { status: 400 });
 
   const task = await prisma.task.create({
     data: { title, notes, dueDate, assigneeId, authorId: session.user.id },

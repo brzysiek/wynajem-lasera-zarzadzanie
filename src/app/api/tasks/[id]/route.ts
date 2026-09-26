@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession, requireStaffSession } from "@/lib/auth-guards";
 import { OFFICE_AND_AGENT } from "@/lib/permissions";
+import { AGENT_ASSIGNEE_MESSAGE, agentMayAssign } from "@/lib/agent-api/assignees";
 import { changedFields } from "@/lib/changelog/diff";
 import { fieldEntries, recordChanges } from "@/lib/changelog/record";
 import { logInfo } from "@/lib/logger";
@@ -49,6 +50,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if ("dueDate" in body) {
     data.dueDate = body.dueDate == null || body.dueDate === "" ? null : parseDueDate(body.dueDate);
+  }
+  if ("assigneeId" in body && isAgent && !(await agentMayAssign(typeof body.assigneeId === "string" ? body.assigneeId : null))) {
+    return NextResponse.json({ message: AGENT_ASSIGNEE_MESSAGE }, { status: 400 });
   }
   if ("assigneeId" in body) {
     if (body.assigneeId == null || body.assigneeId === "") {
