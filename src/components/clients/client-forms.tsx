@@ -217,10 +217,13 @@ export function ContactForm({
     firstName: contact?.firstName ?? "",
     lastName: contact?.lastName ?? "",
     phone: contact?.phone ?? "",
+    phone2: contact?.phone2 ?? "",
+    phone2Label: contact?.phone2Label ?? "",
     email: contact?.email ?? "",
     role: contact?.role ?? "",
     isPrimary: contact?.isPrimary ?? false,
   });
+  const [showPhone2, setShowPhone2] = useState(Boolean(contact?.phone2));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -243,6 +246,28 @@ export function ContactForm({
         <input className={INPUT} placeholder="Nazwisko" value={f.lastName} onChange={(e) => setF({ ...f, lastName: e.target.value })} />
       </div>
       <input className={INPUT} placeholder="Telefon, np. 601 000 111" inputMode="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
+      {showPhone2 ? (
+        <div className="grid grid-cols-[minmax(0,1fr)_130px] gap-2">
+          <input className={INPUT} placeholder="Drugi telefon" inputMode="tel" value={f.phone2} onChange={(e) => setF({ ...f, phone2: e.target.value })} />
+          <input
+            className={INPUT}
+            placeholder="Etykieta"
+            list="phone2-labels"
+            value={f.phone2Label}
+            onChange={(e) => setF({ ...f, phone2Label: e.target.value })}
+          />
+          <datalist id="phone2-labels">
+            <option value="prywatny" />
+            <option value="gabinet" />
+            <option value="komórka" />
+            <option value="recepcja" />
+          </datalist>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setShowPhone2(true)} className="self-start text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+          + drugi numer telefonu
+        </button>
+      )}
       <input className={INPUT} placeholder="E-mail" inputMode="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
       <input className={INPUT} placeholder="Rola, np. właścicielka, kosmetolog" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} />
       {!contact?.isPrimary && (
@@ -286,7 +311,7 @@ export function NoteEditor({
     setError(null);
     const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${clientId}`, "PATCH", { notes: value });
     setSaving(false);
-    if (!ok) return setError(data.message ?? "Nie udało się zapisać notatki.");
+    if (!ok) return setError(data.message ?? "Nie udało się zapisać.");
     onSaved(data.detail);
   }
 
@@ -297,7 +322,7 @@ export function NoteEditor({
         rows={4}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Notatka wewnętrzna — np. preferencje, ustalenia, na co uważać."
+        placeholder="Stałe ustalenia — np. dostawa przed 8:00, 1. piętro z windą, faktury na adres…"
         className="w-full resize-y rounded-lg border border-[var(--c-border)] px-3 py-2 text-sm outline-none focus:border-[var(--c-brand)]"
       />
       <FormError message={error} />
@@ -306,7 +331,7 @@ export function NoteEditor({
           Anuluj
         </button>
         <button type="button" onClick={() => void save()} disabled={saving} className={BTN_PRIMARY}>
-          {saving ? "Zapisywanie…" : "Zapisz notatkę"}
+          {saving ? "Zapisywanie…" : "Zapisz"}
         </button>
       </div>
     </div>

@@ -143,7 +143,19 @@ export async function importInvoiceHistory(): Promise<{ created: number; updated
   const [invoices, existing, classify] = await Promise.all([
     listInvoicesForHistory(),
     prisma.clientInvoice.findMany({
-      select: { id: true, fakturowniaInvoiceId: true, number: true, buyerName: true, buyerTaxNo: true, totalNet: true, totalGross: true, sellDate: true, positionsSummary: true },
+      select: {
+        id: true,
+        fakturowniaInvoiceId: true,
+        number: true,
+        buyerName: true,
+        buyerTaxNo: true,
+        totalNet: true,
+        totalGross: true,
+        sellDate: true,
+        positionsSummary: true,
+        paymentTo: true,
+        paymentType: true,
+      },
     }),
     loadInvoiceClassifier(),
   ]);
@@ -162,6 +174,8 @@ export async function importInvoiceHistory(): Promise<{ created: number; updated
       buyerTaxNo,
       totalNet: new Prisma.Decimal(inv.priceNet || "0"),
       totalGross: new Prisma.Decimal(inv.priceGross || "0"),
+      paymentTo: inv.paymentTo ? day(inv.paymentTo) : null,
+      paymentType: inv.paymentType,
     };
     const prev = byId.get(inv.id);
     if (!prev) {
@@ -180,7 +194,9 @@ export async function importInvoiceHistory(): Promise<{ created: number; updated
       prev.buyerTaxNo !== base.buyerTaxNo ||
       !prev.totalNet.equals(base.totalNet) ||
       !prev.totalGross.equals(base.totalGross) ||
-      prev.sellDate.getTime() !== base.sellDate.getTime();
+      prev.sellDate.getTime() !== base.sellDate.getTime() ||
+      (prev.paymentTo?.getTime() ?? null) !== (base.paymentTo?.getTime() ?? null) ||
+      prev.paymentType !== base.paymentType;
     const positionsSummary = prev.positionsSummary ?? (await positionsFor(inv, budget));
     if (changed || positionsSummary !== prev.positionsSummary) {
       await prisma.clientInvoice.update({ where: { id: prev.id }, data: { ...base, positionsSummary } });

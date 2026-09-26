@@ -55,4 +55,13 @@ describe("parseContactInput", () => {
     expect(parseContactInput({ role: "kosmetolog" }, deps, { requireName: true }).ok).toBe(false);
     expect(parseContactInput({ firstName: "Ola" }, deps, { requireName: true }).ok).toBe(true);
   });
+
+  it("drugi numer z etykietą; pusty drugi numer czyści etykietę", () => {
+    const r = parseContactInput({ phone2: "602 000 999", phone2Label: "prywatny" }, { normalizePhone: (x) => `+48${x.replace(/\s/g, "")}` });
+    expect(r).toEqual({ ok: true, data: { phone2: "+48602000999", phone2Label: "prywatny" } });
+    expect(parseContactInput({ phone2: "", phone2Label: "prywatny" }, { normalizePhone: () => null })).toEqual({
+      ok: true,
+      data: { phone2: null, phone2Label: null },
+    });
+  });
 });

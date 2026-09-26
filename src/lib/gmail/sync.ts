@@ -272,3 +272,11 @@ export async function removeMailbox(email: string): Promise<string | null> {
   await prisma.setting.deleteMany({ where: { key: stateKey(m) } });
   return null;
 }
+
+// Skrót dla karty klienta: czy synchronizacja działa i kiedy ostatnio.
+export async function gmailSummary(): Promise<{ enabled: boolean; mailboxes: string[]; lastSyncAt: string | null }> {
+  const [enabled, mailboxes] = await Promise.all([isGmailSyncEnabled(), getMailboxes()]);
+  const states = await Promise.all(mailboxes.map((m) => getState(m)));
+  const last = states.map((s) => s.lastSyncAt).filter((x): x is string => Boolean(x)).sort().at(-1) ?? null;
+  return { enabled, mailboxes, lastSyncAt: last };
+}

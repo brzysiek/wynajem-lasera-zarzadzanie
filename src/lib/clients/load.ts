@@ -4,6 +4,10 @@ import { getHubspotContactUrl } from "@/lib/integrations/hubspot";
 import { CATEGORY_TO_INTEREST, DEVICE_INTEREST_KEYS, type ClinicTypeKey, type DeviceInterestKey, type SourceKey } from "@/lib/clients/labels";
 import { summarizeClient, type ClientInvoiceFact, type ClientRentalFact } from "@/lib/clients/summary";
 import { interestsFromText } from "@/lib/history/invoices";
+import { rentalDurationDays } from "@/lib/pricing/duration";
+import { buildTransactions, rentalRhythmDays, transactionTotals, typicalPayment, type TxRental, type TxTotals } from "@/lib/clients/transactions";
+import { paymentLabel, type PaymentStatus } from "@/lib/clients/payment-status";
+import { gmailSummary } from "@/lib/gmail/sync";
 import type { ClientStatus } from "@/lib/clients/status";
 
 // Odczyt modułu Klienci (serwer). ZAWIERA PRZYCHÓD — wołać wyłącznie z
@@ -155,7 +159,7 @@ export async function loadClientRows(today = new Date()): Promise<ClientListRow[
       deviceInterests: true,
       createdAt: true,
       contacts: {
-        select: { firstName: true, lastName: true, phone: true, email: true, isPrimary: true },
+        select: { firstName: true, lastName: true, phone: true, phone2: true, email: true, isPrimary: true },
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
       },
       rentals: { select: RENTAL_FACT_SELECT },
@@ -180,7 +184,7 @@ export async function loadClientRows(today = new Date()): Promise<ClientListRow[
       primaryName: primary ? personName(primary) : null,
       primaryPhone: primary?.phone ?? null,
       primaryEmail: primary?.email ?? null,
-      hasPhone: c.contacts.some((p) => Boolean(p.phone?.trim())),
+      hasPhone: c.contacts.some((p) => Boolean(p.phone?.trim() || p.phone2?.trim())),
       status: summary.status,
       rentals12m: summary.rentals12m,
       rentalsTotal: summary.rentalsTotal,
@@ -202,7 +206,8 @@ export async function loadClientRows(today = new Date()): Promise<ClientListRow[
         .join(" ")
         .toLowerCase(),
       phoneDigits: c.contacts
-        .map((p) => (p.phone ?? "").replace(/\D/g, "").replace(/^48(?=\d{9}$)/, ""))
+        .flatMap((p) => [p.phone, p.phone2])
+        .map((ph) => (ph ?? "").replace(/\D/g, "").replace(/^48(?=\d{9}$)/, ""))
         .filter(Boolean)
         .join(" "),
     };
@@ -214,6 +219,8 @@ export type ClientContactDto = {
   firstName: string | null;
   lastName: string | null;
   phone: string | null;
+  phone2: string | null;
+  phone2Label: string | null;
   email: string | null;
   role: string | null;
   isPrimary: boolean;
@@ -252,6 +259,18 @@ export type ClientHistoryItem =
       hasAttachments: boolean;
       mailbox: string;
       messageIds: string[];
+      thread: { id: string; direction: "IN" | "OUT"; from: string; at: string; snippet: string | null }[];
+    }
+  // Rozmowa / notatka (LeadActivity przy kliencie lub jego sygnale).
+  | {
+      kind: "activity";
+      id: string;
+      at: string;
+      type: "CALL" | "CALL_NO_ANSWER" | "NOTE";
+      body: string | null;
+      userName: string | null;
+      fromHubspot: boolean;
+      leadTitle: string | null;
     };
 
 export type ClientDetail = {
@@ -292,8 +311,42 @@ export type ClientDetail = {
   // Adresy z firmowej domeny klienta, z których przyszły e-maile, a których
   // nie ma wśród osób kontaktowych — propozycja „Dodaj osobę” (prompt 3, 4.3).
   suggestedEmails: string[];
+  // Zakładka „Wynajmy i faktury” (prompt 3B-karta) — daty jako ISO.
+  transactions: {
+    key: string;
+    date: string;
+    source: "panel" | "kalendarz" | "faktura";
+    rentalId: string | null;
+    title: string;
+    details: string | null;
+    net: number | null;
+    invoice: { id: string; fakturowniaInvoiceId: number; number: string; issueDate: string } | null;
+    status: { kind: PaymentStatus["kind"]; label: string; days: number | null; paidAt: string | null };
+  }[];
+  txTotals: TxTotals;
+  // Przegląd: kafelki i „W skrócie”.
+  overview: {
+    revenue12m: number;
+    avg12m: number | null;
+    nextRental: { startsAt: string; deviceName: string } | null;
+    favoriteDeviceName: string | null;
+    favoriteDeviceCount: number;
+    realizedCount: number;
+    rhythmDays: number | null;
+    lastContact: { at: string; label: string } | null;
+    typicalPayment: string | null;
+    nextStep: { text: string; at: string | null; overdue: boolean; href: string | null } | null;
+  };
+  aliases: string[];
+  gmail: { enabled: boolean; mailboxes: string[]; lastSyncAt: string | null };
   // Sygnały klienta (CRM, prompt 2) — otwarte i zamknięte.
-  leads: { id: string; title: string; stage: "SYGNAL" | "WYWIAD" | "OFERTA" | "REZERWACJA" | "WYGRANA" | "PRZEGRANA"; createdAt: string }[];
+  leads: {
+    id: string;
+    title: string;
+    stage: "SYGNAL" | "WYWIAD" | "OFERTA" | "REZERWACJA" | "WYGRANA" | "PRZEGRANA";
+    createdAt: string;
+    nextActionAt: string | null;
+  }[];
 };
 
 export async function loadClientDetail(id: string, today = new Date()): Promise<ClientDetail | null> {
@@ -309,6 +362,18 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
           title: true,
           device: { select: { name: true, pricingCategory: true } },
           messages: { select: { id: true, channel: true, body: true, status: true, sentAt: true } },
+          finance: {
+            select: {
+              confirmedAt: true,
+              totalNet: true,
+              deviceVariant: true,
+              pulseCounterStart: true,
+              pulseCounterEnd: true,
+              transportPriceNet: true,
+              paymentMethod: true,
+              fakturowniaInvoiceId: true,
+            },
+          },
         },
       },
       history: {
@@ -316,8 +381,13 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
         orderBy: { startsAt: "desc" },
         select: { ...HISTORY_FACT_SELECT, id: true, title: true, device: { select: { name: true, pricingCategory: true } } },
       },
-      invoices: { where: INVOICE_FACT_WHERE, orderBy: { sellDate: "desc" }, select: { ...INVOICE_FACT_SELECT, id: true, number: true } },
-      leads: { orderBy: { createdAt: "desc" }, take: 20, select: { id: true, title: true, stage: true, createdAt: true } },
+      invoices: {
+        where: INVOICE_FACT_WHERE,
+        orderBy: { sellDate: "desc" },
+        select: { ...INVOICE_FACT_SELECT, id: true, number: true, fakturowniaInvoiceId: true, issueDate: true, paymentTo: true, paymentType: true },
+      },
+      leads: { orderBy: { createdAt: "desc" }, take: 20, select: { id: true, title: true, stage: true, createdAt: true, nextActionAt: true } },
+      aliases: { orderBy: { alias: "asc" }, select: { alias: true } },
     },
   });
   if (!c) return null;
@@ -334,13 +404,11 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
   // Wiadomości wysłane poza wynajmem (np. SMS z karty klienta) nie mają
   // rentalId — dopasowujemy je po numerze osoby kontaktowej (E.164, tak jak
   // zapisuje je POST /api/sms/send). Message.clientId dojdzie w etapie 2.
-  const phones = c.contacts.map((p) => p.phone).filter((p): p is string => Boolean(p && p.startsWith("+")));
-  const looseMessages = phones.length
-    ? await prisma.message.findMany({
-        where: { rentalId: null, recipient: { in: phones } },
-        select: { id: true, channel: true, body: true, status: true, sentAt: true },
-      })
-    : [];
+  const phones = c.contacts.flatMap((p) => [p.phone, p.phone2]).filter((p): p is string => Boolean(p && p.startsWith("+")));
+  const looseMessages = await prisma.message.findMany({
+    where: { rentalId: null, OR: [{ clientId: id }, ...(phones.length ? [{ recipient: { in: phones } }] : [])] },
+    select: { id: true, channel: true, body: true, status: true, sentAt: true },
+  });
   for (const m of looseMessages) {
     seenMessages.add(m.id);
     history.push({ kind: "message", id: m.id, at: m.sentAt.toISOString(), channel: m.channel, body: m.body, failed: m.status === "FAILED" });
@@ -396,7 +464,19 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     where: { clientId: id },
     orderBy: { sentAt: "desc" },
     take: 500,
-    select: { id: true, gmailThreadId: true, mailbox: true, direction: true, subject: true, snippet: true, hasAttachments: true, sentAt: true, fromAddress: true, toAddresses: true, matchMethod: true },
+    select: {
+      id: true,
+      gmailThreadId: true,
+      mailbox: true,
+      direction: true,
+      subject: true,
+      snippet: true,
+      hasAttachments: true,
+      sentAt: true,
+      fromAddress: true,
+      toAddresses: true,
+      matchMethod: true,
+    },
   });
   const threads = new Map<string, (typeof emails)[number][]>();
   for (const e of emails) {
@@ -416,6 +496,27 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       hasAttachments: list.some((e) => e.hasAttachments),
       mailbox: latest.mailbox,
       messageIds: list.map((e) => e.id),
+      thread: [...list].reverse().map((e) => ({ id: e.id, direction: e.direction, from: e.fromAddress, at: e.sentAt.toISOString(), snippet: e.snippet })),
+    });
+  }
+
+  // Rozmowy i notatki (LeadActivity klienta — także z jego sygnałów i z HubSpota).
+  const activities = await prisma.leadActivity.findMany({
+    where: { OR: [{ clientId: id }, { lead: { clientId: id } }], type: { in: ["CALL", "CALL_NO_ANSWER", "NOTE"] } },
+    orderBy: { createdAt: "desc" },
+    take: 300,
+    select: { id: true, type: true, body: true, createdAt: true, hubspotEngagementId: true, user: { select: { name: true } }, lead: { select: { title: true } } },
+  });
+  for (const a of activities) {
+    history.push({
+      kind: "activity",
+      id: a.id,
+      at: a.createdAt.toISOString(),
+      type: a.type as "CALL" | "CALL_NO_ANSWER" | "NOTE",
+      body: a.body,
+      userName: a.user?.name ?? null,
+      fromHubspot: Boolean(a.hubspotEngagementId),
+      leadTitle: a.lead?.title ?? null,
     });
   }
   const known = new Set(c.contacts.map((p) => p.email?.toLowerCase()).filter(Boolean));
@@ -429,6 +530,100 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     ),
   ];
   history.sort((a, b) => b.at.localeCompare(a.at));
+
+  // --- Wynajmy i faktury ---
+  const payments = await prisma.fakturowniaPayment.findMany({
+    where: { fakturowniaInvoiceId: { in: c.invoices.map((i) => i.fakturowniaInvoiceId) } },
+    select: { fakturowniaInvoiceId: true, paidAt: true },
+  });
+  const paidAt = new Map(payments.map((p) => [p.fakturowniaInvoiceId, p.paidAt]));
+  const txRentals: TxRental[] = [
+    ...c.rentals
+      .filter((r) => !r.deletedInGoogle && r.eventType === "WYNAJEM")
+      .map((r) => {
+        const f = r.finance;
+        const days = rentalDurationDays(r.startsAt, r.endsAt);
+        const pulses = f?.pulseCounterStart != null && f?.pulseCounterEnd != null ? f.pulseCounterEnd - f.pulseCounterStart : null;
+        const parts = [
+          `${days} ${days === 1 ? "dzień" : "dni"}`,
+          f?.deviceVariant === "double" ? "2 głowice" : null,
+          pulses && pulses > 0 ? `${pulses.toLocaleString("pl-PL")} impulsów` : null,
+          f?.transportPriceNet && Number(f.transportPriceNet.toString()) > 0 ? "transport" : null,
+        ].filter(Boolean);
+        return {
+          id: r.id,
+          source: "panel" as const,
+          startsAt: r.startsAt,
+          deviceName: r.device.name,
+          details: parts.join(" · "),
+          totalNet: f ? Number(f.totalNet.toString()) : null,
+          fakturowniaInvoiceId: f?.fakturowniaInvoiceId ?? null,
+          cashConfirmed: f?.paymentMethod === "CASH" && f.confirmedAt != null,
+        };
+      }),
+    ...c.history
+      .filter((h) => h.kind === "WYNAJEM")
+      .map((h) => ({
+        id: h.id,
+        source: "kalendarz" as const,
+        startsAt: h.startsAt,
+        deviceName: h.device.name,
+        details: "z kalendarza",
+        totalNet: null,
+        fakturowniaInvoiceId: null,
+        cashConfirmed: false,
+      })),
+  ];
+  const txRows = buildTransactions(
+    txRentals,
+    c.invoices.map((i) => ({
+      id: i.id,
+      fakturowniaInvoiceId: i.fakturowniaInvoiceId,
+      number: i.number,
+      sellDate: i.sellDate,
+      issueDate: i.issueDate,
+      totalNet: Number(i.totalNet.toString()),
+      paymentTo: i.paymentTo,
+      paymentType: i.paymentType,
+      paidAt: paidAt.get(i.fakturowniaInvoiceId) ?? null,
+      rentalId: i.rentalId,
+      positions: i.positionsSummary,
+    })),
+    today,
+  );
+
+  // --- Przegląd ---
+  const yearAgo = new Date(today.getTime() - 365 * 86_400_000);
+  const finished12 = c.rentals.filter(
+    (r) => !r.deletedInGoogle && r.finance && r.endsAt <= today && r.startsAt >= yearAgo,
+  );
+  const revenue12m = Math.round(finished12.reduce((s, r) => s + Number(r.finance!.totalNet.toString()), 0) * 100) / 100;
+  const next = c.rentals
+    .filter((r) => !r.deletedInGoogle && r.eventType === "WYNAJEM" && r.startsAt > today)
+    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())[0];
+  const realizedDates = txRentals.filter((r) => r.startsAt <= today).map((r) => r.startsAt);
+  const deviceCounts = new Map<string, number>();
+  for (const r of txRentals) if (r.startsAt <= today) deviceCounts.set(r.deviceName, (deviceCounts.get(r.deviceName) ?? 0) + 1);
+  const fav = [...deviceCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+  const lastComm = history.find((h) => h.kind === "email" || h.kind === "message" || (h.kind === "activity" && h.type !== "NOTE"));
+  const commLabel = (h: ClientHistoryItem) =>
+    h.kind === "email" ? "e-mail" : h.kind === "message" ? (h.channel === "SMS" ? "SMS" : "e-mail z panelu") : "rozmowa";
+  // Następny krok: najbliższy z otwartych sygnałów i otwartych zadań klienta.
+  const openLeadIds = c.leads.filter((l) => ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(l.stage)).map((l) => l.id);
+  const tasks = await prisma.task.findMany({
+    where: { status: "OPEN", OR: [{ clientId: id }, ...(openLeadIds.length ? [{ leadId: { in: openLeadIds } }] : [])] },
+    orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+    take: 5,
+    select: { title: true, dueDate: true, leadId: true },
+  });
+  const steps = [
+    ...c.leads
+      .filter((l) => openLeadIds.includes(l.id) && l.nextActionAt)
+      .map((l) => ({ text: `${l.title} — zaplanowany kontakt`, at: l.nextActionAt as Date | null, href: `/sygnaly?id=${l.id}` })),
+    ...tasks.map((t) => ({ text: t.title, at: t.dueDate, href: t.leadId ? `/sygnaly?id=${t.leadId}` : null })),
+  ].sort((a, b) => (a.at?.getTime() ?? Infinity) - (b.at?.getTime() ?? Infinity));
+  const step = steps[0];
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
   return {
     id: c.id,
@@ -457,6 +652,8 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       firstName: p.firstName,
       lastName: p.lastName,
       phone: p.phone,
+      phone2: p.phone2,
+      phone2Label: p.phone2Label,
       email: p.email,
       role: p.role,
       isPrimary: p.isPrimary,
@@ -476,8 +673,41 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       favoriteDevice: summary.favoriteDevice,
     },
     history,
+    transactions: txRows.map((r) => ({
+      key: r.key,
+      date: r.date.toISOString(),
+      source: r.source,
+      rentalId: r.rentalId,
+      title: r.title,
+      details: r.details,
+      net: r.net,
+      invoice: r.invoice ? { ...r.invoice, issueDate: r.invoice.issueDate.toISOString() } : null,
+      status: {
+        kind: r.status.kind,
+        label: paymentLabel(r.status),
+        days: r.status.kind === "PO_TERMINIE" ? r.status.days : null,
+        paidAt: r.status.kind === "ZAPLACONA" ? r.status.paidAt.toISOString() : null,
+      },
+    })),
+    txTotals: transactionTotals(txRows, today),
+    overview: {
+      revenue12m,
+      avg12m: finished12.length ? Math.round((revenue12m / finished12.length) * 100) / 100 : null,
+      nextRental: next ? { startsAt: next.startsAt.toISOString(), deviceName: next.device.name } : null,
+      favoriteDeviceName: fav?.[0] ?? null,
+      favoriteDeviceCount: fav?.[1] ?? 0,
+      realizedCount: realizedDates.length,
+      rhythmDays: rentalRhythmDays(realizedDates),
+      lastContact: lastComm ? { at: lastComm.at, label: commLabel(lastComm) } : null,
+      typicalPayment: typicalPayment(txRows),
+      nextStep: step
+        ? { text: step.text, at: step.at?.toISOString() ?? null, overdue: Boolean(step.at && step.at < startOfToday), href: step.href }
+        : null,
+    },
+    aliases: c.aliases.map((a) => a.alias),
+    gmail: await gmailSummary(),
     suggestedEmails,
-    leads: c.leads.map((l) => ({ id: l.id, title: l.title, stage: l.stage, createdAt: l.createdAt.toISOString() })),
+    leads: c.leads.map((l) => ({ id: l.id, title: l.title, stage: l.stage, createdAt: l.createdAt.toISOString(), nextActionAt: l.nextActionAt?.toISOString() ?? null })),
   };
 }
 

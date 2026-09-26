@@ -183,4 +183,20 @@ describe("mapowanie pól", () => {
     expect(normalizeNip("PL 944 228 55 99")).toEqual({ nip: "9442285599", invalid: false });
     expect(normalizeNip("")).toEqual({ nip: null, invalid: false });
   });
+
+  it("komórka obok telefonu = drugi numer osoby", () => {
+    const plan = planHubspotImport(
+      {
+        contacts: [
+          contact({ id: "h1", email: "a@b.pl", phone: "601000111", mobilephone: "602000999" }),
+          contact({ id: "h2", email: "c@d.pl", mobilephone: "603000222" }),
+        ],
+        companies: [],
+      },
+      { normalizePhone },
+    );
+    const people = plan.clients.flatMap((c) => c.contacts);
+    expect(people.find((p) => p.hubspotContactId === "h1")).toMatchObject({ phone: "+48601000111", phone2: "+48602000999" });
+    expect(people.find((p) => p.hubspotContactId === "h2")).toMatchObject({ phone: "+48603000222", phone2: null });
+  });
 });

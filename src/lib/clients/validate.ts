@@ -88,6 +88,8 @@ export type ContactInput = Partial<{
   firstName: string | null;
   lastName: string | null;
   phone: string | null;
+  phone2: string | null;
+  phone2Label: string | null;
   email: string | null;
   role: string | null;
   isPrimary: boolean;
@@ -95,15 +97,17 @@ export type ContactInput = Partial<{
 
 export function parseContactInput(body: Record<string, unknown>, deps: Deps, opts: { requireName?: boolean } = {}): Result<ContactInput> {
   const out: ContactInput = {};
-  for (const key of ["firstName", "lastName", "role"] as const) if (key in body) out[key] = text(body[key]);
-  if ("phone" in body) {
-    const raw = text(body.phone);
+  for (const key of ["firstName", "lastName", "role", "phone2Label"] as const) if (key in body) out[key] = text(body[key]);
+  for (const key of ["phone", "phone2"] as const) {
+    if (!(key in body)) continue;
+    const raw = text(body[key]);
     if (raw) {
       const phone = deps.normalizePhone(raw);
-      if (!phone) return { ok: false, message: "Nieprawidłowy numer telefonu." };
-      out.phone = phone;
-    } else out.phone = null;
+      if (!phone) return { ok: false, message: key === "phone" ? "Nieprawidłowy numer telefonu." : "Nieprawidłowy drugi numer telefonu." };
+      out[key] = phone;
+    } else out[key] = null;
   }
+  if ("phone2" in out && !out.phone2) out.phone2Label = null;
   if ("email" in body) {
     const email = text(body.email)?.toLowerCase() ?? null;
     if (email && !EMAIL_RE.test(email)) return { ok: false, message: "Nieprawidłowy adres e-mail." };

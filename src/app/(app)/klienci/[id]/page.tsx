@@ -1,16 +1,25 @@
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/prisma";
 import { requireClientsPageAccess } from "@/lib/clients/page-access";
-import { loadClientRows } from "@/lib/clients/load";
-import { countPendingHistory } from "@/lib/history/review-load";
-import { ClientsManager } from "@/components/clients/clients-manager";
+import { loadClientDetail } from "@/lib/clients/load";
+import { ClientFullCard } from "@/components/clients/card/client-full-card";
+import type { CardTab } from "@/components/clients/card/tab-overview";
 
-// Link do konkretnego klienta — ta sama lista, z otwartą kartą (spec 3.3).
-export default async function ClientPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireClientsPageAccess();
+const TABS: CardTab[] = ["przeglad", "transakcje", "komunikacja", "dane"];
+
+// Pełna karta klienta z zakładkami (docs/crm/prompt-claude-code-crm-3b-karta-klienta.md).
+// ADMIN/STAFF, jak cały moduł Klienci; KIEROWCA przekierowany.
+export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
+  const session = await requireClientsPageAccess();
   const { id } = await params;
-  const exists = await prisma.client.findUnique({ where: { id }, select: { id: true } });
-  if (!exists) notFound();
-  const [rows, pendingHistory] = await Promise.all([loadClientRows(), countPendingHistory()]);
-  return <ClientsManager rows={rows} initialSelectedId={id} pendingHistory={pendingHistory} />;
+  const { tab } = await searchParams;
+  const detail = await loadClientDetail(id);
+  if (!detail) notFound();
+  return (
+    <ClientFullCard
+      key={id}
+      initial={detail}
+      initialTab={TABS.includes(tab as CardTab) ? (tab as CardTab) : "przeglad"}
+      isAdmin={session.user.role === "ADMIN"}
+    />
+  );
 }

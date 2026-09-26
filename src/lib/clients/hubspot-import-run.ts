@@ -155,6 +155,8 @@ async function writeClient(plan: PlannedClient, clientId: string | null) {
           firstName: p.firstName,
           lastName: p.lastName,
           phone: p.phone,
+          phone2: p.phone2,
+          phone2Label: p.phone2 ? "komórka" : null,
           email: p.email,
           isPrimary,
           hubspotContactId: p.hubspotContactId,
@@ -201,6 +203,21 @@ async function linkRentals(): Promise<RentalLinkResult> {
   return { linked, distancesSet: latestByClient.size, orphans: preview.orphans };
 }
 
+// Kontakty zaimportowane przed dodaniem drugiego numeru: uzupełniamy komórkę
+// z HubSpota tylko tam, gdzie phone2 jest puste — nic nie nadpisujemy.
+async function backfillPhone2(clients: PlannedClient[]) {
+  const planned = new Map(clients.flatMap((c) => c.contacts).filter((p) => p.phone2).map((p) => [p.hubspotContactId, p.phone2 as string]));
+  if (planned.size === 0) return;
+  const rows = await prisma.clientContact.findMany({
+    where: { hubspotContactId: { in: [...planned.keys()] }, phone2: null },
+    select: { id: true, hubspotContactId: true, phone: true },
+  });
+  for (const r of rows) {
+    const phone2 = planned.get(r.hubspotContactId as string);
+    if (phone2 && phone2 !== r.phone) await prisma.clientContact.update({ where: { id: r.id }, data: { phone2, phone2Label: "komórka" } });
+  }
+}
+
 export type ImportBatchResult = {
   processed: number;
   remaining: number;
@@ -218,6 +235,7 @@ export async function runHubspotImportBatch(batchSize = 40): Promise<ImportBatch
 
   const remaining = pending.length - batch.length;
   const rentals = remaining === 0 ? await linkRentals() : null;
+  if (remaining === 0) await backfillPhone2(clients);
   logInfo("hubspot_import_batch", {
     processed: batch.length,
     remaining,

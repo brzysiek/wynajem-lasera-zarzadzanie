@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>Karta klienta — panel WynajemLasera.pl</title>
+<!-- Makieta statyczna (dane przykładowe). Źródło: projekt „Panel — Klienci i Sygnały”, 25.09.2026. -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:'Jost',system-ui,sans-serif;background:#F2F4F6;color:#4A4A4A}
+a{color:#1B6FA8;text-decoration:none}a:hover{color:#14567F}
+button{font-family:inherit}
+</style>
+
+</head>
+<body style="background:#FFFFFF">
+<section style="margin:0 0 48px"><div style="font:600 18px Jost,sans-serif;color:#0C3450;padding:16px 24px;background:#FFF3CD;border:1px solid #E0C36A">Zakładka: Przegląd (/klienci/[id]?tab=przeglad)</div>
+
+
+<div style="width: 1440px; height: 1180px; display: flex; background: #F2F4F6; font-family: 'Jost', system-ui, sans-serif; color: #4A4A4A; overflow: hidden">
+
+<nav aria-label="Menu główne" style="width: 216px; flex-shrink: 0; background: #EFF6FB; border-right: 1px solid #E9EDF1; display: flex; flex-direction: column; padding: 20px 12px; box-sizing: border-box; gap: 4px">
+<div style="font-size: 18px; font-weight: 700; color: #1B6FA8; padding: 4px 12px 20px">WynajemLasera<span style="color: #E08A5C">.pl</span></div>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6"></rect><path d="M3 8h14M6.5 2.5v3M13.5 2.5v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Kalendarz</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.6"></circle><path d="M10 6v4l3 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Nadchodzące</a>
+<a href="mockup-sygnaly.html" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h3l2-5 4 10 2-5h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="flex-grow: 1">Sygnały</span><span style="background: #E08A5C; color: #FFFFFF; font-size: 12px; font-weight: 600; border-radius: 10px; padding: 1px 8px">4</span></a>
+<a href="mockup-klienci.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #14567F; background: #FFFFFF; font-size: 15px; font-weight: 600; box-shadow: 0 1px 2px rgba(12,52,80,0.08)"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="7.5" cy="7" r="3" stroke="currentColor" stroke-width="1.6"></circle><path d="M2 17c.6-3 2.8-4.5 5.5-4.5S12.4 14 13 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path><circle cx="14" cy="7.5" r="2.3" stroke="currentColor" stroke-width="1.5"></circle></svg>Klienci</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 16V9M9 16V5M14 16v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>Finanse</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5.5c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v6c0 1.1-.9 2-2 2H8l-3.5 3v-3H5c-1.1 0-2-.9-2-2v-6Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>Wysyłka SMS</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.6"></circle><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Ustawienia</a>
+</nav>
+
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+
+<!-- Header -->
+<header style="background: #FFFFFF; border-bottom: 1px solid #E9EDF1; padding: 16px 32px 0; display: flex; flex-direction: column; gap: 14px">
+<a href="mockup-klienci.html" style="font-size: 13px; font-weight: 500">← Klienci</a>
+<div style="display: flex; align-items: center; gap: 16px">
+<div style="width: 56px; height: 56px; border-radius: 14px; background: #DCEAF4; color: #14567F; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; flex-shrink: 0">GA</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; align-items: center; gap: 10px">
+<h1 style="margin: 0; font-size: 26px; font-weight: 600; color: #0C3450">Gabinet Aurora</h1>
+<span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: #E7F7F0; color: #15754F">Stały</span>
+<span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: #FCE8E6; color: #B3261E">1 faktura po terminie</span>
+</div>
+<div style="font-size: 14px; color: #6F7378; margin-top: 2px">Magdalena Nowicka · <a href="#">+48 601 000 111</a> · <a href="#">kontakt@gabinet-aurora.pl</a> · Kraków · NIP 679-000-11-22 · klient od 03.2024</div>
+</div>
+<div style="display: flex; gap: 8px">
+<a href="#" style="height: 40px; padding: 0 16px; border-radius: 10px; background: #1B6FA8; color: #FFFFFF; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; white-space: nowrap"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M6 3h3l1 4-2 1.5a9 9 0 0 0 3.5 3.5L13 10l4 1v3c0 1-1 2-2 2A12 12 0 0 1 4 5c0-1 1-2 2-2Z" stroke="#FFFFFF" stroke-width="1.6" stroke-linejoin="round"></path></svg>Zadzwoń</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">SMS</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">E-mail</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">Nowa rezerwacja</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">Notatka</a>
+</div>
+</div>
+<div role="tablist" aria-label="Sekcje karty klienta" style="display: flex; gap: 4px">
+
+<button type="button" role="tab" aria-selected="true" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #14567F; font-weight: 600; box-shadow: inset 0 -3px 0 #1B6FA8">Przegląd</button>
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Wynajmy i faktury<span style="font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: #FCE8E6; color: #B3261E">1 po terminie</span></button>
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Komunikacja<span style="font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: #F2F4F6; color: #5B6167">24</span></button>
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Dane</button>
+
+</div>
+</header>
+
+<main style="flex-grow: 1; min-height: 0; overflow: auto; padding: 24px 32px; display: flex; flex-direction: column; gap: 18px">
+
+<!-- ===== PRZEGLĄD ===== -->
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 14px 16px"><div style="font-size: 13px; color: #6F7378">Wynajmy (12 mies. / łącznie)</div><div style="font-size: 26px; font-weight: 600; color: #0C3450">6 / 14</div></div>
+<div style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 14px 16px"><div style="font-size: 13px; color: #6F7378">Przychód netto (12 mies.)</div><div style="font-size: 26px; font-weight: 600; color: #0C3450">8 950 zł</div><div style="font-size: 12px; color: #6F7378">śr. 1 490 zł / wynajem</div></div>
+<div style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 14px 16px"><div style="font-size: 13px; color: #6F7378">Ostatni wynajem</div><div style="font-size: 26px; font-weight: 600; color: #0C3450">18.09.2026</div><div style="font-size: 12px; color: #6F7378">następny: 10.10.2026</div></div>
+<div style="background: #FFFFFF; border: 1px solid #F3C9C4; border-radius: 12px; padding: 14px 16px"><div style="font-size: 13px; color: #6F7378">Do zapłaty</div><div style="font-size: 26px; font-weight: 600; color: #B3261E">1 190 zł</div><div style="font-size: 12px; color: #B3261E">1 faktura, 5 dni po terminie</div></div>
+</div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 18px">
+<section style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #0C3450">Ostatnie zdarzenia</h2>
+
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #DCEAF4; color: #14567F; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">↓</div>
+<div style="flex-grow: 1; min-width: 0"><div style="font-size: 14px">E-mail od klienta: Re: Rezerwacja LightSheer 10–11.10</div><div style="font-size: 12px; color: #6F7378">24.09.2026</div></div>
+</div>
+
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #F3EBFF; color: #5B2BB5; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">T</div>
+<div style="flex-grow: 1; min-width: 0"><div style="font-size: 14px">Rozmowa: potwierdzony termin 10–11.10</div><div style="font-size: 12px; color: #6F7378">23.09.2026 · Ania</div></div>
+</div>
+
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #E7F7F0; color: #15754F; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">R</div>
+<div style="flex-grow: 1; min-width: 0"><div style="font-size: 14px">Wynajem LightSheer Desire, 1 dzień — rozliczony</div><div style="font-size: 12px; color: #6F7378">18.09.2026</div></div>
+</div>
+
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #FCE8E6; color: #B3261E; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">F</div>
+<div style="flex-grow: 1; min-width: 0"><div style="font-size: 14px">Faktura 09/09/2026 — 1 190 zł netto, po terminie</div><div style="font-size: 12px; color: #6F7378">wystawiona 18.09.2026</div></div>
+</div>
+
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #FBF0E7; color: #8A4414; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">S</div>
+<div style="flex-grow: 1; min-width: 0"><div style="font-size: 14px">SMS: przypomnienie o dostawie</div><div style="font-size: 12px; color: #6F7378">17.09.2026</div></div>
+</div>
+
+<div style="font-size: 13px"><a href="#">Cała komunikacja →</a> · <a href="#">Wynajmy i faktury →</a></div>
+</section>
+<div style="display: flex; flex-direction: column; gap: 14px">
+<section style="border: 1px solid #F3D9C4; background: #FBF0E7; border-radius: 12px; padding: 14px 16px; font-size: 14px"><div style="font-weight: 600; color: #8A4414; margin-bottom: 4px">Następny krok</div>Przypomnieć o fakturze 09/09/2026 (termin minął 21.09). Przy okazji potwierdzić rezerwację 10–11.10.</section>
+<section style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600; color: #0C3450">Otwarte sygnały</h2>
+<div style="display: flex; gap: 8px; align-items: center; font-size: 14px"><span style="font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #EAF4FB; color: #14567F">Rezerwacja</span>LightSheer 2 dni, 10–11.10.2026</div>
+</section>
+<section style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; font-size: 14px">
+<h2 style="margin: 0 0 4px; font-size: 15px; font-weight: 600; color: #0C3450">W skrócie</h2>
+<div style="display: grid; grid-template-columns: 150px 1fr; row-gap: 4px"><span style="color: #6F7378">Ulubione urządzenie</span><span>LightSheer Desire (11 z 14)</span><span style="color: #6F7378">Rytm wynajmów</span><span>co ok. 4 tygodnie</span><span style="color: #6F7378">Ostatni kontakt</span><span>e-mail, 24.09.2026</span><span style="color: #6F7378">Płatność</span><span>przelew, zwykle w terminie</span></div>
+</section>
+</div>
+</div>
+
+
+<!-- ===== WYNAJMY I FAKTURY ===== -->
+
+
+<!-- ===== KOMUNIKACJA ===== -->
+
+
+<!-- ===== DANE ===== -->
+
+
+</main>
+</div>
+</div>
+
+</section>
+<section style="margin:0 0 48px"><div style="font:600 18px Jost,sans-serif;color:#0C3450;padding:16px 24px;background:#FFF3CD;border:1px solid #E0C36A">Zakładka: Wynajmy i faktury (/klienci/[id]?tab=transakcje)</div>
+
+
+<div style="width: 1440px; height: 1180px; display: flex; background: #F2F4F6; font-family: 'Jost', system-ui, sans-serif; color: #4A4A4A; overflow: hidden">
+
+<nav aria-label="Menu główne" style="width: 216px; flex-shrink: 0; background: #EFF6FB; border-right: 1px solid #E9EDF1; display: flex; flex-direction: column; padding: 20px 12px; box-sizing: border-box; gap: 4px">
+<div style="font-size: 18px; font-weight: 700; color: #1B6FA8; padding: 4px 12px 20px">WynajemLasera<span style="color: #E08A5C">.pl</span></div>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6"></rect><path d="M3 8h14M6.5 2.5v3M13.5 2.5v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Kalendarz</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.6"></circle><path d="M10 6v4l3 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Nadchodzące</a>
+<a href="mockup-sygnaly.html" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h3l2-5 4 10 2-5h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="flex-grow: 1">Sygnały</span><span style="background: #E08A5C; color: #FFFFFF; font-size: 12px; font-weight: 600; border-radius: 10px; padding: 1px 8px">4</span></a>
+<a href="mockup-klienci.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #14567F; background: #FFFFFF; font-size: 15px; font-weight: 600; box-shadow: 0 1px 2px rgba(12,52,80,0.08)"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="7.5" cy="7" r="3" stroke="currentColor" stroke-width="1.6"></circle><path d="M2 17c.6-3 2.8-4.5 5.5-4.5S12.4 14 13 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path><circle cx="14" cy="7.5" r="2.3" stroke="currentColor" stroke-width="1.5"></circle></svg>Klienci</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 16V9M9 16V5M14 16v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>Finanse</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5.5c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v6c0 1.1-.9 2-2 2H8l-3.5 3v-3H5c-1.1 0-2-.9-2-2v-6Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>Wysyłka SMS</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.6"></circle><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Ustawienia</a>
+</nav>
+
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+
+<!-- Header -->
+<header style="background: #FFFFFF; border-bottom: 1px solid #E9EDF1; padding: 16px 32px 0; display: flex; flex-direction: column; gap: 14px">
+<a href="mockup-klienci.html" style="font-size: 13px; font-weight: 500">← Klienci</a>
+<div style="display: flex; align-items: center; gap: 16px">
+<div style="width: 56px; height: 56px; border-radius: 14px; background: #DCEAF4; color: #14567F; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; flex-shrink: 0">GA</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; align-items: center; gap: 10px">
+<h1 style="margin: 0; font-size: 26px; font-weight: 600; color: #0C3450">Gabinet Aurora</h1>
+<span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: #E7F7F0; color: #15754F">Stały</span>
+<span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: #FCE8E6; color: #B3261E">1 faktura po terminie</span>
+</div>
+<div style="font-size: 14px; color: #6F7378; margin-top: 2px">Magdalena Nowicka · <a href="#">+48 601 000 111</a> · <a href="#">kontakt@gabinet-aurora.pl</a> · Kraków · NIP 679-000-11-22 · klient od 03.2024</div>
+</div>
+<div style="display: flex; gap: 8px">
+<a href="#" style="height: 40px; padding: 0 16px; border-radius: 10px; background: #1B6FA8; color: #FFFFFF; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; white-space: nowrap"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M6 3h3l1 4-2 1.5a9 9 0 0 0 3.5 3.5L13 10l4 1v3c0 1-1 2-2 2A12 12 0 0 1 4 5c0-1 1-2 2-2Z" stroke="#FFFFFF" stroke-width="1.6" stroke-linejoin="round"></path></svg>Zadzwoń</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">SMS</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">E-mail</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">Nowa rezerwacja</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">Notatka</a>
+</div>
+</div>
+<div role="tablist" aria-label="Sekcje karty klienta" style="display: flex; gap: 4px">
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Przegląd</button>
+
+<button type="button" role="tab" aria-selected="true" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #14567F; font-weight: 600; box-shadow: inset 0 -3px 0 #1B6FA8">Wynajmy i faktury<span style="font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: #FCE8E6; color: #B3261E">1 po terminie</span></button>
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Komunikacja<span style="font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: #F2F4F6; color: #5B6167">24</span></button>
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Dane</button>
+
+</div>
+</header>
+
+<main style="flex-grow: 1; min-height: 0; overflow: auto; padding: 24px 32px; display: flex; flex-direction: column; gap: 18px">
+
+<!-- ===== PRZEGLĄD ===== -->
+
+
+<!-- ===== WYNAJMY I FAKTURY ===== -->
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px">
+<div style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 14px 16px"><div style="font-size: 13px; color: #6F7378">Zafakturowano 2026</div><div style="font-size: 24px; font-weight: 600; color: #0C3450">7 140 zł</div><div style="font-size: 12px; color: #6F7378">6 faktur netto</div></div>
+<div style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 14px 16px"><div style="font-size: 13px; color: #6F7378">Zapłacono</div><div style="font-size: 24px; font-weight: 600; color: #15754F">5 950 zł</div><div style="font-size: 12px; color: #6F7378">5 faktur</div></div>
+<div style="background: #FFFFFF; border: 1px solid #F3C9C4; border-radius: 12px; padding: 14px 16px"><div style="font-size: 13px; color: #6F7378">Po terminie</div><div style="font-size: 24px; font-weight: 600; color: #B3261E">1 190 zł</div><div style="font-size: 12px; color: #B3261E">09/09/2026 · 5 dni</div></div>
+<div style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 14px 16px"><div style="font-size: 13px; color: #6F7378">Wynajmy bez faktury</div><div style="font-size: 24px; font-weight: 600; color: #0C3450">8</div><div style="font-size: 12px; color: #6F7378">sprzed 2026 (z kalendarza)</div></div>
+</div>
+<section style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #E9EDF1">
+<span style="font-size: 15px; font-weight: 600; color: #0C3450; margin-right: 8px">Wynajmy i faktury</span>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #1B6FA8; background: #EAF4FB; color: #14567F; font-size: 13px; font-weight: 600; cursor: pointer">Wszystko (16)</button>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 13px; cursor: pointer">Niezapłacone (1)</button>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 13px; cursor: pointer">2026</button>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 13px; cursor: pointer">2025</button>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 13px; cursor: pointer">2024</button>
+<div style="flex-grow: 1"></div>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 8px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 13px; cursor: pointer">Eksport CSV</button>
+</div>
+<div style="display: grid; grid-template-columns: 110px 1.6fr 110px 110px 1.3fr 170px 110px; gap: 12px; padding: 10px 16px; font-size: 12px; font-weight: 600; color: #6F7378; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #E9EDF1">
+<span>Termin</span><span>Wynajem</span><span>Źródło</span><span style="text-align: right">Netto</span><span>Faktura</span><span>Płatność</span><span></span>
+</div>
+
+<div style="display: grid; grid-template-columns: 110px 1.6fr 110px 110px 1.3fr 170px 110px; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F2F4F6; font-size: 14px; background: #FFFFFF">
+<span>10.10.2026</span>
+<span style="min-width: 0"><span style="font-weight: 500; color: #0C3450">LightSheer Desire</span><span style="color: #6F7378"> · 2 dni · 2 głowice</span></span>
+<span><span style="font-size: 11px; padding: 2px 7px; border-radius: 6px; background: #EAF4FB; color: #14567F">panel</span></span>
+<span style="text-align: right; font-weight: 500">2 050 zł</span>
+<span>—</span>
+<span><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #F3EBFF; color: #5B2BB5">Zaplanowany</span></span>
+<span style="display: flex; gap: 6px; justify-content: flex-end"></span>
+</div>
+
+<div style="display: grid; grid-template-columns: 110px 1.6fr 110px 110px 1.3fr 170px 110px; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F2F4F6; font-size: 14px; background: #FFF8F7">
+<span>18.09.2026</span>
+<span style="min-width: 0"><span style="font-weight: 500; color: #0C3450">LightSheer Desire</span><span style="color: #6F7378"> · 1 dzień + transport</span></span>
+<span><span style="font-size: 11px; padding: 2px 7px; border-radius: 6px; background: #EAF4FB; color: #14567F">panel</span></span>
+<span style="text-align: right; font-weight: 500">1 190 zł</span>
+<span>09/09/2026</span>
+<span><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #FCE8E6; color: #B3261E">Po terminie 5 dni</span></span>
+<span style="display: flex; gap: 6px; justify-content: flex-end"><a href="#" style="font-size: 13px; font-weight: 600">PDF</a><a href="#" style="font-size: 13px; font-weight: 600; color: #B3261E">Przypomnij</a></span>
+</div>
+
+<div style="display: grid; grid-template-columns: 110px 1.6fr 110px 110px 1.3fr 170px 110px; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F2F4F6; font-size: 14px; background: #FFFFFF">
+<span>21.08.2026</span>
+<span style="min-width: 0"><span style="font-weight: 500; color: #0C3450">Alma Harmony XL</span><span style="color: #6F7378"> · 1 dzień + 12 800 impulsów</span></span>
+<span><span style="font-size: 11px; padding: 2px 7px; border-radius: 6px; background: #EAF4FB; color: #14567F">panel</span></span>
+<span style="text-align: right; font-weight: 500">1 970 zł</span>
+<span>07/08/2026</span>
+<span><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #E7F7F0; color: #15754F">Zapłacona 28.08</span></span>
+<span style="display: flex; gap: 6px; justify-content: flex-end"><a href="#" style="font-size: 13px; font-weight: 600">PDF</a></span>
+</div>
+
+<div style="display: grid; grid-template-columns: 110px 1.6fr 110px 110px 1.3fr 170px 110px; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F2F4F6; font-size: 14px; background: #FFFFFF">
+<span>24.07.2026</span>
+<span style="min-width: 0"><span style="font-weight: 500; color: #0C3450">LightSheer Desire</span><span style="color: #6F7378"> · 1 dzień + transport</span></span>
+<span><span style="font-size: 11px; padding: 2px 7px; border-radius: 6px; background: #EAF4FB; color: #14567F">panel</span></span>
+<span style="text-align: right; font-weight: 500">1 190 zł</span>
+<span>—</span>
+<span><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #EAF4FB; color: #14567F">Gotówka</span></span>
+<span style="display: flex; gap: 6px; justify-content: flex-end"></span>
+</div>
+
+<div style="display: grid; grid-template-columns: 110px 1.6fr 110px 110px 1.3fr 170px 110px; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F2F4F6; font-size: 14px; background: #FFFFFF">
+<span>19.06.2026</span>
+<span style="min-width: 0"><span style="font-weight: 500; color: #0C3450">LightSheer Desire</span><span style="color: #6F7378"> · 2 dni</span></span>
+<span><span style="font-size: 11px; padding: 2px 7px; border-radius: 6px; background: #EAF4FB; color: #14567F">panel</span></span>
+<span style="text-align: right; font-weight: 500">1 620 zł</span>
+<span>06/06/2026</span>
+<span><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #E7F7F0; color: #15754F">Zapłacona 01.07</span></span>
+<span style="display: flex; gap: 6px; justify-content: flex-end"><a href="#" style="font-size: 13px; font-weight: 600">PDF</a></span>
+</div>
+
+<div style="display: grid; grid-template-columns: 110px 1.6fr 110px 110px 1.3fr 170px 110px; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F2F4F6; font-size: 14px; background: #FFFFFF">
+<span>15.05.2026</span>
+<span style="min-width: 0"><span style="font-weight: 500; color: #0C3450">LightSheer Quattro</span><span style="color: #6F7378"> · 1 dzień</span></span>
+<span><span style="font-size: 11px; padding: 2px 7px; border-radius: 6px; background: #EAF4FB; color: #14567F">panel</span></span>
+<span style="text-align: right; font-weight: 500">1 040 zł</span>
+<span>05/05/2026</span>
+<span><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #E7F7F0; color: #15754F">Zapłacona 20.05</span></span>
+<span style="display: flex; gap: 6px; justify-content: flex-end"><a href="#" style="font-size: 13px; font-weight: 600">PDF</a></span>
+</div>
+
+<div style="display: grid; grid-template-columns: 110px 1.6fr 110px 110px 1.3fr 170px 110px; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F2F4F6; font-size: 14px; background: #FFFFFF">
+<span>03.12.2025</span>
+<span style="min-width: 0"><span style="font-weight: 500; color: #0C3450">LightSheer Desire</span><span style="color: #6F7378"> · z kalendarza</span></span>
+<span><span style="font-size: 11px; padding: 2px 7px; border-radius: 6px; background: #F2F4F6; color: #5B6167">kalendarz</span></span>
+<span style="text-align: right; font-weight: 500">—</span>
+<span>—</span>
+<span><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #F2F4F6; color: #5B6167">Brak faktury w systemie</span></span>
+<span style="display: flex; gap: 6px; justify-content: flex-end"></span>
+</div>
+
+<div style="display: grid; grid-template-columns: 110px 1.6fr 110px 110px 1.3fr 170px 110px; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F2F4F6; font-size: 14px; background: #FFFFFF">
+<span>05.11.2025</span>
+<span style="min-width: 0"><span style="font-weight: 500; color: #0C3450">LightSheer Desire</span><span style="color: #6F7378"> · z kalendarza</span></span>
+<span><span style="font-size: 11px; padding: 2px 7px; border-radius: 6px; background: #F2F4F6; color: #5B6167">kalendarz</span></span>
+<span style="text-align: right; font-weight: 500">—</span>
+<span>—</span>
+<span><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #F2F4F6; color: #5B6167">Brak faktury w systemie</span></span>
+<span style="display: flex; gap: 6px; justify-content: flex-end"></span>
+</div>
+
+<div style="display: grid; grid-template-columns: 110px 1.6fr 110px 110px 1.3fr 170px 110px; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #F2F4F6; font-size: 14px; background: #FFFFFF">
+<span>14.03.2024</span>
+<span style="min-width: 0"><span style="font-weight: 500; color: #0C3450">LightSheer Desire</span><span style="color: #6F7378"> · pierwszy wynajem · z kalendarza</span></span>
+<span><span style="font-size: 11px; padding: 2px 7px; border-radius: 6px; background: #F2F4F6; color: #5B6167">kalendarz</span></span>
+<span style="text-align: right; font-weight: 500">—</span>
+<span>—</span>
+<span><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: #F2F4F6; color: #5B6167">Brak faktury w systemie</span></span>
+<span style="display: flex; gap: 6px; justify-content: flex-end"></span>
+</div>
+
+<div style="padding: 10px 16px; font-size: 13px; color: #6F7378">Wynajmy sprzed 2026 pochodzą z kalendarzy urządzeń. Faktury sprzed KSeF dołączymy później.</div>
+</section>
+
+
+<!-- ===== KOMUNIKACJA ===== -->
+
+
+<!-- ===== DANE ===== -->
+
+
+</main>
+</div>
+</div>
+
+</section>
+<section style="margin:0 0 48px"><div style="font:600 18px Jost,sans-serif;color:#0C3450;padding:16px 24px;background:#FFF3CD;border:1px solid #E0C36A">Zakładka: Komunikacja (/klienci/[id]?tab=komunikacja)</div>
+
+
+<div style="width: 1440px; height: 1180px; display: flex; background: #F2F4F6; font-family: 'Jost', system-ui, sans-serif; color: #4A4A4A; overflow: hidden">
+
+<nav aria-label="Menu główne" style="width: 216px; flex-shrink: 0; background: #EFF6FB; border-right: 1px solid #E9EDF1; display: flex; flex-direction: column; padding: 20px 12px; box-sizing: border-box; gap: 4px">
+<div style="font-size: 18px; font-weight: 700; color: #1B6FA8; padding: 4px 12px 20px">WynajemLasera<span style="color: #E08A5C">.pl</span></div>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6"></rect><path d="M3 8h14M6.5 2.5v3M13.5 2.5v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Kalendarz</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.6"></circle><path d="M10 6v4l3 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Nadchodzące</a>
+<a href="mockup-sygnaly.html" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h3l2-5 4 10 2-5h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="flex-grow: 1">Sygnały</span><span style="background: #E08A5C; color: #FFFFFF; font-size: 12px; font-weight: 600; border-radius: 10px; padding: 1px 8px">4</span></a>
+<a href="mockup-klienci.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #14567F; background: #FFFFFF; font-size: 15px; font-weight: 600; box-shadow: 0 1px 2px rgba(12,52,80,0.08)"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="7.5" cy="7" r="3" stroke="currentColor" stroke-width="1.6"></circle><path d="M2 17c.6-3 2.8-4.5 5.5-4.5S12.4 14 13 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path><circle cx="14" cy="7.5" r="2.3" stroke="currentColor" stroke-width="1.5"></circle></svg>Klienci</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 16V9M9 16V5M14 16v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>Finanse</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5.5c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v6c0 1.1-.9 2-2 2H8l-3.5 3v-3H5c-1.1 0-2-.9-2-2v-6Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>Wysyłka SMS</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.6"></circle><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Ustawienia</a>
+</nav>
+
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+
+<!-- Header -->
+<header style="background: #FFFFFF; border-bottom: 1px solid #E9EDF1; padding: 16px 32px 0; display: flex; flex-direction: column; gap: 14px">
+<a href="mockup-klienci.html" style="font-size: 13px; font-weight: 500">← Klienci</a>
+<div style="display: flex; align-items: center; gap: 16px">
+<div style="width: 56px; height: 56px; border-radius: 14px; background: #DCEAF4; color: #14567F; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; flex-shrink: 0">GA</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; align-items: center; gap: 10px">
+<h1 style="margin: 0; font-size: 26px; font-weight: 600; color: #0C3450">Gabinet Aurora</h1>
+<span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: #E7F7F0; color: #15754F">Stały</span>
+<span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: #FCE8E6; color: #B3261E">1 faktura po terminie</span>
+</div>
+<div style="font-size: 14px; color: #6F7378; margin-top: 2px">Magdalena Nowicka · <a href="#">+48 601 000 111</a> · <a href="#">kontakt@gabinet-aurora.pl</a> · Kraków · NIP 679-000-11-22 · klient od 03.2024</div>
+</div>
+<div style="display: flex; gap: 8px">
+<a href="#" style="height: 40px; padding: 0 16px; border-radius: 10px; background: #1B6FA8; color: #FFFFFF; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; white-space: nowrap"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M6 3h3l1 4-2 1.5a9 9 0 0 0 3.5 3.5L13 10l4 1v3c0 1-1 2-2 2A12 12 0 0 1 4 5c0-1 1-2 2-2Z" stroke="#FFFFFF" stroke-width="1.6" stroke-linejoin="round"></path></svg>Zadzwoń</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">SMS</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">E-mail</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">Nowa rezerwacja</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">Notatka</a>
+</div>
+</div>
+<div role="tablist" aria-label="Sekcje karty klienta" style="display: flex; gap: 4px">
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Przegląd</button>
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Wynajmy i faktury<span style="font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: #FCE8E6; color: #B3261E">1 po terminie</span></button>
+
+<button type="button" role="tab" aria-selected="true" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #14567F; font-weight: 600; box-shadow: inset 0 -3px 0 #1B6FA8">Komunikacja<span style="font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: #F2F4F6; color: #5B6167">24</span></button>
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Dane</button>
+
+</div>
+</header>
+
+<main style="flex-grow: 1; min-height: 0; overflow: auto; padding: 24px 32px; display: flex; flex-direction: column; gap: 18px">
+
+<!-- ===== PRZEGLĄD ===== -->
+
+
+<!-- ===== WYNAJMY I FAKTURY ===== -->
+
+
+<!-- ===== KOMUNIKACJA ===== -->
+
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 18px; align-items: start">
+<section style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #E9EDF1; flex-wrap: wrap">
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #1B6FA8; background: #EAF4FB; color: #14567F; font-size: 13px; font-weight: 600; cursor: pointer">Wszystko (24)</button>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 13px; cursor: pointer">E-mail (11)</button>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 13px; cursor: pointer">SMS (9)</button>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 13px; cursor: pointer">Rozmowy (3)</button>
+<button type="button" style="height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 13px; cursor: pointer">Notatki (1)</button>
+<div style="flex-grow: 1"></div>
+<span style="font-size: 12px; color: #6F7378">Skrzynka kontakt@ · synchronizacja 2 min temu</span>
+</div>
+<div style="display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #E9EDF1; background: #FAFBFC">
+<label style="flex-grow: 1; display: flex"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden">Notatka</span><input type="text" placeholder="Dodaj notatkę albo zapisz rozmowę…" style="flex-grow: 1; height: 38px; border: 1px solid #E9EDF1; border-radius: 8px; padding: 0 12px; font-family: inherit; font-size: 14px"></label>
+<button type="button" style="height: 38px; padding: 0 14px; border-radius: 8px; border: 0; background: #1B6FA8; color: #FFFFFF; font-size: 13px; font-weight: 600; cursor: pointer">Zapisz</button>
+</div>
+
+<div style="padding: 10px 16px 4px; font-size: 12px; font-weight: 600; color: #6F7378; text-transform: uppercase; letter-spacing: 0.05em">Wrzesień 2026</div>
+
+
+
+
+<div style="display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #F2F4F6; background: #EAF4FB; box-shadow: inset 3px 0 0 #1B6FA8">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #DCEAF4; color: #14567F; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">↓</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; gap: 8px; align-items: center; font-size: 14px"><span style="font-weight: 600; color: #0C3450">Re: Rezerwacja LightSheer 10–11.10</span><span style="font-size: 11px; padding: 1px 7px; border-radius: 8px; background: #F2F4F6; color: #5B6167">3 wiad.</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: #6F7378; white-space: nowrap">24.09, 10:12</span></div>
+<div style="font-size: 13px; color: #6F7378; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Dziękuję, pasuje. Czy da się, żeby kierowca wniósł urządzenie na 1. piętro?…</div>
+</div>
+</div>
+
+
+
+
+<div style="display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #F2F4F6; background: #FFFFFF; box-shadow: none">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #F3EBFF; color: #5B2BB5; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">T</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; gap: 8px; align-items: center; font-size: 14px"><span style="font-weight: 600; color: #0C3450">Rozmowa — potwierdzenie terminu</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: #6F7378; white-space: nowrap">23.09, 08:50</span></div>
+<div style="font-size: 13px; color: #6F7378; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Ania: potwierdzone 10–11.10, prosi o dostawę przed 8:00</div>
+</div>
+</div>
+
+
+
+
+<div style="display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #F2F4F6; background: #FFFFFF; box-shadow: none">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #FBF0E7; color: #8A4414; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">S</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; gap: 8px; align-items: center; font-size: 14px"><span style="font-weight: 600; color: #0C3450">SMS: przypomnienie o dostawie</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: #6F7378; white-space: nowrap">17.09, 18:00</span></div>
+<div style="font-size: 13px; color: #6F7378; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Przypomnienie: jutro, 18.09.2026, rozpoczyna się wynajem urządzenia LightSheer Desire…</div>
+</div>
+</div>
+
+
+
+
+<div style="display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #F2F4F6; background: #FFFFFF; box-shadow: none">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #EAF4FB; color: #1B6FA8; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">↑</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; gap: 8px; align-items: center; font-size: 14px"><span style="font-weight: 600; color: #0C3450">Faktura 09/09/2026 — WynajemLasera.pl</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: #6F7378; white-space: nowrap">18.09, 16:20</span></div>
+<div style="font-size: 13px; color: #6F7378; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">W załączniku faktura za wynajem 18.09.2026. Termin płatności 21.09…</div>
+</div>
+</div>
+
+
+<div style="padding: 10px 16px 4px; font-size: 12px; font-weight: 600; color: #6F7378; text-transform: uppercase; letter-spacing: 0.05em">Sierpień 2026</div>
+
+
+
+
+<div style="display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #F2F4F6; background: #FFFFFF; box-shadow: none">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #DCEAF4; color: #14567F; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">↓</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; gap: 8px; align-items: center; font-size: 14px"><span style="font-weight: 600; color: #0C3450">Pytanie o Almę z iPixel</span><span style="font-size: 11px; padding: 1px 7px; border-radius: 8px; background: #F2F4F6; color: #5B6167">2 wiad.</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: #6F7378; white-space: nowrap">12.08, 21:03</span></div>
+<div style="font-size: 13px; color: #6F7378; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Czy Alma może być z głowicą iPixel na 2 dni we wrześniu? Jaki koszt…</div>
+</div>
+</div>
+
+
+
+
+<div style="display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #F2F4F6; background: #FFFFFF; box-shadow: none">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #E9EDF1; color: #4A4A4A; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">N</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; gap: 8px; align-items: center; font-size: 14px"><span style="font-weight: 600; color: #0C3450">Notatka</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: #6F7378; white-space: nowrap">21.08 · Tomek</span></div>
+<div style="font-size: 13px; color: #6F7378; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Woli płacić przelewem; faktury na adres kontakt@</div>
+</div>
+</div>
+
+
+<div style="padding: 10px 16px 4px; font-size: 12px; font-weight: 600; color: #6F7378; text-transform: uppercase; letter-spacing: 0.05em">Lipiec 2026</div>
+
+
+
+
+<div style="display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #F2F4F6; background: #FFFFFF; box-shadow: none">
+<div style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 15px; background: #DCEAF4; color: #14567F; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">↓</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; gap: 8px; align-items: center; font-size: 14px"><span style="font-weight: 600; color: #0C3450">Wycena Alma Harmony XL</span><span style="font-size: 11px; padding: 1px 7px; border-radius: 8px; background: #F2F4F6; color: #5B6167">4 wiad.</span><span style="font-size: 10px; font-weight: 600; padding: 0 6px; border-radius: 6px; background: #FBF0E7; color: #8A4414">HubSpot</span><span style="flex-grow: 1"></span><span style="font-size: 12px; color: #6F7378; white-space: nowrap">02.07, 10:44</span></div>
+<div style="font-size: 13px; color: #6F7378; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Dzień dobry, proszę o wycenę Almy na sierpień…</div>
+</div>
+</div>
+
+
+</section>
+
+<section aria-label="Podgląd wiadomości" style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; display: flex; flex-direction: column; overflow: hidden">
+<div style="padding: 14px 18px; border-bottom: 1px solid #E9EDF1">
+<div style="font-size: 12px; color: #6F7378">Wątek · 3 wiadomości</div>
+<h2 style="margin: 2px 0 0; font-size: 17px; font-weight: 600; color: #0C3450">Re: Rezerwacja LightSheer 10–11.10</h2>
+</div>
+<div style="padding: 12px 18px; display: flex; flex-direction: column; gap: 12px">
+<div style="border: 1px solid #E9EDF1; border-radius: 10px; padding: 10px 12px"><div style="display: flex; font-size: 13px"><span style="font-weight: 600; color: #0C3450; flex-grow: 1">↓ Magdalena Nowicka</span><span style="color: #6F7378">22.09, 18:40</span></div><div style="font-size: 13px; color: #6F7378">Dzień dobry, chciałabym zarezerwować LightSheer na 10–11 października…</div></div>
+<div style="border: 1px solid #E9EDF1; border-radius: 10px; padding: 10px 12px"><div style="display: flex; font-size: 13px"><span style="font-weight: 600; color: #0C3450; flex-grow: 1">↑ Ania (kontakt@)</span><span style="color: #6F7378">23.09, 09:05</span></div><div style="font-size: 13px; color: #6F7378">Potwierdzam termin, dostawa 10.10 o 7:45. W załączniku oferta…</div></div>
+<div style="border: 1px solid #1B6FA8; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; font-size: 13px"><span style="font-weight: 600; color: #0C3450; flex-grow: 1">↓ Magdalena Nowicka</span><span style="color: #6F7378">24.09, 10:12</span></div>
+<div style="font-size: 14px; line-height: 1.5; color: #4A4A4A">Dziękuję, pasuje. Czy da się, żeby kierowca wniósł urządzenie na 1. piętro? Winda jest nieczynna do końca miesiąca. Fakturę za wrzesień opłacę w poniedziałek.</div>
+<div style="font-size: 12px; color: #6F7378">Treść pobrana z Gmaila przy otwarciu — nie jest zapisywana w panelu.</div>
+<div style="display: flex; gap: 8px"><a href="#" style="height: 34px; padding: 0 12px; border-radius: 8px; background: #1B6FA8; color: #FFFFFF; font-size: 13px; font-weight: 600; display: flex; align-items: center">Odpowiedz w Gmailu</a><a href="#" style="height: 34px; padding: 0 12px; border-radius: 8px; background: #EAF4FB; color: #14567F; font-size: 13px; font-weight: 600; display: flex; align-items: center">Zadanie z tego maila</a></div>
+</div>
+</div>
+</section>
+</div>
+
+
+<!-- ===== DANE ===== -->
+
+
+</main>
+</div>
+</div>
+
+</section>
+<section style="margin:0 0 48px"><div style="font:600 18px Jost,sans-serif;color:#0C3450;padding:16px 24px;background:#FFF3CD;border:1px solid #E0C36A">Zakładka: Dane (/klienci/[id]?tab=dane)</div>
+
+
+<div style="width: 1440px; height: 1180px; display: flex; background: #F2F4F6; font-family: 'Jost', system-ui, sans-serif; color: #4A4A4A; overflow: hidden">
+
+<nav aria-label="Menu główne" style="width: 216px; flex-shrink: 0; background: #EFF6FB; border-right: 1px solid #E9EDF1; display: flex; flex-direction: column; padding: 20px 12px; box-sizing: border-box; gap: 4px">
+<div style="font-size: 18px; font-weight: 700; color: #1B6FA8; padding: 4px 12px 20px">WynajemLasera<span style="color: #E08A5C">.pl</span></div>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.6"></rect><path d="M3 8h14M6.5 2.5v3M13.5 2.5v3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Kalendarz</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.6"></circle><path d="M10 6v4l3 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Nadchodzące</a>
+<a href="mockup-sygnaly.html" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h3l2-5 4 10 2-5h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="flex-grow: 1">Sygnały</span><span style="background: #E08A5C; color: #FFFFFF; font-size: 12px; font-weight: 600; border-radius: 10px; padding: 1px 8px">4</span></a>
+<a href="mockup-klienci.html" aria-current="page" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #14567F; background: #FFFFFF; font-size: 15px; font-weight: 600; box-shadow: 0 1px 2px rgba(12,52,80,0.08)"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="7.5" cy="7" r="3" stroke="currentColor" stroke-width="1.6"></circle><path d="M2 17c.6-3 2.8-4.5 5.5-4.5S12.4 14 13 17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path><circle cx="14" cy="7.5" r="2.3" stroke="currentColor" stroke-width="1.5"></circle></svg>Klienci</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 16V9M9 16V5M14 16v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>Finanse</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5.5c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v6c0 1.1-.9 2-2 2H8l-3.5 3v-3H5c-1.1 0-2-.9-2-2v-6Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"></path></svg>Wysyłka SMS</a>
+<a href="#" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: #5B6167; font-size: 15px"><svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.6"></circle><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>Ustawienia</a>
+</nav>
+
+<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+
+<!-- Header -->
+<header style="background: #FFFFFF; border-bottom: 1px solid #E9EDF1; padding: 16px 32px 0; display: flex; flex-direction: column; gap: 14px">
+<a href="mockup-klienci.html" style="font-size: 13px; font-weight: 500">← Klienci</a>
+<div style="display: flex; align-items: center; gap: 16px">
+<div style="width: 56px; height: 56px; border-radius: 14px; background: #DCEAF4; color: #14567F; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px; flex-shrink: 0">GA</div>
+<div style="flex-grow: 1; min-width: 0">
+<div style="display: flex; align-items: center; gap: 10px">
+<h1 style="margin: 0; font-size: 26px; font-weight: 600; color: #0C3450">Gabinet Aurora</h1>
+<span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: #E7F7F0; color: #15754F">Stały</span>
+<span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: #FCE8E6; color: #B3261E">1 faktura po terminie</span>
+</div>
+<div style="font-size: 14px; color: #6F7378; margin-top: 2px">Magdalena Nowicka · <a href="#">+48 601 000 111</a> · <a href="#">kontakt@gabinet-aurora.pl</a> · Kraków · NIP 679-000-11-22 · klient od 03.2024</div>
+</div>
+<div style="display: flex; gap: 8px">
+<a href="#" style="height: 40px; padding: 0 16px; border-radius: 10px; background: #1B6FA8; color: #FFFFFF; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; white-space: nowrap"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M6 3h3l1 4-2 1.5a9 9 0 0 0 3.5 3.5L13 10l4 1v3c0 1-1 2-2 2A12 12 0 0 1 4 5c0-1 1-2 2-2Z" stroke="#FFFFFF" stroke-width="1.6" stroke-linejoin="round"></path></svg>Zadzwoń</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">SMS</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">E-mail</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">Nowa rezerwacja</a>
+<a href="#" style="height: 40px; padding: 0 14px; border-radius: 10px; background: #EAF4FB; color: #14567F; font-size: 14px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">Notatka</a>
+</div>
+</div>
+<div role="tablist" aria-label="Sekcje karty klienta" style="display: flex; gap: 4px">
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Przegląd</button>
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Wynajmy i faktury<span style="font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: #FCE8E6; color: #B3261E">1 po terminie</span></button>
+
+<button type="button" role="tab" aria-selected="false" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #5B6167; font-weight: 500">Komunikacja<span style="font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: #F2F4F6; color: #5B6167">24</span></button>
+
+<button type="button" role="tab" aria-selected="true" style="height: 44px; padding: 0 16px; border: 0; background: transparent; cursor: pointer; font-size: 15px; display: flex; align-items: center; gap: 8px; color: #14567F; font-weight: 600; box-shadow: inset 0 -3px 0 #1B6FA8">Dane</button>
+
+</div>
+</header>
+
+<main style="flex-grow: 1; min-height: 0; overflow: auto; padding: 24px 32px; display: flex; flex-direction: column; gap: 18px">
+
+<!-- ===== PRZEGLĄD ===== -->
+
+
+<!-- ===== WYNAJMY I FAKTURY ===== -->
+
+
+<!-- ===== KOMUNIKACJA ===== -->
+
+
+<!-- ===== DANE ===== -->
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px">
+<section style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; align-items: center"><h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #0C3450; flex-grow: 1">Osoby kontaktowe</h2><button type="button" style="height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid #1B6FA8; background: #FFFFFF; color: #14567F; font-size: 13px; font-weight: 600; cursor: pointer">+ Dodaj osobę</button></div>
+<div style="border: 1px solid #E9EDF1; border-radius: 10px; padding: 12px 14px; font-size: 14px; display: grid; grid-template-columns: 130px 1fr; row-gap: 4px">
+<span style="grid-column: 1 / -1; font-weight: 600; color: #0C3450">Magdalena Nowicka <span style="font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 8px; background: #EAF4FB; color: #14567F; margin-left: 6px">główna</span></span>
+<span style="color: #6F7378">Rola</span><span>właścicielka</span>
+<span style="color: #6F7378">Tel. gabinet</span><span><a href="#">+48 601 000 111</a></span>
+<span style="color: #6F7378">Tel. prywatny</span><span><a href="#">+48 602 000 999</a></span>
+<span style="color: #6F7378">E-mail</span><span><a href="#">kontakt@gabinet-aurora.pl</a></span>
+</div>
+<div style="border: 1px solid #E9EDF1; border-radius: 10px; padding: 12px 14px; font-size: 14px; display: grid; grid-template-columns: 130px 1fr; row-gap: 4px">
+<span style="grid-column: 1 / -1; font-weight: 600; color: #0C3450">Julia Wrona</span>
+<span style="color: #6F7378">Rola</span><span>recepcja</span>
+<span style="color: #6F7378">Tel. gabinet</span><span><a href="#">+48 603 000 222</a></span>
+<span style="color: #6F7378">E-mail</span><span><a href="#">recepcja@gabinet-aurora.pl</a></span>
+</div>
+</section>
+<div style="display: flex; flex-direction: column; gap: 18px">
+<section style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center"><h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #0C3450; flex-grow: 1">Firma i adres</h2><a href="#" style="font-size: 13px; font-weight: 600">Edytuj</a></div>
+<div style="font-size: 14px; display: grid; grid-template-columns: 150px 1fr; row-gap: 5px">
+<span style="color: #6F7378">Nazwa</span><span>Gabinet Aurora Magdalena Nowicka</span>
+<span style="color: #6F7378">NIP</span><span>679-000-11-22</span>
+<span style="color: #6F7378">Ulica</span><span>ul. Przykładowa 12/3</span>
+<span style="color: #6F7378">Kod i miasto</span><span>30-001 Kraków</span>
+<span style="color: #6F7378">Rodzaj gabinetu</span><span>Gabinet kosmetologiczny</span>
+<span style="color: #6F7378">Źródło</span><span>Polecenie</span>
+</div>
+</section>
+<section style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 600; color: #0C3450">Dane do wynajmu</h2>
+<div style="font-size: 14px; display: grid; grid-template-columns: 150px 1fr; row-gap: 5px">
+<span style="color: #6F7378">Transport</span><span>120 zł netto · 18 km</span>
+<span style="color: #6F7378">Dostawa</span><span>najlepiej przed 8:00 · 1. piętro, winda</span>
+<span style="color: #6F7378">Płatność</span><span>przelew 14 dni</span>
+<span style="color: #6F7378">Zainteresowania</span><span>LightSheer, Alma Harmony</span>
+</div>
+</section>
+<section style="background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 12px; padding: 16px 20px; font-size: 13px; color: #6F7378; display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 15px; font-weight: 600; color: #0C3450">Powiązania</div>
+<div>HubSpot: <a href="#">otwórz kontakt ↗</a> · tagi z HubSpota: nowy klient</div>
+<div>Fakturownia: kontrahent po NIP 679-000-11-22</div>
+<div>Aliasy z kalendarza: „Aurora Nowicka”, „Gab. Aurora Kraków”</div>
+</section>
+</div>
+</div>
+
+
+</main>
+</div>
+</div>
+
+</section>
+</body>
+</html>

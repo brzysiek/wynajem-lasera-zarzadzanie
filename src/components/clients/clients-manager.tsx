@@ -22,6 +22,7 @@ import { Avatar, DeviceTags, DownloadIcon, PhoneIcon, SearchIcon, SmsIcon, StarI
 import { ClientCard, type CardIntent } from "./client-card";
 import { NewClientDialog } from "./client-forms";
 import { useMediaQuery } from "./use-media-query";
+import { LIST_URL_KEY } from "./card/client-full-card";
 
 // Lista klientów (/klienci) — wygląd wg docs/crm/mockup-klienci.html, logika
 // wg docs/crm/prompt-claude-code-crm-1-klienci.md (3.2). Klientów jest
@@ -120,26 +121,33 @@ function FilterSelect<T extends string>({
 export function ClientsManager({
   rows,
   initialSelectedId,
+  initialQuery,
   pendingHistory = 0,
 }: {
   rows: ClientListRow[];
   initialSelectedId: string | null;
+  // Stan listy z adresu (?q=…&status=…&sort=…) — filtr da się wysłać linkiem,
+  // a „← Klienci” na pełnej karcie wraca do tego samego widoku.
+  initialQuery?: Record<string, string | undefined>;
   // Wydarzenia z historii kalendarzy czekające na przypisanie (prompt 3A).
   pendingHistory?: number;
 }) {
   const router = useRouter();
   const wide = useMediaQuery("(min-width: 1280px)");
 
-  const [query, setQuery] = useState("");
-  const [debounced, setDebounced] = useState("");
-  const [statuses, setStatuses] = useState<Set<ClientStatus>>(new Set());
-  const [noPhone, setNoPhone] = useState(false);
-  const [device, setDevice] = useState<DeviceInterestKey | "">("");
-  const [city, setCity] = useState("");
-  const [clinicType, setClinicType] = useState<ClinicTypeKey | "">("");
-  const [source, setSource] = useState<SourceKey | "">("");
-  const [sort, setSort] = useState<SortKey>("last");
-  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
+  const iq = initialQuery ?? {};
+  const [query, setQuery] = useState(iq.q ?? "");
+  const [debounced, setDebounced] = useState(iq.q ?? "");
+  const [statuses, setStatuses] = useState<Set<ClientStatus>>(
+    new Set((iq.status ?? "").split(",").filter((x): x is ClientStatus => TILE_STATUSES.includes(x as ClientStatus))),
+  );
+  const [noPhone, setNoPhone] = useState(iq.brakTelefonu === "1");
+  const [device, setDevice] = useState<DeviceInterestKey | "">((DEVICE_INTEREST_KEYS as string[]).includes(iq.urzadzenie ?? "") ? (iq.urzadzenie as DeviceInterestKey) : "");
+  const [city, setCity] = useState(iq.miasto ?? "");
+  const [clinicType, setClinicType] = useState<ClinicTypeKey | "">(iq.rodzaj && iq.rodzaj in CLINIC_TYPE_LABEL ? (iq.rodzaj as ClinicTypeKey) : "");
+  const [source, setSource] = useState<SourceKey | "">(iq.zrodlo && iq.zrodlo in SOURCE_LABEL ? (iq.zrodlo as SourceKey) : "");
+  const [sort, setSort] = useState<SortKey>(iq.sort && iq.sort in SORT_LABEL ? (iq.sort as SortKey) : "last");
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? iq.klient ?? null);
   const [intent, setIntent] = useState<CardIntent>(null);
   const [showNew, setShowNew] = useState(false);
 
@@ -151,10 +159,30 @@ export function ClientsManager({
   const select = useCallback((id: string | null, nextIntent: CardIntent = null) => {
     setSelectedId(id);
     setIntent(nextIntent);
-    // Adres odzwierciedla wybranego klienta (link do karty, odświeżenie
-    // strony zostawia ją otwartą) — bez nawigacji i przeładowania listy.
-    window.history.replaceState(null, "", `${BASE_PATH}/klienci${id ? `/${id}` : ""}`);
   }, []);
+
+  // Stan listy → adres (bez przeładowania) i pamięć karty przeglądarki, z
+  // której pełna karta klienta bierze link „← Klienci”.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (debounced.trim()) p.set("q", debounced.trim());
+    if (statuses.size) p.set("status", [...statuses].join(","));
+    if (noPhone) p.set("brakTelefonu", "1");
+    if (device) p.set("urzadzenie", device);
+    if (city) p.set("miasto", city);
+    if (clinicType) p.set("rodzaj", clinicType);
+    if (source) p.set("zrodlo", source);
+    if (sort !== "last") p.set("sort", sort);
+    const listSearch = p.toString() ? `?${p.toString()}` : "";
+    if (selectedId) p.set("klient", selectedId);
+    const full = p.toString() ? `?${p.toString()}` : "";
+    window.history.replaceState(null, "", `${BASE_PATH}/klienci${full}`);
+    try {
+      sessionStorage.setItem(LIST_URL_KEY, listSearch);
+    } catch {
+      // brak sessionStorage — powrót z karty wróci do czystej listy
+    }
+  }, [debounced, statuses, noPhone, device, city, clinicType, source, sort, selectedId]);
 
   useEffect(() => {
     if (!selectedId || wide) return;
@@ -490,12 +518,15 @@ export function ClientsManager({
                       }`}
                       onClick={() => select(r.id)}
                     >
-                      <button
-                        type="button"
+                      <Link
+                        href={`/klienci/${r.id}`}
                         aria-label={`Pokaż kartę klienta ${r.name}`}
                         className="flex min-w-0 items-center gap-3 text-left"
                         onClick={(e) => {
                           e.stopPropagation();
+                          // Ctrl/Cmd/Shift + klik = pełna karta w nowej karcie przeglądarki.
+                          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                          e.preventDefault();
                           select(r.id);
                         }}
                       >
@@ -508,7 +539,7 @@ export function ClientsManager({
                               "—"}
                           </span>
                         </span>
-                      </button>
+                      </Link>
                       <div>
                         <StatusChip status={r.status} />
                       </div>

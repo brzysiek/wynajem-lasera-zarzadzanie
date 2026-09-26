@@ -315,6 +315,8 @@ export type FakturowniaHistoryInvoice = {
   buyerTaxNo: string | null;
   priceNet: string;
   priceGross: string;
+  paymentTo: string | null; // YYYY-MM-DD — termin płatności
+  paymentType: string | null; // transfer / cash / …
   // Lista faktur zwykle nie zawiera pozycji — wtedy null i trzeba je doczytać
   // przez getInvoicePositionNames.
   positionNames: string[] | null;
@@ -352,6 +354,8 @@ export async function listInvoicesForHistory(): Promise<FakturowniaHistoryInvoic
         buyerTaxNo: raw.buyer_tax_no ? String(raw.buyer_tax_no) : null,
         priceNet: String(raw.price_net ?? "0"),
         priceGross: String(raw.price_gross ?? "0"),
+        paymentTo: raw.payment_to ? String(raw.payment_to) : null,
+        paymentType: raw.payment_type ? String(raw.payment_type) : null,
         positionNames: positions ? positions.map((p) => String(p.name ?? "")).filter(Boolean) : null,
       });
     }

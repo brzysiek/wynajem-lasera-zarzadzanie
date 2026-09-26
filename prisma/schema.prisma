@@ -743,6 +743,10 @@ model ClientContact {
   firstName        String?
   lastName         String?
   phone            String? // E.164 (+48…), normalizePolishPhone z src/lib/reminders.ts
+  // Drugi numer (np. „prywatny” obok „gabinet”) — wyszukiwany na liście,
+  // SMS domyślnie na pierwszy. Etykieta z listy albo własna.
+  phone2           String?
+  phone2Label      String?
   email            String?
   role             String? // np. „właścicielka”, „kosmetolog”
   isPrimary        Boolean @default(false) // dokładnie jedna główna osoba na klienta
@@ -844,6 +848,8 @@ model ClientInvoice {
   totalNet             Decimal             @db.Decimal(10, 2)
   totalGross           Decimal             @db.Decimal(10, 2)
   positionsSummary     String?             @db.Text // nazwy pozycji — do rozpoznania urządzenia
+  paymentTo            DateTime? // termin płatności z Fakturowni (payment_to) — status „po terminie”
+  paymentType          String? // forma płatności z Fakturowni (transfer / cash / …)
   clientId             String?
   client               Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
   rentalId             String? // faktura wynajmu z panelu — nie liczona drugi raz

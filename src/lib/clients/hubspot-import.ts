@@ -57,6 +57,8 @@ export type PlannedContact = {
   firstName: string | null;
   lastName: string | null;
   phone: string | null; // E.164, albo surowy tekst gdy nie dało się sparsować
+  // Komórka z HubSpota, gdy kontakt ma też inny telefon — drugi numer osoby.
+  phone2: string | null;
   email: string | null;
   isPrimary: boolean;
   // Surowe wartości HubSpota w chwili importu — podstawa scalania zmian w
@@ -254,6 +256,9 @@ export function planHubspotImport(
         if (!normalized) report.unparsedPhones.push({ contact: contactLabel(c), value: rawPhone });
         phone = normalized ?? rawPhone;
       }
+      const rawMobile = clean(c.phone) ? clean(c.mobilephone) : null;
+      const mobile = rawMobile ? (deps.normalizePhone(rawMobile) ?? rawMobile) : null;
+      const phone2 = mobile && mobile !== phone ? mobile : null;
       const email = clean(c.email)?.toLowerCase() ?? null;
       if (email) emails.set(email, [...(emails.get(email) ?? []), contactLabel(c)]);
       if (!email && !rawPhone) report.noEmailNoPhone.push(contactLabel(c));
@@ -262,6 +267,7 @@ export function planHubspotImport(
         firstName: clean(c.firstname),
         lastName: clean(c.lastname),
         phone,
+        phone2,
         email,
         isPrimary: i === 0,
         snapshot: { firstname: c.firstname, lastname: c.lastname, phone: c.phone, mobilephone: c.mobilephone, email: c.email },

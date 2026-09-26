@@ -86,8 +86,10 @@ export function HubspotImportPanel({ configured }: { configured: boolean }) {
   async function handleImport() {
     if (!preview) return;
     const ok = window.confirm(
-      `Zaimportować ${preview.clientsToCreate} nowych klientów i ${preview.contactsToCreate} osób kontaktowych?\n\n` +
-        "HubSpot zostaje bez zmian. Istniejące wynajmy dostaną powiązanie z klientem — ich dane kontaktowe się nie zmieniają.",
+      preview.contactsToCreate === 0
+        ? "Wszyscy klienci są już w panelu. Uzupełnić brakujące drugie numery telefonu (komórki z HubSpota) i powiązania wynajmów?\n\nNic nie zostanie nadpisane."
+        : `Zaimportować ${preview.clientsToCreate} nowych klientów i ${preview.contactsToCreate} osób kontaktowych?\n\n` +
+            "HubSpot zostaje bez zmian. Istniejące wynajmy dostaną powiązanie z klientem — ich dane kontaktowe się nie zmieniają.",
     );
     if (!ok) return;
     setImporting(true);
@@ -142,10 +144,10 @@ export function HubspotImportPanel({ configured }: { configured: boolean }) {
         <button
           type="button"
           onClick={() => void handleImport()}
-          disabled={!preview || Boolean(nothingToImport) || importing}
+          disabled={!preview || importing}
           className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#14567F] disabled:opacity-40"
         >
-          {importing ? "Importowanie…" : "2. Importuj"}
+          {importing ? "Importowanie…" : nothingToImport ? "2. Uzupełnij dane" : "2. Importuj"}
         </button>
         {!configured && <span className="text-sm text-amber-700">Najpierw ustaw token HubSpot wyżej.</span>}
       </div>
