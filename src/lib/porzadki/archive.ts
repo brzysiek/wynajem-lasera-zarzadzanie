@@ -16,7 +16,7 @@ import { recordChanges, type ChangeEntry } from "@/lib/changelog/record";
 export { parseArchiveInput, parseTypeIds, type ArchiveInput, type ArchiveType } from "@/lib/porzadki/archive-rules";
 import type { ArchiveInput, ArchiveType } from "@/lib/porzadki/archive-rules";
 
-export async function archiveRecords(type: ArchiveType, ids: string[], input: ArchiveInput, actor: Actor): Promise<number> {
+export async function archiveRecords(type: ArchiveType, ids: string[], input: ArchiveInput, actor: Actor, opts: { approvedById?: string | null } = {}): Promise<number> {
   const now = new Date();
   const data = { archivedAt: now, archiveReason: input.reason, archiveNote: input.note, archivedById: actor.userId, archiveBatch: input.batch };
   const after = toLogValue({ reason: input.reason, note: input.note, batch: input.batch });
@@ -40,7 +40,7 @@ export async function archiveRecords(type: ArchiveType, ids: string[], input: Ar
       for (const l of leads) entries.push({ entity: "LEAD", entityId: l.id, clientId: l.clientId, operation: "ARCHIVE", before: "null", after });
       count = leads.length;
     }
-    await recordChanges(tx, { userId: actor.userId, provenance: { source: input.note, confidence: null, batch: input.batch } }, entries);
+    await recordChanges(tx, { userId: actor.userId, provenance: { source: input.note, confidence: null, batch: input.batch }, approvedById: opts.approvedById }, entries);
   });
   return count;
 }

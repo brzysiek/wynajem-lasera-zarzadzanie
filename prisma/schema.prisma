@@ -760,6 +760,7 @@ model Client {
   messages Message[]
   emails   EmailMessage[]
   changeLogs ChangeLog[]
+  changeProposals ChangeProposal[]
   proposalLinks ProposalClient[]
   remarks  Remark[]
 
@@ -1334,4 +1335,52 @@ model OAuthCode {
   createdAt     DateTime  @default(now())
 
   @@map("oauth_codes")
+}
+
+// Kolejka propozycji zmian (Porządki, etap D): agent proponuje, ADMIN
+// akceptuje (pojedynczo / hurtem) albo odrzuca z komentarzem. Akceptacja
+// wykonuje zmianę od razu (dziennik: wykonał = autor, zatwierdził = ADMIN).
+// Rodzaje: FIELD (pole klienta), CONTACT_FIELD (pole osoby), ARCHIVE
+// (klient / sygnał do archiwum), MERGE (duplikat w klienta).
+model ChangeProposal {
+  id              String    @id @default(cuid())
+  kind            String    @db.VarChar(16)
+  clientId        String?
+  client          Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  contactId       String?
+  leadId          String?
+  field           String?   @db.VarChar(64)
+  currentValue    String?   @db.Text // JSON — wartość w panelu w chwili zgłoszenia
+  proposedValue   String?   @db.Text // JSON — proponowana (ARCHIVE: {reason,note}; MERGE: {duplicateId})
+  source          String    @db.Text
+  confidence      String    @db.VarChar(8) // HIGH | MEDIUM | LOW
+  batch           String?   @db.VarChar(64)
+  changeClass     String?   @db.VarChar(64) // np. miasto_slownik — do zatwierdzania na stałe
+  status          String    @default("PENDING") @db.VarChar(12) // PENDING | ACCEPTED | REJECTED
+  autoApproved    Boolean   @default(false)
+  authorId        String?
+  editedById      String?
+  decidedById     String?
+  decidedAt       DateTime?
+  decisionComment String?   @db.Text
+  executedAt      DateTime?
+  executionError  String?   @db.Text
+  createdAt       DateTime  @default(now())
+
+  @@index([status])
+  @@index([batch])
+  @@index([clientId])
+  @@map("change_proposals")
+}
+
+// Klasy zmian zatwierdzone na stałe — propozycje pól z tą klasą agent
+// wykonuje od razu (wpisy nadal w dzienniku). Ustawia ADMIN.
+model AutoApprovedClass {
+  id          String   @id @default(cuid())
+  key         String   @unique @db.VarChar(64)
+  label       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@map("auto_approved_classes")
 }

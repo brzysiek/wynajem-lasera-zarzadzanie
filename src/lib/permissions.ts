@@ -37,6 +37,7 @@ const AGENT_PAGE_PREFIXES = [
   "/dziennik",
   "/reguly",
   "/archiwum",
+  "/propozycje",
 ];
 const AGENT_BLOCKED_PAGES = ["/kalendarz/wynajem/nowy"];
 

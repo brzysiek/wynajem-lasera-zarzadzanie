@@ -33,7 +33,8 @@ export type ChangeEntry = {
   after?: string | null;
 };
 
-export type ChangeActor = { userId: string; provenance?: Provenance | null };
+// approvedById — ADMIN, który zaakceptował propozycję (kolejka propozycji).
+export type ChangeActor = { userId: string; provenance?: Provenance | null; approvedById?: string | null };
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -59,6 +60,7 @@ export async function recordChanges(db: Db, actor: ChangeActor, entries: ChangeE
       source: p?.source ?? null,
       confidence: p?.confidence ?? null,
       batch: p?.batch ?? null,
+      approvedById: actor.approvedById ?? null,
     })),
   });
 }

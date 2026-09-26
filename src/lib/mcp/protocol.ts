@@ -8,7 +8,8 @@ export const SERVER_INFO = { name: "wynajem-lasera-panel", title: "Panel Wynajem
 export const INSTRUCTIONS =
   "Panel WynajemLasera.pl (wynajem urządzeń kosmetologicznych). Działasz jako agent AI porządkujący bazę klientów. " +
   "Zanim zaczniesz, przeczytaj reguly_porzadkow. Zmiany danych klientów zawsze z polami zrodlo, pewnosc i paczka — trafiają do dziennika. " +
-  "Nie usuwasz ani nie archiwizujesz: propozycje archiwizacji zapisuj jako uwagi (uwaga_utworz) z powodem i dowodem.";
+  "Większe porządki zgłaszaj jako paczkę propozycji (propozycje_dodaj) — administrator akceptuje je hurtem; sprawdzaj propozycje_lista (odrzucone z komentarzem nie proponuj ponownie). " +
+  "Nie usuwasz ani nie archiwizujesz sam: archiwizację zgłaszaj jako propozycję rodzaju „archiwizacja” z powodem i dopiskiem.";
 
 export type RpcMessage = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
 export type RpcResponse = { jsonrpc: "2.0"; id: string | number | null; result?: unknown; error?: { code: number; message: string } };

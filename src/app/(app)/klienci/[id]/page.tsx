@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireClientsPageAccess } from "@/lib/clients/page-access";
 import { loadClientDetail } from "@/lib/clients/load";
 import { loadClientOptions } from "@/lib/porzadki/client-options";
+import { countPendingForClient } from "@/lib/porzadki/change-proposals";
 import { ClientFullCard } from "@/components/clients/card/client-full-card";
 import { AgentModeProvider } from "@/components/clients/client-forms";
 import type { CardTab } from "@/components/clients/card/tab-overview";
@@ -14,7 +15,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const session = await requireClientsPageAccess();
   const { id } = await params;
   const { tab } = await searchParams;
-  const [detail, mergeOptions] = await Promise.all([loadClientDetail(id), loadClientOptions()]);
+  const [detail, mergeOptions, pendingProposals] = await Promise.all([loadClientDetail(id), loadClientOptions(), countPendingForClient(id)]);
   if (!detail) notFound();
   return (
     <AgentModeProvider agent={session.user.role === "AGENT"}>
@@ -25,6 +26,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         isAdmin={session.user.role === "ADMIN"}
         isAgent={session.user.role === "AGENT"}
         mergeOptions={mergeOptions}
+        pendingProposals={pendingProposals}
       />
     </AgentModeProvider>
   );

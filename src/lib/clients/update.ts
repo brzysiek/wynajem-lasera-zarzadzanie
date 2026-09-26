@@ -17,7 +17,12 @@ import { fieldEntries, recordChanges } from "@/lib/changelog/record";
 export type UpdateActor = { userId: string; role: string };
 export type UpdateResult = { ok: true; refreshedRentals: number; changed: number } | { ok: false; status: number; message: string };
 
-export async function patchClient(id: string, body: Record<string, unknown>, actor: UpdateActor, opts: { requireBatch?: boolean } = {}): Promise<UpdateResult> {
+export async function patchClient(
+  id: string,
+  body: Record<string, unknown>,
+  actor: UpdateActor,
+  opts: { requireBatch?: boolean; approvedById?: string | null } = {},
+): Promise<UpdateResult> {
   const isAgent = actor.role === "AGENT";
   const provenance = parseProvenance(body, { required: isAgent });
   if (!provenance.ok) return { ok: false, status: 400, message: provenance.message };
@@ -43,7 +48,7 @@ export async function patchClient(id: string, body: Record<string, unknown>, act
         ...(deviceInterests ? { deviceInterests: deviceInterests.length ? deviceInterests : Prisma.DbNull } : {}),
       },
     });
-    await recordChanges(tx, { userId: actor.userId, provenance: provenance.value }, fieldEntries("CLIENT", id, id, changes));
+    await recordChanges(tx, { userId: actor.userId, provenance: provenance.value, approvedById: opts.approvedById }, fieldEntries("CLIENT", id, id, changes));
   });
 
   const touchesRentals = CLIENT_CACHE_KEYS.some((k) => k in parsed.data);
@@ -56,7 +61,7 @@ export async function patchContact(
   contactId: string,
   body: Record<string, unknown>,
   actor: UpdateActor,
-  opts: { requireBatch?: boolean } = {},
+  opts: { requireBatch?: boolean; approvedById?: string | null } = {},
 ): Promise<UpdateResult> {
   const contact = await prisma.clientContact.findFirst({ where: { id: contactId, clientId } });
   if (!contact) return { ok: false, status: 404, message: "Nie znaleziono osoby." };
@@ -73,7 +78,7 @@ export async function patchContact(
   await prisma.$transaction(async (tx) => {
     if (isPrimary) await tx.clientContact.updateMany({ where: { clientId }, data: { isPrimary: false } });
     await tx.clientContact.update({ where: { id: contactId }, data: { ...data, ...(isPrimary ? { isPrimary: true } : {}) } });
-    await recordChanges(tx, { userId: actor.userId, provenance: provenance.value }, fieldEntries("CONTACT", contactId, clientId, changes));
+    await recordChanges(tx, { userId: actor.userId, provenance: provenance.value, approvedById: opts.approvedById }, fieldEntries("CONTACT", contactId, clientId, changes));
   });
 
   const touchesRentals = CONTACT_CACHE_KEYS.some((k) => k in data);

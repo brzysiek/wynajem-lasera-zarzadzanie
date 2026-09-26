@@ -25,6 +25,7 @@ import { isStatus, parseProposalInput, type ProposalInput } from "@/lib/porzadki
 import { createRemark, listRemarks, parseRemarkInput, updateRemark, type RemarkInput } from "@/lib/porzadki/remarks";
 import { normalizeRemarkBody } from "@/lib/agent-api/remark-body";
 import { taskDto } from "@/lib/tasks";
+import { listAutoClasses, listChangeProposals, submitProposals } from "@/lib/porzadki/change-proposals";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
 // co panel i API agenta (src/lib/permissions.ts): odczyt + zapisy agenta,
@@ -716,6 +717,32 @@ export const TOOLS: McpTool[] = [
       if (!parsed.ok) throw new AgentApiError(parsed.message);
       await updateRemark(req(a, "id"), { ...parsed.data, ...(status ? { status: status as "OPEN" | "CLOSED" } : {}) }, agent);
       return { ok: true };
+    },
+  },
+  {
+    name: "propozycje_dodaj",
+    title: "Zgłoś propozycje zmian",
+    description:
+      "Zgłasza hurtem propozycje do akceptacji administratora (Porządki → Propozycje). Każda: rodzaj (pole | osoba | archiwizacja | scalenie), klient_id, " +
+      "dla pola: pole + proponowane; dla osoby: osoba_id + pole + proponowane; dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id. " +
+      "Zawsze zrodlo, pewnosc, paczka; opcjonalnie klasa (np. miasto_slownik) — klasy zatwierdzone na stałe wykonują się od razu. " +
+      "Odrzucone wcześniej zmiany są blokowane (dostaniesz komentarz odrzucenia).",
+    inputSchema: obj({ propozycje: { type: "array", items: { type: "object" }, description: "Lista propozycji (maks. 500)." } }, ["propozycje"]),
+    readOnly: false,
+    run: async (a, agent) => ({ results: await submitProposals(a.propozycje as unknown[], agent) }),
+  },
+  {
+    name: "propozycje_lista",
+    title: "Propozycje zmian",
+    description: "Propozycje i ich stan: status PENDING / ACCEPTED / REJECTED (z komentarzem), paczka, klient; oraz klasy zatwierdzane automatycznie.",
+    inputSchema: obj({ status: s("Status.", { enum: ["PENDING", "ACCEPTED", "REJECTED"] }), paczka: s("Paczka."), klient_id: s("ID klienta.") }),
+    readOnly: true,
+    run: async (a) => {
+      const [proposals, classes] = await Promise.all([
+        listChangeProposals({ status: str(a, "status"), batch: str(a, "paczka"), clientId: str(a, "klient_id") }),
+        listAutoClasses(),
+      ]);
+      return { proposals, autoApprovedClasses: classes };
     },
   },
   {

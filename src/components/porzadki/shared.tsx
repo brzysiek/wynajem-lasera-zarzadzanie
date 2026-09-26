@@ -11,6 +11,7 @@ import { PRIORITY_LABEL, STATUS_LABEL, type PriorityKey, type ProposalStatusKey 
 const TABS = [
   { href: "/wnioski", label: "Wnioski" },
   { href: "/uwagi", label: "Uwagi" },
+  { href: "/propozycje", label: "Propozycje" },
   { href: "/dziennik", label: "Dziennik" },
   { href: "/reguly", label: "Reguły" },
   { href: "/archiwum", label: "Archiwum" },

@@ -34,7 +34,7 @@ Panel ma serwer MCP: `https://panel.wynajemlasera.pl/api/mcp`. Po podłączeniu 
 **Narzędzia.** Odpowiadają trasom opisanym niżej:
 
 - **Odczyt:** `reguly_porzadkow`, `klienci_lista`, `klient`, `sygnaly_lista`, `sygnal`, `kalendarz_wynajmy`, `dopasowania`, `faktury`, `fv_bez_faktury`, `archiwum`, `dziennik`, `wnioski_lista`, `wniosek`, `uwagi_lista`, `zadania_lista`, `osoby_biura`.
-- **Zapis:** `klient_zmien`, `osoba_zmien`, `osoba_dodaj`, `klienci_scal`, `przenies_do_klientow`, `notatka_klient`, `notatka_sygnal`, `zadanie_utworz` (pole `dla` przyjmuje id albo imię, np. „Ania”), `zadanie_zmien` (tylko własne zadania), `zadanie_komentarz`, `wniosek_utworz`, `wniosek_zmien`, `wniosek_komentarz`, `uwaga_utworz`, `uwaga_zmien`, `dziennik_wpis`.
+- **Zapis:** `klient_zmien`, `osoba_zmien`, `osoba_dodaj`, `klienci_scal`, `przenies_do_klientow`, `notatka_klient`, `notatka_sygnal`, `zadanie_utworz` (pole `dla` przyjmuje id albo imię, np. „Ania”), `zadanie_zmien` (tylko własne zadania), `zadanie_komentarz`, `wniosek_utworz`, `wniosek_zmien`, `wniosek_komentarz`, `uwaga_utworz`, `uwaga_zmien`, `dziennik_wpis`, `propozycje_dodaj`, `propozycje_lista`.
 
 ---
 
@@ -196,6 +196,50 @@ W HubSpocie nic się nie zmienia.
 
 Odpowiedź: `{ "moved": { "osoby": 1, "wynajmy": 2, … } }`.
 
+## Propozycje zmian (kolejka akceptacji)
+
+Większe porządki zgłaszaj jako **paczkę propozycji**, nie bezpośrednimi zmianami. Administrator widzi je w **Porządki → Propozycje**, pogrupowane w paczki. Może je zaakceptować albo odrzucić, pojedynczo lub hurtem (z filtrem „tylko wysoka pewność” i „zaznacz wszystkie”), i może poprawić wartość przed akceptacją.
+
+**Co się dzieje po akceptacji:**
+
+- Zmiana wykonuje się od razu.
+- W dzienniku jako „wykonał” zapisuje się autor propozycji, a jako „zatwierdził” administrator.
+- Jeśli wartość w panelu zmieniła się od zgłoszenia, propozycja jest pomijana jako konflikt. Administrator może ją zaakceptować mimo to.
+
+`POST /api/agent/propozycje`, narzędzie MCP `propozycje_dodaj`. Maksymalnie 500 propozycji w jednym zgłoszeniu:
+
+```json
+{
+  "propozycje": [
+    { "rodzaj": "pole", "klient_id": "ckx1", "pole": "city", "proponowane": "Kraków", "klasa": "miasto_slownik",
+      "zrodlo": "słownik miast", "pewnosc": "wysoka", "paczka": "P-2026-09-27-01" },
+    { "rodzaj": "osoba", "klient_id": "ckx1", "osoba_id": "ckp9", "pole": "phone", "proponowane": "601 000 111",
+      "zrodlo": "stopka maila 14.03", "pewnosc": "srednia", "paczka": "P-2026-09-27-01" },
+    { "rodzaj": "archiwizacja", "klient_id": "ckx2", "powod": "SPOZA_BRANZY", "dopisek": "firma budowlana, zapytanie przez pomyłkę",
+      "zrodlo": "mail 14.03", "pewnosc": "wysoka", "paczka": "P-2026-09-27-01" },
+    { "rodzaj": "scalenie", "klient_id": "ckx3", "duplikat_id": "ckx4",
+      "zrodlo": "ten sam NIP i telefon", "pewnosc": "wysoka", "paczka": "P-2026-09-27-01" }
+  ]
+}
+```
+
+**Rodzaje propozycji:**
+
+- **`pole`**: pola jak w `PATCH /klienci/:id`.
+- **`osoba`**: `firstName`, `lastName`, `phone`, `phone2`, `phone2Label`, `email`, `role`.
+- **`archiwizacja`**: klient albo sygnał (`sygnal_id`), z polami `powod` i `dopisek`.
+- **`scalenie`**: pole `duplikat_id`.
+
+**Odpowiedź:** `results[]` ma osobny wynik dla każdej pozycji: `ok`, `id`, `status` albo `message`. Serwer odrzuca:
+
+- zmianę, która niczego nie zmienia;
+- propozycję, która już czeka na decyzję;
+- zmianę **wcześniej odrzuconą**; w odpowiedzi jest komentarz odrzucenia, więc nie proponuj jej ponownie.
+
+**Klasy zatwierdzone na stałe.** `klasa` to krótki klucz typu zmiany, np. `miasto_slownik`. Administrator może oznaczyć klasę jako zatwierdzaną automatycznie. Wtedy propozycje **pól** z tą klasą wykonują się od razu po zgłoszeniu, ze statusem ACCEPTED, i nadal trafiają do dziennika. Archiwizacja i scalanie zawsze czekają na akceptację.
+
+**Stan propozycji:** `GET /api/agent/propozycje?status=PENDING|ACCEPTED|REJECTED&wykonana=0|1&paczka=&klient=` albo narzędzie MCP `propozycje_lista`. Odpowiedź zawiera też listę klas zatwierdzanych automatycznie.
+
 ## Archiwum
 
 `GET /api/agent/archiwum?typ=client|lead&powod=&paczka=&q=` pokazuje, co już jest w archiwum. Sprawdź to, zanim zaproponujesz archiwizację.
@@ -204,7 +248,7 @@ Odpowiedź: `{ "moved": { "osoby": 1, "wynajmy": 2, … } }`.
 |------|---------|
 | `powod` | `SPAM`, `TEST`, `OSOBA_PRYWATNA`, `SPOZA_BRANZY`, `DOSTAWCA`, `JEDNORAZOWY`, `DUPLIKAT`, `INNE` |
 
-**Agent nie archiwizuje i nie usuwa.** Proponuje archiwizację jako uwagę (`POST /api/agent/uwagi`) z powodem i dowodem, najlepiej z tą samą paczką. Archiwizację, przywracanie i trwałe usuwanie wykonuje administrator w **Porządki → Archiwum** albo na karcie klienta.
+**Agent nie archiwizuje i nie usuwa.** Proponuje archiwizację jako propozycję rodzaju `archiwizacja` (patrz wyżej), z powodem i dopiskiem. Archiwizację, przywracanie i trwałe usuwanie wykonuje administrator w **Porządki → Archiwum** albo na karcie klienta.
 
 Trwałe usunięcie niczego nie kasuje w HubSpocie. ID kontaktu, firmy i transakcji trafiają na listę blokad, więc import ich nie przywróci. Nowy formularz od tej samej osoby tworzy nowe zapytanie.
 

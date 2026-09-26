@@ -30,7 +30,7 @@ function scalar(k: string, x: unknown): string {
   return typeof x === "object" ? JSON.stringify(x) : String(x);
 }
 
-function readable(raw: string | null): string {
+export function readable(raw: string | null): string {
   if (raw == null) return "—";
   let v: unknown;
   try {

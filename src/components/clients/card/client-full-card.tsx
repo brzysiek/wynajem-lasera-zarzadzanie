@@ -44,6 +44,7 @@ export function ClientFullCard({
   isAdmin,
   isAgent = false,
   mergeOptions = [],
+  pendingProposals = 0,
 }: {
   initial: ClientDetail;
   initialTab: CardTab;
@@ -51,6 +52,8 @@ export function ClientFullCard({
   isAgent?: boolean;
   // Klienci do wyboru przy „Scal duplikat” (Porządki).
   mergeOptions?: ReviewClient[];
+  // Oczekujące propozycje zmian agenta dla tego klienta (Porządki → Propozycje).
+  pendingProposals?: number;
 }) {
   const [d, setD] = useState(initial);
   const [tab, setTab] = useState<CardTab>(initialTab);
@@ -151,6 +154,14 @@ export function ClientFullCard({
                 <span className="rounded-full border border-dashed border-[var(--c-faint)] px-2.5 py-[2px] text-xs font-semibold text-[var(--c-sidebar-text)]">
                   Kontakt z zapytania
                 </span>
+              )}
+              {pendingProposals > 0 && (
+                <Link
+                  href={`/propozycje?klient=${d.id}`}
+                  className="rounded-full bg-[var(--c-purple-soft)] px-2.5 py-[3px] text-xs font-semibold text-[var(--c-purple-deep)] hover:underline"
+                >
+                  {pendingProposals} {pendingProposals === 1 ? "propozycja zmian" : "propozycje zmian"} do akceptacji
+                </Link>
               )}
               {overdue > 0 && (
                 <span className="rounded-full bg-[var(--c-red-soft)] px-2.5 py-[3px] text-xs font-semibold text-[var(--c-red)]">

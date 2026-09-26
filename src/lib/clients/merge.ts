@@ -17,7 +17,13 @@ export type MergeResult = { ok: true; moved: Record<string, number> } | { ok: fa
 const FILL_FIELDS = ["nip", "clinicType", "source", "transportPriceNet", "distanceKm", "legacyHubspotTag"] as const;
 const ADDRESS_FIELDS = ["street", "zip", "city", "country"] as const;
 
-export async function mergeClients(targetId: string, sourceId: string, body: Record<string, unknown>, actor: { userId: string; role: string }): Promise<MergeResult> {
+export async function mergeClients(
+  targetId: string,
+  sourceId: string,
+  body: Record<string, unknown>,
+  actor: { userId: string; role: string },
+  opts: { approvedById?: string | null } = {},
+): Promise<MergeResult> {
   if (!sourceId || sourceId === targetId) return { ok: false, status: 400, message: "Wskaż innego klienta do scalenia." };
   const provenance = parseProvenance(body, { required: actor.role === "AGENT" });
   if (!provenance.ok) return { ok: false, status: 400, message: provenance.message };
@@ -100,7 +106,7 @@ export async function mergeClients(targetId: string, sourceId: string, body: Rec
       ...fieldEntries("CLIENT", targetId, targetId, changes),
       { entity: "CLIENT", entityId: sourceId, clientId: sourceId, operation: "ARCHIVE", before: "null", after: toLogValue({ reason: "DUPLIKAT", note: `Scalono do: ${target.name}` }) },
     ];
-    await recordChanges(tx, { userId: actor.userId, provenance: provenance.value }, entries);
+    await recordChanges(tx, { userId: actor.userId, provenance: provenance.value, approvedById: opts.approvedById }, entries);
   });
 
   // Przeniesione wynajmy: przyszłe dostają dane klienta docelowego.

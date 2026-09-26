@@ -53,6 +53,9 @@ const AGENT_WRITES = [
   "POST agent/klienci/[id]/scal",
   // Serwer MCP (konektor claude.ai) — narzędzia z listy MCP_TOOLS niżej.
   "POST mcp",
+  // Propozycje zmian (etap D): zgłaszanie; decyzje tylko ADMIN.
+  "POST porzadki/propozycje",
+  "POST agent/propozycje",
 ];
 
 // Narzędzia MCP — dokładna lista; nowe narzędzie trzeba świadomie dopisać.
@@ -61,7 +64,7 @@ const MCP_TOOLS = [
   "fv_bez_faktury", "archiwum", "dziennik", "wnioski_lista", "wniosek", "uwagi_lista", "zadania_lista", "osoby_biura",
   "klient_zmien", "osoba_zmien", "osoba_dodaj", "klienci_scal", "przenies_do_klientow", "notatka_klient", "notatka_sygnal",
   "zadanie_utworz", "zadanie_zmien", "zadanie_komentarz", "wniosek_utworz", "wniosek_zmien", "wniosek_komentarz",
-  "uwaga_utworz", "uwaga_zmien", "dziennik_wpis",
+  "uwaga_utworz", "uwaga_zmien", "dziennik_wpis", "propozycje_dodaj", "propozycje_lista",
 ];
 
 const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;
@@ -167,6 +170,10 @@ describe("trasy API a rola AGENT", () => {
       ["POST", "porzadki/archiwum"], // archiwizacja — ADMIN (agent tylko proponuje)
       ["POST", "porzadki/archiwum/przywroc"],
       ["POST", "porzadki/archiwum/usun"], // trwałe usuwanie — ADMIN
+      ["POST", "porzadki/propozycje/decyzja"], // akceptacja propozycji — ADMIN
+      ["PATCH", "porzadki/propozycje/[id]"],
+      ["POST", "porzadki/propozycje/klasy"],
+      ["DELETE", "porzadki/propozycje/klasy"],
     ];
     for (const [method, route] of forbidden) {
       const h = find(method, route);
