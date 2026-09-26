@@ -22,6 +22,10 @@ enum Role {
   ADMIN
   STAFF
   KIEROWCA
+  // Agent AI („Klaudiusz”) — asystent biura: czyta, porządkuje dane klientów,
+  // przygotowuje zadania. Bez kontaktu z klientami, bez rezerwacji, bez
+  // usuwania. Uprawnienia: src/lib/permissions.ts (egzekwowane w API).
+  AGENT
 }
 
 enum Channel {
@@ -124,6 +128,8 @@ model User {
   assignedTasks       Task[]               @relation("TaskAssignee")
   ownedLeads          Lead[]               @relation("LeadOwner")
   leadActivities      LeadActivity[]
+  changeLogs          ChangeLog[]          @relation("ChangeLogUser")
+  taskComments        TaskComment[]
 
   @@map("users")
 }
@@ -155,6 +161,8 @@ model Task {
   clientId String?
   lead     Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
   client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  comments TaskComment[]
 
   @@index([status])
   @@index([authorId])
@@ -736,6 +744,7 @@ model Client {
   tasks    Task[]
   messages Message[]
   emails   EmailMessage[]
+  changeLogs ChangeLog[]
 
   @@index([nip])
   @@index([name])
@@ -983,6 +992,8 @@ model LeadActivity {
   messageId           String?
   hubspotEngagementId String?      @unique
   createdAt           DateTime     @default(now())
+  // Ostatnia edycja notatki przez autora (tylko NOTE, tylko własne).
+  editedAt            DateTime?
 
   @@index([leadId])
   @@index([clientId])
@@ -1023,4 +1034,54 @@ model EmailMessage {
   @@index([clientId, sentAt])
   @@index([rfcMessageId])
   @@map("email_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Dziennik zmian (rola AGENT + „Dziennik porządków”). Jeden wpis = jedna
+// zmiana jednego pola (albo jedna operacja bez pola). Wartości przed/po jako
+// JSON w tekście ("null" = puste pole) — podstawa „Cofnij”. Wpisy powstają
+// automatycznie w endpointach zapisu danych klientów, kontaktów, dopasowań
+// i — dla roli AGENT — każdego innego zapisu (zadania, notatki, komentarze).
+model ChangeLog {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  userId       String?
+  user         User?    @relation("ChangeLogUser", fields: [userId], references: [id], onDelete: SetNull)
+  clientId     String?
+  client       Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  // Nazwa klienta w chwili zmiany — ślad zostaje czytelny po usunięciu klienta.
+  clientName   String?
+  entity       String   @db.VarChar(32) // CLIENT | CONTACT | LEAD | HISTORY | INVOICE | TASK | NOTE | TASK_COMMENT
+  entityId     String   @db.VarChar(191)
+  operation    String   @db.VarChar(32) // FIELD_CHANGE | CREATE | QUALIFY | MATCH_ASSIGN | MATCH_IGNORE | MATCH_RESET | STATUS_CHANGE | UNDO …
+  field        String?  @db.VarChar(64)
+  before       String?  @db.Text
+  after        String?  @db.Text
+  source       String?  @db.Text // źródło / dowód (agent: wymagane przy zmianie danych klienta)
+  confidence   String?  @db.VarChar(8) // HIGH | MEDIUM | LOW
+  batch        String?  @db.VarChar(64) // paczka akceptacji, np. P-2026-09-27-01
+  approvedById String?
+  undoneById   String? // wpis UNDO, który cofnął ten wpis
+  undoOfId     String? // (w wpisie UNDO) który wpis cofa
+
+  @@index([clientId, createdAt])
+  @@index([batch])
+  @@index([createdAt])
+  @@index([userId])
+  @@index([entity, entityId])
+  @@map("change_logs")
+}
+
+// Komentarze do zadań (panel Zadań).
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+  @@map("task_comments")
 }

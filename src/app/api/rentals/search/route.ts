@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireStaffSession } from "@/lib/auth-guards";
+import { requireSession } from "@/lib/auth-guards";
+import { OFFICE_AND_AGENT } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { logDebug } from "@/lib/logger";
 
+// Wyszukiwarka rezerwacji — odczyt, ADMIN/STAFF/AGENT.
 export async function GET(req: NextRequest) {
-  const session = await requireStaffSession();
+  const session = await requireSession(OFFICE_AND_AGENT);
   if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }

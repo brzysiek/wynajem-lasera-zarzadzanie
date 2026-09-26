@@ -8,6 +8,7 @@ import { listSmsTemplates } from "@/lib/message-templates";
 import { RentalForm, type Rental, type ReminderOffset } from "@/components/rental-form";
 import { RentalReadonlyView, DriverTripInfo, type ReadonlyRental } from "@/components/rental-readonly-view";
 import { DriverFinancePanel } from "@/components/driver-finance-panel";
+import { AgentRentalSummary } from "@/components/agent-rental-summary";
 import { financeDto, loadFinanceFormContext } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 
@@ -114,6 +115,75 @@ export default async function RentalDetailPage({
             vehicleName={rental.vehicle?.name ?? null}
             vehicles={vehicles}
             tripInfoSlot={<DriverTripInfo rental={tripRental} />}
+          />
+        }
+      />
+    );
+  }
+
+  // Rola AGENT: podgląd tylko do odczytu (bez formularza — rezerwacji nie
+  // zmienia). API i tak odrzuca zapisy agenta.
+  if (role === "AGENT") {
+    const rental = await prisma.rental.findUnique({
+      where: { id },
+      include: {
+        device: true,
+        finance: true,
+        client: { select: { name: true } },
+        messages: { orderBy: { sentAt: "desc" }, take: 20 },
+      },
+    });
+    if (!rental) notFound();
+    const linked = await prisma.clientInvoice.findFirst({ where: { rentalId: rental.id }, select: { number: true } });
+    const tripRental: ReadonlyRental = {
+      startsAt: rental.startsAt.toISOString(),
+      endsAt: rental.endsAt.toISOString(),
+      device: { name: rental.device.name },
+      deviceVariant: rental.finance?.deviceVariant ?? null,
+      eventType: rental.eventType,
+      deliveryAddress: rental.deliveryAddress,
+      deliveryTime: rental.deliveryTime,
+      pickupTime: rental.pickupTime,
+      internalNotes: rental.internalNotes,
+      contactNameCache: rental.contactNameCache,
+      contactPhoneCache: rental.contactPhoneCache,
+      contactCompanyCache: rental.contactCompanyCache,
+      contactAddressCache: rental.contactAddressCache,
+    };
+    const f = rental.finance;
+    return (
+      <RentalReadonlyView
+        rental={tripRental}
+        financeSlot={
+          <AgentRentalSummary
+            tripInfo={<DriverTripInfo rental={tripRental} />}
+            info={{
+              title: rental.title,
+              clientId: rental.clientId,
+              clientName: rental.client?.name ?? null,
+              ended: rental.endsAt < new Date(),
+              linkedInvoiceNumber: linked?.number ?? null,
+              finance: f
+                ? {
+                    totalNet: f.totalNet.toString(),
+                    totalGross: f.totalGross.toString(),
+                    vatApplicable: f.vatApplicable,
+                    paymentMethod: f.paymentMethod,
+                    confirmedAt: f.confirmedAt ? f.confirmedAt.toISOString() : null,
+                    invoiceNumber: f.fakturowniaInvoiceNumber,
+                    invoiceError: f.invoiceError,
+                    deliveryNotes: f.deliveryNotes,
+                    pickupNotes: f.pickupNotes,
+                  }
+                : null,
+              messages: rental.messages.map((m) => ({
+                id: m.id,
+                sentAt: m.sentAt.toISOString(),
+                recipient: m.recipient,
+                body: m.body,
+                status: m.status as "SENT" | "FAILED",
+              })),
+            }}
           />
         }
       />

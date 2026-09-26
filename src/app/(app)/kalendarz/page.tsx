@@ -13,5 +13,6 @@ export default async function CalendarPage() {
   // tę stronę), patrz src/components/notifications-context.tsx + GET
   // /api/rentals/alerts. Lista urządzeń do filtra tak samo idzie przez
   // współdzielony CalendarDeviceFilterProvider (AppShell), nie przez props tej strony.
-  return <CalendarView canEdit={!driverMode} />;
+  // AGENT: kalendarz tylko do odczytu (bez tworzenia i przesuwania rezerwacji).
+  return <CalendarView canEdit={!driverMode && session?.user.role !== "AGENT"} />;
 }

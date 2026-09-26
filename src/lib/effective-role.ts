@@ -13,7 +13,8 @@ export function isDriverPreview(
   canActAsDriver: boolean | undefined,
   viewCookie: string | undefined,
 ): boolean {
-  return role !== "KIEROWCA" && Boolean(canActAsDriver) && viewCookie === DRIVER_VIEW_VALUE;
+  // AGENT nigdy nie przełącza się w tryb kierowcy (nawet ze starą flagą).
+  return role !== "KIEROWCA" && role !== "AGENT" && Boolean(canActAsDriver) && viewCookie === DRIVER_VIEW_VALUE;
 }
 
 // Czy żądanie ma się zachować jak dla kierowcy: prawdziwy KIEROWCA albo

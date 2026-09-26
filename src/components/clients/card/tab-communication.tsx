@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import type { ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
-import { INPUT, api } from "../client-forms";
+import { AgentModeContext, INPUT, api } from "../client-forms";
 import { gmailThreadUrl, isCommunication, itemText, itemTone, syncAgo } from "./shared";
 
 // Zakładka „Komunikacja” (prompt 3B-karta, 2.3): e-maile z Gmaila (wątki),
@@ -37,6 +37,8 @@ function EmailThread({ item, clientId, onTask }: { item: Extract<Comm, { kind: "
   const [cache, setCache] = useState<Record<string, FullEmail>>({});
   const [taskState, setTaskState] = useState<"idle" | "saving" | "done">("idle");
   const full = cache[openId];
+  // Agent nie odpisuje klientom; zadania tworzy w panelu Zadań (z odpowiedzialnym).
+  const agent = useContext(AgentModeContext);
 
   useEffect(() => {
     if (cache[openId]) return;
@@ -104,24 +106,26 @@ function EmailThread({ item, clientId, onTask }: { item: Extract<Comm, { kind: "
           </button>
         );
       })}
-      <div className="flex flex-wrap gap-2">
-        <a
-          href={full && "gmailUrl" in full ? full.gmailUrl : threadUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex h-9 items-center rounded-lg bg-[var(--c-brand)] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]"
-        >
-          Odpowiedz w Gmailu
-        </a>
-        <button
-          type="button"
-          disabled={taskState !== "idle"}
-          onClick={() => void task()}
-          className="h-9 rounded-lg bg-[var(--c-brand-soft)] px-4 text-[13px] font-semibold text-[var(--c-brand-deep)] transition-colors hover:bg-[var(--c-navy-soft)] disabled:opacity-60"
-        >
-          {taskState === "done" ? "Dodano zadanie ✓" : taskState === "saving" ? "Dodawanie…" : "Zadanie z tego maila"}
-        </button>
-      </div>
+      {!agent && (
+        <div className="flex flex-wrap gap-2">
+          <a
+            href={full && "gmailUrl" in full ? full.gmailUrl : threadUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex h-9 items-center rounded-lg bg-[var(--c-brand)] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]"
+          >
+            Odpowiedz w Gmailu
+          </a>
+          <button
+            type="button"
+            disabled={taskState !== "idle"}
+            onClick={() => void task()}
+            className="h-9 rounded-lg bg-[var(--c-brand-soft)] px-4 text-[13px] font-semibold text-[var(--c-brand-deep)] transition-colors hover:bg-[var(--c-navy-soft)] disabled:opacity-60"
+          >
+            {taskState === "done" ? "Dodano zadanie ✓" : taskState === "saving" ? "Dodawanie…" : "Zadanie z tego maila"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -158,6 +162,7 @@ export function TabCommunication({
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(items[0] ? `${items[0].kind}-${items[0].id}` : null);
   const [note, setNote] = useState("");
+  const agent = useContext(AgentModeContext);
   const [noteType, setNoteType] = useState<"NOTE" | "CALL">("NOTE");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -234,7 +239,7 @@ export function TabCommunication({
             </button>
           </div>
           <div className="flex gap-3 text-xs">
-            {(["NOTE", "CALL"] as const).map((t) => (
+            {(agent ? (["NOTE"] as const) : (["NOTE", "CALL"] as const)).map((t) => (
               <label key={t} className="flex cursor-pointer items-center gap-1 text-[var(--c-muted)]">
                 <input type="radio" name="note-type" checked={noteType === t} onChange={() => setNoteType(t)} className="accent-[var(--c-brand)]" />
                 {t === "NOTE" ? "notatka" : "rozmowa"}

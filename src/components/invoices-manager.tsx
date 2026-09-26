@@ -87,7 +87,17 @@ function UploadIcon() {
 // Ustawieniach → Integracje. "Zapłacona" to jedyna kolumna z naszej bazy —
 // Fakturownia jej nie zna (brak płatnego połączenia z bankiem), ustalamy
 // sami: ręcznym przełącznikiem tutaj albo wgrywając wyciąg bankowy.
-export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: string; initialTo: string }) {
+// readOnly — rola AGENT: lista i PDF, bez wyciągu, KSeF, szkiców i
+// przełącznika „zapłacona” (te trasy i tak zwracają agentowi 403).
+export function InvoicesManager({
+  initialFrom,
+  initialTo,
+  readOnly = false,
+}: {
+  initialFrom: string;
+  initialTo: string;
+  readOnly?: boolean;
+}) {
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
@@ -127,7 +137,8 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
   }, [from, to]);
 
   useEffect(() => {
-    void loadUploadHistory();
+    if (!readOnly) void loadUploadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -275,44 +286,46 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
         </div>
 
         {/* ---- karta wgrywania wyciągu ---- */}
-        <div className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border p-4 sm:mx-7" style={{ borderColor: C.border }}>
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 flex-none items-center justify-center rounded-[10px]" style={{ background: C.brandSoft, color: C.brand }}>
-              <UploadIcon />
+        {!readOnly && (
+          <div className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border p-4 sm:mx-7" style={{ borderColor: C.border }}>
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 flex-none items-center justify-center rounded-[10px]" style={{ background: C.brandSoft, color: C.brand }}>
+                <UploadIcon />
+              </div>
+              <div>
+                <p className="text-[14.5px] font-bold" style={{ color: C.text }}>
+                  Wyciąg bankowy
+                </p>
+                <p className="text-[12.5px]" style={{ color: C.muted }}>
+                  Wgraj CSV z mBanku, żeby dopasować wpłaty do faktur
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-[14.5px] font-bold" style={{ color: C.text }}>
-                Wyciąg bankowy
-              </p>
-              <p className="text-[12.5px]" style={{ color: C.muted }}>
-                Wgraj CSV z mBanku, żeby dopasować wpłaty do faktur
-              </p>
-            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => void handleUploadStatement(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              title={
+                uploadHistory.length > 0
+                  ? [
+                      "Ostatnio wgrywane pliki:",
+                      ...uploadHistory.slice(0, 3).map((u) => `${fmtDateTime(u.uploadedAt)} — ${u.fileName}`),
+                    ].join("\n")
+                  : "Jeszcze nie wgrano żadnego wyciągu."
+              }
+              className="flex-none rounded-lg bg-[#1B6FA8] px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#14567F] disabled:opacity-50 disabled:hover:bg-[#1B6FA8]"
+            >
+              {uploading ? "Przetwarzanie…" : "Wgraj plik"}
+            </button>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={(e) => void handleUploadStatement(e.target.files)}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            title={
-              uploadHistory.length > 0
-                ? [
-                    "Ostatnio wgrywane pliki:",
-                    ...uploadHistory.slice(0, 3).map((u) => `${fmtDateTime(u.uploadedAt)} — ${u.fileName}`),
-                  ].join("\n")
-                : "Jeszcze nie wgrano żadnego wyciągu."
-            }
-            className="flex-none rounded-lg bg-[#1B6FA8] px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#14567F] disabled:opacity-50 disabled:hover:bg-[#1B6FA8]"
-          >
-            {uploading ? "Przetwarzanie…" : "Wgraj plik"}
-          </button>
-        </div>
+        )}
 
         {statementResults && <StatementResultsTable results={statementResults} busyId={busyId} onConfirm={confirmStatementRow} />}
         {uploadHistory.length > 0 && <UploadHistoryList uploads={uploadHistory} />}
@@ -422,6 +435,10 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                           >
                             wysyłanie…
                           </span>
+                        ) : readOnly ? (
+                          <span className="text-[11px]" style={{ color: ksefError ? C.red : C.muted }}>
+                            {ksefError ? "błąd" : "nie wysłana"}
+                          </span>
                         ) : (
                           <button
                             type="button"
@@ -441,7 +458,8 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                         <button
                           type="button"
                           onClick={() => void togglePaid(r)}
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                          disabled={readOnly}
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:pointer-events-none ${
                             r.paidAt
                               ? "bg-[#E7F6EF] text-[#1E9E6B] hover:bg-[#D2EFE2]"
                               : "bg-[#E9EDF1] text-[#6F7378] hover:bg-[#D3DAE1]"
@@ -472,15 +490,17 @@ export function InvoicesManager({ initialFrom, initialTo }: { initialFrom: strin
                           >
                             PDF
                           </a>
-                          <button
-                            type="button"
-                            onClick={() => void handleCreateDraft(r)}
-                            disabled={busyId === r.id}
-                            className="rounded-md px-2 py-1 text-[12px] font-medium whitespace-nowrap text-[#1B6FA8] transition-colors hover:bg-[#EAF4FB] disabled:opacity-50"
-                          >
-                            Szkic maila
-                          </button>
-                          {!r.paidAt && (
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              onClick={() => void handleCreateDraft(r)}
+                              disabled={busyId === r.id}
+                              className="rounded-md px-2 py-1 text-[12px] font-medium whitespace-nowrap text-[#1B6FA8] transition-colors hover:bg-[#EAF4FB] disabled:opacity-50"
+                            >
+                              Szkic maila
+                            </button>
+                          )}
+                          {!readOnly && !r.paidAt && (
                             <button
                               type="button"
                               onClick={() => void handleRemindDraft(r)}

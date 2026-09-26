@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { avatarColor, avatarInitial } from "@/lib/avatar-color";
-import { dueChip, verbZlecil, type DueChipKind, type TaskDto } from "@/lib/tasks";
+import { dueChip, verbZlecil, type DueChipKind, type TaskCommentDto, type TaskDto } from "@/lib/tasks";
 
 type Person = { id: string; name: string };
 
@@ -39,11 +39,12 @@ function plusDaysISO(n: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function CheckCircle({ done, onClick }: { done: boolean; onClick: () => void }) {
+function CheckCircle({ done, onClick, disabled = false }: { done: boolean; onClick: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={done ? "Cofnij ukończenie" : "Oznacz jako ukończone"}
       className="group/cc mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full border-2 transition-colors"
       style={{ borderColor: done ? C.blue : C.fieldBorder, backgroundColor: done ? C.blue : "transparent" }}
@@ -187,16 +188,20 @@ function sortOpen(a: TaskDto, b: TaskDto): number {
   return a.createdAt < b.createdAt ? -1 : 1;
 }
 
+// isAgent — rola AGENT: tworzy zadania dla biura, zmienia i zamyka tylko
+// własne, niczego nie usuwa (API egzekwuje to samo).
 export function TasksPanel({
   open,
   onClose,
   currentUserId,
   onCountChange,
+  isAgent = false,
 }: {
   open: boolean;
   onClose: () => void;
   currentUserId: string;
   onCountChange?: (myOpenCount: number) => void;
+  isAgent?: boolean;
 }) {
   const [tasks, setTasks] = useState<TaskDto[]>([]);
   const [assignees, setAssignees] = useState<Person[]>([]);
@@ -238,16 +243,10 @@ export function TasksPanel({
 
   useEffect(() => {
     void fetchTasks();
-    fetch(`${BASE_PATH}/api/users`, { cache: "no-store" })
+    fetch(`${BASE_PATH}/api/tasks/assignees`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        setAssignees(
-          Array.isArray(d?.users)
-            ? d.users
-                .filter((u: { role?: string }) => u.role !== "KIEROWCA")
-                .map((u: { id: string; name: string }) => ({ id: u.id, name: u.name }))
-            : [],
-        );
+        setAssignees(Array.isArray(d?.users) ? d.users.map((u: { id: string; name: string }) => ({ id: u.id, name: u.name })) : []);
       })
       .catch(() => {});
   }, [fetchTasks]);
@@ -437,7 +436,7 @@ export function TasksPanel({
                   className="flex-1 rounded border px-2 py-1 text-xs outline-none"
                   style={{ borderColor: C.fieldBorder, color: C.sub }}
                 >
-                  <option value="">Odpowiedzialny…</option>
+                  <option value="">{isAgent ? "Dla kogo? (wymagane)" : "Odpowiedzialny…"}</option>
                   {assignees.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -452,7 +451,7 @@ export function TasksPanel({
                 <button
                   type="button"
                   onClick={() => void addTask()}
-                  disabled={!newTitle.trim() || adding}
+                  disabled={!newTitle.trim() || adding || (isAgent && !newAssignee)}
                   className="rounded px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
                   style={{ background: C.blue }}
                 >
@@ -484,6 +483,8 @@ export function TasksPanel({
                 onComplete={() => void patchTask(t.id, { status: "DONE" })}
                 onPatch={(p) => void patchTask(t.id, p)}
                 onDelete={() => void deleteTask(t.id)}
+                canEdit={!isAgent || t.author?.id === currentUserId}
+                canDelete={!isAgent}
               />
             ))}
           </div>
@@ -517,16 +518,20 @@ export function TasksPanel({
                       onComplete={() => void patchTask(t.id, { status: "OPEN" })}
                       onPatch={(p) => void patchTask(t.id, p)}
                       onDelete={() => void deleteTask(t.id)}
+                      canEdit={!isAgent || t.author?.id === currentUserId}
+                      canDelete={!isAgent}
                     />
                   ))}
-                  <button
-                    type="button"
-                    onClick={() => void clearCompleted()}
-                    className="mb-2 px-[18px] py-1.5 text-xs hover:underline"
-                    style={{ color: C.sub }}
-                  >
-                    Wyczyść ukończone
-                  </button>
+                  {!isAgent && (
+                    <button
+                      type="button"
+                      onClick={() => void clearCompleted()}
+                      className="mb-2 px-[18px] py-1.5 text-xs hover:underline"
+                      style={{ color: C.sub }}
+                    >
+                      Wyczyść ukończone
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -545,6 +550,8 @@ function TaskRow({
   onComplete,
   onPatch,
   onDelete,
+  canEdit = true,
+  canDelete = true,
 }: {
   task: TaskDto;
   assignees: Person[];
@@ -553,6 +560,8 @@ function TaskRow({
   onComplete: () => void;
   onPatch: (patch: Record<string, unknown>) => void;
   onDelete: () => void;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const done = task.status === "DONE";
   const [title, setTitle] = useState(task.title);
@@ -572,7 +581,7 @@ function TaskRow({
   return (
     <div className="transition-colors hover:bg-[#f8f9fa]">
       <div className="flex items-start gap-3 px-[18px] py-[11px]">
-        <CheckCircle done={done} onClick={onComplete} />
+        <CheckCircle done={done} onClick={onComplete} disabled={!canEdit} />
         <button type="button" onClick={onToggleExpand} className="min-w-0 flex-1 text-left">
           <span
             className={`block text-sm leading-5 ${done ? "line-through" : ""}`}
@@ -593,6 +602,11 @@ function TaskRow({
                 · sygnał
               </span>
             )}
+            {task.commentCount > 0 && (
+              <span className="text-xs" style={{ color: C.sub }} title="Komentarze">
+                💬 {task.commentCount}
+              </span>
+            )}
             {showCreator && (
               <span className="text-xs" style={{ color: C.sub }}>
                 {verbZlecil(task.author!.gender)}: {task.author!.name}
@@ -606,24 +620,27 @@ function TaskRow({
         <div className="mb-2 ml-[50px] mr-[18px] rounded-[10px] p-3" style={{ background: C.field }}>
           <input
             value={title}
+            readOnly={!canEdit}
             onChange={(e) => setTitle(e.target.value)}
-            onBlur={() => title.trim() && title.trim() !== task.title && onPatch({ title: title.trim() })}
+            onBlur={() => canEdit && title.trim() && title.trim() !== task.title && onPatch({ title: title.trim() })}
             className="w-full bg-transparent text-sm outline-none"
             style={{ color: C.text }}
           />
           <textarea
             value={notes}
+            readOnly={!canEdit}
             onChange={(e) => setNotes(e.target.value)}
-            onBlur={() => notes.trim() !== (task.notes ?? "") && onPatch({ notes: notes.trim() })}
+            onBlur={() => canEdit && notes.trim() !== (task.notes ?? "") && onPatch({ notes: notes.trim() })}
             rows={2}
             placeholder="Szczegóły"
             className="mt-2 w-full resize-none bg-transparent text-[13px] outline-none placeholder:text-[#9aa0a6]"
             style={{ color: C.text }}
           />
-          <div className="mt-1 flex items-center gap-2">
+          <div className={`mt-1 flex items-center gap-2 ${canEdit ? "" : "pointer-events-none opacity-60"}`}>
             <DuePicker value={task.dueDate} onChange={(v) => onPatch({ dueDate: v })} />
             <select
               value={task.assignee?.id ?? ""}
+              disabled={!canEdit}
               onChange={(e) => onPatch({ assigneeId: e.target.value || null })}
               className="flex-1 rounded border px-2 py-1 text-xs outline-none"
               style={{ borderColor: C.fieldBorder, color: C.sub }}
@@ -645,18 +662,106 @@ function TaskRow({
                 {task.leadId ? "Otwórz sygnał →" : "Otwórz klienta →"}
               </a>
             )}
-            <button
-              type="button"
-              onClick={onDelete}
-              className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-black/5"
-              style={{ color: C.sub }}
-              aria-label="Usuń zadanie"
-              title="Usuń zadanie"
-            >
-              🗑
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-black/5"
+                style={{ color: C.sub }}
+                aria-label="Usuń zadanie"
+                title="Usuń zadanie"
+              >
+                🗑
+              </button>
+            )}
           </div>
+          <TaskComments taskId={task.id} />
         </div>
+      )}
+    </div>
+  );
+}
+
+// Komentarze zadania — ładowane po rozwinięciu, bez edycji i usuwania.
+function TaskComments({ taskId }: { taskId: string }) {
+  const [comments, setComments] = useState<TaskCommentDto[] | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${BASE_PATH}/api/tasks/${taskId}/comments`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setComments(Array.isArray(d?.comments) ? d.comments : []);
+      })
+      .catch(() => {
+        if (!cancelled) setComments([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId]);
+
+  async function add() {
+    const body = text.trim();
+    if (!body || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${BASE_PATH}/api/tasks/${taskId}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.message || "Nie udało się dodać komentarza.");
+      setComments(Array.isArray(data?.comments) ? data.comments : []);
+      setText("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Błąd.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 pt-2" style={{ borderTop: `1px solid ${C.border}` }}>
+      {comments?.map((c) => (
+        <div key={c.id} className="mb-1.5 text-xs" style={{ color: C.text }}>
+          <span className="font-semibold">{c.author ?? "—"}</span>
+          <span className="ml-1.5" style={{ color: C.faint }}>
+            {new Date(c.createdAt).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+          </span>
+          <p className="whitespace-pre-wrap">{c.body}</p>
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void add();
+          }}
+          placeholder="Dodaj komentarz…"
+          className="min-w-0 flex-1 rounded border bg-white px-2 py-1 text-xs outline-none"
+          style={{ borderColor: C.fieldBorder, color: C.text }}
+        />
+        <button
+          type="button"
+          onClick={() => void add()}
+          disabled={!text.trim() || busy}
+          className="rounded px-2 py-1 text-xs font-medium text-white disabled:opacity-40"
+          style={{ background: C.blue }}
+        >
+          Dodaj
+        </button>
+      </div>
+      {error && (
+        <p className="mt-1 text-xs" style={{ color: C.red }}>
+          {error}
+        </p>
       )}
     </div>
   );

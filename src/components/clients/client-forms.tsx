@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { APP_CSS_VARS } from "@/components/shell-tokens";
 import {
@@ -37,6 +37,45 @@ export const BTN_PRIMARY =
 export const BTN_GHOST =
   "h-9 rounded-lg px-3 text-sm font-medium text-[var(--c-muted)] transition-colors hover:bg-[var(--c-bg)] hover:text-[var(--c-text)]";
 
+// Rola AGENT (agent AI): każda zmiana danych klienta wymaga źródła i
+// pewności (dziennik zmian, src/lib/changelog/provenance.ts). Kontekst
+// ustawia strona Klientów / pełna karta; formularze dopisują pola i klucze.
+export const AgentModeContext = createContext(false);
+
+export function AgentModeProvider({ agent, children }: { agent: boolean; children: React.ReactNode }) {
+  return <AgentModeContext.Provider value={agent}>{children}</AgentModeContext.Provider>;
+}
+
+type Provenance = { changeSource: string; changeConfidence: "" | "HIGH" | "MEDIUM" | "LOW"; changeBatch: string };
+const EMPTY_PROVENANCE: Provenance = { changeSource: "", changeConfidence: "", changeBatch: "" };
+
+function ProvenanceFields({ value, onChange }: { value: Provenance; onChange: (next: Provenance) => void }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-dashed border-[var(--c-brand)] bg-[var(--c-brand-soft)] p-2.5">
+      <p className="text-xs font-semibold text-[var(--c-brand-deep)]">Skąd ta zmiana? (trafi do dziennika zmian)</p>
+      <input
+        className={INPUT}
+        placeholder="Źródło, np. mail kontakt@ 14.03.2026, FV 12/03/2026, Biała lista"
+        value={value.changeSource}
+        onChange={(e) => onChange({ ...value, changeSource: e.target.value })}
+      />
+      <div className="grid grid-cols-2 gap-2">
+        <select
+          className={INPUT}
+          value={value.changeConfidence}
+          onChange={(e) => onChange({ ...value, changeConfidence: e.target.value as Provenance["changeConfidence"] })}
+        >
+          <option value="">Pewność…</option>
+          <option value="HIGH">wysoka</option>
+          <option value="MEDIUM">średnia</option>
+          <option value="LOW">niska</option>
+        </select>
+        <input className={INPUT} placeholder="Paczka (opcjonalnie)" value={value.changeBatch} onChange={(e) => onChange({ ...value, changeBatch: e.target.value })} />
+      </div>
+    </div>
+  );
+}
+
 function FormError({ message }: { message: string | null }) {
   if (!message) return null;
   return <p className="rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">{message}</p>;
@@ -70,6 +109,8 @@ export function ClientDataForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
+  const agent = useContext(AgentModeContext);
+  const [prov, setProv] = useState<Provenance>(EMPTY_PROVENANCE);
 
   async function save() {
     setSaving(true);
@@ -81,8 +122,8 @@ export function ClientDataForm({
       zip: f.zip,
       city: f.city,
       country: f.country,
-      transportPriceNet: f.transportPriceNet,
-      distanceKm: f.distanceKm,
+      // Transport i odległość to dane biura — agent ich nie zmienia.
+      ...(agent ? prov : { transportPriceNet: f.transportPriceNet, distanceKm: f.distanceKm }),
       clinicType: f.clinicType || null,
       source: f.source || null,
       deviceInterests: f.deviceInterests,
@@ -123,16 +164,18 @@ export function ClientDataForm({
           <input className={INPUT} value={f.city} onChange={(e) => set("city", e.target.value)} />
         </label>
       </div>
-      <div className="grid grid-cols-2 gap-2.5">
-        <label className={LABEL}>
-          Transport netto (zł)
-          <input className={INPUT} inputMode="decimal" value={f.transportPriceNet} onChange={(e) => set("transportPriceNet", e.target.value)} />
-        </label>
-        <label className={LABEL}>
-          Odległość (km)
-          <input className={INPUT} inputMode="decimal" value={f.distanceKm} onChange={(e) => set("distanceKm", e.target.value)} />
-        </label>
-      </div>
+      {!agent && (
+        <div className="grid grid-cols-2 gap-2.5">
+          <label className={LABEL}>
+            Transport netto (zł)
+            <input className={INPUT} inputMode="decimal" value={f.transportPriceNet} onChange={(e) => set("transportPriceNet", e.target.value)} />
+          </label>
+          <label className={LABEL}>
+            Odległość (km)
+            <input className={INPUT} inputMode="decimal" value={f.distanceKm} onChange={(e) => set("distanceKm", e.target.value)} />
+          </label>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2.5">
         <label className={LABEL}>
           Rodzaj gabinetu
@@ -187,6 +230,7 @@ export function ClientDataForm({
           <span className="block text-xs text-[var(--c-muted)]">Nie chcemy albo nie możemy współpracować — status klienta zostanie przekreślony.</span>
         </span>
       </label>
+      {agent && <ProvenanceFields value={prov} onChange={setProv} />}
       <FormError message={error} />
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancel} className={BTN_GHOST}>
@@ -226,11 +270,13 @@ export function ContactForm({
   const [showPhone2, setShowPhone2] = useState(Boolean(contact?.phone2));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const agent = useContext(AgentModeContext);
+  const [prov, setProv] = useState<Provenance>(EMPTY_PROVENANCE);
 
   async function save() {
     setSaving(true);
     setError(null);
-    const body = { ...f, isPrimary: f.isPrimary || undefined };
+    const body = { ...f, isPrimary: f.isPrimary || undefined, ...(agent ? prov : {}) };
     const { ok, data } = contact
       ? await api<{ detail: ClientDetail; refreshedRentals: number }>(`/api/clients/${clientId}/contacts/${contact.id}`, "PATCH", body)
       : await api<{ detail: ClientDetail; refreshedRentals: number }>(`/api/clients/${clientId}/contacts`, "POST", body);
@@ -276,6 +322,7 @@ export function ContactForm({
           Osoba główna (do niej trafiają dane na wynajmach)
         </label>
       )}
+      {agent && <ProvenanceFields value={prov} onChange={setProv} />}
       <FormError message={error} />
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancel} className={BTN_GHOST}>

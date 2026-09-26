@@ -61,6 +61,7 @@ export function LeadCard({
   onClose,
   onChanged,
   onOutcome,
+  agent = false,
 }: {
   leadId: string;
   users: { id: string; name: string }[];
@@ -69,10 +70,13 @@ export function LeadCard({
   onChanged: () => void;
   // Zapisany wynik kontaktu — tryb seryjny „Do obdzwonienia” przechodzi dalej.
   onOutcome?: () => void;
+  // Rola AGENT: tylko notatka, zadanie i „Przenieś do klientów” — bez
+  // telefonu, SMS, etapów, rezerwacji i edycji zgłoszenia (API tak samo).
+  agent?: boolean;
 }) {
   const [d, setD] = useState<LeadDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel>(intent);
+  const [panel, setPanel] = useState<Panel>(agent && (intent === "call" || intent === "sms") ? null : intent);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [lost, setLost] = useState<false | { preset?: LostReasonKey }>(false);
@@ -116,6 +120,23 @@ export function LeadCard({
   }
   const patch = (body: Record<string, unknown>, success = "Zapisano.") => run(`/api/leads/${leadId}`, "PATCH", body, success);
 
+  // „Przenieś do klientów” (kwalifikacja kontaktu z zapytania) — potem
+  // świeży stan karty sygnału.
+  async function qualify() {
+    if (!d?.clientId) return;
+    setBusy(true);
+    const res = await api(`/api/clients/${d.clientId}/qualification`, "POST", { action: "qualify" });
+    setBusy(false);
+    if (!res.ok) {
+      setToast({ text: (res.data as { message?: string }).message ?? "Nie udało się.", error: true });
+      return;
+    }
+    const fresh = await api<LeadDetail>(`/api/leads/${leadId}`, "GET");
+    if (fresh.ok) setD(fresh.data);
+    setToast({ text: "Przeniesiono do klientów (Potencjalny)." });
+    onChanged();
+  }
+
   if (loadError) return <div className="p-6 text-sm text-[var(--c-red)]">{loadError}</div>;
   if (!d) return <div className="p-6 text-sm text-[var(--c-muted)]">Wczytywanie…</div>;
 
@@ -144,9 +165,16 @@ export function LeadCard({
             <span className="text-[var(--c-faint)]">bez klienta</span>
           )}
           {d.clientId && !d.clientQualified ? (
-            <span className="rounded-full border border-dashed border-[var(--c-faint)] px-2 py-[2px] text-[11px] font-semibold text-[var(--c-sidebar-text)]">
-              Kontakt z zapytania
-            </span>
+            <>
+              <span className="rounded-full border border-dashed border-[var(--c-faint)] px-2 py-[2px] text-[11px] font-semibold text-[var(--c-sidebar-text)]">
+                Kontakt z zapytania
+              </span>
+              {agent && (
+                <button type="button" disabled={busy} onClick={() => void qualify()} className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)] disabled:opacity-50">
+                  Przenieś do klientów
+                </button>
+              )}
+            </>
           ) : (
             d.clientStatus && <StatusChip status={d.clientStatus} />
           )}
@@ -180,7 +208,7 @@ export function LeadCard({
             <select
               className={`${INPUT} h-8 cursor-pointer`}
               value={d.stage}
-              disabled={busy}
+              disabled={busy || agent}
               onChange={(e) => {
                 const stage = e.target.value as LeadStageKey;
                 if (stage === "PRZEGRANA") setLost({});
@@ -196,7 +224,7 @@ export function LeadCard({
           </label>
           <label className={LABEL}>
             Prowadzi
-            <select className={`${INPUT} h-8 cursor-pointer`} value={d.ownerId ?? ""} disabled={busy} onChange={(e) => void patch({ ownerId: e.target.value || null })}>
+            <select className={`${INPUT} h-8 cursor-pointer`} value={d.ownerId ?? ""} disabled={busy || agent} onChange={(e) => void patch({ ownerId: e.target.value || null })}>
               <option value="">— nikt —</option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -215,6 +243,18 @@ export function LeadCard({
       </div>
 
       {/* Szybkie akcje */}
+      {agent ? (
+        <div className="grid grid-cols-2 gap-2 border-b border-[var(--c-border)] px-5 py-3">
+          <button type="button" onClick={() => setPanel(panel === "note" ? null : "note")} className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}>
+            <PencilIcon />
+            Notatka
+          </button>
+          <button type="button" onClick={() => setPanel(panel === "task" ? null : "task")} className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}>
+            <TaskIcon />
+            Zadanie
+          </button>
+        </div>
+      ) : (
       <div className="grid grid-cols-3 gap-2 border-b border-[var(--c-border)] px-5 py-3">
         {phone ? (
           <a href={`tel:${phone}`} onClick={() => setPanel("call")} className={`${quick} bg-[var(--c-brand)] text-white hover:bg-[var(--c-brand-deep)]`}>
@@ -263,6 +303,7 @@ export function LeadCard({
           Przegrana
         </button>
       </div>
+      )}
 
       <div className="flex min-h-0 flex-grow flex-col gap-[18px] overflow-y-auto px-5 pb-6 pt-4">
         {toast && (
@@ -321,7 +362,7 @@ export function LeadCard({
         )}
 
         {/* Następny krok */}
-        {d.stage !== "WYGRANA" && d.stage !== "PRZEGRANA" && (
+        {!agent && d.stage !== "WYGRANA" && d.stage !== "PRZEGRANA" && (
           <div className="flex flex-wrap items-center gap-2 rounded-[10px] bg-[var(--c-bg)] px-3 py-2.5">
             <span className="text-[13px] font-semibold text-[var(--c-navy)]">Następny krok</span>
             <input
@@ -352,10 +393,14 @@ export function LeadCard({
               <Link href={`/kalendarz/wynajem/${d.rentalId}?from=/sygnaly`} className="flex-grow font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
                 {d.rentalDevice} · {d.rentalStartsAt ? fmtDate(d.rentalStartsAt) : ""}
               </Link>
-              <button type="button" className="text-xs text-[var(--c-muted)] hover:text-[var(--c-red)]" onClick={() => void patch({ rentalId: null }, "Odpięto rezerwację.")}>
-                odepnij
-              </button>
+              {!agent && (
+                <button type="button" className="text-xs text-[var(--c-muted)] hover:text-[var(--c-red)]" onClick={() => void patch({ rentalId: null }, "Odpięto rezerwację.")}>
+                  odepnij
+                </button>
+              )}
             </div>
+          ) : agent ? (
+            <p className="text-[13px] text-[var(--c-faint)]">Brak powiązanego wynajmu.</p>
           ) : d.rentalOptions.length > 0 ? (
             <select
               className={`${INPUT} cursor-pointer`}
@@ -379,7 +424,8 @@ export function LeadCard({
         <Section
           title="Zgłoszenie"
           action={
-            !editing && (
+            !editing &&
+            !agent && (
               <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
                 Edytuj
               </button>

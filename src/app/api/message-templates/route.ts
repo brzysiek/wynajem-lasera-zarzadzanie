@@ -18,6 +18,10 @@ export async function POST(req: NextRequest) {
   if (!session?.user) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
+  // Rola AGENT: tylko odczyt (src/lib/permissions.ts).
+  if (session.user.role === "AGENT") {
+    return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   const label = typeof body?.label === "string" ? body.label.trim() : "";

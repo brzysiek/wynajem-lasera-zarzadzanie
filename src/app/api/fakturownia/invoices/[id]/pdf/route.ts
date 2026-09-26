@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireSession } from "@/lib/auth-guards";
+import { ADMIN_AND_AGENT } from "@/lib/permissions";
 import { getInvoicePdf } from "@/lib/integrations/fakturownia";
 
 // Proxy PDF-a faktury z Fakturowni — przez nasz serwer, żeby token API nigdy
 // nie trafiał do przeglądarki (URL z tokenem nie da się otworzyć wprost
 // jako <a href>/<iframe> bez jego ujawnienia). `inline`, żeby otwierało się
 // w karcie przeglądarki, nie pobierało od razu jako plik.
+// ADMIN i AGENT (odczyt).
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdminSession();
+  const session = await requireSession(ADMIN_AND_AGENT);
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const { id } = await params;

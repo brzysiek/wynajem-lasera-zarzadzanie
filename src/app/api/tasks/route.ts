@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireStaffSession } from "@/lib/auth-guards";
+import { requireSession, requireStaffSession } from "@/lib/auth-guards";
+import { OFFICE_AND_AGENT } from "@/lib/permissions";
+import { toLogValue } from "@/lib/changelog/diff";
+import { recordChanges } from "@/lib/changelog/record";
 import { logInfo } from "@/lib/logger";
 import { parseDueDate, taskDto } from "@/lib/tasks";
 
 const TASK_INCLUDE = {
   author: { select: { id: true, name: true, grammaticalGender: true } },
   assignee: { select: { id: true, name: true } },
+  _count: { select: { comments: true } },
 } as const;
 
 // Odpowiedzialnym może być ADMIN lub STAFF (biuro). Kierowca nie.
@@ -15,8 +19,10 @@ async function assigneeIsAllowed(id: string): Promise<boolean> {
   return user?.role === "ADMIN" || user?.role === "STAFF";
 }
 
+// Lista i nowe zadania: ADMIN/STAFF/AGENT. Czyszczenie ukończonych (DELETE)
+// tylko ADMIN/STAFF — AGENT niczego nie usuwa.
 export async function GET(req: NextRequest) {
-  const session = await requireStaffSession();
+  const session = await requireSession(OFFICE_AND_AGENT);
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const status = req.nextUrl.searchParams.get("status") ?? "all";
@@ -32,7 +38,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireStaffSession();
+  const session = await requireSession(OFFICE_AND_AGENT);
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const body = await req.json().catch(() => null);
@@ -49,11 +55,19 @@ export async function POST(req: NextRequest) {
     }
     assigneeId = body.assigneeId;
   }
+  const isAgent = session.user.role === "AGENT";
+  // Agent przygotowuje zadania dla biura — zawsze z odpowiedzialnym.
+  if (isAgent && !assigneeId) return NextResponse.json({ message: "Wskaż, komu przypisać zadanie." }, { status: 400 });
 
   const task = await prisma.task.create({
     data: { title, notes, dueDate, assigneeId, authorId: session.user.id },
     include: TASK_INCLUDE,
   });
+  if (isAgent) {
+    await recordChanges(prisma, { userId: session.user.id }, [
+      { entity: "TASK", entityId: task.id, operation: "CREATE", before: "null", after: toLogValue({ title, assigneeId, dueDate }) },
+    ]);
+  }
   logInfo("task_created", { userId: session.user.id, taskId: task.id });
 
   return NextResponse.json({ task: taskDto(task) });

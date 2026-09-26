@@ -136,7 +136,7 @@ type FinanceItem = { kind: "finance" };
 // Widok kierowcy (prawdziwy albo podgląd) zachowuje dzisiejsze okrojenie:
 // tylko Kalendarz, bez Finansów/Ustawień — ten sam wzorzec co dotychczasowy
 // DRIVER_NAV_ITEMS w top-nav.tsx.
-function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | undefined): (PlainItem | FinanceItem)[] {
+function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT" | undefined): (PlainItem | FinanceItem)[] {
   const calendar: PlainItem = { kind: "link", href: "/kalendarz", label: "Kalendarz", icon: <CalendarIcon /> };
   if (role === "KIEROWCA") return [calendar];
 
@@ -151,6 +151,8 @@ function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | undefined): (PlainItem 
     { kind: "link", href: "/wysylka-sms", label: "Wysyłka SMS", icon: <SmsBubbleIcon /> },
   ];
   if (role === "ADMIN") items.push({ kind: "finance" });
+  // Agent AI: z Finansów tylko Faktury VAT (odczyt + „FV bez faktury”).
+  if (role === "AGENT") items.push({ kind: "link", href: "/finanse/faktury", label: "Faktury VAT", match: "/finanse", icon: <FinanceBarsIcon /> });
   return items;
 }
 
@@ -197,7 +199,7 @@ function NavRow({
 // filtr na samej stronie kalendarza — src/components/calendar-device-filter-context.tsx).
 // Zastępuje dawną osobną kolumnę "URZĄDZENIA" obok siatki kalendarza, żeby
 // na desktopie nie było dwóch bocznych pasków naraz.
-function CalendarsSubItem({ collapsed, role }: { collapsed: boolean; role?: "ADMIN" | "STAFF" | "KIEROWCA" }) {
+function CalendarsSubItem({ collapsed, role }: { collapsed: boolean; role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT" }) {
   const { devices, checkedIds, toggleDevice, loading, drivers, driverViewId, setDriverView } =
     useCalendarDeviceFilter();
   const [open, setOpen] = useState(false);
@@ -308,7 +310,7 @@ export function SidebarNav({
   role,
   collapsed,
 }: {
-  role?: "ADMIN" | "STAFF" | "KIEROWCA";
+  role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
   collapsed: boolean;
 }) {
   const pathname = usePathname();
@@ -349,7 +351,7 @@ export function SidebarNav({
   }
 
   const items = itemsFor(role);
-  const freshLeads = useFreshLeadsCount(role === "ADMIN" || role === "STAFF", pathname);
+  const freshLeads = useFreshLeadsCount(role === "ADMIN" || role === "STAFF" || role === "AGENT", pathname);
 
   return (
     <nav
@@ -428,7 +430,7 @@ export function SidebarNav({
         );
       })}
 
-      {role !== "KIEROWCA" && (
+      {role !== "KIEROWCA" && role !== "AGENT" && (
         <>
           <div className="my-2.5 mx-1.5 h-px" style={{ background: SHELL.border }} />
           <NavRow

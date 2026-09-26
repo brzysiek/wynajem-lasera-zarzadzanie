@@ -8,6 +8,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!session?.user) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
+  // Rola AGENT: tylko odczyt (src/lib/permissions.ts).
+  if (session.user.role === "AGENT") {
+    return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
+  }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -39,6 +43,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session?.user) {
+    return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
+  }
+  // Rola AGENT: tylko odczyt (src/lib/permissions.ts).
+  if (session.user.role === "AGENT") {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 

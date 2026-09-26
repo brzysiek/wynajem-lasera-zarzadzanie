@@ -36,6 +36,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       users={users}
       currentUserId={session.user.id}
       isAdmin={session.user.role === "ADMIN"}
+      readOnly={session.user.role === "AGENT"}
       stats={stats}
       lastSync={lastSync}
       hubspotConfigured={Boolean(process.env.HUBSPOT_ACCESS_TOKEN)}

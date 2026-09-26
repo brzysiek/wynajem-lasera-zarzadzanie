@@ -31,7 +31,20 @@ function personName(c: { firstName: string | null; lastName: string | null }) {
   return [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || null;
 }
 
-export function ClientFullCard({ initial, initialTab, isAdmin }: { initial: ClientDetail; initialTab: CardTab; isAdmin: boolean }) {
+// isAgent — rola AGENT: bez SMS, e-maila i nowej rezerwacji (nie kontaktuje
+// się z klientami); formularze danych wymagają źródła zmiany (AgentModeProvider
+// na stronie).
+export function ClientFullCard({
+  initial,
+  initialTab,
+  isAdmin,
+  isAgent = false,
+}: {
+  initial: ClientDetail;
+  initialTab: CardTab;
+  isAdmin: boolean;
+  isAgent?: boolean;
+}) {
   const [d, setD] = useState(initial);
   const [tab, setTab] = useState<CardTab>(initialTab);
   const [sms, setSms] = useState(false);
@@ -152,10 +165,12 @@ export function ClientFullCard({ initial, initialTab, isAdmin }: { initial: Clie
                 Zadzwoń
               </button>
             )}
-            <button type="button" disabled={smsRecipients.length === 0} onClick={() => setSms((v) => !v)} className={soft}>
-              SMS
-            </button>
-            {email ? (
+            {!isAgent && (
+              <button type="button" disabled={smsRecipients.length === 0} onClick={() => setSms((v) => !v)} className={soft}>
+                SMS
+              </button>
+            )}
+            {isAgent ? null : email ? (
               <a href={gmailComposeUrl(email, d.gmail.mailboxes[0] ?? null)} target="_blank" rel="noreferrer" className={soft} title="Nowa wiadomość w Gmailu">
                 E-mail
               </a>
@@ -164,9 +179,11 @@ export function ClientFullCard({ initial, initialTab, isAdmin }: { initial: Clie
                 E-mail
               </button>
             )}
-            <Link href={`/kalendarz/wynajem/nowy?klient=${d.id}`} className={soft}>
-              Nowa rezerwacja
-            </Link>
+            {!isAgent && (
+              <Link href={`/kalendarz/wynajem/nowy?klient=${d.id}`} className={soft}>
+                Nowa rezerwacja
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => {

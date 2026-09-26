@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireStaffSession } from "@/lib/auth-guards";
+import { requireSession, requireStaffSession } from "@/lib/auth-guards";
+import { OFFICE_AND_AGENT } from "@/lib/permissions";
+import { changedFields } from "@/lib/changelog/diff";
+import { fieldEntries, recordChanges } from "@/lib/changelog/record";
 import { logInfo } from "@/lib/logger";
 import { parseDueDate, taskDto } from "@/lib/tasks";
 
 const TASK_INCLUDE = {
   author: { select: { id: true, name: true, grammaticalGender: true } },
   assignee: { select: { id: true, name: true } },
+  _count: { select: { comments: true } },
 } as const;
 
 async function assigneeIsAllowed(id: string): Promise<boolean> {
@@ -15,11 +19,19 @@ async function assigneeIsAllowed(id: string): Promise<boolean> {
   return user?.role === "ADMIN" || user?.role === "STAFF";
 }
 
+// Zmiana zadania: ADMIN/STAFF — dowolnego; AGENT — tylko własnego (autor),
+// każda zmiana w dzienniku zmian. Usuwanie (DELETE) tylko ADMIN/STAFF.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireStaffSession();
+  const session = await requireSession(OFFICE_AND_AGENT);
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const { id } = await params;
+  const isAgent = session.user.role === "AGENT";
+  const current = isAgent ? await prisma.task.findUnique({ where: { id } }) : null;
+  if (isAgent && !current) return NextResponse.json({ message: "Nie znaleziono zadania." }, { status: 404 });
+  if (isAgent && current?.authorId !== session.user.id) {
+    return NextResponse.json({ message: "Agent zmienia tylko własne zadania." }, { status: 403 });
+  }
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") {
     return NextResponse.json({ message: "Nieprawidłowe dane." }, { status: 400 });
@@ -65,6 +77,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     const task = await prisma.task.update({ where: { id }, data, include: TASK_INCLUDE });
+    if (isAgent && current) {
+      const changes = changedFields(current as unknown as Record<string, unknown>, {
+        title: task.title,
+        notes: task.notes,
+        dueDate: task.dueDate,
+        assigneeId: task.assigneeId,
+        status: task.status,
+      });
+      await recordChanges(prisma, { userId: session.user.id }, fieldEntries("TASK", id, task.clientId, changes));
+    }
     logInfo("task_updated", { userId: session.user.id, taskId: id, fields: Object.keys(data) });
     return NextResponse.json({ task: taskDto(task) });
   } catch (err) {

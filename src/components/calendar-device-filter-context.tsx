@@ -38,7 +38,7 @@ export function CalendarDeviceFilterProvider({
   role,
   children,
 }: {
-  role?: "ADMIN" | "STAFF" | "KIEROWCA";
+  role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
   children: ReactNode;
 }) {
   const [devices, setDevices] = useState<CalendarFilterDevice[]>([]);

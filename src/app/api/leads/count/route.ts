@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireStaffSession } from "@/lib/auth-guards";
+import { requireSession } from "@/lib/auth-guards";
+import { OFFICE_AND_AGENT } from "@/lib/permissions";
 import { countFreshLeads } from "@/lib/leads/load";
 
-// Plakietka „Sygnały” w menu: nowe sygnały bez kontaktu. ADMIN/STAFF.
+// Plakietka „Sygnały” w menu: nowe sygnały bez kontaktu. ADMIN/STAFF/AGENT.
 export async function GET() {
-  const session = await requireStaffSession();
+  const session = await requireSession(OFFICE_AND_AGENT);
   if (!session) return NextResponse.json({ count: 0 }, { status: 403 });
   return NextResponse.json({ count: await countFreshLeads() });
 }

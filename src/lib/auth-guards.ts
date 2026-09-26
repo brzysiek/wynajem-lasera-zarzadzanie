@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { logWarn } from "@/lib/logger";
+import { hasRole, type AppRole } from "@/lib/permissions";
 
 export async function requireAdmin() {
   const session = await auth();
@@ -34,6 +35,20 @@ export async function requireStaffSession() {
 
   if (session?.user.role !== "ADMIN" && session?.user.role !== "STAFF") {
     logWarn("staff_api_access_denied", { userId: session?.user.id ?? null });
+    return null;
+  }
+
+  return session;
+}
+
+// Gate dla wybranej listy ról (src/lib/permissions.ts) — m.in. endpointy
+// otwarte dla roli AGENT: requireSession(OFFICE_AND_AGENT). Callers respond
+// with their own 403 JSON.
+export async function requireSession(allowed: readonly AppRole[]) {
+  const session = await auth();
+
+  if (!hasRole(session?.user.role, allowed)) {
+    logWarn("role_api_access_denied", { userId: session?.user.id ?? null, role: session?.user.role ?? null });
     return null;
   }
 

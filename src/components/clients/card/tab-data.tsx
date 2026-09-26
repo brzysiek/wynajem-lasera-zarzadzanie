@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useContext, useState } from "react";
 import type { ClientContactDto, ClientDetail } from "@/lib/clients/load";
 import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_LABEL, SOURCE_LABEL, formatNip, formatPhone } from "@/lib/clients/labels";
-import { ClientDataForm, ContactForm, NoteEditor, api } from "../client-forms";
+import { AgentModeContext, ClientDataForm, ContactForm, NoteEditor, api } from "../client-forms";
 import { PencilIcon, fmtMoney } from "../ui";
 import { Panel } from "./shared";
 
@@ -39,6 +39,8 @@ function ContactCard({
   onDelete: () => void;
 }) {
   const name = personName(c) ?? c.email ?? "Bez nazwy";
+  // Agent: osobę główną ustawia w formularzu (ze źródłem zmiany), nie usuwa.
+  const agent = useContext(AgentModeContext);
   return (
     <div className="rounded-[10px] border border-[var(--c-border)] px-4 py-3">
       <div className="flex items-center gap-2">
@@ -73,14 +75,16 @@ function ContactCard({
         </Row>
       </dl>
       <div className="mt-2 flex gap-3 text-xs">
-        {!c.isPrimary && (
+        {!c.isPrimary && !agent && (
           <button type="button" disabled={busy} onClick={onMakePrimary} className="font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)] disabled:opacity-40">
             Ustaw jako główną
           </button>
         )}
-        <button type="button" disabled={busy} onClick={onDelete} className="font-semibold text-[var(--c-muted)] hover:text-[var(--c-red)] disabled:opacity-40">
-          Usuń
-        </button>
+        {!agent && (
+          <button type="button" disabled={busy} onClick={onDelete} className="font-semibold text-[var(--c-muted)] hover:text-[var(--c-red)] disabled:opacity-40">
+            Usuń
+          </button>
+        )}
         {c.rentalsCount > 0 && <span className="text-[var(--c-faint)]">{c.rentalsCount} wyn.</span>}
       </div>
     </div>
@@ -100,6 +104,7 @@ export function TabData({
 }) {
   const [editing, setEditing] = useState<"client" | "notes" | { contact: string | "new" } | null>(null);
   const [busy, setBusy] = useState(false);
+  const agent = useContext(AgentModeContext);
 
   function saved(next: ClientDetail, refreshed = 0, message = "Zapisano.") {
     setEditing(null);
@@ -177,17 +182,19 @@ export function TabData({
               {d.suggestedEmails.map((email) => (
                 <div key={email} className="mt-1 flex items-center gap-2">
                   <span className="min-w-0 flex-grow truncate">{email}</span>
-                  <button
-                    type="button"
-                    className="flex-none text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]"
-                    onClick={async () => {
-                      const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}/contacts`, "POST", { email });
-                      if (ok) saved(data.detail, 0, "Dodano osobę kontaktową.");
-                      else notify(data.message ?? "Nie udało się.", true);
-                    }}
-                  >
-                    + Dodaj jako osobę
-                  </button>
+                  {!agent && (
+                    <button
+                      type="button"
+                      className="flex-none text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]"
+                      onClick={async () => {
+                        const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}/contacts`, "POST", { email });
+                        if (ok) saved(data.detail, 0, "Dodano osobę kontaktową.");
+                        else notify(data.message ?? "Nie udało się.", true);
+                      }}
+                    >
+                      + Dodaj jako osobę
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -238,7 +245,7 @@ export function TabData({
               ) : (
                 <span className="flex items-start gap-2">
                   <span className="min-w-0 flex-grow whitespace-pre-line">{d.notes || <span className="text-[var(--c-faint)]">np. dostawa przed 8:00, piętro, winda</span>}</span>
-                  {edit(d.notes ? "Edytuj" : "Dodaj", () => setEditing("notes"))}
+                  {!agent && edit(d.notes ? "Edytuj" : "Dodaj", () => setEditing("notes"))}
                 </span>
               )}
             </dd>
@@ -270,9 +277,9 @@ export function TabData({
                     ? "klient (ma wynajem, historię albo fakturę)"
                     : `klient od ${d.qualification.at ? new Date(d.qualification.at).toLocaleDateString("pl-PL") : "—"}`
                   : "kontakt z zapytania — przejdzie do klientów po rozmowie albo odpowiedzi mailem"}
-                {isAdmin && !d.qualification.qualified && (
+                {(isAdmin || agent) && !d.qualification.qualified && (
                   <button type="button" disabled={busy} onClick={() => void setQualification("qualify")} className="ml-2 text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
-                    Zakwalifikuj
+                    {agent ? "Przenieś do klientów" : "Zakwalifikuj"}
                   </button>
                 )}
                 {isAdmin && d.qualification.qualified && !d.qualification.derived && (

@@ -10,6 +10,10 @@ export async function POST(req: NextRequest) {
   if (!session?.user) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
+  // Rola AGENT: tylko odczyt (src/lib/permissions.ts).
+  if (session.user.role === "AGENT") {
+    return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
+  }
   if (!session.user.canActAsDriver || session.user.role === "KIEROWCA") {
     return NextResponse.json({ message: "Brak uprawnień do podglądu kierowcy." }, { status: 403 });
   }

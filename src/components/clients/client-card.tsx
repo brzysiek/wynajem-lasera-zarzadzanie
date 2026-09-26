@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import { CLINIC_TYPE_LABEL, formatNip, formatPhone } from "@/lib/clients/labels";
 import type { ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { Avatar, CalendarPlusIcon, PencilIcon, PhoneIcon, SmsIcon, StatusChip, fmtMoney } from "./ui";
-import { BTN_GHOST, INPUT, SmsComposer, api } from "./client-forms";
+import { AgentModeContext, BTN_GHOST, INPUT, SmsComposer, api } from "./client-forms";
 import { EmailViewer } from "./email-viewer";
 import { EventRow } from "./card/shared";
 import { NextStep, OpenLeads, OverviewTiles } from "./card/tab-overview";
@@ -34,6 +34,8 @@ export function ClientCard({
   onChanged: () => void;
 }) {
   const [detail, setDetail] = useState<ClientDetail | null>(null);
+  // Agent (AgentModeProvider na /klienci): bez SMS i rezerwacji.
+  const agent = useContext(AgentModeContext);
   const [error, setError] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(intent);
   const [toast, setToast] = useState<string | null>(null);
@@ -182,20 +184,24 @@ export function ClientCard({
               Zadzwoń
             </button>
           )}
-          <button
-            type="button"
-            disabled={smsRecipients.length === 0}
-            title={smsRecipients.length === 0 ? "Brak telefonu" : undefined}
-            onClick={() => setPanel(panel === "sms" ? null : "sms")}
-            className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}
-          >
-            <SmsIcon size={18} />
-            SMS
-          </button>
-          <Link href={`/kalendarz/wynajem/nowy?klient=${d.id}`} className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}>
-            <CalendarPlusIcon />
-            Rezerwacja
-          </Link>
+          {!agent && (
+            <>
+              <button
+                type="button"
+                disabled={smsRecipients.length === 0}
+                title={smsRecipients.length === 0 ? "Brak telefonu" : undefined}
+                onClick={() => setPanel(panel === "sms" ? null : "sms")}
+                className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}
+              >
+                <SmsIcon size={18} />
+                SMS
+              </button>
+              <Link href={`/kalendarz/wynajem/nowy?klient=${d.id}`} className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}>
+                <CalendarPlusIcon />
+                Rezerwacja
+              </Link>
+            </>
+          )}
           <button type="button" onClick={() => setPanel(panel === "note" ? null : "note")} className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}>
             <PencilIcon />
             Notatka

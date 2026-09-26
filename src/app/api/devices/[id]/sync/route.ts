@@ -9,6 +9,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!session?.user) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
+  // Rola AGENT: tylko odczyt (src/lib/permissions.ts).
+  if (session.user.role === "AGENT") {
+    return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
+  }
 
   const { id } = await params;
 

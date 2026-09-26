@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireSession } from "@/lib/auth-guards";
+import { ADMIN_AND_AGENT } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { listInvoices } from "@/lib/integrations/fakturownia";
 
@@ -11,8 +12,9 @@ import { listInvoices } from "@/lib/integrations/fakturownia";
 // większość faktur w dziale nie ma). Fakturownia nie wie, czy faktura jest
 // zapłacona (brak płatnego połączenia z bankiem), więc to ustalamy sami
 // (dashboard /finanse/faktury, wgrywanie wyciągu bankowego).
+// ADMIN (pełny dashboard) i AGENT (odczyt — kontrola „FV”).
 export async function GET(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireSession(ADMIN_AND_AGENT);
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const { searchParams } = new URL(req.url);

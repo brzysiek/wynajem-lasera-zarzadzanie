@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
@@ -20,7 +20,7 @@ import type { ClientListRow } from "@/lib/clients/load";
 import type { ClientStatus } from "@/lib/clients/status";
 import { Avatar, DeviceTags, DownloadIcon, PhoneIcon, SearchIcon, SmsIcon, StarIcon, StatusChip, fmtAgo, fmtDate, fmtMoney } from "./ui";
 import { ClientCard, type CardIntent } from "./client-card";
-import { NewClientDialog } from "./client-forms";
+import { AgentModeContext, NewClientDialog } from "./client-forms";
 import { useMediaQuery } from "./use-media-query";
 import { LIST_URL_KEY } from "./card/client-full-card";
 
@@ -155,6 +155,8 @@ export function ClientsManager({
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId ?? iq.klient ?? null);
   const [intent, setIntent] = useState<CardIntent>(null);
   const [showNew, setShowNew] = useState(false);
+  // Agent AI nie zakłada klientów (AgentModeProvider na stronie /klienci).
+  const agent = useContext(AgentModeContext);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query), 300);
@@ -351,13 +353,15 @@ export function ClientsManager({
               <DownloadIcon />
               Eksport CSV
             </button>
-            <button
-              type="button"
-              onClick={() => setShowNew(true)}
-              className="h-[34px] rounded-lg bg-[var(--c-brand)] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]"
-            >
-              + Nowy klient
-            </button>
+            {!agent && (
+              <button
+                type="button"
+                onClick={() => setShowNew(true)}
+                className="h-[34px] rounded-lg bg-[var(--c-brand)] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]"
+              >
+                + Nowy klient
+              </button>
+            )}
           </div>
 
           {/* Wyszukiwarka */}

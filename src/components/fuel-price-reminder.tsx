@@ -19,7 +19,7 @@ function todayISO(): string {
 
 type Setting = { key: string; value: string; updatedAt: string };
 
-export function FuelPriceReminder({ role }: { role?: "ADMIN" | "STAFF" | "KIEROWCA" }) {
+export function FuelPriceReminder({ role }: { role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT" }) {
   const [stale, setStale] = useState<{ value: string; daysStale: number } | null>(null);
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState(false);

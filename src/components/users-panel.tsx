@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
 
-type Role = "ADMIN" | "STAFF" | "KIEROWCA";
+type Role = "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
 type Gender = "M" | "F";
 
 type User = {
@@ -33,6 +33,7 @@ const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Administrator",
   STAFF: "Pracownik",
   KIEROWCA: "Kierowca",
+  AGENT: "Agent AI",
 };
 
 async function api(url: string, init?: RequestInit) {
@@ -78,7 +79,7 @@ function InviteForm({
         name,
         email,
         role,
-        canActAsDriver: role !== "KIEROWCA" && canActAsDriver,
+        canActAsDriver: role !== "KIEROWCA" && role !== "AGENT" && canActAsDriver,
         grammaticalGender: gender || null,
       }),
     });
@@ -127,6 +128,7 @@ function InviteForm({
             <option value="STAFF">Pracownik</option>
             <option value="ADMIN">Administrator</option>
             <option value="KIEROWCA">Kierowca</option>
+            <option value="AGENT">Agent AI (bez kontaktu z klientami)</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -144,7 +146,7 @@ function InviteForm({
         </label>
       </div>
 
-      {role !== "KIEROWCA" && (
+      {role !== "KIEROWCA" && role !== "AGENT" && (
         <label className="mt-3 flex items-start gap-2 text-sm text-gray-700">
           <input
             type="checkbox"
@@ -242,7 +244,7 @@ function EditForm({
     if (name !== user.name) body.name = name;
     if (email !== user.email) body.email = email;
     if (!isSelf && role !== user.role) body.role = role;
-    const effectiveCanDrive = role !== "KIEROWCA" && canActAsDriver;
+    const effectiveCanDrive = role !== "KIEROWCA" && role !== "AGENT" && canActAsDriver;
     if (effectiveCanDrive !== user.canActAsDriver) body.canActAsDriver = effectiveCanDrive;
     if ((gender || null) !== (user.grammaticalGender ?? null)) body.grammaticalGender = gender || null;
     if (role === "KIEROWCA" && hourlyRate.trim() !== (user.hourlyRate ?? "")) {
@@ -299,6 +301,7 @@ function EditForm({
             <option value="STAFF">Pracownik</option>
             <option value="ADMIN">Administrator</option>
             <option value="KIEROWCA">Kierowca</option>
+            <option value="AGENT">Agent AI (bez kontaktu z klientami)</option>
           </select>
           {isSelf && <span className="text-xs text-gray-400">Nie możesz zmienić własnej roli.</span>}
         </label>
@@ -317,7 +320,7 @@ function EditForm({
         </label>
       </div>
 
-      {role !== "KIEROWCA" && (
+      {role !== "KIEROWCA" && role !== "AGENT" && (
         <label className="mt-3 flex items-start gap-2 text-sm text-gray-700">
           <input
             type="checkbox"

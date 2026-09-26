@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     email?: string;
     passwordHash?: string;
     activatedAt?: Date;
-    role?: "ADMIN" | "STAFF" | "KIEROWCA";
+    role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
     canActAsDriver?: boolean;
     grammaticalGender?: "M" | "F" | null;
     hourlyRate?: number | null;
@@ -51,7 +51,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data.email = email;
   }
 
-  if (body?.role === "ADMIN" || body?.role === "STAFF" || body?.role === "KIEROWCA") {
+  if (body?.role === "ADMIN" || body?.role === "STAFF" || body?.role === "KIEROWCA" || body?.role === "AGENT") {
     if (id === session.user.id) {
       logWarn("user_self_role_change_blocked", { userId: session.user.id });
       return NextResponse.json({ message: "Nie możesz zmienić własnej roli." }, { status: 400 });
@@ -62,6 +62,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body?.canActAsDriver === "boolean") {
     data.canActAsDriver = body.canActAsDriver;
   }
+  // Agent AI nigdy nie przełącza się w tryb kierowcy.
+  if ((data.role ?? target.role) === "AGENT") data.canActAsDriver = false;
 
   if (body?.grammaticalGender === "M" || body?.grammaticalGender === "F" || body?.grammaticalGender === null) {
     data.grammaticalGender = body.grammaticalGender;

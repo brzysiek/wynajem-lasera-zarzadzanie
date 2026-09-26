@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { BASE_PATH } from "@/lib/base-path";
 import { VIEW_COOKIE, actsAsDriver } from "@/lib/effective-role";
+import { agentMayOpenPage } from "@/lib/permissions";
 
 // Must match `basePath` in next.config.ts. In this custom-server (Passenger)
 // setup, req.nextUrl.basePath comes back empty in middleware even though
@@ -56,6 +57,15 @@ export default auth((req) => {
       DRIVER_ALLOWED_PREFIXES.some((prefix) => pathname.startsWith(prefix)) &&
       !DRIVER_BLOCKED_PATHS.some((blocked) => pathname === blocked || pathname.startsWith(`${blocked}/`));
     if (!allowed) {
+      return NextResponse.redirect(new URL(`${BASE_PATH}/kalendarz`, req.nextUrl));
+    }
+  }
+
+  // Rola AGENT: tylko strony z listy w src/lib/permissions.ts (bez Ustawień,
+  // Przychodów, Kosztów i tworzenia rezerwacji). API egzekwuje to osobno.
+  if (isLoggedIn && req.auth?.user?.role === "AGENT" && !isPublicRoute) {
+    const path = pathname.startsWith(BASE_PATH) ? pathname.slice(BASE_PATH.length) || "/" : pathname;
+    if (!agentMayOpenPage(path)) {
       return NextResponse.redirect(new URL(`${BASE_PATH}/kalendarz`, req.nextUrl));
     }
   }

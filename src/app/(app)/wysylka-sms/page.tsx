@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { PageHeader } from "@/components/page-header";
 import { SmsSendPanel } from "@/components/sms-send-panel";
 import { QueueCancelBadge } from "@/components/queue-cancel-badge";
@@ -13,7 +14,11 @@ type Row =
   | { kind: "message"; id: string; date: Date; recipient: string; rentalLabel: string; body: string; status: "SENT" | "FAILED"; errorMessage: string | null }
   | { kind: "queued"; id: string; date: Date; recipient: string; rentalLabel: string; body: string; daysBefore: 1 | 3 | 7 };
 
+// Rola AGENT: tylko historia wysłanych (dowód kontaktu z klientem) — bez
+// formularza wysyłki i bez kolejki przypomnień (anulowanie/edycja).
 export default async function SmsSendingPage() {
+  const session = await auth();
+  const historyOnly = session?.user.role === "AGENT";
   const [templates, messages, queueItems] = await Promise.all([
     listSmsTemplates(),
     prisma.message.findMany({
@@ -22,7 +27,7 @@ export default async function SmsSendingPage() {
       take: 200,
       include: { rental: { include: { device: true } } },
     }),
-    getUpcomingQueue(),
+    historyOnly ? Promise.resolve([]) : getUpcomingQueue(),
   ]);
 
   const templateOptions = templates.map((t) => ({ id: t.id, label: t.label, body: t.body }));
@@ -56,11 +61,14 @@ export default async function SmsSendingPage() {
   return (
     <div>
       <div className="mb-6">
-        <PageHeader title="Wysyłka SMS" description="Wyślij pojedynczą wiadomość SMS i przeglądaj historię wysyłki." />
+        <PageHeader
+          title={historyOnly ? "Historia SMS" : "Wysyłka SMS"}
+          description={historyOnly ? "Wysłane SMS-y — podgląd bez wysyłki." : "Wyślij pojedynczą wiadomość SMS i przeglądaj historię wysyłki."}
+        />
       </div>
 
       <div className="flex flex-col gap-6">
-        <SmsSendPanel templates={templateOptions} />
+        {!historyOnly && <SmsSendPanel templates={templateOptions} />}
 
         {rows.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 bg-white p-12 text-center text-sm text-gray-400">

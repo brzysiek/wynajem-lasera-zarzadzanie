@@ -18,11 +18,15 @@ export type TaskDto = {
   // Zadanie utworzone z karty sygnału / klienta (CRM) — link w panelu.
   leadId: string | null;
   clientId: string | null;
+  commentCount: number;
 };
+
+export type TaskCommentDto = { id: string; body: string; createdAt: string; author: string | null };
 
 type TaskRow = Task & {
   author: { id: string; name: string; grammaticalGender: GrammaticalGender | null } | null;
   assignee: { id: string; name: string } | null;
+  _count?: { comments: number };
 };
 
 export function taskDto(row: TaskRow): TaskDto {
@@ -40,6 +44,7 @@ export function taskDto(row: TaskRow): TaskDto {
     createdAt: row.createdAt.toISOString(),
     leadId: row.leadId,
     clientId: row.clientId,
+    commentCount: row._count?.comments ?? 0,
   };
 }
 

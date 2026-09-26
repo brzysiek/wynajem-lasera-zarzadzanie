@@ -165,9 +165,19 @@ export async function sendLeadSms(id: string, phone: string, message: string, us
   ]);
 }
 
-export async function createLeadTask(id: string, input: { title: string; dueDate: Date | null; assigneeId: string | null }, userId: string) {
+// Sama notatka przy sygnale — bez przejmowania sygnału, zmiany etapu i
+// terminu (rola AGENT: dopisuje obserwacje, nie prowadzi sygnałów).
+export async function addLeadNote(id: string, body: string, userId: string): Promise<{ activityId: string; clientId: string | null }> {
   const lead = await getLead(id);
-  await prisma.$transaction([
+  const text = body.trim();
+  if (!text) throw new LeadError("Notatka nie może być pusta.");
+  const activity = await prisma.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type: "NOTE", body: text, userId } });
+  return { activityId: activity.id, clientId: lead.clientId };
+}
+
+export async function createLeadTask(id: string, input: { title: string; dueDate: Date | null; assigneeId: string | null }, userId: string): Promise<string> {
+  const lead = await getLead(id);
+  const [task] = await prisma.$transaction([
     prisma.task.create({
       data: {
         title: input.title.slice(0, 191),
@@ -182,6 +192,7 @@ export async function createLeadTask(id: string, input: { title: string; dueDate
       data: { leadId: id, clientId: lead.clientId, type: "SYSTEM", body: `Zadanie: ${input.title}${input.dueDate ? ` (${input.dueDate.toLocaleDateString("pl-PL")})` : ""}`, userId },
     }),
   ]);
+  return task.id;
 }
 
 function splitName(full: string | null) {

@@ -321,7 +321,7 @@ function UpcomingRentalsList({ rentals }: { rentals: UpcomingRental[] }) {
   );
 }
 
-function DeviceRow({ device, isAdmin, onChanged }: { device: Device; isAdmin: boolean; onChanged: () => void }) {
+function DeviceRow({ device, isAdmin, canSync, onChanged }: { device: Device; isAdmin: boolean; canSync: boolean; onChanged: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -432,14 +432,16 @@ function DeviceRow({ device, isAdmin, onChanged }: { device: Device; isAdmin: bo
                 </div>
 
                 <div className="flex flex-none gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSync}
-                    disabled={isSyncing}
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    {isSyncing ? "Synchronizowanie…" : "Synchronizuj teraz"}
-                  </button>
+                  {canSync && (
+                    <button
+                      type="button"
+                      onClick={handleSync}
+                      disabled={isSyncing}
+                      className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {isSyncing ? "Synchronizowanie…" : "Synchronizuj teraz"}
+                    </button>
+                  )}
                   {isAdmin && (
                     <>
                       <button
@@ -498,7 +500,8 @@ function SyncAllSummary({ message, results }: { message: string; results: SyncAl
   );
 }
 
-export function DevicesPanel({ devices, isAdmin }: { devices: Device[]; isAdmin: boolean }) {
+// canSync = false — rola AGENT (urządzenia tylko do odczytu).
+export function DevicesPanel({ devices, isAdmin, canSync = true }: { devices: Device[]; isAdmin: boolean; canSync?: boolean }) {
   const [isAdding, setIsAdding] = useState(false);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [syncAllMessage, setSyncAllMessage] = useState<string | null>(null);
@@ -525,14 +528,16 @@ export function DevicesPanel({ devices, isAdmin }: { devices: Device[]; isAdmin:
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-gray-900">Urządzenia ({devices.length})</h2>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleSyncAll}
-            disabled={isSyncingAll}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            {isSyncingAll ? "Synchronizowanie…" : "Synchronizuj wszystkie urządzenia"}
-          </button>
+          {canSync && (
+            <button
+              type="button"
+              onClick={handleSyncAll}
+              disabled={isSyncingAll}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {isSyncingAll ? "Synchronizowanie…" : "Synchronizuj wszystkie urządzenia"}
+            </button>
+          )}
           {isAdmin && !isAdding && (
             <button
               type="button"
@@ -568,7 +573,7 @@ export function DevicesPanel({ devices, isAdmin }: { devices: Device[]; isAdmin:
 
       <div className="divide-y divide-gray-100">
         {devices.map((device) => (
-          <DeviceRow key={device.id} device={device} isAdmin={isAdmin} onChanged={reload} />
+          <DeviceRow key={device.id} device={device} isAdmin={isAdmin} canSync={canSync} onChanged={reload} />
         ))}
         {devices.length === 0 && <p className="py-6 text-center text-sm text-gray-400">Brak urządzeń.</p>}
       </div>

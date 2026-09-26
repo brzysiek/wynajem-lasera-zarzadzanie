@@ -24,7 +24,7 @@ export default async function AppLayout({
       userName={session.user.name ?? session.user.email ?? "Użytkownik"}
       userId={session.user.id}
       role={driverMode ? "KIEROWCA" : session.user.role}
-      canActAsDriver={session.user.canActAsDriver && session.user.role !== "KIEROWCA"}
+      canActAsDriver={session.user.canActAsDriver && session.user.role !== "KIEROWCA" && session.user.role !== "AGENT"}
       driverPreview={driverPreview}
     >
       {children}

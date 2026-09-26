@@ -48,8 +48,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const name = typeof body?.name === "string" ? body.name.trim() : "";
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
-  const role = body?.role === "ADMIN" ? "ADMIN" : body?.role === "KIEROWCA" ? "KIEROWCA" : "STAFF";
-  const canActAsDriver = role !== "KIEROWCA" && body?.canActAsDriver === true;
+  const role = body?.role === "ADMIN" ? "ADMIN" : body?.role === "KIEROWCA" ? "KIEROWCA" : body?.role === "AGENT" ? "AGENT" : "STAFF";
+  // Agent AI nigdy nie przełącza się w tryb kierowcy.
+  const canActAsDriver = role !== "KIEROWCA" && role !== "AGENT" && body?.canActAsDriver === true;
   const grammaticalGender =
     body?.grammaticalGender === "M" || body?.grammaticalGender === "F" ? body.grammaticalGender : null;
 

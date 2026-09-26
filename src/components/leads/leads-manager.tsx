@@ -196,10 +196,12 @@ function CallListBanner({
   progress,
   onStart,
   serial = false,
+  canStart = true,
 }: {
   progress: { total: number; done: number; pending: number; qualified: number };
   onStart: () => void;
   serial?: boolean;
+  canStart?: boolean;
 }) {
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
   return (
@@ -217,7 +219,7 @@ function CallListBanner({
           </span>
         </div>
       </div>
-      {progress.pending > 0 && (
+      {progress.pending > 0 && canStart && (
         <button
           type="button"
           onClick={onStart}
@@ -235,6 +237,7 @@ export function LeadsManager({
   users,
   currentUserId,
   isAdmin,
+  readOnly = false,
   stats,
   lastSync,
   hubspotConfigured,
@@ -245,6 +248,9 @@ export function LeadsManager({
   users: { id: string; name: string }[];
   currentUserId: string;
   isAdmin: boolean;
+  // Rola AGENT: podgląd sygnałów, notatki, zadania i „Przenieś do klientów”;
+  // bez nowych sygnałów, pobierania, zmian etapu i dzwonienia (API tak samo).
+  readOnly?: boolean;
   stats: LeadStats;
   lastSync: string | null;
   hubspotConfigured: boolean;
@@ -504,6 +510,7 @@ export function LeadsManager({
       }}
       onChanged={refresh}
       onOutcome={onOutcome}
+      agent={readOnly}
     />
   ) : null;
 
@@ -541,7 +548,7 @@ export function LeadsManager({
               ))}
             </div>
             <div className="flex-grow" />
-            {hubspotConfigured && (
+            {hubspotConfigured && !readOnly && (
               <button
                 type="button"
                 onClick={() => void pull()}
@@ -553,9 +560,11 @@ export function LeadsManager({
                 {syncing ? "Pobieranie…" : lastSync ? `HubSpot · ${syncAgo(lastSync, now)}` : "Pobierz z HubSpota"}
               </button>
             )}
-            <button type="button" onClick={() => setShowNew(true)} className="h-[34px] rounded-lg bg-[var(--c-brand)] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]">
-              + Nowy sygnał
-            </button>
+            {!readOnly && (
+              <button type="button" onClick={() => setShowNew(true)} className="h-[34px] rounded-lg bg-[var(--c-brand)] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]">
+                + Nowy sygnał
+              </button>
+            )}
           </div>
 
           {toast && (
@@ -601,7 +610,7 @@ export function LeadsManager({
               {view === "today" && (
                 <section aria-label="Na dziś" className="flex flex-col gap-2.5">
                   {progress.total > 0 && (
-                    <CallListBanner progress={progress} onStart={startSerial} />
+                    <CallListBanner progress={progress} onStart={startSerial} canStart={!readOnly} />
                   )}
                   {nothingToday && (
                     <div className="rounded-xl border border-[var(--c-border)] bg-white px-6 py-8 text-center">
@@ -733,7 +742,7 @@ export function LeadsManager({
                           onDrop={(e) => {
                             e.preventDefault();
                             setDropStage(null);
-                            if (dragId) void moveTo(dragId, stage);
+                            if (dragId && !readOnly) void moveTo(dragId, stage);
                           }}
                           className={`flex min-h-[200px] flex-col gap-2 rounded-xl border-2 p-2 transition-colors ${
                             dropStage === stage ? "border-[var(--c-brand)] bg-[var(--c-brand-soft)]" : "border-transparent bg-[var(--c-bg)]"
@@ -748,7 +757,7 @@ export function LeadsManager({
                             {col.map((r) => (
                               <div
                                 key={r.id}
-                                draggable
+                                draggable={!readOnly}
                                 onDragStart={() => setDragId(r.id)}
                                 onDragEnd={() => {
                                   setDragId(null);
@@ -793,7 +802,7 @@ export function LeadsManager({
                       onDrop={(e) => {
                         e.preventDefault();
                         setDropStage(null);
-                        if (dragId) setLostIds([dragId]);
+                        if (dragId && !readOnly) setLostIds([dragId]);
                       }}
                       className={`flex min-w-[240px] flex-grow items-center justify-center rounded-xl border-2 border-dashed px-4 py-3 text-[13px] transition-colors ${
                         dropStage === "LOST" ? "border-[var(--c-red)] bg-[var(--c-red-soft)] text-[var(--c-red)]" : "border-[var(--c-border)] text-[var(--c-muted)]"
@@ -815,7 +824,7 @@ export function LeadsManager({
 
               {view === "calls" && (
                 <section aria-label="Do obdzwonienia" className="flex flex-col gap-3">
-                  <CallListBanner progress={progress} onStart={startSerial} serial={serial} />
+                  <CallListBanner progress={progress} onStart={startSerial} serial={serial} canStart={!readOnly} />
                   <div className="flex flex-wrap items-center gap-2">
                     <select aria-label="Urządzenie" className={selectCls(Boolean(cDevice))} value={cDevice} onChange={(e) => setCDevice(e.target.value as DeviceInterestKey | "")}>
                       <option value="">Każde urządzenie</option>

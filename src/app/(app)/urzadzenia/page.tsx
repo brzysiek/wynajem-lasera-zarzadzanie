@@ -73,7 +73,7 @@ export default async function DevicesPage() {
   return (
     <div>
       <PageHeader title="Urządzenia" description="Rozwiń urządzenie, aby zobaczyć szczegóły, nadchodzące rezerwacje i zsynchronizować kalendarz." />
-      <DevicesPanel devices={devicesData} isAdmin={isAdmin} />
+      <DevicesPanel devices={devicesData} isAdmin={isAdmin} canSync={session?.user.role !== "AGENT"} />
     </div>
   );
 }

@@ -27,6 +27,12 @@ const NAV_ITEMS: NavItem[] = [
 // A driver only ever has the read-only calendar.
 const DRIVER_NAV_ITEMS = NAV_ITEMS.filter((item) => item.href === "/kalendarz");
 
+// Agent AI: bez Ustawień; z Finansów tylko Faktury VAT (src/lib/permissions.ts).
+const AGENT_NAV_ITEMS: NavItem[] = [
+  ...NAV_ITEMS.filter((item) => !item.match),
+  { href: "/finanse/faktury", label: "Faktury VAT", match: "/finanse" },
+];
+
 // Placeholder tekstowy — czeka na lokalny plik graficzny w public/ (patrz
 // prompt-claude-code-powloka-aplikacji.md, sekcja 1.1: zabronione hotlinkowanie
 // zewnętrznego URL-a do wynajemlasera.pl w kodzie docelowym). Podmienić na
@@ -176,7 +182,7 @@ export function TopNav({
   onToggleSidebarCollapse,
 }: {
   userName: string;
-  role?: "ADMIN" | "STAFF" | "KIEROWCA";
+  role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
   canActAsDriver?: boolean;
   driverPreview?: boolean;
   showTasks?: boolean;
@@ -187,7 +193,7 @@ export function TopNav({
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const navItems = (role === "KIEROWCA" ? DRIVER_NAV_ITEMS : NAV_ITEMS).filter(
+  const navItems = (role === "KIEROWCA" ? DRIVER_NAV_ITEMS : role === "AGENT" ? AGENT_NAV_ITEMS : NAV_ITEMS).filter(
     (item) => !item.adminOnly || role === "ADMIN",
   );
 

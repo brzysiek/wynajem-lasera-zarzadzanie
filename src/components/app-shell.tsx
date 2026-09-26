@@ -43,15 +43,15 @@ export function AppShell({
 }: {
   userName: string;
   userId: string;
-  role?: "ADMIN" | "STAFF" | "KIEROWCA";
+  role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
   canActAsDriver?: boolean;
   driverPreview?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const isFullWidth = pathname === "/kalendarz";
-  // Lista zadań: ADMIN i STAFF (biuro). Kierowca i podgląd kierowcy — nie.
-  const showTasks = role === "ADMIN" || role === "STAFF";
+  // Lista zadań: ADMIN i STAFF (biuro) oraz AGENT. Kierowca i podgląd kierowcy — nie.
+  const showTasks = role === "ADMIN" || role === "STAFF" || role === "AGENT";
   // Centrum powiadomień (ostrzeżenia kalendarza + przychodów): tylko
   // prawdziwy ADMIN, nie podgląd kierowcy — patrz notifications-context.tsx.
   const showNotifications = role === "ADMIN" && !driverPreview;
@@ -138,6 +138,7 @@ export function AppShell({
                 onClose={() => setTasksOpen(false)}
                 currentUserId={userId}
                 onCountChange={setOpenTaskCount}
+                isAgent={role === "AGENT"}
               />
             )}
             {showNotifications && <NotificationsPanel />}
