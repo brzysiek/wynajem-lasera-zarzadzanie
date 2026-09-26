@@ -149,7 +149,8 @@ async function loadExtra(leads: { id: string; clientId: string | null }[]): Prom
 }
 
 export async function loadLeadRows(): Promise<LeadRow[]> {
-  const leads = await queryRows({});
+  // Zarchiwizowane sygnały (Porządki → Archiwum) znikają z list i „Do obdzwonienia”.
+  const leads = await queryRows({ archivedAt: null });
   const extra = await loadExtra(leads);
   return leads.map((l) => toRow(l, extra));
 }
@@ -157,7 +158,7 @@ export async function loadLeadRows(): Promise<LeadRow[]> {
 // Plakietka w menu: nowe sygnały z „Na dziś” bez żadnego kontaktu — bez
 // listy „Do obdzwonienia” (prompt 2 v2, 1.0a).
 export async function countFreshLeads(): Promise<number> {
-  return prisma.lead.count({ where: { stage: "SYGNAL", firstContactAt: null, callList: false } });
+  return prisma.lead.count({ where: { stage: "SYGNAL", firstContactAt: null, callList: false, archivedAt: null } });
 }
 
 export type LeadActivityDto = {
@@ -172,6 +173,8 @@ export type LeadActivityDto = {
 };
 
 export type LeadDetail = LeadRow & {
+  // Archiwum (Porządki): null = sygnał aktywny.
+  archive: { at: string; reason: string | null; note: string | null } | null;
   lostNote: string | null;
   returnAt: string | null;
   location: string | null;
@@ -185,7 +188,7 @@ export type LeadDetail = LeadRow & {
 export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
   const lead = await prisma.lead.findUnique({
     where: { id },
-    select: { ...ROW_SELECT, lostNote: true, returnAt: true, location: true },
+    select: { ...ROW_SELECT, lostNote: true, returnAt: true, location: true, archivedAt: true, archiveReason: true, archiveNote: true },
   });
   if (!lead) return null;
   const row = toRow(lead, await loadExtra([lead]));
@@ -246,6 +249,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
 
   return {
     ...row,
+    archive: lead.archivedAt ? { at: lead.archivedAt.toISOString(), reason: lead.archiveReason, note: lead.archiveNote } : null,
     lostNote: lead.lostNote,
     returnAt: lead.returnAt?.toISOString() ?? null,
     location: lead.location,

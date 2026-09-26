@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireClientsPageAccess } from "@/lib/clients/page-access";
 import { loadClientDetail } from "@/lib/clients/load";
+import { loadClientOptions } from "@/lib/porzadki/client-options";
 import { ClientFullCard } from "@/components/clients/card/client-full-card";
 import { AgentModeProvider } from "@/components/clients/client-forms";
 import type { CardTab } from "@/components/clients/card/tab-overview";
@@ -13,7 +14,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
   const session = await requireClientsPageAccess();
   const { id } = await params;
   const { tab } = await searchParams;
-  const detail = await loadClientDetail(id);
+  const [detail, mergeOptions] = await Promise.all([loadClientDetail(id), loadClientOptions()]);
   if (!detail) notFound();
   return (
     <AgentModeProvider agent={session.user.role === "AGENT"}>
@@ -23,6 +24,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
         initialTab={TABS.includes(tab as CardTab) ? (tab as CardTab) : "przeglad"}
         isAdmin={session.user.role === "ADMIN"}
         isAgent={session.user.role === "AGENT"}
+        mergeOptions={mergeOptions}
       />
     </AgentModeProvider>
   );

@@ -730,6 +730,15 @@ model Client {
   qualifiedAt       DateTime?
   qualifiedReason   String? // CALL | EMAIL_REPLY | RENTAL | HISTORY | MANUAL | BACKFILL | HUBSPOT
 
+  // Archiwum (Porządki, etap 4): rekord zarchiwizowany znika z list, sygnałów,
+  // wyszukiwania i dopasowań; synchronizacja aktualizuje go w archiwum.
+  // Archiwizuje i przywraca ADMIN. Powód: src/lib/porzadki/archive.ts.
+  archivedAt        DateTime?
+  archiveReason     String?  @db.VarChar(32)
+  archiveNote       String?  @db.Text
+  archivedById      String?
+  archiveBatch      String?  @db.VarChar(64)
+
   // Mapowanie na HubSpot — import, deduplikacja i link „Otwórz w HubSpot” w
   // okresie przejściowym. hubspotSnapshot = wartości pól z ostatniej udanej
   // synchronizacji, podstawa scalania zmian bez cichego nadpisywania.
@@ -756,6 +765,7 @@ model Client {
 
   @@index([nip])
   @@index([name])
+  @@index([archivedAt])
   @@map("clients")
 }
 
@@ -958,6 +968,12 @@ model Lead {
   // Zaległe zapytanie z 2026 z importu HubSpota — lista „Do obdzwonienia”
   // (prompt 2 v2, 1.0a) zamiast „Na dziś”. Nowe sygnały nigdy tu nie trafiają.
   callList        Boolean        @default(false)
+  // Archiwum (jak na kliencie) — sygnał znika z list i „Do obdzwonienia”.
+  archivedAt      DateTime?
+  archiveReason   String?        @db.VarChar(32)
+  archiveNote     String?        @db.Text
+  archivedById    String?
+  archiveBatch    String?        @db.VarChar(64)
   utmSource       String?
   utmMedium       String?
   utmCampaign     String?
@@ -975,6 +991,7 @@ model Lead {
   @@index([clientId])
   @@index([nextActionAt])
   @@index([callList])
+  @@index([archivedAt])
   @@map("leads")
 }
 
@@ -1263,4 +1280,21 @@ model ApiCallLog {
   @@index([tokenId, createdAt])
   @@index([createdAt])
   @@map("api_call_logs")
+}
+
+// Blokada ponownego importu z HubSpota — ID rekordów trwale usuniętych w
+// panelu (kontakt, firma, transakcja). Import i synchronizacja je pomijają.
+// Celowo po ID, nie po e-mailu / telefonie: nowy formularz tej samej osoby
+// tworzy nowe zapytanie. W HubSpocie panel niczego nie usuwa.
+model ImportBlock {
+  id          String   @id @default(cuid())
+  kind        String   @db.VarChar(16) // CONTACT | COMPANY | DEAL
+  hubspotId   String   @db.VarChar(64)
+  label       String? // nazwa w chwili usunięcia (ślad do dziennika)
+  reason      String?  @db.VarChar(32)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@unique([kind, hubspotId])
+  @@map("import_blocks")
 }

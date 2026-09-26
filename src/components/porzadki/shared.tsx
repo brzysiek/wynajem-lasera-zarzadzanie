@@ -13,6 +13,7 @@ const TABS = [
   { href: "/uwagi", label: "Uwagi" },
   { href: "/dziennik", label: "Dziennik" },
   { href: "/reguly", label: "Reguły" },
+  { href: "/archiwum", label: "Archiwum" },
 ];
 
 export const INPUT =

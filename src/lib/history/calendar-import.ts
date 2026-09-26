@@ -88,6 +88,7 @@ const NOISE_MIN_KEYS = 5;
 export async function loadClassifier() {
   const [clients, aliases, keys, ignored] = await Promise.all([
     prisma.client.findMany({
+      where: { archivedAt: null }, // zarchiwizowanych nie dopasowujemy
       select: {
         id: true,
         name: true,

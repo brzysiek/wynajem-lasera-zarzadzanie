@@ -23,6 +23,8 @@ import {
 } from "@/lib/leads/parse-deal";
 import { applyImportRules } from "@/lib/leads/call-list";
 import { qualifyClient } from "@/lib/clients/qualify";
+import { blockedIds } from "@/lib/porzadki/import-blocks";
+import { dealsToImport } from "@/lib/porzadki/import-block-rules";
 
 // Transakcje HubSpot → Sygnały (CRM, prompt 2A). Z HubSpota wyłącznie
 // odczyt. Ustalone 26.09.2026: po imporcie etap prowadzi PANEL — przy
@@ -254,11 +256,12 @@ export async function syncDeals(opts: { maxNew?: number; reclassify?: boolean } 
     select: { id: true, hubspotDealId: true, clientId: true, firstContactAt: true, contactPhone: true, message: true, requestedFrom: true, requestedDays: true },
   });
   const byDeal = new Map(existing.map((l) => [l.hubspotDealId as string, l]));
+  // Transakcje trwale usunięte w panelu nie wracają (Porządki → Archiwum).
+  const blocked = await blockedIds("DEAL");
   const cursorRow = await prisma.setting.findUnique({ where: { key: CURSOR_KEY } });
   const cursor = cursorRow ? new Date(cursorRow.value) : null;
 
-  const fresh = deals
-    .filter((d) => !byDeal.has(d.id))
+  const fresh = dealsToImport(deals, new Set(byDeal.keys()), blocked)
     .sort((a, b) => (a.properties.createdate ?? "").localeCompare(b.properties.createdate ?? ""));
   const batch = fresh.slice(0, maxNew);
   const changed = deals.filter((d) => {
@@ -417,8 +420,9 @@ export async function previewDealsImport(): Promise<DealsImportPreview> {
     loadLinkContext(),
   ]);
   const importable = all.filter((d) => shouldImportDeal(d.properties));
-  const done = new Set(existing.map((e) => e.hubspotDealId));
-  const todo = importable.filter((d) => !done.has(d.id));
+  const done = new Set(existing.map((e) => e.hubspotDealId as string));
+  const blocked = await blockedIds("DEAL");
+  const todo = dealsToImport(importable, done, blocked);
   const byType: DealsImportPreview["byType"] = {};
   const byStage: DealsImportPreview["byStage"] = {};
   const link: Record<LinkMethod, number> = { contact: 0, email: 0, phone: 0, newClient: 0, none: 0 };

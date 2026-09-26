@@ -13,6 +13,10 @@ import { TabCommunication } from "./tab-communication";
 import { TabData } from "./tab-data";
 import { TabOverview, type CardTab } from "./tab-overview";
 import { TabTransactions } from "./tab-transactions";
+import { MergeDialog } from "./merge-dialog";
+import { ArchiveDialog } from "@/components/porzadki/archive-dialog";
+import { ARCHIVE_REASON_LABEL, type ArchiveReasonKey } from "@/lib/porzadki/labels";
+import type { ReviewClient } from "@/lib/history/review-load";
 
 // Pełna karta klienta /klienci/[id] z zakładkami (docs/crm/prompt-claude-code-crm-3b-karta-klienta.md,
 // wygląd: docs/crm/zrzuty/karta-*.png). Nagłówek wspólny dla zakładek,
@@ -39,11 +43,14 @@ export function ClientFullCard({
   initialTab,
   isAdmin,
   isAgent = false,
+  mergeOptions = [],
 }: {
   initial: ClientDetail;
   initialTab: CardTab;
   isAdmin: boolean;
   isAgent?: boolean;
+  // Klienci do wyboru przy „Scal duplikat” (Porządki).
+  mergeOptions?: ReviewClient[];
 }) {
   const [d, setD] = useState(initial);
   const [tab, setTab] = useState<CardTab>(initialTab);
@@ -51,6 +58,7 @@ export function ClientFullCard({
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [focusNote, setFocusNote] = useState(0);
   const [emailIds, setEmailIds] = useState<string[] | null>(null);
+  const [dialog, setDialog] = useState<"archive" | "merge" | null>(null);
   const [backHref, setBackHref] = useState("/klienci");
 
   useEffect(() => {
@@ -109,6 +117,29 @@ export function ClientFullCard({
         <Link href={backHref} className="text-[13px] font-medium text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
           ← Klienci
         </Link>
+        {d.archive && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">
+            <b className="font-semibold">W archiwum</b>
+            <span>
+              {d.archive.reason ? ARCHIVE_REASON_LABEL[d.archive.reason as ArchiveReasonKey] ?? d.archive.reason : ""}
+              {d.archive.note ? ` — ${d.archive.note}` : ""} · od {new Date(d.archive.at).toLocaleDateString("pl-PL")}
+            </span>
+            {isAdmin && (
+              <button
+                type="button"
+                className="ml-auto font-semibold underline"
+                onClick={async () => {
+                  const { ok, data } = await api("/api/porzadki/archiwum/przywroc", "POST", { type: "client", ids: [d.id] });
+                  if (!ok) return notify(data.message ?? "Nie udało się przywrócić.", true);
+                  notify("Przywrócono z archiwum.");
+                  void reload();
+                }}
+              >
+                Przywróć
+              </button>
+            )}
+          </div>
+        )}
         <div className="mt-2 flex flex-wrap items-start gap-4">
           <Avatar name={d.name} id={d.id} size={56} />
           <div className="min-w-0 flex-grow basis-[320px]">
@@ -165,7 +196,7 @@ export function ClientFullCard({
                 Zadzwoń
               </button>
             )}
-            {!isAgent && (
+            {!isAgent && !d.archive && (
               <button type="button" disabled={smsRecipients.length === 0} onClick={() => setSms((v) => !v)} className={soft}>
                 SMS
               </button>
@@ -194,6 +225,16 @@ export function ClientFullCard({
             >
               Notatka
             </button>
+            {!d.archive && (
+              <button type="button" onClick={() => setDialog("merge")} className={soft} title="Połącz z duplikatem tego klienta">
+                Scal duplikat
+              </button>
+            )}
+            {isAdmin && !d.archive && (
+              <button type="button" onClick={() => setDialog("archive")} className={`${btn} text-[var(--c-muted)] hover:bg-[var(--c-red-soft)] hover:text-[var(--c-red)]`}>
+                Archiwizuj
+              </button>
+            )}
           </div>
         </div>
 
@@ -263,6 +304,31 @@ export function ClientFullCard({
       </div>
 
       {emailIds && <EmailViewer messageIds={emailIds} onClose={() => setEmailIds(null)} />}
+      {dialog === "archive" && (
+        <ArchiveDialog
+          type="client"
+          ids={[d.id]}
+          label={d.name}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            setDialog(null);
+            notify("Zarchiwizowano. Klient zniknął z list; przywrócisz go tutaj albo w Porządki → Archiwum.");
+            void reload();
+          }}
+        />
+      )}
+      {dialog === "merge" && (
+        <MergeDialog
+          target={d}
+          clients={mergeOptions}
+          onClose={() => setDialog(null)}
+          onMerged={(next) => {
+            setDialog(null);
+            setD(next);
+            notify("Scalono. Duplikat jest w archiwum (powód: duplikat).");
+          }}
+        />
+      )}
     </div>
   );
 }

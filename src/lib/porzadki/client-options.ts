@@ -5,6 +5,7 @@ import type { ReviewClient } from "@/lib/history/review-load";
 // sam kształt co wybór klienta na /klienci/dopasowania (ClientPicker).
 export async function loadClientOptions(): Promise<ReviewClient[]> {
   const clients = await prisma.client.findMany({
+    where: { archivedAt: null },
     orderBy: { name: "asc" },
     select: { id: true, name: true, city: true, contacts: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true } } },
   });

@@ -144,6 +144,34 @@ curl -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/js
 
 Zmienia osobę kontaktową. Pola: `firstName`, `lastName`, `phone`, `phone2`, `phone2Label`, `email`, `role` oraz `isPrimary: true`, żeby ustawić tę osobę jako główną. Te same wymagane pola co wyżej: `zrodlo`, `pewnosc`, `paczka`. Telefon jest normalizowany do formatu +48….
 
+### `POST /api/agent/klienci/:id/scal`
+
+Scala duplikat w klienta `:id`. Body: `{ "zrodlowy_id": "<id duplikatu>", "zrodlo": "…", "pewnosc": "…", "paczka": "…" }` — wszystkie wymagane.
+
+Wszystko z duplikatu przechodzi na klienta `:id`: osoby, wynajmy, historia, faktury, sygnały, notatki, zadania, SMS-y, e-maile, uwagi, aliasy i powiązania wniosków. Puste pola klienta `:id` uzupełniają się danymi z duplikatu. Sam duplikat trafia do archiwum z powodem „duplikat”, więc da się go przywrócić.
+
+W dzienniku powstają trzy rodzaje wpisów:
+
+- `MERGE`: co przeniesiono;
+- zmiany pól klienta `:id`;
+- `ARCHIVE` duplikatu.
+
+W HubSpocie nic się nie zmienia.
+
+Odpowiedź: `{ "moved": { "osoby": 1, "wynajmy": 2, … } }`.
+
+## Archiwum
+
+`GET /api/agent/archiwum?typ=client|lead&powod=&paczka=&q=` pokazuje, co już jest w archiwum. Sprawdź to, zanim zaproponujesz archiwizację.
+
+| Pole | Wartość |
+|------|---------|
+| `powod` | `SPAM`, `TEST`, `OSOBA_PRYWATNA`, `SPOZA_BRANZY`, `DOSTAWCA`, `JEDNORAZOWY`, `DUPLIKAT`, `INNE` |
+
+**Agent nie archiwizuje i nie usuwa.** Proponuje archiwizację jako uwagę (`POST /api/agent/uwagi`) z powodem i dowodem, najlepiej z tą samą paczką. Archiwizację, przywracanie i trwałe usuwanie wykonuje administrator w **Porządki → Archiwum** albo na karcie klienta.
+
+Trwałe usunięcie niczego nie kasuje w HubSpocie. ID kontaktu, firmy i transakcji trafiają na listę blokad, więc import ich nie przywróci. Nowy formularz od tej samej osoby tworzy nowe zapytanie.
+
 ---
 
 ## Sygnały (zapytania)

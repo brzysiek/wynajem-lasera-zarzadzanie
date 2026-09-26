@@ -64,7 +64,8 @@ export async function isGmailSyncEnabled(): Promise<boolean> {
 }
 
 async function loadIndex(): Promise<AddressIndex> {
-  const contacts = await prisma.clientContact.findMany({ where: { email: { not: null } }, select: { id: true, clientId: true, email: true } });
+  // Bez zarchiwizowanych klientów (spam, testy, nie-klienci) — ich poczty nie przypisujemy.
+  const contacts = await prisma.clientContact.findMany({ where: { email: { not: null }, client: { archivedAt: null } }, select: { id: true, clientId: true, email: true } });
   return buildAddressIndex(contacts.map((c) => ({ clientId: c.clientId, contactId: c.id, email: c.email })));
 }
 

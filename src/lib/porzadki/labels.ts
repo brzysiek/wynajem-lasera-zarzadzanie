@@ -68,6 +68,19 @@ export const RELATION_KEYS = Object.keys(RELATION_LABEL) as RelationKey[];
 export const REMARK_STATUS_LABEL = { OPEN: "otwarta", CLOSED: "zamknięta" } as const;
 export type RemarkStatusKey = keyof typeof REMARK_STATUS_LABEL;
 
+export const ARCHIVE_REASON_LABEL = {
+  SPAM: "spam",
+  TEST: "test / wewnętrzny",
+  OSOBA_PRYWATNA: "osoba prywatna",
+  SPOZA_BRANZY: "spoza branży",
+  DOSTAWCA: "dostawca",
+  JEDNORAZOWY: "adres jednorazowy",
+  DUPLIKAT: "duplikat",
+  INNE: "inne",
+} as const;
+export type ArchiveReasonKey = keyof typeof ARCHIVE_REASON_LABEL;
+export const ARCHIVE_REASON_KEYS = Object.keys(ARCHIVE_REASON_LABEL) as ArchiveReasonKey[];
+
 export function proposalNumber(n: number): string {
   return `W-${String(n).padStart(4, "0")}`;
 }
@@ -97,6 +110,9 @@ export const OPERATION_LABEL: Record<string, string> = {
   MERGE: "scalenie duplikatów",
   MOVE_TO_INQUIRIES: "przeniesienie do kontaktów z zapytań",
   DO_NOT_CONTACT: "oznaczenie „Nie kontaktować”",
+  ARCHIVE: "archiwizacja",
+  RESTORE: "przywrócenie z archiwum",
+  DELETE: "trwałe usunięcie",
 };
 
 export const FIELD_LABEL: Record<string, string> = {
@@ -123,6 +139,12 @@ export const FIELD_LABEL: Record<string, string> = {
   isPrimary: "osoba główna",
   qualifiedAt: "kwalifikacja",
   qualifiedReason: "powód",
+  nazwa: "nazwa",
+  powod: "powód",
+  reason: "powód",
+  note: "dopisek",
+  batch: "paczka",
+  blokadyHubSpot: "zablokowane ID HubSpot",
   matchState: "stan",
   clientId: "klient",
   rentalId: "wynajem",

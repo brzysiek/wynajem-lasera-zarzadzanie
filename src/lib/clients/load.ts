@@ -153,6 +153,8 @@ async function lastContacts(): Promise<Map<string, Date>> {
 export async function loadClientRows(today = new Date()): Promise<ClientListRow[]> {
   const [contactsAt, qualificationActive] = await Promise.all([lastContacts(), isQualificationActive()]);
   const clients = await prisma.client.findMany({
+    // Zarchiwizowani (Porządki → Archiwum) nie wracają na listę.
+    where: { archivedAt: null },
     select: {
       id: true,
       name: true,
@@ -295,6 +297,8 @@ export type ClientDetail = {
   clinicType: ClinicTypeKey | null;
   source: SourceKey | null;
   deviceInterests: DeviceInterestKey[];
+  // Archiwum (Porządki): null = klient aktywny.
+  archive: { at: string; reason: string | null; note: string | null; batch: string | null } | null;
   statusOverride: "NIE_KONTAKTOWAC" | null;
   notes: string | null;
   hubspotCompanyId: string | null;
@@ -649,6 +653,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     clinicType: c.clinicType,
     source: c.source,
     deviceInterests: parseInterests(c.deviceInterests),
+    archive: c.archivedAt ? { at: c.archivedAt.toISOString(), reason: c.archiveReason, note: c.archiveNote, batch: c.archiveBatch } : null,
     statusOverride: c.statusOverride,
     notes: c.notes,
     hubspotCompanyId: c.hubspotCompanyId,

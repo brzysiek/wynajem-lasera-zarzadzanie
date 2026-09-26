@@ -511,6 +511,7 @@ export function LeadsManager({
       onChanged={refresh}
       onOutcome={onOutcome}
       agent={readOnly}
+      canArchive={isAdmin}
     />
   ) : null;
 

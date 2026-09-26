@@ -33,6 +33,7 @@ function normalizeNip(raw: string | null | undefined): string | null {
 async function loadInvoiceClassifier() {
   const [clients, aliases, linked] = await Promise.all([
     prisma.client.findMany({
+      where: { archivedAt: null }, // zarchiwizowanych nie dopasowujemy
       select: { id: true, name: true, city: true, nip: true, contacts: { select: { firstName: true, lastName: true, phone: true, email: true } } },
     }),
     prisma.clientAlias.findMany({ select: { alias: true, clientId: true } }),

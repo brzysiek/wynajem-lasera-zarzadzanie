@@ -12,6 +12,7 @@ import { applySmsPlaceholders } from "@/lib/sms-template";
 import { INPUT, api } from "@/components/clients/client-forms";
 import { CalendarPlusIcon, PencilIcon, PhoneIcon, SmsIcon, StatusChip, fmtAgo, fmtDate } from "@/components/clients/ui";
 import { EmailViewer } from "@/components/clients/email-viewer";
+import { ArchiveDialog } from "@/components/porzadki/archive-dialog";
 import { BTN, BTN_PRIMARY, LostDialog } from "./lead-dialogs";
 import { StageChip, TaskIcon, XCircleIcon, fmtRange, fmtWhen } from "./lead-ui";
 
@@ -62,6 +63,7 @@ export function LeadCard({
   onChanged,
   onOutcome,
   agent = false,
+  canArchive = false,
 }: {
   leadId: string;
   users: { id: string; name: string }[];
@@ -73,6 +75,8 @@ export function LeadCard({
   // Rola AGENT: tylko notatka, zadanie i „Przenieś do klientów” — bez
   // telefonu, SMS, etapów, rezerwacji i edycji zgłoszenia (API tak samo).
   agent?: boolean;
+  // ADMIN: „Archiwizuj” / „Przywróć” (Porządki → Archiwum).
+  canArchive?: boolean;
 }) {
   const [d, setD] = useState<LeadDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -84,6 +88,7 @@ export function LeadCard({
   const [editing, setEditing] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [emailIds, setEmailIds] = useState<string[] | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -152,10 +157,49 @@ export function LeadCard({
       <div className="flex flex-col gap-2 border-b border-[var(--c-border)] px-5 pb-4 pt-5">
         <div className="flex items-start gap-2">
           <h2 className="m-0 min-w-0 flex-grow text-lg font-semibold leading-tight text-[var(--c-navy)]">{d.title}</h2>
+          {canArchive && !d.archive && (
+            <button type="button" onClick={() => setArchiving(true)} className="-mt-0.5 rounded-md px-1.5 py-1 text-xs text-[var(--c-muted)] hover:bg-[var(--c-red-soft)] hover:text-[var(--c-red)]">
+              Archiwizuj
+            </button>
+          )}
           <button type="button" onClick={onClose} aria-label="Zamknij kartę" className="-mr-1 -mt-1 rounded-md p-1.5 text-[var(--c-muted)] hover:bg-[var(--c-bg)]">
             ✕
           </button>
         </div>
+        {d.archive && (
+          <p className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">
+            <b className="font-semibold">W archiwum</b>
+            {d.archive.note && <span>— {d.archive.note}</span>}
+            {canArchive && (
+              <button
+                type="button"
+                className="ml-auto font-semibold underline"
+                onClick={async () => {
+                  const res = await api("/api/porzadki/archiwum/przywroc", "POST", { type: "lead", ids: [leadId] });
+                  if (!res.ok) return setToast({ text: (res.data as { message?: string }).message ?? "Nie udało się.", error: true });
+                  const fresh = await api<LeadDetail>(`/api/leads/${leadId}`, "GET");
+                  if (fresh.ok) setD(fresh.data);
+                  onChanged();
+                }}
+              >
+                Przywróć
+              </button>
+            )}
+          </p>
+        )}
+        {archiving && (
+          <ArchiveDialog
+            type="lead"
+            ids={[leadId]}
+            label={d.title}
+            onClose={() => setArchiving(false)}
+            onDone={() => {
+              setArchiving(false);
+              onChanged();
+              onClose();
+            }}
+          />
+        )}
         <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
           {d.clientId ? (
             <Link href={`/klienci/${d.clientId}`} className="font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">

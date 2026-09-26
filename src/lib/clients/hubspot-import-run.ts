@@ -3,6 +3,8 @@ import { normalizePolishPhone } from "@/lib/reminders";
 import { logInfo } from "@/lib/logger";
 import { fetchAllHubspotCompanies, fetchAllHubspotContacts } from "@/lib/integrations/hubspot-crm";
 import { planHubspotImport, type ImportReport, type PlannedClient } from "@/lib/clients/hubspot-import";
+import { blockedIds } from "@/lib/porzadki/import-blocks";
+import { withoutBlocked } from "@/lib/porzadki/import-block-rules";
 
 // Wykonanie importu klientów z HubSpota (CRM, etap 1B) — podgląd i zapis.
 // ZASADA: panel dalej działa jak dotąd. Import pisze WYŁĄCZNIE do nowych
@@ -16,8 +18,15 @@ import { planHubspotImport, type ImportReport, type PlannedClient } from "@/lib/
 // UI woła runHubspotImportBatch w pętli, aż `remaining` = 0.
 
 async function loadPlan() {
-  const [contacts, companies] = await Promise.all([fetchAllHubspotContacts(), fetchAllHubspotCompanies()]);
-  return planHubspotImport({ contacts, companies }, { normalizePhone: normalizePolishPhone });
+  const [contacts, companies, blockedContacts, blockedCompanies] = await Promise.all([
+    fetchAllHubspotContacts(),
+    fetchAllHubspotCompanies(),
+    blockedIds("CONTACT"),
+    blockedIds("COMPANY"),
+  ]);
+  const plan = planHubspotImport({ contacts, companies }, { normalizePhone: normalizePolishPhone });
+  // Kontakty i firmy trwale usunięte w panelu (Porządki → Archiwum) nie wracają.
+  return { ...plan, clients: withoutBlocked(plan.clients, blockedContacts, blockedCompanies) };
 }
 
 // Które zaplanowane kontakty/firmy już są w bazie (z poprzedniego przebiegu).

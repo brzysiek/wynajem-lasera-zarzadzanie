@@ -47,6 +47,10 @@ const AGENT_WRITES = [
   "POST agent/dziennik",
   "PATCH agent/klienci/[id]",
   "PATCH agent/klienci/[id]/kontakty/[contactId]",
+  // Scalanie duplikatów (instrukcja „Rola agenta”: scalanie dozwolone,
+  // ze źródłem i pewnością; duplikat trafia do archiwum „duplikat”).
+  "POST clients/[id]/merge",
+  "POST agent/klienci/[id]/scal",
 ];
 
 const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;
@@ -143,6 +147,9 @@ describe("trasy API a rola AGENT", () => {
       ["POST", "porzadki/reguly"], // reguły — ADMIN
       ["PATCH", "porzadki/reguly/[id]"],
       ["DELETE", "porzadki/reguly/[id]"],
+      ["POST", "porzadki/archiwum"], // archiwizacja — ADMIN (agent tylko proponuje)
+      ["POST", "porzadki/archiwum/przywroc"],
+      ["POST", "porzadki/archiwum/usun"], // trwałe usuwanie — ADMIN
     ];
     for (const [method, route] of forbidden) {
       const h = find(method, route);
@@ -185,5 +192,8 @@ describe("trasy API a rola AGENT", () => {
     expect(body("POST", "clients/[id]/activity")).toContain("Agent dodaje tylko notatki.");
     expect(body("POST", "clients/[id]/qualification")).toContain("Agent może tylko przenieść kontakt do klientów.");
     expect(body("PATCH", "activities/[id]")).toContain("activity.userId !== session.user.id");
+    expect(body("POST", "porzadki/archiwum/usun")).toContain("Number(body?.confirm) !== target.ids.length");
+    const merge = readFileSync(join(__dirname, "clients", "merge.ts"), "utf8");
+    expect(merge).toContain('parseProvenance(body, { required: actor.role === "AGENT" })');
   });
 });

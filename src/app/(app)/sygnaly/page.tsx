@@ -15,6 +15,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     loadStaffUsers(),
     lastDealsSync(),
     prisma.client.findMany({
+      where: { archivedAt: null },
       orderBy: { name: "asc" },
       select: { id: true, name: true, city: true, contacts: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true } } },
     }),

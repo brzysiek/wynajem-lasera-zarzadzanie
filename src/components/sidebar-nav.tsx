@@ -156,7 +156,7 @@ function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT" | undefined): (
     { kind: "link", href: "/sygnaly", label: "Sygnały", icon: <PulseNavIcon /> },
     { kind: "link", href: "/klienci", label: "Klienci", icon: <ClientsIcon /> },
     // Porządki: wnioski, uwagi, dziennik zmian, reguły (zakładki na stronie).
-    { kind: "link", href: "/wnioski", label: "Porządki", matchAny: ["/wnioski", "/uwagi", "/dziennik", "/reguly"], icon: <ChecklistIcon /> },
+    { kind: "link", href: "/wnioski", label: "Porządki", matchAny: ["/wnioski", "/uwagi", "/dziennik", "/reguly", "/archiwum"], icon: <ChecklistIcon /> },
     { kind: "link", href: "/urzadzenia", label: "Urządzenia", icon: <DeviceBoxIcon /> },
     { kind: "link", href: "/wysylka-sms", label: "Wysyłka SMS", icon: <SmsBubbleIcon /> },
   ];

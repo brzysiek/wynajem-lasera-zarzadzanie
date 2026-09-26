@@ -17,7 +17,11 @@ export type ChangeOperation =
   | "MATCH_IGNORE"
   | "MATCH_RESET"
   | "STATUS_CHANGE"
-  | "UNDO";
+  | "UNDO"
+  | "MERGE"
+  | "ARCHIVE"
+  | "RESTORE"
+  | "DELETE";
 
 export type ChangeEntry = {
   entity: ChangeEntity;

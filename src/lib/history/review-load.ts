@@ -72,6 +72,7 @@ export async function loadHistoryReview(): Promise<ReviewData> {
       },
     }),
     prisma.client.findMany({
+      where: { archivedAt: null },
       orderBy: { name: "asc" },
       select: {
         id: true,
