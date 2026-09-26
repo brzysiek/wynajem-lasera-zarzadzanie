@@ -108,6 +108,7 @@ export const OPERATION_LABEL: Record<string, string> = {
   STATUS_CHANGE: "zmiana statusu",
   UNDO: "cofnięcie zmiany",
   MERGE: "scalenie duplikatów",
+  SPLIT: "wydzielenie do nowego klienta",
   MOVE_TO_INQUIRIES: "przeniesienie do kontaktów z zapytań",
   DO_NOT_CONTACT: "oznaczenie „Nie kontaktować”",
   ARCHIVE: "archiwizacja",

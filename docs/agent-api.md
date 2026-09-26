@@ -34,7 +34,7 @@ Panel ma serwer MCP: `https://panel.wynajemlasera.pl/api/mcp`. Po podłączeniu 
 **Narzędzia.** Odpowiadają trasom opisanym niżej:
 
 - **Odczyt:** `reguly_porzadkow`, `klienci_lista`, `klient`, `sygnaly_lista`, `sygnal`, `kalendarz_wynajmy`, `dopasowania`, `faktury`, `fv_bez_faktury`, `archiwum`, `dziennik`, `wnioski_lista`, `wniosek`, `uwagi_lista`, `zadania_lista`, `osoby_biura`.
-- **Zapis:** `klient_zmien`, `osoba_zmien`, `osoba_dodaj`, `klienci_scal`, `przenies_do_klientow`, `notatka_klient`, `notatka_sygnal`, `zadanie_utworz` (pole `dla` przyjmuje id albo imię, np. „Ania”), `zadanie_zmien` (tylko własne zadania), `zadanie_komentarz`, `wniosek_utworz`, `wniosek_zmien`, `wniosek_komentarz`, `uwaga_utworz`, `uwaga_zmien`, `dziennik_wpis`, `propozycje_dodaj`, `propozycje_lista`.
+- **Zapis:** `klient_zmien`, `osoba_zmien`, `osoba_dodaj`, `klienci_scal`, `przenies_do_klientow`, `notatka_klient`, `notatka_sygnal`, `zadanie_utworz` (pole `dla` przyjmuje id albo imię, np. „Ania”), `zadanie_zmien` (tylko własne zadania), `zadanie_komentarz`, `wniosek_utworz`, `wniosek_zmien`, `wniosek_komentarz`, `uwaga_utworz`, `uwaga_zmien`, `dziennik_wpis`, `propozycje_dodaj`, `propozycje_lista`, `dopasowanie_decyzja`; odczyt także `podejrzane_zlepki`.
 
 ---
 
@@ -229,6 +229,21 @@ Większe porządki zgłaszaj jako **paczkę propozycji**, nie bezpośrednimi zmi
 - **`osoba`**: `firstName`, `lastName`, `phone`, `phone2`, `phone2Label`, `email`, `role`.
 - **`archiwizacja`**: klient albo sygnał (`sygnal_id`), z polami `powod` i `dopisek`.
 - **`scalenie`**: pole `duplikat_id`.
+- **`wydzielenie`**: rozdziela klienta-zlepka. Pola:
+  - `osoby_ids`: osoby, które przechodzą do nowego klienta;
+  - `nazwa`;
+  - opcjonalnie `nip`, `ulica`, `kod`, `miasto`;
+  - opcjonalnie `faktury_nip`: faktury klienta z tym NIP-em nabywcy przechodzą razem z osobami;
+  - opcjonalnie `klucze_dopasowan`: grupy z kalendarzy do przypisania nowemu klientowi.
+
+  Razem z osobami przechodzą ich wynajmy, sygnały (z osią czasu i zadaniami), e-maile i SMS-y. Przy kliencie musi zostać co najmniej jedna osoba. Przykład:
+
+  ```json
+  { "rodzaj": "wydzielenie", "klient_id": "cmuhfoc0o00dwbhipcwdoo8t9", "osoby_ids": ["cmuhfoc1500e6bhipcqfsgjb8"],
+    "nazwa": "Studio Urody „MiWiNi” Barbara Trzaska", "nip": "9441828201", "ulica": "Rudawska 4", "kod": "32-064", "miasto": "Rudawa",
+    "faktury_nip": "9441828201", "klucze_dopasowan": ["miwini", "mi wi ni"],
+    "zrodlo": "HubSpot + faktury 2026", "pewnosc": "wysoka", "paczka": "P-2026-09-27-01" }
+  ```
 
 **Odpowiedź:** `results[]` ma osobny wynik dla każdej pozycji: `ok`, `id`, `status` albo `message`. Serwer odrzuca:
 
@@ -273,6 +288,17 @@ Lista ma paginację i jest posortowana od najnowszych.
 
 Zwraca szczegół sygnału z osią czasu.
 
+## Podejrzane zlepki
+
+`GET /api/agent/zlepki` (narzędzie MCP: `podejrzane_zlepki`) zwraca klientów, pod którymi prawdopodobnie jest kilka gabinetów, od najbardziej podejrzanych. Przy każdym są punkty i uzasadnienie:
+
+- osoby z adresami zastępczymi (np. `brak.pl`);
+- faktury wystawione na różne NIP-y;
+- NIP klienta, który nie występuje na jego fakturach;
+- firma HubSpot łącząca wiele osób.
+
+Taki zlepek rozdzielaj propozycją rodzaju `wydzielenie` (patrz niżej).
+
 ## Dopasowania historii
 
 `GET /api/agent/dopasowania?stan=UNMATCHED|SUGGESTED|AUTO|CONFIRMED|IGNORED`
@@ -283,7 +309,16 @@ Zwraca:
 - `invoices`: faktury z Fakturowni ze stanem dopasowania do klienta;
 - `totals`.
 
-Decyzje (przypisz, pomiń, cofnij) na razie podejmuje się w panelu, w **Klienci → Dopasowania**.
+**Decyzje:** `POST /api/agent/dopasowania` (narzędzie MCP: `dopasowanie_decyzja`), każda z wpisem w dzienniku:
+
+```json
+{ "rodzaj": "kalendarz", "akcja": "przypisz", "klucze": ["miwini", "mi wi ni"], "klient_id": "ckx1" }
+{ "rodzaj": "faktury", "akcja": "pomin", "faktury_ids": ["cki9"] }
+```
+
+- `akcja`: `przypisz` (wymaga `klient_id`), `pomin` albo `cofnij`.
+- `klucze` to wartości `groups[].key` z odczytu dopasowań.
+- Przypisanie tworzy alias, więc kolejne wydarzenia o tej nazwie dopasują się same.
 
 ## Faktury
 

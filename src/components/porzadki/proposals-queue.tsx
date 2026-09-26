@@ -9,6 +9,7 @@ import { ARCHIVE_REASON_LABEL, FIELD_LABEL, type ArchiveReasonKey } from "@/lib/
 import { CONFIDENCE_LABEL, type Confidence } from "@/lib/changelog/provenance";
 import { readable } from "./changelog-panel";
 import { BTN, BTN_PRIMARY, ErrorNote, INPUT, SELECT_PILL, fmtDateTime } from "./shared";
+import { BlobsPanel } from "./blobs-panel";
 
 // Porządki → Propozycje: kolejka zmian zgłoszonych przez agenta, pogrupowana
 // w paczki. ADMIN: akceptuj / odrzuć (pojedynczo i hurtem), popraw wartość,
@@ -26,6 +27,11 @@ function describe(p: ChangeProposalRow): { what: string; from: string | null; to
   if (p.kind === "ARCHIVE") {
     const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { reason: ArchiveReasonKey; note: string }) : null;
     return { what: p.leadId ? `sygnał do archiwum: ${p.leadTitle ?? ""}` : "do archiwum", from: null, to: v ? `${ARCHIVE_REASON_LABEL[v.reason] ?? v.reason} — ${v.note}` : "—" };
+  }
+  if (p.kind === "SPLIT") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { name: string; contactNames?: string[]; invoiceNip?: string | null; historyKeys?: string[] }) : null;
+    const extras = [v?.invoiceNip ? `faktury z NIP ${v.invoiceNip}` : null, v?.historyKeys?.length ? `${v.historyKeys.length} grup z dopasowań` : null].filter(Boolean).join(", ");
+    return { what: `wydziel: ${v?.contactNames?.join(", ") ?? "osoby"}`, from: null, to: `nowy klient „${v?.name ?? "?"}”${extras ? ` (+ ${extras})` : ""}` };
   }
   if (p.kind === "MERGE") {
     const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { duplicateId: string }) : null;
@@ -146,6 +152,7 @@ export function ProposalsQueue({ canDecide, initialClientId }: { canDecide: bool
 
   return (
     <div className="flex flex-col gap-3">
+      <BlobsPanel />
       <div className="flex flex-wrap items-center gap-2">
         {(["PENDING", "ACCEPTED", "REJECTED", ""] as const).map((s) => (
           <button key={s || "all"} type="button" className={SELECT_PILL(status === s)} onClick={() => setStatus(s)}>

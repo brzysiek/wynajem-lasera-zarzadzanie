@@ -3,12 +3,14 @@
 import { AGENT_CLIENT_FIELDS } from "../permissions";
 import { parseProvenance, type Provenance } from "../changelog/provenance";
 import { parseArchiveInput, type ArchiveInput } from "./archive-rules";
+import { parseSplitInput } from "../clients/split-rules";
 
 export const PROPOSAL_KIND_LABEL = {
   FIELD: "pole klienta",
   CONTACT_FIELD: "pole osoby",
   ARCHIVE: "archiwizacja",
   MERGE: "scalenie duplikatu",
+  SPLIT: "wydzielenie do nowego klienta",
 } as const;
 export type ProposalKind = keyof typeof PROPOSAL_KIND_LABEL;
 
@@ -26,6 +28,8 @@ const KIND_ALIASES: Record<string, ProposalKind> = {
   archive: "ARCHIVE",
   scalenie: "MERGE",
   merge: "MERGE",
+  wydzielenie: "SPLIT",
+  split: "SPLIT",
 };
 
 export type ParsedProposal = {
@@ -58,7 +62,7 @@ export function normalizeClass(v: unknown): string | null {
 export function parseProposalItem(item: Record<string, unknown>): { ok: true; value: ParsedProposal } | { ok: false; message: string } {
   const rawKind = str(item.rodzaj ?? item.kind, 32)?.toLowerCase();
   const kind = rawKind ? KIND_ALIASES[rawKind] : undefined;
-  if (!kind) return { ok: false, message: "rodzaj: pole, osoba, archiwizacja albo scalenie." };
+  if (!kind) return { ok: false, message: "rodzaj: pole, osoba, archiwizacja, scalenie albo wydzielenie." };
   const provenance = parseProvenance(item, { required: true });
   if (!provenance.ok) return provenance;
   if (!provenance.value.batch) return { ok: false, message: "Podaj paczkę (paczka)." };
@@ -83,6 +87,12 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
     const archive = parseArchiveInput(item);
     if (!archive.ok) return archive;
     return { ok: true, value: { ...base, kind, leadId, proposed: archive.value satisfies ArchiveInput } };
+  }
+  if (kind === "SPLIT") {
+    if (!clientId) return { ok: false, message: "Podaj klient_id (klient-zlepek)." };
+    const split = parseSplitInput(item);
+    if (!split.ok) return split;
+    return { ok: true, value: { ...base, kind, proposed: split.value } };
   }
   // MERGE
   const duplicateId = str(item.duplikat_id ?? item.duplicateId, 64);

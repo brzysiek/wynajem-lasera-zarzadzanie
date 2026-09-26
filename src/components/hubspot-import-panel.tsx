@@ -212,6 +212,14 @@ export function HubspotImportPanel({ configured }: { configured: boolean }) {
               ))}
             />
             <ReportSection
+              title="Firmy HubSpot bez nazwy / z domeną zastępczą"
+              hint="Takie firmy NIE łączą osób w jednego klienta — każda osoba idzie osobno (albo po NIP). Adresy zastępcze (np. brak10@brak.pl) nie są zapisywane jako e-mail."
+              items={[
+                ...(r.placeholderCompanies ?? []).map((c) => `firma ${c.id}: ${c.contacts} osób rozdzielonych`),
+                ...((r.placeholderEmails ?? 0) > 0 ? [`pominięte adresy zastępcze: ${r.placeholderEmails}`] : []),
+              ]}
+            />
+            <ReportSection
               title="Możliwe duplikaty (ta sama nazwa)"
               hint="Różne kontakty z tą samą nazwą gabinetu, ale bez wspólnej firmy i NIP — NIE łączymy ich automatycznie. Po imporcie można je scalić ręcznie."
               items={r.possibleDuplicateNames.map((d) => `${d.name} — ${d.count} klientów`)}

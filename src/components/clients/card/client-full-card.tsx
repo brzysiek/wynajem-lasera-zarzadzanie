@@ -14,6 +14,7 @@ import { TabData } from "./tab-data";
 import { TabOverview, type CardTab } from "./tab-overview";
 import { TabTransactions } from "./tab-transactions";
 import { MergeDialog } from "./merge-dialog";
+import { SplitDialog } from "./split-dialog";
 import { ArchiveDialog } from "@/components/porzadki/archive-dialog";
 import { ARCHIVE_REASON_LABEL, type ArchiveReasonKey } from "@/lib/porzadki/labels";
 import type { ReviewClient } from "@/lib/history/review-load";
@@ -61,7 +62,8 @@ export function ClientFullCard({
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [focusNote, setFocusNote] = useState(0);
   const [emailIds, setEmailIds] = useState<string[] | null>(null);
-  const [dialog, setDialog] = useState<"archive" | "merge" | null>(null);
+  const [dialog, setDialog] = useState<"archive" | "merge" | "split" | null>(null);
+  const [splitTo, setSplitTo] = useState<string | null>(null);
   const [backHref, setBackHref] = useState("/klienci");
 
   useEffect(() => {
@@ -241,6 +243,11 @@ export function ClientFullCard({
                 Scal duplikat
               </button>
             )}
+            {!isAgent && !d.archive && d.contacts.length > 1 && (
+              <button type="button" onClick={() => setDialog("split")} className={soft} title="Część osób to inny gabinet — wydziel je do nowego klienta">
+                Wydziel osoby
+              </button>
+            )}
             {isAdmin && !d.archive && (
               <button type="button" onClick={() => setDialog("archive")} className={`${btn} text-[var(--c-muted)] hover:bg-[var(--c-red-soft)] hover:text-[var(--c-red)]`}>
                 Archiwizuj
@@ -293,6 +300,14 @@ export function ClientFullCard({
       </div>
 
       <div className="pt-6">
+        {splitTo && (
+          <p className="mb-4 rounded-lg bg-[var(--c-brand-soft)] px-3 py-2 text-[13px] text-[var(--c-brand-deep)]">
+            Nowy klient z wydzielonych osób:{" "}
+            <Link href={`/klienci/${splitTo}`} className="font-semibold underline">
+              otwórz kartę →
+            </Link>
+          </p>
+        )}
         {toast && (
           <p
             role="status"
@@ -325,6 +340,18 @@ export function ClientFullCard({
             setDialog(null);
             notify("Zarchiwizowano. Klient zniknął z list; przywrócisz go tutaj albo w Porządki → Archiwum.");
             void reload();
+          }}
+        />
+      )}
+      {dialog === "split" && (
+        <SplitDialog
+          source={d}
+          onClose={() => setDialog(null)}
+          onDone={(next, newClientId) => {
+            setDialog(null);
+            setD(next);
+            setSplitTo(newClientId);
+            notify("Wydzielono do nowego klienta. Wpis jest w dzienniku.");
           }}
         />
       )}

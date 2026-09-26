@@ -24,6 +24,7 @@ import {
 import { applyImportRules } from "@/lib/leads/call-list";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { blockedIds } from "@/lib/porzadki/import-blocks";
+import { isPlaceholderEmail } from "@/lib/clients/placeholder";
 import { dealsToImport } from "@/lib/porzadki/import-block-rules";
 
 // Transakcje HubSpot → Sygnały (CRM, prompt 2A). Z HubSpota wyłącznie
@@ -66,7 +67,8 @@ async function loadLinkContext() {
   for (const c of contacts) {
     const ref = { id: c.id, clientId: c.clientId, phone: c.phone };
     if (c.hubspotContactId) byHs.set(c.hubspotContactId, ref);
-    if (c.email) byEmail.set(c.email.trim().toLowerCase(), ref);
+    // Adres zastępczy (brak10@brak.pl) nie identyfikuje osoby — nie łączymy po nim.
+    if (c.email && !isPlaceholderEmail(c.email)) byEmail.set(c.email.trim().toLowerCase(), ref);
     if (c.phone) byPhone.set(c.phone, ref);
   }
   return { byHs, byEmail, byPhone };

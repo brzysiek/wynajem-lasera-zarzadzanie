@@ -56,6 +56,9 @@ const AGENT_WRITES = [
   // Propozycje zmian (etap D): zgłaszanie; decyzje tylko ADMIN.
   "POST porzadki/propozycje",
   "POST agent/propozycje",
+  // Decyzje w dopasowaniach (instrukcja roli: potwierdzenie / odrzucenie /
+  // przypisanie / pominięcie), z dziennikiem.
+  "POST agent/dopasowania",
 ];
 
 // Narzędzia MCP — dokładna lista; nowe narzędzie trzeba świadomie dopisać.
@@ -65,6 +68,7 @@ const MCP_TOOLS = [
   "klient_zmien", "osoba_zmien", "osoba_dodaj", "klienci_scal", "przenies_do_klientow", "notatka_klient", "notatka_sygnal",
   "zadanie_utworz", "zadanie_zmien", "zadanie_komentarz", "wniosek_utworz", "wniosek_zmien", "wniosek_komentarz",
   "uwaga_utworz", "uwaga_zmien", "dziennik_wpis", "propozycje_dodaj", "propozycje_lista",
+  "podejrzane_zlepki", "dopasowanie_decyzja",
 ];
 
 const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;
@@ -171,6 +175,7 @@ describe("trasy API a rola AGENT", () => {
       ["POST", "porzadki/archiwum/przywroc"],
       ["POST", "porzadki/archiwum/usun"], // trwałe usuwanie — ADMIN
       ["POST", "porzadki/propozycje/decyzja"], // akceptacja propozycji — ADMIN
+      ["POST", "clients/[id]/split"], // wydzielanie — ADMIN/STAFF (agent przez propozycję)
       ["PATCH", "porzadki/propozycje/[id]"],
       ["POST", "porzadki/propozycje/klasy"],
       ["DELETE", "porzadki/propozycje/klasy"],

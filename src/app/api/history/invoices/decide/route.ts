@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth-guards";
 import { OFFICE_AND_AGENT } from "@/lib/permissions";
-import { prisma } from "@/lib/prisma";
-import { toLogValue } from "@/lib/changelog/diff";
-import { recordChanges } from "@/lib/changelog/record";
-import { applyInvoiceDecision, parseInvoiceDecision } from "@/lib/history/invoice-import";
+import { parseInvoiceDecision } from "@/lib/history/invoice-import";
+import { decideInvoicesLogged } from "@/lib/history/decide-logged";
 import { logError, logInfo } from "@/lib/logger";
 
 // Decyzja biura dla faktur bez dopasowania: przypisz (uczy alias, może
@@ -18,27 +16,7 @@ export async function POST(req: NextRequest) {
   if (typeof parsed === "string") return NextResponse.json({ message: parsed }, { status: 400 });
 
   try {
-    const beforeRows = await prisma.clientInvoice.findMany({ where: { id: { in: parsed.ids } }, select: { id: true, clientId: true, matchState: true } });
-    const result = await applyInvoiceDecision(parsed, session.user.id);
-    const afterRows = await prisma.clientInvoice.findMany({ where: { id: { in: parsed.ids } }, select: { id: true, clientId: true, matchState: true } });
-    const afterById = new Map(afterRows.map((r) => [r.id, r]));
-    const operation = parsed.action === "assign" ? "MATCH_ASSIGN" : parsed.action === "ignore" ? "MATCH_IGNORE" : "MATCH_RESET";
-    await recordChanges(
-      prisma,
-      { userId: session.user.id },
-      beforeRows.map((r) => {
-        const a = afterById.get(r.id);
-        return {
-          entity: "INVOICE" as const,
-          entityId: r.id,
-          clientId: a?.clientId ?? r.clientId,
-          operation,
-          field: "clientId",
-          before: toLogValue({ clientId: r.clientId, matchState: r.matchState }),
-          after: toLogValue({ clientId: a?.clientId ?? null, matchState: a?.matchState ?? null }),
-        };
-      }),
-    );
+    const result = await decideInvoicesLogged(parsed, session.user.id);
     logInfo("history_invoice_decision", { userId: session.user.id, action: parsed.action, invoices: result.invoices });
     return NextResponse.json(result);
   } catch (err) {

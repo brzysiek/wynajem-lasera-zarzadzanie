@@ -30,7 +30,7 @@ const CONTACT_PROPERTIES = [
   "urzadzenie",
   "createdate",
 ];
-const COMPANY_PROPERTIES = ["name", "address", "city", "zip", "country"];
+const COMPANY_PROPERTIES = ["name", "domain", "address", "city", "zip", "country"];
 const PAGE_SIZE = 100;
 
 type HsListItem = {
@@ -95,6 +95,7 @@ export async function fetchAllHubspotCompanies(): Promise<HsCompany[]> {
   return items.map((item) => ({
     id: item.id,
     name: prop(item, "name"),
+    domain: prop(item, "domain"),
     address: prop(item, "address"),
     city: prop(item, "city"),
     zip: prop(item, "zip"),

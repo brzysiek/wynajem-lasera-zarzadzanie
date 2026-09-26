@@ -26,6 +26,8 @@ import { createRemark, listRemarks, parseRemarkInput, updateRemark, type RemarkI
 import { normalizeRemarkBody } from "@/lib/agent-api/remark-body";
 import { taskDto } from "@/lib/tasks";
 import { agentAssignees } from "@/lib/agent-api/assignees";
+import { agentMatchDecision } from "@/lib/agent-api/match-decision";
+import { listSuspectedBlobs } from "@/lib/clients/blob-load";
 import { listAutoClasses, listChangeProposals, submitProposals } from "@/lib/porzadki/change-proposals";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
@@ -258,6 +260,15 @@ export const TOOLS: McpTool[] = [
         invoices: state ? data.invoices.filter((i) => i.state === state) : data.invoices,
       };
     },
+  },
+  {
+    name: "podejrzane_zlepki",
+    title: "Podejrzane zlepki klientów",
+    description:
+      "Klienci, pod którymi prawdopodobnie jest kilka gabinetów (osoby z adresami zastępczymi typu brak.pl, faktury na różne NIP-y, NIP spoza faktur, firma HubSpot łącząca wiele osób) — od najbardziej podejrzanych, z uzasadnieniem.",
+    inputSchema: obj({}),
+    readOnly: true,
+    run: async () => ({ blobs: await listSuspectedBlobs() }),
   },
   {
     name: "faktury",
@@ -721,11 +732,30 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
+    name: "dopasowanie_decyzja",
+    title: "Decyzja w dopasowaniach",
+    description:
+      "Przypisuje / pomija / cofa grupy wydarzeń z kalendarzy (klucze z narzędzia dopasowania: groups[].key) albo faktury (faktury_ids). Przypisanie tworzy alias — kolejne wydarzenia z tą nazwą dopasują się same. Wpis w dzienniku.",
+    inputSchema: obj(
+      {
+        rodzaj: s("Co.", { enum: ["kalendarz", "faktury"] }),
+        akcja: s("Decyzja.", { enum: ["przypisz", "pomin", "cofnij"] }),
+        klucze: { type: "array", items: { type: "string" }, description: "Klucze grup z kalendarzy (rodzaj kalendarz)." },
+        faktury_ids: { type: "array", items: { type: "string" }, description: "ID faktur (rodzaj faktury)." },
+        klient_id: s("Klient (przy przypisz)."),
+      },
+      ["rodzaj", "akcja"],
+    ),
+    readOnly: false,
+    run: async (a, agent) => agentMatchDecision(a, agent.userId),
+  },
+  {
     name: "propozycje_dodaj",
     title: "Zgłoś propozycje zmian",
     description:
-      "Zgłasza hurtem propozycje do akceptacji administratora (Porządki → Propozycje). Każda: rodzaj (pole | osoba | archiwizacja | scalenie), klient_id, " +
-      "dla pola: pole + proponowane; dla osoby: osoba_id + pole + proponowane; dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id. " +
+      "Zgłasza hurtem propozycje do akceptacji administratora (Porządki → Propozycje). Każda: rodzaj (pole | osoba | archiwizacja | scalenie | wydzielenie), klient_id, " +
+      "dla pola: pole + proponowane; dla osoby: osoba_id + pole + proponowane; dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id; " +
+      "dla wydzielenia (klient-zlepek → nowy klient): osoby_ids, nazwa, opcjonalnie nip, ulica, kod, miasto, faktury_nip (faktury nabywcy przechodzą), klucze_dopasowan (grupy z kalendarzy). " +
       "Zawsze zrodlo, pewnosc, paczka; opcjonalnie klasa (np. miasto_slownik) — klasy zatwierdzone na stałe wykonują się od razu. " +
       "Odrzucone wcześniej zmiany są blokowane (dostaniesz komentarz odrzucenia).",
     inputSchema: obj({ propozycje: { type: "array", items: { type: "object" }, description: "Lista propozycji (maks. 500)." } }, ["propozycje"]),

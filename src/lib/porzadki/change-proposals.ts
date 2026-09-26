@@ -3,6 +3,8 @@ import { normalizePolishPhone } from "@/lib/reminders";
 import { parseClientPatch, parseContactInput } from "@/lib/clients/validate";
 import { patchClient, patchContact } from "@/lib/clients/update";
 import { mergeClients } from "@/lib/clients/merge";
+import { splitClient } from "@/lib/clients/split";
+import type { SplitInput } from "@/lib/clients/split-rules";
 import { toLogValue } from "@/lib/changelog/diff";
 import { sameLogValue } from "@/lib/changelog/undo-rules";
 import { archiveRecords } from "@/lib/porzadki/archive";
@@ -65,6 +67,15 @@ async function currentFor(p: { kind: string; clientId: string | null; contactId:
 
 // Proponowana wartość po normalizacji panelu (NIP same cyfry, telefon +48…),
 // żeby ADMIN widział to, co faktycznie się zapisze.
+async function normalizeProposedAsync(p: ParsedProposal): Promise<unknown> {
+  if (p.kind !== "SPLIT") return normalizeProposed(p);
+  // Wydzielenie: osoby muszą należeć do klienta; imiona do podglądu w kolejce.
+  const input = p.proposed as SplitInput;
+  const people = await prisma.clientContact.findMany({ where: { id: { in: input.contactIds }, clientId: p.clientId! }, select: { id: true, firstName: true, lastName: true, email: true } });
+  if (people.length !== input.contactIds.length) throw new PorzadkiError("Część wskazanych osób nie należy do tego klienta.");
+  return { ...input, contactNames: people.map((c) => [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || c.id) };
+}
+
 function normalizeProposed(p: ParsedProposal): unknown {
   if (p.kind === "FIELD") {
     const r = parseClientPatch({ [p.field!]: p.proposed });
@@ -103,7 +114,7 @@ export async function submitProposals(items: unknown[], author: Actor): Promise<
       if (!parsed.ok) throw new PorzadkiError(parsed.message);
       const p = parsed.value;
       await targetsExist(p);
-      const proposedValue = toLogValue(normalizeProposed(p));
+      const proposedValue = toLogValue(await normalizeProposedAsync(p));
       const currentValue = await currentFor(p);
       if (currentValue !== null && sameLogValue(currentValue, proposedValue)) throw new PorzadkiError("Bez zmiany — w panelu jest już ta wartość.");
 
@@ -163,6 +174,11 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
   }
   if (p.kind === "CONTACT_FIELD") {
     const r = await patchContact(p.clientId!, p.contactId!, { [p.field!]: value, ...provenance }, actor, { approvedById });
+    return r.ok ? { ok: true } : { ok: false, message: r.message };
+  }
+  if (p.kind === "SPLIT") {
+    const input = value as SplitInput;
+    const r = await splitClient(p.clientId!, { ...input, historyKeys: input.historyKeys ?? [] }, provenance, actor, { approvedById });
     return r.ok ? { ok: true } : { ok: false, message: r.message };
   }
   if (p.kind === "MERGE") {

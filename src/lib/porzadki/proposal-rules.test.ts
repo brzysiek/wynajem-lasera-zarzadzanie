@@ -36,6 +36,13 @@ describe("parseProposalItem", () => {
     expect(parseProposalItem({ rodzaj: "scalenie", klient_id: "c1", duplikat_id: "c2", ...prov })).toMatchObject({ ok: true, value: { kind: "MERGE", proposed: { duplicateId: "c2" } } });
     expect(parseProposalItem({ rodzaj: "scalenie", klient_id: "c1", duplikat_id: "c1", ...prov }).ok).toBe(false);
   });
+  it("wydzielenie", () => {
+    expect(parseProposalItem({ rodzaj: "wydzielenie", klient_id: "c1", osoby_ids: ["k1"], nazwa: "MiWiNi", faktury_nip: "9441828201", ...prov })).toMatchObject({
+      ok: true,
+      value: { kind: "SPLIT", clientId: "c1", proposed: { contactIds: ["k1"], name: "MiWiNi", invoiceNip: "9441828201", nip: "9441828201" } },
+    });
+    expect(parseProposalItem({ rodzaj: "wydzielenie", klient_id: "c1", nazwa: "X", ...prov }).ok).toBe(false);
+  });
   it("nieznany rodzaj", () => {
     expect(parseProposalItem({ rodzaj: "usuniecie", klient_id: "c1", ...prov }).ok).toBe(false);
   });

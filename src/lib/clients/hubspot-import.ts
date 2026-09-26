@@ -13,6 +13,8 @@
 // jest automatyczne (zbyt ogólne nazwy typu „Gabinet Kosmetyczny”) —
 // podejrzane zbieżności nazw trafiają do raportu jako możliwe duplikaty.
 
+import { isPlaceholderCompany, isPlaceholderEmail } from "./placeholder";
+
 export type HsContact = {
   id: string;
   firstname: string | null;
@@ -37,6 +39,7 @@ export type HsContact = {
 export type HsCompany = {
   id: string;
   name: string | null;
+  domain?: string | null;
   address: string | null;
   city: string | null;
   zip: string | null;
@@ -92,6 +95,11 @@ export type ImportReport = {
   companiesFetched: number;
   clientsPlanned: number;
   multiPersonClients: { key: string; name: string; people: string[] }[];
+  // Firmy HubSpot bez nazwy / z domeną zastępczą — NIE grupują osób (każda
+  // osoba idzie osobno albo po NIP). Adresy zastępcze (brak10@brak.pl) nie
+  // są zapisywane jako e-mail.
+  placeholderCompanies: { id: string; contacts: number }[];
+  placeholderEmails: number;
   possibleDuplicateNames: { name: string; count: number }[];
   nipAcrossCompanies: { nip: string; companies: string[] }[];
   duplicateEmails: { email: string; contacts: string[] }[];
@@ -181,6 +189,8 @@ export function planHubspotImport(
     companiesFetched: input.companies.length,
     clientsPlanned: 0,
     multiPersonClients: [],
+    placeholderCompanies: [],
+    placeholderEmails: 0,
     possibleDuplicateNames: [],
     nipAcrossCompanies: [],
     duplicateEmails: [],
@@ -202,8 +212,13 @@ export function planHubspotImport(
   const keyByNip = new Map<string, string>();
   const nipCompanies = new Map<string, Set<string>>();
   const loose: HsContact[] = [];
+  const placeholderCounts = new Map<string, number>();
   for (const c of input.contacts) {
-    const companyId = c.companyIds.find((id) => companiesById.has(id));
+    const companyId = c.companyIds.find((id) => companiesById.has(id) && !isPlaceholderCompany(companiesById.get(id)!));
+    for (const id of c.companyIds) {
+      const co = companiesById.get(id);
+      if (co && isPlaceholderCompany(co)) placeholderCounts.set(id, (placeholderCounts.get(id) ?? 0) + 1);
+    }
     if (!companyId) {
       loose.push(c);
       continue;
@@ -216,6 +231,7 @@ export function planHubspotImport(
       nipCompanies.set(nip, (nipCompanies.get(nip) ?? new Set()).add(companyId));
     }
   }
+  for (const [id, contacts] of placeholderCounts) report.placeholderCompanies.push({ id, contacts });
   for (const [nip, ids] of nipCompanies) {
     if (ids.size > 1) {
       report.nipAcrossCompanies.push({ nip, companies: [...ids].map((id) => companiesById.get(id)?.name ?? id) });
@@ -254,7 +270,9 @@ export function planHubspotImport(
         if (!normalized) report.unparsedPhones.push({ contact: contactLabel(c), value: rawPhone });
         phone = normalized ?? rawPhone;
       }
-      const email = clean(c.email)?.toLowerCase() ?? null;
+      const rawEmail = clean(c.email)?.toLowerCase() ?? null;
+      if (rawEmail && isPlaceholderEmail(rawEmail)) report.placeholderEmails += 1;
+      const email = rawEmail && !isPlaceholderEmail(rawEmail) ? rawEmail : null;
       if (email) emails.set(email, [...(emails.get(email) ?? []), contactLabel(c)]);
       if (!email && !rawPhone) report.noEmailNoPhone.push(contactLabel(c));
       return {

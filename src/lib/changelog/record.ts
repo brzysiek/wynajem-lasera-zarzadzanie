@@ -19,6 +19,7 @@ export type ChangeOperation =
   | "STATUS_CHANGE"
   | "UNDO"
   | "MERGE"
+  | "SPLIT"
   | "ARCHIVE"
   | "RESTORE"
   | "DELETE";

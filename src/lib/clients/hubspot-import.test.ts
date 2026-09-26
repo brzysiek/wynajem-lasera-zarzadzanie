@@ -184,3 +184,26 @@ describe("mapowanie pól", () => {
     expect(normalizeNip("")).toEqual({ nip: null, invalid: false });
   });
 });
+
+describe("firmy i adresy zastępcze (zlepek „Joanna Bakalarz”, W-0001)", () => {
+  it("firma bez nazwy / z domeną brak.pl nie grupuje osób; adresy brak.pl nie są e-mailem", () => {
+    const r = plan(
+      [
+        contact({ id: "a", firstname: "Joanna", email: "joannabakalarz74@gmail.com", companyIds: ["229"] }),
+        contact({ id: "b", firstname: "Barbara", lastname: "Trzaska", email: "miwini.studiourody@gmail.com", nip: "9441828201", companyIds: ["229"] }),
+        contact({ id: "c", firstname: "Natalia", email: "brak10@brak.pl", phone: "512077929", companyIds: ["229"] }),
+        contact({ id: "d", firstname: "Ewa", company: "Salon Ewa", companyIds: ["300"] }),
+        contact({ id: "e", firstname: "Ola", companyIds: ["300"] }),
+      ],
+      [company({ id: "229", name: null, domain: "brak.pl" }), company({ id: "300", name: "Salon Ewa" })],
+    );
+    expect(r.clients.map((c) => c.contacts.length).sort()).toEqual([1, 1, 1, 2]);
+    expect(r.clients.find((c) => c.hubspotCompanyId === "229")).toBeUndefined();
+    expect(r.clients.find((c) => c.hubspotCompanyId === "300")?.contacts.length).toBe(2);
+    expect(r.report.placeholderCompanies).toEqual([{ id: "229", contacts: 3 }]);
+    expect(r.report.placeholderEmails).toBe(1);
+    const natalia = r.clients.flatMap((c) => c.contacts).find((p) => p.hubspotContactId === "c");
+    expect(natalia?.email).toBeNull();
+    expect(natalia?.phone).toBe("+48512077929");
+  });
+});
