@@ -147,6 +147,7 @@ export type LeadActivityDto = {
   userName: string | null;
   fromHubspot: boolean;
   otherLead: string | null; // aktywność klienta z innego sygnału / bez sygnału
+  emailIds?: string[]; // e-mail z Gmaila (prompt 3C) — podgląd po kliknięciu
 };
 
 export type LeadDetail = LeadRow & {
@@ -169,7 +170,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
   const statuses = await loadClientStatuses(lead.clientId ? [lead.clientId] : []);
   const row = toRow(lead, statuses);
 
-  const [activities, otherLeads, clientRentals, rentalOptions] = await Promise.all([
+  const [activities, otherLeads, clientRentals, rentalOptions, emails] = await Promise.all([
     prisma.leadActivity.findMany({
       where: { OR: [{ leadId: id }, ...(lead.clientId ? [{ clientId: lead.clientId }] : [])] },
       orderBy: { createdAt: "desc" },
@@ -212,6 +213,15 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
       take: 25,
       select: { id: true, startsAt: true, title: true, device: { select: { name: true } } },
     }),
+    // E-maile klienta z ostatnich 30 dni (prompt 3, 4.4) — tylko metadane.
+    lead.clientId
+      ? prisma.emailMessage.findMany({
+          where: { clientId: lead.clientId, sentAt: { gte: new Date(Date.now() - 30 * 86_400_000) } },
+          orderBy: { sentAt: "desc" },
+          take: 30,
+          select: { id: true, direction: true, subject: true, snippet: true, sentAt: true, mailbox: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   return {
@@ -220,7 +230,18 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
     returnAt: lead.returnAt?.toISOString() ?? null,
     location: lead.location,
     hubspotUrl: lead.hubspotDealId ? hubspotDealUrl(lead.hubspotDealId) : null,
-    activities: activities.map((a) => ({
+    activities: [
+      ...emails.map((e) => ({
+        id: `email-${e.id}`,
+        type: "EMAIL" as const,
+        body: `${e.direction === "IN" ? "↓ od klienta" : "↑ do klienta"}: ${e.subject ?? "(bez tematu)"}${e.snippet ? ` — ${e.snippet}` : ""}`,
+        at: e.sentAt.toISOString(),
+        userName: null,
+        fromHubspot: false,
+        otherLead: e.mailbox,
+        emailIds: [e.id],
+      })),
+      ...activities.map((a) => ({
       id: a.id,
       type: a.type,
       body: a.body,
@@ -228,7 +249,8 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
       userName: a.user?.name ?? null,
       fromHubspot: Boolean(a.hubspotEngagementId),
       otherLead: a.leadId && a.leadId !== id ? (a.lead?.title ?? "inny sygnał") : a.leadId ? null : "bez sygnału",
-    })),
+      })),
+    ].sort((a, b) => b.at.localeCompare(a.at)),
     otherLeads: otherLeads.map((l) => ({ id: l.id, title: l.title, stage: l.stage, createdAt: l.createdAt.toISOString() })),
     clientRentals: clientRentals.map((r) => ({ id: r.id, startsAt: r.startsAt.toISOString(), deviceName: r.device.name })),
     rentalOptions: rentalOptions.map((r) => ({ id: r.id, startsAt: r.startsAt.toISOString(), deviceName: r.device.name, title: r.title })),

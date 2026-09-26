@@ -729,6 +729,7 @@ model Client {
   leadActivities LeadActivity[]
   tasks    Task[]
   messages Message[]
+  emails   EmailMessage[]
 
   @@index([nip])
   @@index([name])
@@ -772,6 +773,7 @@ enum HistoryMatchMethod {
   NAME_AUTO // dopasowanie nazwy powyżej progu pewności
   MANUAL // potwierdzone / wybrane ręcznie przez biuro
   RENTAL // faktura wystawiona z panelu dla wynajmu (RentalFinance.fakturowniaInvoiceId)
+  DOMAIN // e-mail z nieznanego adresu w firmowej domenie klienta — propozycja nowej osoby
 }
 
 enum HistoryMatchState {
@@ -969,4 +971,40 @@ model LeadActivity {
   @@index([leadId])
   @@index([clientId])
   @@map("lead_activities")
+}
+
+// ---------------------------------------------------------------------------
+// CRM — historia e-maili z Gmaila (prompt 3C). TYLKO METADANE i skrót z
+// Gmaila: pełna treść nigdy nie trafia do bazy ani logów — karta klienta
+// pobiera ją z Gmail API w chwili otwarcia wiadomości.
+
+enum EmailDirection {
+  IN // od klienta
+  OUT // do klienta
+}
+
+model EmailMessage {
+  id              String              @id @default(cuid())
+  mailbox         String // skrzynka, z której pobrano (np. kontakt@wynajemlasera.pl)
+  gmailMessageId  String
+  gmailThreadId   String
+  rfcMessageId    String?             @db.VarChar(512) // nagłówek Message-ID — deduplikacja między skrzynkami
+  direction       EmailDirection
+  fromAddress     String
+  toAddresses     Json // string[]
+  ccAddresses     Json?
+  subject         String?             @db.Text
+  snippet         String?             @db.Text // skrót z Gmaila (~200 znaków)
+  hasAttachments  Boolean             @default(false)
+  sentAt          DateTime
+  clientId        String?
+  client          Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientContactId String?
+  matchMethod     HistoryMatchMethod?
+  createdAt       DateTime            @default(now())
+
+  @@unique([mailbox, gmailMessageId])
+  @@index([clientId, sentAt])
+  @@index([rfcMessageId])
+  @@map("email_messages")
 }

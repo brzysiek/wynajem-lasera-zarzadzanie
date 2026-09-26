@@ -1,6 +1,7 @@
 import { getGoogleCalendarConfigStatus } from "@/lib/integrations/google-calendar";
 import { GoogleCalendarPanel } from "@/components/google-calendar-panel";
 import { CalendarHistoryImportPanel } from "@/components/calendar-history-import-panel";
+import { GmailSyncPanel } from "@/components/gmail-sync-panel";
 
 function Code({ children }: { children: string }) {
   return <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800">{children}</code>;
@@ -31,6 +32,7 @@ export default async function GoogleCalendarIntegrationPage() {
       </div>
 
       <CalendarHistoryImportPanel />
+      <GmailSyncPanel />
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">
         <h2 className="mb-1 text-lg font-semibold text-gray-900">Google Calendar — jak przygotować dane dostępowe</h2>
@@ -66,10 +68,10 @@ export default async function GoogleCalendarIntegrationPage() {
           <li>
             Jako administrator Google Workspace: <Code>admin.google.com → Security → API controls →
             Domain-wide delegation → Add new</Code> → wklej <Code>Client ID</Code> z poprzedniego kroku, w polu
-            „OAuth scopes” wpisz oba zakresy, oddzielone przecinkiem:{" "}
-            <Code>https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/gmail.compose</Code>.
-            Drugi zakres (<Code>gmail.compose</Code>) jest potrzebny do tworzenia szkiców maili z fakturami w
-            module Faktury — bez niego przycisk „Utwórz szkic maila” tam nie zadziała.
+            „OAuth scopes” wpisz trzy zakresy, oddzielone przecinkiem:{" "}
+            <Code>https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/gmail.compose,https://www.googleapis.com/auth/gmail.readonly</Code>.
+            <Code>gmail.compose</Code> jest potrzebny do tworzenia szkiców maili z fakturami w module Faktury,{" "}
+            <Code>gmail.readonly</Code> — do historii e-maili klientów (panel „Historia e-maili” wyżej).
           </li>
           <li>
             Wybierz konto Workspace, które ma być właścicielem/współdzielącym 7 kalendarzy urządzeń (np.{" "}

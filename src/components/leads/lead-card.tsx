@@ -10,6 +10,7 @@ import { addWorkdays, nextWorkday } from "@/lib/leads/work-time";
 import { applySmsPlaceholders } from "@/lib/sms-template";
 import { INPUT, api } from "@/components/clients/client-forms";
 import { CalendarPlusIcon, PencilIcon, PhoneIcon, SmsIcon, StatusChip, fmtAgo, fmtDate } from "@/components/clients/ui";
+import { EmailViewer } from "@/components/clients/email-viewer";
 import { BTN, BTN_PRIMARY, LostDialog } from "./lead-dialogs";
 import { StageChip, TaskIcon, XCircleIcon, fmtRange, fmtWhen } from "./lead-ui";
 
@@ -74,6 +75,7 @@ export function LeadCard({
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editing, setEditing] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [emailIds, setEmailIds] = useState<string[] | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -419,7 +421,11 @@ export function LeadCard({
             {activities.map((a) => {
               const tone = ACTIVITY_TONE[a.type];
               return (
-                <li key={a.id} className="flex gap-2.5">
+                <li
+                  key={a.id}
+                  className={`flex gap-2.5 ${a.emailIds ? "-m-1 cursor-pointer rounded-lg p-1 hover:bg-[var(--c-bg)]" : ""}`}
+                  onClick={a.emailIds ? () => setEmailIds(a.emailIds!) : undefined}
+                >
                   <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full text-[11px] font-bold" style={{ background: tone.bg, color: tone.fg }}>
                     {tone.mark}
                   </span>
@@ -447,6 +453,7 @@ export function LeadCard({
         </Section>
       </div>
 
+      {emailIds && <EmailViewer messageIds={emailIds} onClose={() => setEmailIds(null)} />}
       {lost && (
         <LostDialog
           onClose={() => setLost(false)}

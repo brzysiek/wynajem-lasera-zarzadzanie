@@ -42,9 +42,10 @@ const TILE_TITLE: Record<ClientStatus, string> = {
 // miesiąc wcześniej i w samym miesiącu kampanii.
 const SEASON_MONTHS = new Set([0, 1, 7, 8]);
 
-type SortKey = "last" | "name" | "revenue" | "created";
+type SortKey = "last" | "contact" | "name" | "revenue" | "created";
 const SORT_LABEL: Record<SortKey, string> = {
   last: "Ostatni wynajem",
+  contact: "Ostatni kontakt",
   name: "Nazwa",
   revenue: "Przychód",
   created: "Data dodania",
@@ -215,6 +216,7 @@ export function ClientsManager({
     };
     const sorters: Record<SortKey, (a: ClientListRow, b: ClientListRow) => number> = {
       last: byLast,
+      contact: (a, b) => (b.lastContactAt ?? "").localeCompare(a.lastContactAt ?? "") || byLast(a, b),
       name: (a, b) => a.name.localeCompare(b.name, "pl"),
       revenue: (a, b) => b.revenueNet - a.revenueNet || byLast(a, b),
       created: (a, b) => b.createdAt.localeCompare(a.createdAt),
@@ -521,6 +523,11 @@ export function ClientsManager({
                           </>
                         ) : (
                           <span className="text-[var(--c-faint)]">—</span>
+                        )}
+                        {r.lastContactAt && r.lastContactAt !== r.lastRentalAt && (
+                          <div className="text-[11px] text-[var(--c-faint)]" title="Ostatni kontakt: e-mail, SMS lub rozmowa">
+                            kontakt: {fmtAgo(r.lastContactAt)}
+                          </div>
                         )}
                       </div>
                       <div className="hidden text-[13px] tabular-nums 2xl:block">{r.rentals12m}</div>

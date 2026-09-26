@@ -106,6 +106,8 @@ export type ClientListRow = {
   rentals12m: number;
   rentalsTotal: number;
   lastRentalAt: string | null;
+  // Ostatni kontakt = najnowsze z: e-mail (Gmail), SMS/rozmowa z panelu, wynajem.
+  lastContactAt: string | null;
   revenueNet: number;
   // Wynajmowane (od najczęstszego), potem deklarowane zainteresowania.
   devices: DeviceInterestKey[];
@@ -120,7 +122,27 @@ export type ClientListRow = {
   phoneDigits: string;
 };
 
+// Najnowszy kontakt z klientem (e-mail z Gmaila, SMS i rozmowy z panelu).
+async function lastContacts(): Promise<Map<string, Date>> {
+  const [emails, messages, calls] = await Promise.all([
+    prisma.emailMessage.groupBy({ by: ["clientId"], where: { clientId: { not: null } }, _max: { sentAt: true } }),
+    prisma.message.groupBy({ by: ["clientId"], where: { clientId: { not: null } }, _max: { sentAt: true } }),
+    prisma.leadActivity.groupBy({ by: ["clientId"], where: { clientId: { not: null }, type: { in: ["CALL", "CALL_NO_ANSWER", "SMS", "EMAIL"] } }, _max: { createdAt: true } }),
+  ]);
+  const out = new Map<string, Date>();
+  const put = (id: string | null, d: Date | null | undefined) => {
+    if (!id || !d) return;
+    const prev = out.get(id);
+    if (!prev || d > prev) out.set(id, d);
+  };
+  for (const e of emails) put(e.clientId, e._max.sentAt);
+  for (const m of messages) put(m.clientId, m._max.sentAt);
+  for (const c of calls) put(c.clientId, c._max.createdAt);
+  return out;
+}
+
 export async function loadClientRows(today = new Date()): Promise<ClientListRow[]> {
+  const contactsAt = await lastContacts();
   const clients = await prisma.client.findMany({
     select: {
       id: true,
@@ -163,6 +185,12 @@ export async function loadClientRows(today = new Date()): Promise<ClientListRow[
       rentals12m: summary.rentals12m,
       rentalsTotal: summary.rentalsTotal,
       lastRentalAt: summary.lastRentalAt?.toISOString() ?? null,
+      lastContactAt: (() => {
+        const d = [contactsAt.get(c.id), summary.lastRentalAt && summary.lastRentalAt <= today ? summary.lastRentalAt : null]
+          .filter((x): x is Date => Boolean(x))
+          .sort((a, b) => b.getTime() - a.getTime())[0];
+        return d?.toISOString() ?? null;
+      })(),
       revenueNet: summary.revenueNet,
       devices: [...new Set([...summary.rentedDevices, ...interests])],
       rentedDevices: summary.rentedDevices,
@@ -210,7 +238,21 @@ export type ClientHistoryItem =
   // Wydarzenie z historii kalendarzy (prompt 3A) — bez kwot.
   | { kind: "history"; id: string; at: string; title: string; deviceName: string; eventType: "WYNAJEM" | "SZKOLENIE" }
   // Faktura z Fakturowni (prompt 3B) — data sprzedaży, kwota netto.
-  | { kind: "invoice"; id: string; at: string; number: string; totalNet: number; positions: string | null; fromPanel: boolean };
+  | { kind: "invoice"; id: string; at: string; number: string; totalNet: number; positions: string | null; fromPanel: boolean }
+  // Wątek e-maili z Gmaila (prompt 3C) — zwinięty do jednej pozycji; treść
+  // pobierana z Gmaila dopiero przy otwarciu (messageIds od najnowszej).
+  | {
+      kind: "email";
+      id: string;
+      at: string;
+      subject: string | null;
+      snippet: string | null;
+      direction: "IN" | "OUT";
+      count: number;
+      hasAttachments: boolean;
+      mailbox: string;
+      messageIds: string[];
+    };
 
 export type ClientDetail = {
   id: string;
@@ -247,6 +289,9 @@ export type ClientDetail = {
     favoriteDevice: DeviceInterestKey | null;
   };
   history: ClientHistoryItem[];
+  // Adresy z firmowej domeny klienta, z których przyszły e-maile, a których
+  // nie ma wśród osób kontaktowych — propozycja „Dodaj osobę” (prompt 3, 4.3).
+  suggestedEmails: string[];
   // Sygnały klienta (CRM, prompt 2) — otwarte i zamknięte.
   leads: { id: string; title: string; stage: "SYGNAL" | "WYWIAD" | "OFERTA" | "REZERWACJA" | "WYGRANA" | "PRZEGRANA"; createdAt: string }[];
 };
@@ -346,6 +391,43 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       fromPanel: i.rentalId != null,
     });
   }
+  // E-maile z Gmaila zwinięte do wątków.
+  const emails = await prisma.emailMessage.findMany({
+    where: { clientId: id },
+    orderBy: { sentAt: "desc" },
+    take: 500,
+    select: { id: true, gmailThreadId: true, mailbox: true, direction: true, subject: true, snippet: true, hasAttachments: true, sentAt: true, fromAddress: true, toAddresses: true, matchMethod: true },
+  });
+  const threads = new Map<string, (typeof emails)[number][]>();
+  for (const e of emails) {
+    const k = `${e.mailbox}|${e.gmailThreadId}`;
+    threads.set(k, [...(threads.get(k) ?? []), e]);
+  }
+  for (const list of threads.values()) {
+    const latest = list[0];
+    history.push({
+      kind: "email",
+      id: latest.id,
+      at: latest.sentAt.toISOString(),
+      subject: list[list.length - 1].subject ?? latest.subject,
+      snippet: latest.snippet,
+      direction: latest.direction,
+      count: list.length,
+      hasAttachments: list.some((e) => e.hasAttachments),
+      mailbox: latest.mailbox,
+      messageIds: list.map((e) => e.id),
+    });
+  }
+  const known = new Set(c.contacts.map((p) => p.email?.toLowerCase()).filter(Boolean));
+  const suggestedEmails = [
+    ...new Set(
+      emails
+        .filter((e) => e.matchMethod === "DOMAIN")
+        .flatMap((e) => (e.direction === "IN" ? [e.fromAddress] : ((e.toAddresses as string[]) ?? [])))
+        .map((a) => a.toLowerCase())
+        .filter((a) => !known.has(a) && known.size > 0 && [...known].some((k) => k!.split("@")[1] === a.split("@")[1])),
+    ),
+  ];
   history.sort((a, b) => b.at.localeCompare(a.at));
 
   return {
@@ -394,6 +476,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       favoriteDevice: summary.favoriteDevice,
     },
     history,
+    suggestedEmails,
     leads: c.leads.map((l) => ({ id: l.id, title: l.title, stage: l.stage, createdAt: l.createdAt.toISOString() })),
   };
 }

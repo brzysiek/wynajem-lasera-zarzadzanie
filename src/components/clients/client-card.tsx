@@ -7,6 +7,7 @@ import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_LABEL, SOURCE_LABEL, formatNip, form
 import type { ClientContactDto, ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { Avatar, CalendarPlusIcon, DeviceTags, PencilIcon, PhoneIcon, SmsIcon, StatusChip, fmtAgo, fmtDate, fmtMoney } from "./ui";
 import { BTN_GHOST, ClientDataForm, ContactForm, NoteEditor, SmsComposer, api } from "./client-forms";
+import { EmailViewer } from "./email-viewer";
 
 // Karta klienta — prawa kolumna listy (od 1280 px) albo panel wysuwany.
 // Układ i kolejność sekcji wg docs/crm/mockup-klienci.html; sekcje z
@@ -39,7 +40,34 @@ function SectionTitle({ children, action }: { children: React.ReactNode; action?
   );
 }
 
-function HistoryRow({ item }: { item: ClientHistoryItem }) {
+function HistoryRow({ item, onOpenEmail }: { item: ClientHistoryItem; onOpenEmail: (ids: string[]) => void }) {
+  if (item.kind === "email") {
+    const incoming = item.direction === "IN";
+    return (
+      <button type="button" onClick={() => onOpenEmail(item.messageIds)} className="-m-1 flex gap-2.5 rounded-lg p-1 text-left hover:bg-[var(--c-bg)]">
+        <span
+          className={`flex h-7 w-7 flex-none items-center justify-center rounded-full text-[12px] font-bold ${
+            incoming ? "bg-[var(--c-gold-soft)] text-[var(--c-gold-deep)]" : "bg-[var(--c-navy-soft)] text-[var(--c-brand-deep)]"
+          }`}
+          title={incoming ? "E-mail od klienta" : "E-mail do klienta"}
+        >
+          {incoming ? "↓" : "↑"}
+        </span>
+        <span className="min-w-0 flex-grow">
+          <span className="block truncate text-[13px] text-[var(--c-text)]">
+            <b className="font-semibold">{incoming ? "E-mail od klienta" : "E-mail do klienta"}:</b> {item.subject ?? "(bez tematu)"}
+            {item.count > 1 && <span className="ml-1 rounded-full bg-[var(--c-bg)] px-1.5 text-[11px] text-[var(--c-muted)]">{item.count}</span>}
+            {item.hasAttachments && <span className="ml-1" title="Załącznik">📎</span>}
+          </span>
+          {item.snippet && <span className="block truncate text-[12px] text-[var(--c-muted)]">{item.snippet}</span>}
+          <span className="flex gap-1.5 text-[11px] text-[var(--c-muted)]">
+            {fmtDate(item.at)}
+            <span>· {item.mailbox}</span>
+          </span>
+        </span>
+      </button>
+    );
+  }
   if (item.kind === "rental") {
     const state = item.deleted ? "usunięty w Google" : item.upcoming ? "zaplanowany" : item.settled ? "rozliczony" : "do rozliczenia";
     return (
@@ -193,6 +221,7 @@ export function ClientCard({
   const [panel, setPanel] = useState<Panel>(intent);
   const [toast, setToast] = useState<string | null>(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [emailThread, setEmailThread] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -453,12 +482,32 @@ export function ClientCard({
 
         <div className="flex flex-col gap-2.5">
           <SectionTitle>Historia</SectionTitle>
+          {detail.suggestedEmails.length > 0 && (
+            <div className="rounded-[10px] border border-[var(--c-gold-soft)] bg-[var(--c-gold-soft)] px-3 py-2 text-[13px]">
+              <p className="text-[var(--c-gold-deep)]">E-maile z nowych adresów w domenie klienta:</p>
+              {detail.suggestedEmails.map((email) => (
+                <div key={email} className="mt-1 flex items-center gap-2">
+                  <span className="min-w-0 flex-grow truncate">{email}</span>
+                  <button
+                    type="button"
+                    className="flex-none text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]"
+                    onClick={async () => {
+                      const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${detail.id}/contacts`, "POST", { email });
+                      if (ok) applied(data.detail, 0, "Dodano osobę kontaktową.");
+                    }}
+                  >
+                    + Dodaj jako osobę
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           {detail.history.length === 0 ? (
             <p className="text-[13px] text-[var(--c-faint)]">Brak wynajmów i wiadomości.</p>
           ) : (
             <>
               {history.map((h) => (
-                <HistoryRow key={`${h.kind}-${h.id}`} item={h} />
+                <HistoryRow key={`${h.kind}-${h.id}`} item={h} onOpenEmail={setEmailThread} />
               ))}
               {detail.history.length > 6 && (
                 <button
@@ -549,6 +598,7 @@ export function ClientCard({
           </div>
         )}
       </div>
+      {emailThread && <EmailViewer messageIds={emailThread} onClose={() => setEmailThread(null)} />}
     </div>
   );
 }
