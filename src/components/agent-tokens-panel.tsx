@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import type { ApiTokenDto } from "@/lib/agent-api/tokens-admin";
 
+const VALIDITY = [30, 90, 180, 365];
+
 // Tokeny API agenta (Ustawienia → Użytkownicy, konto z rolą Agent AI):
 // tworzenie (token pokazany raz), unieważnianie, ostatnie wywołania.
 
@@ -20,6 +22,7 @@ export function AgentTokensPanel({ userId }: { userId: string }) {
   const [tokens, setTokens] = useState<ApiTokenDto[] | null>(null);
   const [calls, setCalls] = useState<Call[] | null>(null);
   const [name, setName] = useState("");
+  const [days, setDays] = useState(90);
   const [fresh, setFresh] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,7 +48,7 @@ export function AgentTokensPanel({ userId }: { userId: string }) {
   async function create() {
     setBusy(true);
     setError(null);
-    const { ok, data } = await call<{ token: string; tokens: ApiTokenDto[] }>(`/api/users/${userId}/tokens`, { method: "POST", body: JSON.stringify({ name }) });
+    const { ok, data } = await call<{ token: string; tokens: ApiTokenDto[] }>(`/api/users/${userId}/tokens`, { method: "POST", body: JSON.stringify({ name, days }) });
     setBusy(false);
     if (!ok) return setError(data.message ?? "Nie udało się utworzyć tokenu.");
     setFresh(data.token);
@@ -64,7 +67,9 @@ export function AgentTokensPanel({ userId }: { userId: string }) {
     <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 p-4">
       <p className="text-sm font-semibold text-gray-900">Tokeny API agenta</p>
       <p className="mt-0.5 text-xs text-gray-500">
-        Agent wywołuje <code>/api/agent/…</code> z nagłówkiem <code>Authorization: Bearer …</code>. Limit 120 zapytań na minutę. Opis: docs/agent-api.md.
+        Konektor MCP w claude.ai: adres <code>…/api/mcp</code>, logowanie przez OAuth (zgoda administratora) — połączenie pojawi się tu samo. Token
+        ręczny: nagłówek <code>Authorization: Bearer …</code> dla <code>/api/agent/…</code> i <code>/api/mcp</code>. Limit 120 zapytań na minutę. Opis:
+        docs/agent-api.md.
       </p>
 
       {fresh && (
@@ -89,9 +94,19 @@ export function AgentTokensPanel({ userId }: { userId: string }) {
         {tokens?.map((t) => (
           <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
             <span className={`font-medium ${t.revokedAt ? "text-gray-400 line-through" : "text-gray-900"}`}>{t.name}</span>
-            <code className="text-xs text-gray-500">{t.prefix}…</code>
+            {t.kind === "OAUTH" ? (
+              <span className="rounded-full bg-[#EAF4FB] px-2 py-0.5 text-[11px] font-medium text-[#1B6FA8]">konektor (OAuth)</span>
+            ) : (
+              <code className="text-xs text-gray-500">{t.prefix}…</code>
+            )}
             <span className="text-xs text-gray-500">
               utworzono {fmt(t.createdAt)} · {t.lastUsedAt ? `ostatnio ${fmt(t.lastUsedAt)}` : "nieużywany"} · 24 h: {t.calls24h}
+              {t.validUntil && !t.revokedAt && (
+                <span className={t.expired ? " text-red-600" : ""}>
+                  {" · "}
+                  {t.expired ? "wygasł" : t.kind === "OAUTH" ? "odświeżanie do" : "ważny do"} {fmt(t.validUntil)}
+                </span>
+              )}
             </span>
             {t.revokedAt ? (
               <span className="ml-auto text-xs text-gray-400">unieważniony {fmt(t.revokedAt)}</span>
@@ -111,6 +126,13 @@ export function AgentTokensPanel({ userId }: { userId: string }) {
           placeholder="Nazwa tokenu, np. Claude — porządki"
           className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-[#1B6FA8] focus:outline-none"
         />
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" aria-label="Ważność">
+          {VALIDITY.map((d) => (
+            <option key={d} value={d}>
+              ważny {d} dni
+            </option>
+          ))}
+        </select>
         <button type="button" disabled={busy} onClick={() => void create()} className="rounded-md bg-[#1B6FA8] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50">
           Utwórz token
         </button>

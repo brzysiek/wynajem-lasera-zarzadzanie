@@ -51,6 +51,17 @@ const AGENT_WRITES = [
   // ze źródłem i pewnością; duplikat trafia do archiwum „duplikat”).
   "POST clients/[id]/merge",
   "POST agent/klienci/[id]/scal",
+  // Serwer MCP (konektor claude.ai) — narzędzia z listy MCP_TOOLS niżej.
+  "POST mcp",
+];
+
+// Narzędzia MCP — dokładna lista; nowe narzędzie trzeba świadomie dopisać.
+const MCP_TOOLS = [
+  "reguly_porzadkow", "klienci_lista", "klient", "sygnaly_lista", "sygnal", "kalendarz_wynajmy", "dopasowania", "faktury",
+  "fv_bez_faktury", "archiwum", "dziennik", "wnioski_lista", "wniosek", "uwagi_lista", "zadania_lista", "osoby_biura",
+  "klient_zmien", "osoba_zmien", "osoba_dodaj", "klienci_scal", "przenies_do_klientow", "notatka_klient", "notatka_sygnal",
+  "zadanie_utworz", "zadanie_zmien", "zadanie_komentarz", "wniosek_utworz", "wniosek_zmien", "wniosek_komentarz",
+  "uwaga_utworz", "uwaga_zmien", "dziennik_wpis",
 ];
 
 const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;
@@ -79,9 +90,15 @@ function handlers(): Handler[] {
   });
 }
 
+// Publiczne z definicji trasy OAuth konektora MCP: rejestracja klienta
+// (tylko adresy powrotu claude.ai/claude.com) i endpoint tokenu (kod + PKCE
+// albo token odświeżający). Same nie dają dostępu do danych.
+const OAUTH_PUBLIC = ["POST oauth/register", "POST oauth/token"];
+
 function deniesAgent(h: Handler): boolean {
   const b = h.body;
   if (h.route.startsWith("auth/")) return true; // logowanie / reset hasła — publiczne
+  if (OAUTH_PUBLIC.includes(`${h.method} ${h.route}`)) return true;
   if (/CRON_SECRET|verifyCronSecret|cronAuthorized/.test(b)) return true;
   if (/requireStaffSession\(\)|requireAdminSession\(\)|requireDriverFinanceSession\(\)/.test(b)) return true;
   if (/requireSession\(OFFICE_ROLES\)/.test(b)) return true;
@@ -90,7 +107,7 @@ function deniesAgent(h: Handler): boolean {
 }
 
 function allowsAgent(h: Handler): boolean {
-  return /requireSession\((OFFICE_AND_AGENT|ADMIN_AND_AGENT)\)/.test(h.body) || /return withAgent\(req, /.test(h.body);
+  return /requireSession\((OFFICE_AND_AGENT|ADMIN_AND_AGENT)\)/.test(h.body) || /return withAgent\(req, /.test(h.body) || /await resolveAgent\(req\)/.test(h.body);
 }
 
 describe("trasy API a rola AGENT", () => {
@@ -175,6 +192,24 @@ describe("trasy API a rola AGENT", () => {
     ]) {
       expect(body(m, r), `${m} ${r}`).toContain("requireAdminSession()");
     }
+  });
+
+  it("MCP: 401 wskazuje metadane OAuth, zgodę wydaje ADMIN, narzędzia bez zakazanych operacji", () => {
+    const body = (method: string, route: string) => all.find((h) => h.method === method && h.route === route)!.body;
+    const mcpRoute = readFileSync(join(API_DIR, "mcp", "route.ts"), "utf8");
+    expect(mcpRoute).toContain("resource_metadata=");
+    expect(body("POST", "mcp")).toContain("status: 401, headers: UNAUTHORIZED_HEADERS()");
+    expect(body("POST", "oauth/authorize")).toContain("requireAdminSession()");
+    const tools = readFileSync(join(__dirname, "mcp", "tools.ts"), "utf8");
+    const names = [...tools.matchAll(/^\s{4}name: "([a-z_]+)",$/gm)].map((m) => m[1]);
+    expect(names.sort()).toEqual([...MCP_TOOLS].sort());
+    for (const forbidden of ["sms", "sendSms", "archiveRecords", "deleteArchived", "restoreRecords", "rental.create", "rental.update", "rental.delete", "@/lib/integrations/fakturownia", "@/lib/integrations/szybkisms", "gmail.compose", ".delete(", "deleteMany"]) {
+      expect(tools, forbidden).not.toContain(forbidden);
+    }
+    const server = readFileSync(join(__dirname, "oauth", "server.ts"), "utf8");
+    expect(server).toContain("verifyPkce(verifier, row.codeChallenge)");
+    expect(server).toContain("usedAt: null");
+    expect(server).toContain('agent?.role !== "AGENT"');
   });
 
   it("zapisy agenta z ograniczeniami mają je w kodzie", () => {

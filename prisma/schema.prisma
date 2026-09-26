@@ -1258,6 +1258,16 @@ model ApiToken {
   createdAt   DateTime  @default(now())
   lastUsedAt  DateTime?
   revokedAt   DateTime?
+  // Data ważności (tokeny ręczne: wybierana przy tworzeniu; OAuth: token
+  // dostępu 1 h). null = bez daty (tokeny sprzed wprowadzenia ważności).
+  expiresAt   DateTime?
+  // STATIC = token utworzony w Ustawieniach; OAUTH = połączenie konektora
+  // (claude.ai) zatwierdzone przez ADMIN — token dostępu + odświeżający,
+  // rotowane w tym samym wierszu (jedno połączenie = jeden wiersz).
+  kind             String    @default("STATIC") @db.VarChar(8)
+  oauthClientId    String?   @db.VarChar(191)
+  refreshHash      String?   @unique @db.VarChar(64)
+  refreshExpiresAt DateTime?
 
   calls ApiCallLog[]
 
@@ -1297,4 +1307,31 @@ model ImportBlock {
 
   @@unique([kind, hubspotId])
   @@map("import_blocks")
+}
+
+// OAuth dla konektora MCP (claude.ai): klienci z dynamicznej rejestracji
+// (RFC 7591) i jednorazowe kody autoryzacji (PKCE S256, 10 min).
+model OAuthClient {
+  id           String   @id @default(cuid())
+  clientId     String   @unique @db.VarChar(191)
+  clientName   String?
+  redirectUris Json // string[]
+  createdAt    DateTime @default(now())
+
+  @@map("oauth_clients")
+}
+
+model OAuthCode {
+  id            String    @id @default(cuid())
+  codeHash      String    @unique @db.VarChar(64)
+  clientId      String    @db.VarChar(191)
+  userId        String // konto agenta, do którego należy dostęp
+  approvedById  String // ADMIN, który zatwierdził
+  redirectUri   String    @db.Text
+  codeChallenge String    @db.VarChar(128)
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@map("oauth_codes")
 }

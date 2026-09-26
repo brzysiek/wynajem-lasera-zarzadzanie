@@ -18,6 +18,8 @@ const PUBLIC_ASSETS = [
   `${BASE_PATH}/manifest.webmanifest`,
   `${BASE_PATH}/icons/`,
   `${BASE_PATH}/favicon.ico`,
+  // Metadane OAuth dla konektora MCP (claude.ai) — publiczne z definicji.
+  `${BASE_PATH}/.well-known/`,
 ];
 
 // The KIEROWCA (driver) role only gets the read-only calendar and the
@@ -39,7 +41,9 @@ export default auth((req) => {
 
   if (!isLoggedIn && !isPublicRoute) {
     const loginUrl = new URL(`${BASE_PATH}/login`, req.nextUrl);
-    loginUrl.searchParams.set("callbackUrl", pathname);
+    // Ekran zgody OAuth (konektor MCP) wraca po logowaniu razem z parametrami żądania.
+    const keepQuery = pathname.startsWith(`${BASE_PATH}/oauth/`);
+    loginUrl.searchParams.set("callbackUrl", keepQuery ? `${pathname}${req.nextUrl.search}` : pathname);
     return NextResponse.redirect(loginUrl);
   }
 

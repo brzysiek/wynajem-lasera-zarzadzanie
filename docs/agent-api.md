@@ -2,6 +2,42 @@
 
 JSON API do pracy agenta nad porządkami danych: wnioski, uwagi, dziennik zmian, reguły, odczyt klientów, sygnałów, dopasowań i faktur oraz zmiana danych klientów z automatycznym wpisem w dzienniku.
 
+## Konektor MCP (claude.ai) — zalecany sposób
+
+Panel ma serwer MCP: `https://panel.wynajemlasera.pl/api/mcp`. Po podłączeniu agent w claude.ai widzi panel jako zestaw narzędzi (tak jak Gmail czy HubSpot), a token nigdy nie trafia do czatu.
+
+**Podłączenie** (robi administrator, raz):
+
+1. claude.ai → Ustawienia → Konektory → Dodaj własny konektor.
+2. Nazwa: „Panel WynajemLasera”. Adres: `https://panel.wynajemlasera.pl/api/mcp`. Pola OAuth zostaw puste, bo claude.ai zarejestruje się samo.
+3. Kliknij **Połącz**. Otworzy się okno panelu. Zaloguj się jako administrator i na ekranie zgody wybierz konto agenta („Klaudiusz”), potem **Zezwól**.
+4. Połączenie pojawi się w **Ustawienia → Użytkownicy → Klaudiusz → Tokeny API** jako „konektor (OAuth)”. Tam unieważnisz je jednym kliknięciem.
+
+**Zasady tokenów OAuth:**
+
+- Token dostępu jest ważny 1 godzinę i claude.ai sam go odświeża.
+- Odświeżanie wygasa po 30 dniach bez użycia.
+- Dostęp działa zawsze jako konto z rolą AGENT, z tymi samymi regułami co to API.
+- Każde wywołanie trafia do logu jako `/api/mcp tools/call:<narzędzie>`.
+
+**Zabezpieczenia OAuth:**
+
+- PKCE S256 jest obowiązkowe.
+- Adresy powrotu mogą prowadzić wyłącznie do `https://claude.ai/api/mcp/auth_callback` albo `https://claude.com/api/mcp/auth_callback`.
+- Kod autoryzacji jest ważny 5 minut i działa tylko raz.
+- Zgodę wydaje wyłącznie zalogowany administrator.
+
+**Dostęp sieciowy.** Na produkcji musi przechodzić ruch z adresów Anthropic (`160.79.104.0/21`). Konektor działa tylko na produkcji. Serwer testowy ma ścieżkę `/wynajem`, a claude.ai szuka metadanych OAuth w katalogu głównym domeny.
+
+**Stały token zamiast OAuth.** Jeśli w organizacji claude.ai jest sekcja „Request headers”, można zamiast OAuth wpisać nagłówek `Authorization: Bearer <token z Ustawień>`.
+
+**Narzędzia.** Odpowiadają trasom opisanym niżej:
+
+- **Odczyt:** `reguly_porzadkow`, `klienci_lista`, `klient`, `sygnaly_lista`, `sygnal`, `kalendarz_wynajmy`, `dopasowania`, `faktury`, `fv_bez_faktury`, `archiwum`, `dziennik`, `wnioski_lista`, `wniosek`, `uwagi_lista`, `zadania_lista`, `osoby_biura`.
+- **Zapis:** `klient_zmien`, `osoba_zmien`, `osoba_dodaj`, `klienci_scal`, `przenies_do_klientow`, `notatka_klient`, `notatka_sygnal`, `zadanie_utworz` (pole `dla` przyjmuje id albo imię, np. „Ania”), `zadanie_zmien` (tylko własne zadania), `zadanie_komentarz`, `wniosek_utworz`, `wniosek_zmien`, `wniosek_komentarz`, `uwaga_utworz`, `uwaga_zmien`, `dziennik_wpis`.
+
+---
+
 ## Adres i uwierzytelnienie
 
 - Produkcja: `https://panel.wynajemlasera.pl/api/agent/…`
@@ -13,7 +49,7 @@ Każde żądanie musi mieć nagłówek:
 Authorization: Bearer wla_…
 ```
 
-Token tworzy administrator w **Ustawienia → Użytkownicy → (konto z rolą Agent AI) → Tokeny API → Utwórz token**. Token jest pokazywany tylko raz, bo w bazie zapisuje się wyłącznie jego skrót. Unieważnia się go tam samo przyciskiem **Unieważnij**, i działa to od razu. Token działa tylko dla konta z rolą `AGENT`. Po zmianie roli konta token przestaje działać.
+Token tworzy administrator w **Ustawienia → Użytkownicy → (konto z rolą Agent AI) → Tokeny API → Utwórz token**. Przy tworzeniu wybiera ważność: 30, 90 (domyślnie), 180 albo 365 dni. Token jest pokazywany tylko raz, bo w bazie zapisuje się wyłącznie jego skrót. Unieważnia się go tam samo przyciskiem **Unieważnij**, i działa to od razu. Token działa tylko dla konta z rolą `AGENT`. Po zmianie roli konta token przestaje działać.
 
 - **Limit:** 120 zapytań na minutę na token. Po jego przekroczeniu serwer zwraca `429` z nagłówkiem `Retry-After: 60`.
 - **Log:** każde wywołanie jest zapisywane (token, metoda, ścieżka, status, czas). Administrator widzi je w **Tokeny API → Ostatnie wywołania**.
