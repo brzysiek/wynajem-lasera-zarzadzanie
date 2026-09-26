@@ -43,6 +43,14 @@ describe("classifyEmail", () => {
     expect(classifyEmail({ from: ["c@wspolna.pl"], to: ["kontakt@wynajemlasera.pl"], cc: [] }, index, own)).toBeNull();
   });
 
+  it("nadawca spoza bazy, klientka w DW — też jej korespondencja", () => {
+    expect(classifyEmail({ from: ["ksiegowa@biuro.pl"], to: ["kontakt@wynajemlasera.pl"], cc: ["ewa@gmail.com"] }, index, own)).toMatchObject({
+      direction: "IN",
+      clientId: "c2",
+      matchMethod: "EMAIL",
+    });
+  });
+
   it("korespondencja spoza bazy klientów nie trafia do panelu", () => {
     expect(classifyEmail({ from: ["faktury@dostawca.pl"], to: ["kontakt@wynajemlasera.pl"], cc: [] }, index, own)).toBeNull();
   });

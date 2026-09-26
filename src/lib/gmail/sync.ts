@@ -15,8 +15,18 @@ const KEY_ENABLED = "gmail_sync_enabled";
 const KEY_MAILBOXES = "gmail_mailboxes";
 const stateKey = (mailbox: string) => `gmail_state:${mailbox}`;
 
-type MailboxState = { historyId: string | null; importedAddresses: string[]; lastSyncAt: string | null; lastError: string | null };
-const EMPTY_STATE: MailboxState = { historyId: null, importedAddresses: [], lastSyncAt: null, lastError: null };
+// `cursor` = miejsce, w którym przerwano import paczki adresów (limit czasu
+// przebiegu) — następny przebieg wznawia dokładnie stamtąd, zamiast zaczynać
+// paczkę od nowa (wcześniej duża paczka mogła się zapętlić).
+type ImportCursor = { addresses: string[]; pageToken: string | null; offset: number };
+type MailboxState = {
+  historyId: string | null;
+  importedAddresses: string[];
+  cursor: ImportCursor | null;
+  lastSyncAt: string | null;
+  lastError: string | null;
+};
+const EMPTY_STATE: MailboxState = { historyId: null, importedAddresses: [], cursor: null, lastSyncAt: null, lastError: null };
 
 async function getSetting(key: string): Promise<string | null> {
   return (await prisma.setting.findUnique({ where: { key } }))?.value ?? null;
@@ -65,15 +75,25 @@ function ownMatcher(mailboxes: string[]) {
 
 // Pobiera metadane nowych (nieznanych) wiadomości i zapisuje te, które
 // dotyczą klientów. Zwraca liczbę zapisanych.
-async function processIds(mailbox: string, ids: string[], index: AddressIndex, isOwn: (a: string) => boolean, deadline: number): Promise<{ stored: number; done: boolean }> {
+const PARALLEL = 10;
+
+async function processIds(
+  mailbox: string,
+  ids: string[],
+  index: AddressIndex,
+  isOwn: (a: string) => boolean,
+  deadline: number,
+  startOffset = 0,
+): Promise<{ stored: number; done: boolean; nextOffset: number }> {
   const known = new Set(
     (await prisma.emailMessage.findMany({ where: { mailbox, gmailMessageId: { in: ids } }, select: { gmailMessageId: true } })).map((m) => m.gmailMessageId),
   );
-  const todo = ids.filter((id) => !known.has(id));
   let stored = 0;
-  for (let i = 0; i < todo.length; i += 5) {
-    if (Date.now() > deadline) return { stored, done: false };
-    const metas = await Promise.all(todo.slice(i, i + 5).map((id) => getMessageMeta(mailbox, id)));
+  for (let i = startOffset; i < ids.length; i += PARALLEL) {
+    if (Date.now() > deadline) return { stored, done: false, nextOffset: i };
+    const todo = ids.slice(i, i + PARALLEL).filter((id) => !known.has(id));
+    if (todo.length === 0) continue;
+    const metas = await Promise.all(todo.map((id) => getMessageMeta(mailbox, id)));
     const rows = [];
     for (const m of metas) {
       if (isSkippedByLabels(m.labelIds)) continue;
@@ -116,7 +136,7 @@ async function processIds(mailbox: string, ids: string[], index: AddressIndex, i
     }
     if (rows.length) stored += (await prisma.emailMessage.createMany({ data: rows, skipDuplicates: true })).count;
   }
-  return { stored, done: true };
+  return { stored, done: true, nextOffset: ids.length };
 }
 
 async function incremental(mailbox: string, state: MailboxState, index: AddressIndex, isOwn: (a: string) => boolean, deadline: number) {
@@ -154,30 +174,35 @@ const ADDRESSES_PER_QUERY = 10;
 
 async function importHistory(mailbox: string, state: MailboxState, index: AddressIndex, isOwn: (a: string) => boolean, deadline: number) {
   const imported = new Set(state.importedAddresses);
-  const pending = [...index.byEmail.keys()].filter((a) => !imported.has(a) && !isOwn(a)).sort();
+  const pendingOf = () => [...index.byEmail.keys()].filter((a) => !imported.has(a) && !isOwn(a)).sort();
   let stored = 0;
-  for (let i = 0; i < pending.length; i += ADDRESSES_PER_QUERY) {
-    if (Date.now() > deadline) break;
-    const chunk = pending.slice(i, i + ADDRESSES_PER_QUERY);
-    let pageToken: string | undefined;
-    let complete = true;
-    do {
-      const r = await listMessageIds(mailbox, historyQuery(chunk), pageToken);
-      const res = await processIds(mailbox, r.ids, index, isOwn, deadline);
-      stored += res.stored;
-      if (!res.done) {
-        complete = false;
-        break;
-      }
-      pageToken = r.nextPageToken ?? undefined;
-    } while (pageToken);
-    if (!complete) break;
-    for (const a of chunk) imported.add(a);
-    state.importedAddresses = [...imported];
+  let cursor = state.cursor;
+  while (Date.now() < deadline) {
+    if (!cursor) {
+      const next = pendingOf().slice(0, ADDRESSES_PER_QUERY);
+      if (next.length === 0) break;
+      cursor = { addresses: next, pageToken: null, offset: 0 };
+    }
+    const r = await listMessageIds(mailbox, historyQuery(cursor.addresses), cursor.pageToken ?? undefined);
+    const res = await processIds(mailbox, r.ids, index, isOwn, deadline, cursor.offset);
+    stored += res.stored;
+    if (!res.done) {
+      cursor = { ...cursor, offset: res.nextOffset };
+      break;
+    }
+    if (r.nextPageToken) {
+      cursor = { ...cursor, pageToken: r.nextPageToken, offset: 0 };
+    } else {
+      for (const a of cursor.addresses) imported.add(a);
+      state.importedAddresses = [...imported];
+      cursor = null;
+    }
+    state.cursor = cursor;
     await putState(mailbox, state);
   }
-  const left = [...index.byEmail.keys()].filter((a) => !imported.has(a) && !isOwn(a)).length;
-  return { stored, pendingAddresses: left };
+  state.cursor = cursor;
+  await putState(mailbox, state);
+  return { stored, pendingAddresses: pendingOf().length };
 }
 
 export type GmailSyncResult = { mailbox: string; newMessages: number; historyStored: number; pendingAddresses: number; error: string | null }[];

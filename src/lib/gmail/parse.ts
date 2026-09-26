@@ -90,6 +90,14 @@ export function classifyEmail(
     const hit = index.byEmail.get(a);
     if (hit) return { direction, clientId: hit.clientId, clientContactId: hit.contactId, matchMethod: "EMAIL", counterpart: a };
   }
+  // Nadawca spoza bazy, a klientka jest w „Do”/„DW” (np. wątek z kimś z jej
+  // gabinetu, my w kopii) — to też korespondencja z klientką.
+  if (!fromOwn) {
+    for (const a of [...input.to, ...input.cc]) {
+      const hit = index.byEmail.get(a);
+      if (hit) return { direction: "IN", clientId: hit.clientId, clientContactId: hit.contactId, matchMethod: "EMAIL", counterpart: a };
+    }
+  }
   for (const a of others) {
     if (isOwn(a)) continue;
     const clientId = index.byDomain.get(domainOf(a));
