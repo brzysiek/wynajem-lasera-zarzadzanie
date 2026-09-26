@@ -36,14 +36,16 @@ export function Modal({ title, onClose, children, width = 460 }: { title: string
 // = zadanie dla prowadzącej osoby w wybranym dniu.
 export function LostDialog({
   count = 1,
+  initialReason,
   onClose,
   onSubmit,
 }: {
   count?: number;
+  initialReason?: LostReasonKey;
   onClose: () => void;
   onSubmit: (v: { lostReason: LostReasonKey; lostNote: string; returnAt: string }) => Promise<string | null>;
 }) {
-  const [reason, setReason] = useState<LostReasonKey | "">("");
+  const [reason, setReason] = useState<LostReasonKey | "">(initialReason ?? "");
   const [note, setNote] = useState("");
   const [returnAt, setReturnAt] = useState("");
   const [saving, setSaving] = useState(false);

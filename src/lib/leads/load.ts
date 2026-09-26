@@ -3,7 +3,7 @@ import { loadClientStatuses } from "@/lib/clients/load";
 import type { ClientStatus } from "@/lib/clients/status";
 import { DEVICE_INTEREST_KEYS, type DeviceInterestKey } from "@/lib/clients/labels";
 import { hubspotDealUrl } from "@/lib/integrations/hubspot-deals";
-import { FRESH_DAYS } from "@/lib/leads/today";
+import { loadQualifiedMap } from "@/lib/clients/qualify";
 import type { LeadStageKey, LeadTypeKey } from "@/lib/leads/parse-deal";
 import type { ActivityTypeKey, LostReasonKey } from "@/lib/leads/labels";
 
@@ -41,6 +41,7 @@ const ROW_SELECT = {
   rentalId: true,
   ownerId: true,
   hubspotDealId: true,
+  callList: true,
   client: { select: { name: true, city: true } },
   clientContact: { select: { firstName: true, lastName: true, phone: true, email: true } },
   owner: { select: { name: true } },
@@ -78,6 +79,12 @@ export type LeadRow = {
   fromHubspot: boolean;
   lastActivity: { type: ActivityTypeKey; at: string; body: string | null } | null;
   noAnswerCount: number;
+  // Lista „Do obdzwonienia” (prompt 2 v2): zaległe zapytanie z 2026.
+  callList: boolean;
+  // Była rozmowa („Rozmawiałam”) albo odpowiedź mailem — zdejmuje z listy.
+  talked: boolean;
+  // Klient zakwalifikowany (jest na liście /klienci); false = „kontakt z zapytania”.
+  clientQualified: boolean;
   search: string;
 };
 
@@ -87,7 +94,10 @@ function queryRows(where: Parameters<typeof prisma.lead.findMany>[0] extends inf
   return prisma.lead.findMany({ where, orderBy: { createdAt: "desc" }, select: ROW_SELECT });
 }
 
-function toRow(l: RowSource, statuses: Map<string, ClientStatus>): LeadRow {
+type Extra = { statuses: Map<string, ClientStatus>; qualified: Map<string, boolean>; talked: Set<string> };
+
+function toRow(l: RowSource, x: Extra): LeadRow {
+  const statuses = x.statuses;
   const person = l.contactName ?? personName(l.clientContact);
   const phone = l.contactPhone ?? l.clientContact?.phone ?? null;
   const email = l.contactEmail ?? l.clientContact?.email ?? null;
@@ -121,22 +131,33 @@ function toRow(l: RowSource, statuses: Map<string, ClientStatus>): LeadRow {
     fromHubspot: Boolean(l.hubspotDealId),
     lastActivity: last ? { type: last.type, at: last.createdAt.toISOString(), body: last.body } : null,
     noAnswerCount: l._count.activities,
+    callList: l.callList,
+    talked: x.talked.has(l.id),
+    clientQualified: l.clientId ? (x.qualified.get(l.clientId) ?? false) : false,
     search: [l.title, l.client?.name, person, email, phone, l.location ?? l.client?.city, l.message].filter(Boolean).join(" ").toLowerCase(),
   };
 }
 
-export async function loadLeadRows(): Promise<LeadRow[]> {
-  const leads = await queryRows({});
-  const statuses = await loadClientStatuses([...new Set(leads.map((l) => l.clientId).filter((x): x is string => Boolean(x)))]);
-  return leads.map((l) => toRow(l, statuses));
+async function loadExtra(leads: { id: string; clientId: string | null }[]): Promise<Extra> {
+  const clientIds = [...new Set(leads.map((l) => l.clientId).filter((x): x is string => Boolean(x)))];
+  const [statuses, qualified, talkedRows] = await Promise.all([
+    loadClientStatuses(clientIds),
+    loadQualifiedMap(clientIds),
+    prisma.leadActivity.groupBy({ by: ["leadId"], where: { leadId: { in: leads.map((l) => l.id) }, type: { in: ["CALL", "EMAIL"] } } }),
+  ]);
+  return { statuses, qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)) };
 }
 
-// Plakietka w menu: nowe sygnały bez żadnego kontaktu (z ostatnich
-// FRESH_DAYS dni — starsza zaległość z HubSpota nie krzyczy w menu).
-export async function countFreshLeads(now = new Date()): Promise<number> {
-  return prisma.lead.count({
-    where: { stage: "SYGNAL", firstContactAt: null, createdAt: { gte: new Date(now.getTime() - FRESH_DAYS * 86_400_000) } },
-  });
+export async function loadLeadRows(): Promise<LeadRow[]> {
+  const leads = await queryRows({});
+  const extra = await loadExtra(leads);
+  return leads.map((l) => toRow(l, extra));
+}
+
+// Plakietka w menu: nowe sygnały z „Na dziś” bez żadnego kontaktu — bez
+// listy „Do obdzwonienia” (prompt 2 v2, 1.0a).
+export async function countFreshLeads(): Promise<number> {
+  return prisma.lead.count({ where: { stage: "SYGNAL", firstContactAt: null, callList: false } });
 }
 
 export type LeadActivityDto = {
@@ -167,8 +188,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
     select: { ...ROW_SELECT, lostNote: true, returnAt: true, location: true },
   });
   if (!lead) return null;
-  const statuses = await loadClientStatuses(lead.clientId ? [lead.clientId] : []);
-  const row = toRow(lead, statuses);
+  const row = toRow(lead, await loadExtra([lead]));
 
   const [activities, otherLeads, clientRentals, rentalOptions, emails] = await Promise.all([
     prisma.leadActivity.findMany({

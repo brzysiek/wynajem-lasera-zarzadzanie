@@ -1,4 +1,18 @@
-# Prompt dla Claude Code — „Sygnały”: lejek sprzedaży w panelu, zsynchronizowany z HubSpotem (CRM, prompt 2 z 2)
+# Prompt dla Claude Code — „Sygnały”: lejek sprzedaży w panelu, zsynchronizowany z HubSpotem (CRM, prompt 2)
+
+> **AKTUALIZACJA 26.09.2026 — moduł Sygnały już istnieje w panelu.** Nie budujesz go od zera. Wdrażasz
+> **różnice** względem tego, co działa dziś: sekcje **1.0** (kontakt a klient, `qualifiedAt`, backfill),
+> **1.0a** (lista „Do obdzwonienia”, pole `callList`), **2.2** (poprawione mapowanie etapów — patrz niżej),
+> **2.3** (nowe zakresy importu), **3.2** (czwarta zakładka) i **3.3** (przycisk „Odpowiedziałam mailem”),
+> kryteria 7a–7b. Zanim zaczniesz: porównaj ten prompt z obecnym kodem modułu, wypisz listę różnic do
+> wdrożenia i **zatrzymaj się na potwierdzenie**.
+>
+> **Import sygnałów NIE był jeszcze uruchomiony** (podgląd z 26.09: 520 transakcji w HubSpot, 168 do
+> importu, 40 już w panelu z crona, 312 pominiętych). Uruchomimy go dopiero po wdrożeniu tych zmian —
+> 40 sygnałów, które cron już dociągnął, przelicz według nowych reguł (kwalifikacja, „Do obdzwonienia”).
+>
+> **Poprawka mapowania:** panel ostrzega, że w lejku „Proces sprzedaży” brakuje etapu `3080529125`
+> (Wysłany kontrakt). Ten etap należy do lejka „Wynajem”, więc usuń go z mapowania.
 
 ## 0. Kontekst i cel
 
@@ -32,6 +46,99 @@ mapowanie i **zatrzymaj się na potwierdzenie**, zanim zbudujesz parser. Nie zak
 
 ---
 
+## 0.1 Makieta — obowiązujący wygląd
+
+Wygląd ekranów z tego promptu jest ustalony w makiecie zaakceptowanej przez właściciela:
+
+- `docs/crm/mockup-sygnaly.html` + `docs/crm/zrzuty/sygnaly-na-dzis.png` — `/sygnaly`, widok „Na dziś” z kartą sygnału w prawej kolumnie i zakładką „Do obdzwonienia”.
+- `docs/crm/mockup-klienci.html` — karta klienta (sekcje „Otwarte sygnały” i „Historia”), którą ten
+  prompt rozszerza.
+
+Zasady:
+
+- Otwórz makietę **przed** budową ekranów i odwzoruj ją: układ, hierarchię, kolejność sekcji, etykiety,
+  chipy statusów, szybkie akcje, stany wyróżnienia. Widoki „Tablica” i „Lista” nie mają makiety — zbuduj je w tym samym języku wizualnym (karty, chipy, kolory etapów).
+- Kolory i krój: z `src/components/shell-tokens.ts` (`SHELL` / `APP`) i Jost z `globals.css` — makieta
+  używa tych samych wartości, ale w kodzie odwołuj się do tokenów, nie przepisuj hexów. Kolory statusów
+  klienta (Stały zielony, Nowy niebieski, Uśpiony pomarańczowy, Były grafit, Potencjalny szary,
+  Nie kontaktować przekreślony) dodaj jako nazwane stałe obok `APP`.
+- Style w makiecie są inline wyłącznie dlatego, że to statyczny plik. Buduj z istniejących wzorców i
+  komponentów aplikacji (powłoka, sidebar, `page-header.tsx`, tabele z modułu Finansów, panel Zadań),
+  nie kopiuj markupu makiety 1:1.
+- Dane w makiecie są przykładowe. Liczby, nazwy i treści biorą się z bazy. Pola oznaczone `[…]`
+  (np. podsumowanie 30 dni) to miejsca na wartości liczone.
+- Logika i zakres: rozstrzyga ten prompt. Wygląd: rozstrzyga makieta. Jeśli makieta pokazuje coś, czego
+  prompt nie opisuje (np. podpowiedź „Przed sezonem” nad listą klientów), zrób to, jeśli da się to
+  policzyć z dostępnych danych; jeśli nie — pomiń i wypisz w podsumowaniu pracy.
+- Ekran projektowany na 1440 px. Poniżej 1280 px prawy panel (karta klienta / sygnału) staje się
+  wysuwanym panelem nad listą, zamiast stałej kolumny.
+
+---
+
+## 1.0 Kontakt a klient — zasada (decyzja właściciela z 26.09.2026)
+
+**Sygnał to zapytanie. Klient to gabinet, z którym faktycznie nawiązaliśmy kontakt.**
+
+- Każdy sygnał (formularz, telefon, e-mail) ma przypiętą osobę i rekord `Client`, ale taki klient jest
+  **niezakwalifikowany** (`Client.qualifiedAt = null`) i **nie pokazuje się** na liście `/klienci` ani w
+  jej kafelkach i licznikach.
+- Klient staje się **zakwalifikowany** (`qualifiedAt = now()`, status „Potencjalny”, dopóki nie ma
+  wynajmu) przy pierwszym z tych zdarzeń w dowolnym jego sygnale:
+  1. rozmowa zapisana jako „Rozmawiałam” (`LeadActivity.type = CALL`),
+  2. **e-mail wysłany w odpowiedzi na zapytanie**: przycisk „Odpowiedziałam mailem” na karcie sygnału
+     (do czasu podłączenia Gmaila) albo — po etapie B promptu 3 — wiadomość wychodząca do adresu tej
+     osoby wykryta w skrzynce (`EmailMessage.direction = OUT`, data po utworzeniu sygnału),
+  3. utworzenie rezerwacji z sygnału.
+  SMS (np. „Nie mogłam się dodzwonić”) i nieodebrane połączenie **nie** kwalifikują.
+- Klient z wynajmem, historią z kalendarza lub fakturą jest zawsze zakwalifikowany (backfill niżej).
+- Nowy sygnał od klienta już zakwalifikowanego podpina się pod niego — nie tworzy nowego rekordu.
+- Kwalifikacja jest jednokierunkowa; cofnąć może tylko ADMIN (przycisk na karcie klienta, z powodem).
+
+Zmiany w danych:
+
+```
+model Client {
+  // ...istniejące pola...
+  qualifiedAt     DateTime?   // null = kontakt z zapytania, nie klient
+  qualifiedReason String?     // "CALL" | "EMAIL_REPLY" | "RENTAL" | "HISTORY" | "MANUAL" | "BACKFILL"
+}
+```
+
+**Backfill istniejących klientów** (przy migracji, z podglądem jak przy imporcie): zakwalifikowani są
+klienci, którzy mają `Rental`, `RentalHistory` (AUTO/CONFIRMED) lub `ClientInvoice`, albo transakcję
+HubSpot w etapie dalszym niż „Sygnał”, albo zapisaną w HubSpot rozmowę / e-mail wychodzący. Pozostali
+(dziś większość z ~349 „Potencjalnych”) → `qualifiedAt = null`. Podgląd pokazuje liczby w obu grupach i
+20 przykładów z każdej — **zatrzymaj się na potwierdzenie** przed zapisem.
+
+Lista `/klienci`: domyślnie tylko zakwalifikowani. Obok kafelków link **„Kontakty z zapytań (N)”** —
+ta sama tabela z filtrem `qualifiedAt = null`, z kolumną „Ostatnie zapytanie” i linkiem do sygnału.
+Wyszukiwarka w formularzu wynajmu i w nagłówku panelu przeszukuje obie grupy.
+
+## 1.0a Baza „Do obdzwonienia” (zaległe zapytania z 2026)
+
+Zapytania z HubSpota **od 01.01.2026**, których nikt nie obsłużył, nie trafiają do „Na dziś” (zalałyby
+widok czerwonymi licznikami), tylko do osobnej listy **„Do obdzwonienia”** — bazy do systematycznej
+obdzwonki przez obsługę klienta.
+
+- Kryteria przy imporcie: transakcja utworzona 01.01.2026–dzień wdrożenia, etap „Sygnał” lub
+  „Zamrażalnik”, bez rozmowy i bez e-maila wychodzącego w historii HubSpot.
+  → `Lead.stage = SYGNAL`, `Lead.callList = true` (nowe pole `callList Boolean @default(false)`),
+  `nextActionAt = null`.
+- Starsze niż 01.01.2026 i nieobsłużone → `PRZEGRANA` z powodem `ARCHIWUM_IMPORTU` (zmień etykietę
+  powodu na „Archiwum (sprzed 2026)”); zostają wyszukiwalne, nie pojawiają się w widokach pracy.
+- Nowe sygnały po wdrożeniu nigdy nie trafiają na tę listę — idą normalnie do „Na dziś”.
+- Ekran: czwarta zakładka `/sygnaly` **„Do obdzwonienia (N)”**:
+  - pasek postępu „Obdzwoniono 42 z 187”,
+  - kolejność: najpierw zapytania o konkretny termin/rezerwację, potem kontakt, na końcu pobranie cennika;
+    w każdej grupie od najnowszych; filtr po urządzeniu i miejscowości,
+  - wiersz: nazwa/e-mail, telefon (lub „brak telefonu — tylko e-mail”), typ, data zapytania, urządzenie,
+    przycisk „Zadzwoń” (ta sama karta sygnału i te same wyniki rozmowy co w „Na dziś”),
+  - tryb seryjny: po zapisaniu wyniku rozmowy karta od razu przechodzi do następnego kontaktu z listy,
+  - wynik „Rozmawiałam” → kwalifikacja klienta + sygnał dalej normalnym lejkiem (znika z listy),
+    „Nie odebrała” → zostaje na liście z licznikiem prób (po 3 próbach propozycja „Przegrana — brak kontaktu”),
+    „Nie zainteresowana” → `PRZEGRANA` z powodem.
+- Plakietka w menu „Sygnały” liczy tylko nowe sygnały z „Na dziś”, nie listę do obdzwonienia.
+
 ## 1. Model danych
 
 ```
@@ -62,7 +169,7 @@ enum LostReason {
   INNE_URZADZENIE
   BRAK_KONTAKTU
   TYLKO_CENNIK      // chciała tylko cennik, bez realnej potrzeby
-  ARCHIWUM_IMPORTU  // stare rekordy z importu HubSpot (sprzed 09.2025)
+  ARCHIWUM_IMPORTU  // „Archiwum (sprzed 2026)” — nieobsłużone zapytania sprzed 01.01.2026
   INNE
 }
 
@@ -162,7 +269,6 @@ sprawdza każdy zakres osobno, jak w prompcie 1.
 | Szansa (`appointmentscheduled`) | `WYWIAD` |
 | Wywiad/oferta (`qualifiedtobuy`) | `OFERTA` |
 | Akceptacja/rezerwacja (`presentationscheduled`) | `REZERWACJA` |
-| Wysłany kontrakt (`3080529125`) | `REZERWACJA` |
 | Zamknięte pomyślnie (`closedwon`) | `WYGRANA` |
 | Zamknięte niepomyślnie (`closedlost`) | `PRZEGRANA` (powód `INNE`, notatka z `closed_lost_reason`) |
 | Zamrażalnik (`3211592907`) | `PRZEGRANA` (powód `INNE`, notatka „Zamrażalnik w HubSpot”) |
@@ -173,21 +279,22 @@ Odsyłanie etapu do HubSpota: `SYGNAL→3115771105`, `WYWIAD→appointmentschedu
 **zweryfikuj przez API** (`/crm/v3/pipelines/deals`) przy starcie synchronizacji i trzymaj w konfiguracji,
 nie w kodzie na sztywno; brak etapu → błąd widoczny w ustawieniach, bez zapisu.
 
-Lejek „Wynajem” (`2247404753`) — **pomijaj** (3 transakcje, realizacja jest w kalendarzu panelu).
+Lejek „Wynajem” (`2247404753`) — **pomijaj** (3 transakcje, realizacja jest w kalendarzu panelu). Etap „Wysłany kontrakt” (`3080529125`) należy do tego lejka — nie ma go w mapowaniu i nie powinien wywoływać ostrzeżenia.
 
 ### 2.3 Pierwszy import
 
 Jak w prompcie 1: podgląd (dry run) → import. Zakres:
 
-- transakcje utworzone **od 01.09.2025** — wszystkie;
-- starsze — tylko te **poza** etapem „Sygnał” (reszta to archiwum importu, zostaje tylko w HubSpocie).
+- transakcje utworzone **od 01.01.2026** — wszystkie (nieobsłużone → lista „Do obdzwonienia”, sekcja 1.0a);
+- utworzone 01.09.2025–31.12.2025 — wszystkie (nieobsłużone → `PRZEGRANA`, „Archiwum (sprzed 2026)”);
+- starsze — tylko te **poza** etapem „Sygnał” (reszta zostaje tylko w HubSpocie).
 
 Powiązanie z klientem, w tej kolejności:
 
 1. powiązanie transakcja → kontakt w HubSpot → `ClientContact.hubspotContactId`;
 2. brak powiązania, nazwa `WWW - <typ> - <e-mail>` → wyciągnij e-mail, znajdź `ClientContact` po e-mailu
    (bez względu na wielkość liter); nie ma — znajdź kontakt w HubSpot po e-mailu i zaimportuj go (prompt 1);
-   nie ma i tam — utwórz klienta i osobę z samym e-mailem;
+   nie ma i tam — utwórz klienta (niezakwalifikowanego, sekcja 1.0) i osobę z samym e-mailem;
 3. w pozostałych przypadkach — sygnał bez klienta (widoczny w filtrze „Bez klienta”).
 
 Gdy powiązanie ustalono krokami 2–3, a w HubSpot go brakowało — **dopisz powiązanie transakcja ↔
@@ -227,7 +334,7 @@ Pozycja **„Sygnały”** (`/sygnaly`) w `sidebar-nav.tsx`, **nad** „Klientam
 sygnałów w etapie `SYGNAL` bez żadnej aktywności wychodzącej (`firstContactAt = null`). Niewidoczna dla
 `KIEROWCA`.
 
-### 3.2 `/sygnaly` — trzy widoki (zakładki)
+### 3.2 `/sygnaly` — cztery widoki (zakładki)
 
 1. **Na dziś** (domyślny) — jedna lista, sortowana wg pilności:
    - nowe sygnały bez kontaktu, od najstarszego, z licznikiem „czeka 3 h” (czerwony po 24 h roboczych,
@@ -239,7 +346,8 @@ sygnałów w etapie `SYGNAL` bez żadnej aktywności wychodzącej (`firstContact
    kolumnami (przeciągnięcie na `PRZEGRANA` otwiera okno powodu). Wygrane i przegrane — zwinięte
    liczniki pod tablicą z linkiem do listy. Karta: nazwa klienta, urządzenie, termin, typ (ikona), „od X dni
    w etapie”, awatar prowadzącej osoby (kolory jak w Zadaniach).
-3. **Lista** — tabela z filtrami: etap, typ, urządzenie, prowadzący, zakres dat, „Bez klienta”,
+3. **Do obdzwonienia** — sekcja 1.0a.
+4. **Lista** — tabela z filtrami: etap, typ, urządzenie, prowadzący, zakres dat, „Bez klienta”,
    „Z HubSpota / z panelu”; wyszukiwarka jak w Klientach. Eksport CSV.
 
 ### 3.3 Karta sygnału (panel boczny otwierany z każdego widoku)
@@ -263,6 +371,8 @@ sygnałów w etapie `SYGNAL` bez żadnej aktywności wychodzącej (`firstContact
     robocze („follow-up oferty”).
   - **Utwórz rezerwację** — otwiera istniejący formularz nowego wynajmu z wypełnionym klientem,
     urządzeniem i terminem z sygnału; po zapisie `Lead.rentalId` + etap `REZERWACJA`.
+  - **Odpowiedziałam mailem** — zapis `LeadActivity.type = EMAIL` (wychodzący) i kwalifikacja klienta
+    (sekcja 1.0); po etapie B promptu 3 wykrywane automatycznie ze skrzynki, przycisk zostaje jako ręczny.
   - **Notatka** i **Zadanie** (zadanie w istniejącym module, z `leadId`).
   - **Przegrana** — okno: powód (lista `LostReason`, wymagany), notatka, opcjonalnie „wróć do
     kontaktu” (data → zadanie dla prowadzącej osoby w tym dniu).
@@ -321,4 +431,9 @@ automatyczne sekwencje follow-upów. Lejek HubSpot „Wynajem”.
    przestawia sygnał na `WYGRANA`.
 6. Wyłączenie `hubspot_pull_enabled` i `hubspot_push_enabled` nie psuje pracy na sygnałach w panelu.
 7. Żadna transakcja ani kontakt w HubSpot nie zostały usunięte ani scalone.
+7a. Po backfillu lista `/klienci` pokazuje tylko zakwalifikowanych; „Kontakty z zapytań” pokazuje resztę;
+    rozmowa zapisana jako „Rozmawiałam” albo „Odpowiedziałam mailem” przenosi kontakt na listę klientów
+    ze statusem „Potencjalny”; SMS i nieodebrane połączenie tego nie robią.
+7b. Nieobsłużone zapytania z 2026 są w „Do obdzwonienia”, nie w „Na dziś”; wynik rozmowy w trybie
+    seryjnym przechodzi do następnego kontaktu.
 8. `npm run lint`, `npm test`, build przechodzą.

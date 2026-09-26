@@ -119,7 +119,7 @@ function FilterSelect<T extends string>({
 }
 
 export function ClientsManager({
-  rows,
+  rows: allRows,
   initialSelectedId,
   initialQuery,
   pendingHistory = 0,
@@ -134,6 +134,11 @@ export function ClientsManager({
 }) {
   const router = useRouter();
   const wide = useMediaQuery("(min-width: 1280px)");
+  // Klienci (zakwalifikowani) albo „Kontakty z zapytań” (prompt 2 v2, 1.0) —
+  // ta sama tabela, inny zbiór wierszy.
+  const [inquiries, setInquiries] = useState((initialQuery ?? {}).zapytania === "1");
+  const rows = useMemo(() => allRows.filter((r) => (inquiries ? !r.qualified : r.qualified)), [allRows, inquiries]);
+  const inquiryCount = useMemo(() => allRows.filter((r) => !r.qualified).length, [allRows]);
 
   const iq = initialQuery ?? {};
   const [query, setQuery] = useState(iq.q ?? "");
@@ -173,6 +178,7 @@ export function ClientsManager({
     if (clinicType) p.set("rodzaj", clinicType);
     if (source) p.set("zrodlo", source);
     if (sort !== "last") p.set("sort", sort);
+    if (inquiries) p.set("zapytania", "1");
     const listSearch = p.toString() ? `?${p.toString()}` : "";
     if (selectedId) p.set("klient", selectedId);
     const full = p.toString() ? `?${p.toString()}` : "";
@@ -182,7 +188,7 @@ export function ClientsManager({
     } catch {
       // brak sessionStorage — powrót z karty wróci do czystej listy
     }
-  }, [debounced, statuses, noPhone, device, city, clinicType, source, sort, selectedId]);
+  }, [debounced, statuses, noPhone, device, city, clinicType, source, sort, selectedId, inquiries]);
 
   useEffect(() => {
     if (!selectedId || wide) return;
@@ -299,9 +305,28 @@ export function ClientsManager({
           {/* Nagłówek */}
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-0 flex-grow">
-              <h1 className="m-0 text-[26px] font-semibold text-[var(--c-navy)]">Klienci</h1>
+              <h1 className="m-0 text-[26px] font-semibold text-[var(--c-navy)]">{inquiries ? "Kontakty z zapytań" : "Klienci"}</h1>
               <p className="mt-0.5 text-[13px] text-[var(--c-muted)]">
-                {rows.length} {rows.length === 1 ? "klient" : "klientów"} · status liczony z historii wynajmów
+                {inquiries ? (
+                  <>
+                    {rows.length} {rows.length === 1 ? "kontakt" : "kontaktów"} · osoby z formularzy i telefonów, z którymi jeszcze nie było rozmowy ·{" "}
+                    <button type="button" onClick={() => setInquiries(false)} className="font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+                      ← Klienci ({allRows.length - inquiryCount})
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {rows.length} {rows.length === 1 ? "klient" : "klientów"} · status liczony z historii wynajmów
+                    {inquiryCount > 0 && (
+                      <>
+                        {" · "}
+                        <button type="button" onClick={() => setInquiries(true)} className="font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+                          Kontakty z zapytań ({inquiryCount}) →
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
               </p>
             </div>
             <Link
@@ -375,7 +400,7 @@ export function ClientsManager({
                   <span className="text-[22px] font-semibold leading-[1.1] text-[var(--c-navy)] tabular-nums sm:text-[26px]">
                     {key === "ALL" ? rows.length : counts[key]}
                   </span>
-                  <span className="hidden text-xs text-[var(--c-muted)] sm:block">{key === "ALL" ? "w bazie" : STATUS_HINT[key]}</span>
+                  <span className="hidden text-xs text-[var(--c-muted)] sm:block">{key === "ALL" ? (inquiries ? "z zapytań" : "zakwalifikowani") : STATUS_HINT[key]}</span>
                 </button>
               );
             })}
@@ -485,7 +510,9 @@ export function ClientsManager({
               <span>Klient</span>
               <span>Status</span>
               <span className="hidden md:block">Urządzenia</span>
-              <span className="hidden truncate md:block" title="Ostatni wynajem">Ostatni wynajem</span>
+              <span className="hidden truncate md:block" title={inquiries ? "Ostatnie zapytanie" : "Ostatni wynajem"}>
+                {inquiries ? "Ostatnie zapytanie" : "Ostatni wynajem"}
+              </span>
               <span className="hidden 2xl:block">12 mies.</span>
               <span className="hidden truncate text-right md:block" title="Przychód netto">Przychód netto</span>
               <span className="hidden md:block" />
@@ -547,7 +574,18 @@ export function ClientsManager({
                         <DeviceTags devices={r.devices} />
                       </div>
                       <div className="hidden text-[13px] md:block">
-                        {r.lastRentalAt ? (
+                        {inquiries && r.lastInquiry ? (
+                          <>
+                            {fmtDate(r.lastInquiry.at)}
+                            <Link
+                              href={`/sygnaly?id=${r.lastInquiry.leadId}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="block text-[11px] font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]"
+                            >
+                              zapytanie →
+                            </Link>
+                          </>
+                        ) : r.lastRentalAt ? (
                           <>
                             {fmtDate(r.lastRentalAt)}
                             <div className="text-[11px] text-[var(--c-muted)]">{fmtAgo(r.lastRentalAt)}</div>

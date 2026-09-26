@@ -132,3 +132,27 @@ export function hubspotDealUrl(dealId: string): string | null {
   const portal = process.env.HUBSPOT_PORTAL_ID;
   return portal ? `https://app.hubspot.com/contacts/${portal}/record/0-3/${dealId}` : null;
 }
+
+// Ile obiektów danego typu (notatek, rozmów) jest powiązanych z transakcjami
+// — do rozpoznania, czy zapytanie było obsłużone (prompt 2 v2, 1.0a). Tylko
+// liczby, bez treści. Rozmowy mogą wymagać osobnego zakresu aplikacji —
+// wtedy wywołujący dostaje błąd i opiera się na notatkach i Gmailu.
+export async function fetchDealAssociationCounts(dealIds: string[], toObject: "notes" | "calls"): Promise<Map<string, number>> {
+  return fetchAssociationCounts("deals", dealIds, toObject);
+}
+
+export async function fetchAssociationCounts(
+  fromObject: "deals" | "contacts",
+  ids: string[],
+  toObject: "notes" | "calls",
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const body = await hs(`/crm/v4/associations/${fromObject}/${toObject}/batch/read`, {
+      method: "POST",
+      body: JSON.stringify({ inputs: ids.slice(i, i + 500).map((id) => ({ id })) }),
+    });
+    for (const r of body?.results ?? []) counts.set(String(r.from?.id), (r.to ?? []).length);
+  }
+  return counts;
+}

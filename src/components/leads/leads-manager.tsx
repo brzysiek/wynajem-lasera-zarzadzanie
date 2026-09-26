@@ -7,6 +7,7 @@ import { APP_CSS_VARS, LEAD_STAGE_COLORS } from "@/components/shell-tokens";
 import type { LeadRow } from "@/lib/leads/load";
 import type { LeadStats } from "@/lib/leads/today";
 import { buildToday } from "@/lib/leads/today";
+import { callListProgress, isCallListPending, sortCallList } from "@/lib/leads/call-list";
 import { BOARD_STAGES, LOST_REASON_LABEL, STAGE_KEYS, STAGE_LABEL, TYPE_KEYS, TYPE_LABEL } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadStageKey, type LeadTypeKey } from "@/lib/leads/parse-deal";
 import { DEVICE_INTEREST_KEYS, formatPhone, type DeviceInterestKey } from "@/lib/clients/labels";
@@ -23,8 +24,8 @@ import { DevicePill, OwnerAvatar, RefreshIcon, StageChip, TypeTag, Waiting, fmtR
 // kilkaset, więc filtrowanie i widoki liczą się w przeglądarce. Karta: prawa
 // kolumna od 1280 px, poniżej panel wysuwany.
 
-type View = "today" | "board" | "list";
-const VIEW_LABEL: Record<View, string> = { today: "Na dziś", board: "Tablica", list: "Lista" };
+type View = "today" | "board" | "calls" | "list";
+const VIEW_LABEL: Record<View, string> = { today: "Na dziś", board: "Tablica", calls: "Do obdzwonienia", list: "Lista" };
 
 const RETURNING = new Set(["STALY", "USPIONY"]);
 
@@ -162,6 +163,46 @@ function SectionTitle({ children, count, tone }: { children: React.ReactNode; co
   );
 }
 
+// Pasek „Do obdzwonienia” — na „Na dziś” i nad samą listą (makieta:
+// docs/crm/zrzuty/sygnaly-na-dzis.png).
+function CallListBanner({
+  progress,
+  onStart,
+  serial = false,
+}: {
+  progress: { total: number; done: number; pending: number; qualified: number };
+  onStart: () => void;
+  serial?: boolean;
+}) {
+  const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  return (
+    <div className="flex flex-wrap items-center gap-4 rounded-xl border border-[var(--c-border)] bg-white px-4 py-3.5">
+      <div className="min-w-0 flex-grow basis-[320px]">
+        <div className="text-[15px] font-semibold text-[var(--c-navy)]">
+          Do obdzwonienia: {progress.pending} {progress.pending === 1 ? "zapytanie" : "zapytań"} z 2026 bez odpowiedzi
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <div className="h-2 w-40 overflow-hidden rounded-full bg-[var(--c-bg)]">
+            <div className="h-full rounded-full bg-[var(--c-purple)] transition-[width] duration-500" style={{ width: `${pct}%` }} />
+          </div>
+          <span className="text-xs text-[var(--c-muted)]">
+            obdzwoniono {progress.done} z {progress.total} · {progress.qualified} zakwalifikowane jako klienci
+          </span>
+        </div>
+      </div>
+      {progress.pending > 0 && (
+        <button
+          type="button"
+          onClick={onStart}
+          className="h-9 rounded-lg bg-[var(--c-purple)] px-4 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
+        >
+          {serial ? "Tryb seryjny włączony" : "Dzwoń po kolei →"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function LeadsManager({
   rows,
   users,
@@ -196,8 +237,12 @@ export function LeadsManager({
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropStage, setDropStage] = useState<LeadStageKey | "LOST" | null>(null);
   const [lostIds, setLostIds] = useState<string[] | null>(null);
-  // Zaległe
-  const [staleSel, setStaleSel] = useState<Set<string>>(new Set());
+  // Do obdzwonienia — filtry i tryb seryjny (po wyniku rozmowy karta
+  // przechodzi do następnego kontaktu z listy).
+  const [cDevice, setCDevice] = useState<DeviceInterestKey | "">("");
+  const [cCity, setCCity] = useState("");
+  const [serial, setSerial] = useState(false);
+  const [serialDone, setSerialDone] = useState<Set<string>>(new Set());
   // Lista
   const [query, setQuery] = useState("");
   const [fStage, setFStage] = useState<LeadStageKey | "" | "OPEN">("OPEN");
@@ -205,6 +250,7 @@ export function LeadsManager({
   const [fDevice, setFDevice] = useState<DeviceInterestKey | "">("");
   const [fOwner, setFOwner] = useState("");
   const [fNoClient, setFNoClient] = useState(false);
+  const [fCallList, setFCallList] = useState(false);
   const [fSource, setFSource] = useState<"" | "hubspot" | "panel">("");
   const [limit, setLimit] = useState(60);
   // Optymistyczne etapy po przeciągnięciu — ważne tylko dla tej wersji
@@ -258,6 +304,44 @@ export function LeadsManager({
   const byId = useMemo(() => new Map(list.map((r) => [r.id, r])), [list]);
   const back = (xs: { id: string }[]) => xs.map((x) => byId.get(x.id)!).filter(Boolean);
 
+  // „Do obdzwonienia” (prompt 2 v2, 1.0a).
+  const progress = useMemo(() => callListProgress(list), [list]);
+  const pendingCalls = useMemo(() => sortCallList(list.filter(isCallListPending)), [list]);
+  const callCities = useMemo(
+    () => [...new Set(pendingCalls.map((r) => r.city).filter((c): c is string => Boolean(c)))].sort((a, b) => a.localeCompare(b, "pl")),
+    [pendingCalls],
+  );
+  const visibleCalls = pendingCalls.filter((r) => (!cDevice || r.devices.includes(cDevice)) && (!cCity || r.city === cCity));
+
+  function nextCall(afterId: string | null): LeadRow | null {
+    const done = new Set(serialDone);
+    if (afterId) done.add(afterId);
+    const i = afterId ? visibleCalls.findIndex((r) => r.id === afterId) : -1;
+    const rest = [...visibleCalls.slice(i + 1), ...visibleCalls.slice(0, Math.max(i, 0))];
+    return rest.find((r) => !done.has(r.id)) ?? null;
+  }
+
+  function startSerial() {
+    setView("calls");
+    setSerial(true);
+    setSerialDone(new Set());
+    const first = nextCall(null);
+    if (first) open(first.id, "call");
+  }
+
+  function onOutcome() {
+    if (!serial || !selectedId) return;
+    const current = selectedId;
+    setSerialDone((d) => new Set(d).add(current));
+    const next = nextCall(current);
+    if (next) open(next.id, "call");
+    else {
+      setSerial(false);
+      close();
+      setToast({ text: "Koniec listy w tej sesji — obdzwoniono wszystkie widoczne kontakty." });
+    }
+  }
+
   function open(id: string, i: CardIntent = null) {
     setSelectedId(id);
     setIntent(i);
@@ -310,7 +394,6 @@ export function LeadsManager({
       ids.length === 1 ? await api(`/api/leads/${ids[0]}`, "PATCH", body) : await api<{ updated: number }>("/api/leads/bulk", "POST", { ids, patch: body });
     if (!ok) return data.message ?? "Nie udało się zapisać.";
     setLostIds(null);
-    setStaleSel(new Set());
     setToast({ text: ids.length === 1 ? "Oznaczono jako przegraną." : `Zamknięto ${ids.length} sygnałów.` });
     refresh();
     return null;
@@ -326,12 +409,13 @@ export function LeadsManager({
       if (fDevice && !r.devices.includes(fDevice)) return false;
       if (fOwner && r.ownerId !== (fOwner === "none" ? null : fOwner)) return false;
       if (fNoClient && r.clientId) return false;
+      if (fCallList && !r.callList) return false;
       if (fSource === "hubspot" && !r.fromHubspot) return false;
       if (fSource === "panel" && r.fromHubspot) return false;
       if (s.length >= 2 && !r.search.includes(s) && !(digits.length >= 3 && (r.phone ?? "").replace(/\D/g, "").includes(digits))) return false;
       return true;
     });
-  }, [list, query, fStage, fType, fDevice, fOwner, fNoClient, fSource]);
+  }, [list, query, fStage, fType, fDevice, fOwner, fNoClient, fCallList, fSource]);
 
   const since30 = now.getTime() - 30 * 86_400_000;
   const won30 = list.filter((r) => r.stage === "WYGRANA" && new Date(r.stageChangedAt).getTime() >= since30).length;
@@ -339,7 +423,18 @@ export function LeadsManager({
   const nothingToday = today.fresh.length + today.followUps.length + today.reservations.length === 0;
 
   const card = selectedId ? (
-    <LeadCard key={selectedId} leadId={selectedId} users={users} intent={intent} onClose={close} onChanged={refresh} />
+    <LeadCard
+      key={selectedId}
+      leadId={selectedId}
+      users={users}
+      intent={intent}
+      onClose={() => {
+        setSerial(false);
+        close();
+      }}
+      onChanged={refresh}
+      onOutcome={onOutcome}
+    />
   ) : null;
 
   const selectCls = (on: boolean) =>
@@ -367,6 +462,11 @@ export function LeadsManager({
                   }`}
                 >
                   {VIEW_LABEL[v]}
+                  {v === "calls" && progress.pending > 0 && (
+                    <span className="ml-1.5 rounded-full bg-[var(--c-purple-soft)] px-1.5 text-[11px] font-semibold text-[var(--c-purple-deep)] tabular-nums">
+                      {progress.pending}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -430,6 +530,9 @@ export function LeadsManager({
 
               {view === "today" && (
                 <section aria-label="Na dziś" className="flex flex-col gap-2.5">
+                  {progress.total > 0 && (
+                    <CallListBanner progress={progress} onStart={startSerial} />
+                  )}
                   {nothingToday && (
                     <div className="rounded-xl border border-[var(--c-border)] bg-white px-6 py-8 text-center">
                       <p className="text-[15px] font-semibold text-[var(--c-green-deep)]">Wszystko obsłużone 🎉</p>
@@ -519,64 +622,6 @@ export function LeadsManager({
                     />
                   ))}
 
-                  {today.stale.length > 0 && (
-                    <details className="group mt-2 rounded-xl border border-[var(--c-border)] bg-white">
-                      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-[14px] [&::-webkit-details-marker]:hidden">
-                        <span className="text-[10px] text-[var(--c-faint)] transition-transform group-open:rotate-90">▸</span>
-                        <span className="font-semibold text-[var(--c-navy)]">Starsze bez kontaktu</span>
-                        <span className="rounded-full bg-[var(--c-bg)] px-2 text-xs font-semibold text-[var(--c-muted)]">{today.stale.length}</span>
-                        <span className="ml-1 text-xs text-[var(--c-muted)]">zaległość z HubSpota — przejrzyj, zadzwoń albo zamknij</span>
-                      </summary>
-                      <div className="flex flex-wrap items-center gap-2 border-t border-[var(--c-border)] px-4 py-2">
-                        <label className="flex cursor-pointer items-center gap-1.5 text-[13px] text-[var(--c-muted)]">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 accent-[var(--c-brand)]"
-                            checked={staleSel.size === today.stale.length}
-                            onChange={(e) => setStaleSel(e.target.checked ? new Set(today.stale.map((l) => l.id)) : new Set())}
-                          />
-                          zaznacz wszystkie
-                        </label>
-                        {staleSel.size > 0 && (
-                          <button type="button" className={`${BTN} ml-auto h-8`} onClick={() => setLostIds([...staleSel])}>
-                            Zamknij zaznaczone ({staleSel.size}) jako przegrane…
-                          </button>
-                        )}
-                      </div>
-                      <ul className="max-h-[420px] overflow-y-auto">
-                        {back(today.stale).map((r) => (
-                          <li key={r.id} className="flex items-center gap-3 border-t border-[var(--c-border)] px-4 py-2">
-                            <input
-                              type="checkbox"
-                              aria-label={`Zaznacz ${r.title}`}
-                              className="h-4 w-4 flex-none accent-[var(--c-brand)]"
-                              checked={staleSel.has(r.id)}
-                              onChange={(e) =>
-                                setStaleSel((s) => {
-                                  const n = new Set(s);
-                                  if (e.target.checked) n.add(r.id);
-                                  else n.delete(r.id);
-                                  return n;
-                                })
-                              }
-                            />
-                            <button type="button" onClick={() => open(r.id)} className="min-w-0 flex-grow text-left">
-                              <span className="block truncate text-[13px] font-semibold text-[var(--c-navy)]">{r.title}</span>
-                              <span className="block truncate text-xs text-[var(--c-muted)]">
-                                {TYPE_LABEL[r.type]} · {fmtDate(r.createdAt)}
-                                {r.phone ? ` · ${formatPhone(r.phone)}` : ""}
-                              </span>
-                            </button>
-                            {r.phone && (
-                              <a href={`tel:${r.phone}`} onClick={() => open(r.id, "call")} className="flex-none text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
-                                Zadzwoń
-                              </a>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
                 </section>
               )}
 
@@ -584,7 +629,9 @@ export function LeadsManager({
                 <section aria-label="Tablica" className="flex flex-col gap-3">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {BOARD_STAGES.map((stage) => {
-                      const col = list.filter((r) => r.stage === stage).sort((a, b) => b.stageChangedAt.localeCompare(a.stageChangedAt));
+                      const col = list
+                        .filter((r) => r.stage === stage && !isCallListPending(r))
+                        .sort((a, b) => b.stageChangedAt.localeCompare(a.stageChangedAt));
                       const c = LEAD_STAGE_COLORS[stage];
                       return (
                         <div
@@ -677,6 +724,76 @@ export function LeadsManager({
                 </section>
               )}
 
+              {view === "calls" && (
+                <section aria-label="Do obdzwonienia" className="flex flex-col gap-3">
+                  <CallListBanner progress={progress} onStart={startSerial} serial={serial} />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select aria-label="Urządzenie" className={selectCls(Boolean(cDevice))} value={cDevice} onChange={(e) => setCDevice(e.target.value as DeviceInterestKey | "")}>
+                      <option value="">Każde urządzenie</option>
+                      {DEVICE_INTEREST_KEYS.filter((k) => k !== "SZKOLENIE").map((k) => (
+                        <option key={k} value={k}>
+                          {LEAD_DEVICE_LABEL[k]}
+                        </option>
+                      ))}
+                    </select>
+                    <select aria-label="Miejscowość" className={selectCls(Boolean(cCity))} value={cCity} onChange={(e) => setCCity(e.target.value)}>
+                      <option value="">Każda miejscowość</option>
+                      {callCities.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-xs text-[var(--c-muted)]">
+                      {visibleCalls.length} do obdzwonienia · najpierw zapytania o termin, potem kontakt, na końcu cennik
+                    </span>
+                  </div>
+                  {visibleCalls.length === 0 ? (
+                    <div className="rounded-xl border border-[var(--c-border)] bg-white px-6 py-8 text-center text-sm text-[var(--c-muted)]">
+                      {progress.total === 0 ? "Lista pojawi się po imporcie sygnałów z HubSpota." : "Wszystko obdzwonione 🎉"}
+                    </div>
+                  ) : (
+                    <ul className="overflow-hidden rounded-xl border border-[var(--c-border)] bg-white">
+                      {visibleCalls.map((r) => (
+                        <li
+                          key={r.id}
+                          onClick={() => open(r.id)}
+                          className={`flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--c-border)] px-4 py-3 last:border-0 hover:bg-[var(--c-bg)] ${
+                            selectedId === r.id ? "bg-[var(--c-brand-soft)]/60" : ""
+                          }`}
+                        >
+                          <div className="min-w-0 flex-grow basis-[240px]">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="mr-0.5 text-[14px] font-semibold text-[var(--c-navy)]">{r.title}</span>
+                              <TypeTag type={r.type} />
+                              <DevicePill devices={r.devices} from={r.requestedFrom} days={r.requestedDays} />
+                              {r.noAnswerCount > 0 && (
+                                <span className="rounded-md bg-[var(--c-purple-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-purple-deep)]">
+                                  {r.noAnswerCount}× nie odebrała
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 truncate text-[13px] text-[var(--c-muted)]">
+                              {[r.person, r.city, r.phone ? formatPhone(r.phone) : "brak telefonu — tylko e-mail", r.email].filter(Boolean).join(" · ")}
+                            </div>
+                          </div>
+                          <span className="text-xs text-[var(--c-muted)] tabular-nums">{fmtDate(r.createdAt)}</span>
+                          <span onClick={(e) => e.stopPropagation()}>
+                            <CallButton
+                              r={r}
+                              onCall={() => {
+                                setSerial(true);
+                                open(r.id, "call");
+                              }}
+                            />
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
+
               {view === "list" && (
                 <section aria-label="Lista" className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -735,6 +852,9 @@ export function LeadsManager({
                     </select>
                     <button type="button" aria-pressed={fNoClient} onClick={() => setFNoClient((v) => !v)} className={`${selectCls(fNoClient)} px-3`}>
                       Bez klienta
+                    </button>
+                    <button type="button" aria-pressed={fCallList} onClick={() => setFCallList((v) => !v)} className={`${selectCls(fCallList)} px-3`}>
+                      Z listy do obdzwonienia
                     </button>
                     <button
                       type="button"

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { LeadDetail } from "@/lib/leads/load";
-import { ACTIVITY_LABEL, LOST_REASON_LABEL, STAGE_KEYS, STAGE_LABEL, TYPE_LABEL, type ActivityTypeKey } from "@/lib/leads/labels";
+import { ACTIVITY_LABEL, LOST_REASON_LABEL, STAGE_KEYS, STAGE_LABEL, TYPE_LABEL, type ActivityTypeKey, type LostReasonKey } from "@/lib/leads/labels";
+import { NO_ANSWER_LIMIT } from "@/lib/leads/call-list";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { DEVICE_INTEREST_KEYS, formatPhone, type DeviceInterestKey } from "@/lib/clients/labels";
 import { addWorkdays, nextWorkday } from "@/lib/leads/work-time";
@@ -59,19 +60,22 @@ export function LeadCard({
   intent,
   onClose,
   onChanged,
+  onOutcome,
 }: {
   leadId: string;
   users: { id: string; name: string }[];
   intent: CardIntent;
   onClose: () => void;
   onChanged: () => void;
+  // Zapisany wynik kontaktu — tryb seryjny „Do obdzwonienia” przechodzi dalej.
+  onOutcome?: () => void;
 }) {
   const [d, setD] = useState<LeadDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [panel, setPanel] = useState<Panel>(intent);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
-  const [lost, setLost] = useState(false);
+  const [lost, setLost] = useState<false | { preset?: LostReasonKey }>(false);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editing, setEditing] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -139,7 +143,16 @@ export function LeadCard({
           ) : (
             <span className="text-[var(--c-faint)]">bez klienta</span>
           )}
-          {d.clientStatus && <StatusChip status={d.clientStatus} />}
+          {d.clientId && !d.clientQualified ? (
+            <span className="rounded-full border border-dashed border-[var(--c-faint)] px-2 py-[2px] text-[11px] font-semibold text-[var(--c-sidebar-text)]">
+              Kontakt z zapytania
+            </span>
+          ) : (
+            d.clientStatus && <StatusChip status={d.clientStatus} />
+          )}
+          {d.callList && d.stage === "SYGNAL" && (
+            <span className="rounded-md bg-[var(--c-purple-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-purple-deep)]">Do obdzwonienia</span>
+          )}
           {returning && (
             <span className="rounded-md bg-[var(--c-green-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-green-deep)]">Powracająca klientka</span>
           )}
@@ -170,7 +183,7 @@ export function LeadCard({
               disabled={busy}
               onChange={(e) => {
                 const stage = e.target.value as LeadStageKey;
-                if (stage === "PRZEGRANA") setLost(true);
+                if (stage === "PRZEGRANA") setLost({});
                 else void patch({ stage }, `Etap: ${STAGE_LABEL[stage]}.`);
               }}
             >
@@ -243,7 +256,7 @@ export function LeadCard({
         <button
           type="button"
           disabled={d.stage === "PRZEGRANA"}
-          onClick={() => setLost(true)}
+          onClick={() => setLost({})}
           className={`${quick} bg-[var(--c-red-soft)] text-[var(--c-red)] hover:opacity-80`}
         >
           <XCircleIcon />
@@ -268,7 +281,13 @@ export function LeadCard({
             noAnswerTpl={noAnswerTpl ?? null}
             phone={phone}
             clientName={d.clientName ?? d.person}
-            onDone={() => setPanel(null)}
+            unqualified={Boolean(d.clientId) && !d.clientQualified}
+            noAnswerCount={d.noAnswerCount}
+            onLost={(preset) => setLost({ preset })}
+            onDone={(outcome) => {
+              setPanel(null);
+              if (outcome) onOutcome?.();
+            }}
             run={(body, msg) => run(`/api/leads/${leadId}/activity`, "POST", body, msg)}
             sendSms={(message) => run(`/api/leads/${leadId}/sms`, "POST", { phone, message }, "SMS wysłany.")}
           />
@@ -456,10 +475,14 @@ export function LeadCard({
       {emailIds && <EmailViewer messageIds={emailIds} onClose={() => setEmailIds(null)} />}
       {lost && (
         <LostDialog
+          initialReason={lost.preset}
           onClose={() => setLost(false)}
           onSubmit={async (v) => {
             const ok = await patch({ stage: "PRZEGRANA", ...v, returnAt: v.returnAt || null }, "Oznaczono jako przegraną.");
-            if (ok) setLost(false);
+            if (ok) {
+              setLost(false);
+              onOutcome?.();
+            }
             return ok ? null : "Nie udało się zapisać.";
           }}
         />
@@ -475,7 +498,10 @@ function CallResult({
   noAnswerTpl,
   phone,
   clientName,
+  unqualified,
+  noAnswerCount,
   onDone,
+  onLost,
   run,
   sendSms,
 }: {
@@ -484,11 +510,15 @@ function CallResult({
   noAnswerTpl: Template | null;
   phone: string | null;
   clientName: string | null;
-  onDone: () => void;
+  unqualified: boolean;
+  noAnswerCount: number;
+  onDone: (outcome: boolean) => void; // outcome = zapisano wynik (tryb seryjny idzie dalej)
+  onLost: (preset?: LostReasonKey) => void;
   run: (body: Record<string, unknown>, msg: string) => Promise<boolean>;
   sendSms: (message: string) => Promise<boolean>;
 }) {
-  const [mode, setMode] = useState<"talked" | "callback" | "noAnswerDone" | null>(null);
+  const [mode, setMode] = useState<"talked" | "callback" | "email" | "noAnswerDone" | null>(null);
+  const attempts = noAnswerCount + (mode === "noAnswerDone" ? 1 : 0);
   const [note, setNote] = useState("");
   const [toInterview, setToInterview] = useState(stage === "SYGNAL");
   const [date, setDate] = useState("");
@@ -498,11 +528,14 @@ function CallResult({
   return (
     <div className="flex flex-col gap-2.5 rounded-[10px] bg-[var(--c-bg)] p-3">
       <div className="flex items-center">
-        <span className="flex-grow text-[13px] font-semibold text-[var(--c-navy)]">Po rozmowie — wynik</span>
-        <button type="button" onClick={onDone} className="text-xs text-[var(--c-muted)] hover:text-[var(--c-text)]">
+        <span className="flex-grow text-[13px] font-semibold text-[var(--c-navy)]">Wynik kontaktu</span>
+        <button type="button" onClick={() => onDone(false)} className="text-xs text-[var(--c-muted)] hover:text-[var(--c-text)]">
           zamknij
         </button>
       </div>
+      {unqualified && (
+        <p className="-mt-1 text-xs text-[var(--c-muted)]">„Rozmawiałam” albo „Odpowiedziałam mailem” przenosi kontakt do Klientów jako Potencjalny.</p>
+      )}
       <div className="flex flex-wrap gap-1.5">
         <button type="button" className={chip(mode === "talked")} onClick={() => setMode("talked")}>
           Rozmawiałam
@@ -518,7 +551,27 @@ function CallResult({
         <button type="button" className={chip(mode === "callback")} onClick={() => setMode("callback")}>
           Oddzwoni — termin
         </button>
+        <button type="button" className={chip(mode === "email")} onClick={() => setMode("email")}>
+          Odpowiedziałam mailem
+        </button>
+        <button type="button" className={chip(false)} onClick={() => onLost()}>
+          Nie zainteresowana
+        </button>
       </div>
+
+      {mode === "email" && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input className={`${INPUT} h-8 min-w-0 flex-grow`} placeholder="Co wysłałaś? (np. cennik, oferta na LightSheer)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <button
+            type="button"
+            disabled={busy}
+            className={`${BTN_PRIMARY} h-8`}
+            onClick={async () => (await run({ outcome: "email", body: note }, "Zapisano odpowiedź mailem.")) && onDone(true)}
+          >
+            Zapisz
+          </button>
+        </div>
+      )}
 
       {mode === "talked" && (
         <>
@@ -542,7 +595,7 @@ function CallResult({
                 (await run(
                   { outcome: "talked", body: note, ...(date ? { nextActionAt: date } : {}), ...(toInterview && stage === "SYGNAL" ? { stage: "WYWIAD" } : {}) },
                   "Zapisano rozmowę.",
-                )) && onDone()
+                )) && onDone(true)
               }
             >
               Zapisz rozmowę
@@ -559,13 +612,21 @@ function CallResult({
             type="button"
             disabled={busy || !date}
             className={`${BTN_PRIMARY} h-8`}
-            onClick={async () => (await run({ outcome: "callback", body: note, nextActionAt: date }, "Zapisano: oddzwoni.")) && onDone()}
+            onClick={async () => (await run({ outcome: "callback", body: note, nextActionAt: date }, "Zapisano: oddzwoni.")) && onDone(true)}
           >
             Zapisz
           </button>
         </div>
       )}
 
+      {mode === "noAnswerDone" && attempts >= NO_ANSWER_LIMIT && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">
+          <span className="flex-grow">To już {attempts}. próba bez odpowiedzi.</span>
+          <button type="button" className="h-8 rounded-lg bg-[var(--c-red)] px-3 text-[13px] font-semibold text-white hover:opacity-90" onClick={() => onLost("BRAK_KONTAKTU")}>
+            Przegrana — brak kontaktu
+          </button>
+        </div>
+      )}
       {mode === "noAnswerDone" && (
         <div className="flex flex-wrap items-center gap-2 text-[13px]">
           {noAnswerTpl && phone ? (
@@ -575,16 +636,16 @@ function CallResult({
                 type="button"
                 disabled={busy}
                 className={`${BTN_PRIMARY} h-8`}
-                onClick={async () => (await sendSms(applySmsPlaceholders(noAnswerTpl.body, { clientName }))) && onDone()}
+                onClick={async () => (await sendSms(applySmsPlaceholders(noAnswerTpl.body, { clientName }))) && onDone(true)}
               >
                 Wyślij SMS
               </button>
-              <button type="button" className={`${BTN} h-8`} onClick={onDone}>
+              <button type="button" className={`${BTN} h-8`} onClick={() => onDone(true)}>
                 Nie teraz
               </button>
             </>
           ) : (
-            <button type="button" className={`${BTN} h-8`} onClick={onDone}>
+            <button type="button" className={`${BTN} h-8`} onClick={() => onDone(true)}>
               Gotowe
             </button>
           )}

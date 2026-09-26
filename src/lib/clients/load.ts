@@ -8,6 +8,8 @@ import { rentalDurationDays } from "@/lib/pricing/duration";
 import { buildTransactions, rentalRhythmDays, transactionTotals, typicalPayment, type TxRental, type TxTotals } from "@/lib/clients/transactions";
 import { paymentLabel, type PaymentStatus } from "@/lib/clients/payment-status";
 import { gmailSummary } from "@/lib/gmail/sync";
+import { isQualified } from "@/lib/clients/qualification";
+import { isQualificationActive } from "@/lib/clients/qualify";
 import type { ClientStatus } from "@/lib/clients/status";
 
 // Odczyt modułu Klienci (serwer). ZAWIERA PRZYCHÓD — wołać wyłącznie z
@@ -112,6 +114,9 @@ export type ClientListRow = {
   lastRentalAt: string | null;
   // Ostatni kontakt = najnowsze z: e-mail (Gmail), SMS/rozmowa z panelu, wynajem.
   lastContactAt: string | null;
+  // Klient vs „kontakt z zapytania” (prompt 2 v2, 1.0) i ostatni sygnał.
+  qualified: boolean;
+  lastInquiry: { leadId: string; at: string } | null;
   revenueNet: number;
   // Wynajmowane (od najczęstszego), potem deklarowane zainteresowania.
   devices: DeviceInterestKey[];
@@ -146,7 +151,7 @@ async function lastContacts(): Promise<Map<string, Date>> {
 }
 
 export async function loadClientRows(today = new Date()): Promise<ClientListRow[]> {
-  const contactsAt = await lastContacts();
+  const [contactsAt, qualificationActive] = await Promise.all([lastContacts(), isQualificationActive()]);
   const clients = await prisma.client.findMany({
     select: {
       id: true,
@@ -165,6 +170,8 @@ export async function loadClientRows(today = new Date()): Promise<ClientListRow[
       rentals: { select: RENTAL_FACT_SELECT },
       history: { where: HISTORY_FACT_WHERE, select: HISTORY_FACT_SELECT },
       invoices: { where: INVOICE_FACT_WHERE, select: INVOICE_FACT_SELECT },
+      qualifiedAt: true,
+      leads: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, createdAt: true } },
     },
   });
 
@@ -196,6 +203,8 @@ export async function loadClientRows(today = new Date()): Promise<ClientListRow[
         return d?.toISOString() ?? null;
       })(),
       revenueNet: summary.revenueNet,
+      qualified: isQualified({ qualifiedAt: c.qualifiedAt, rentals: c.rentals.length, history: c.history.length, invoices: c.invoices.length }, qualificationActive),
+      lastInquiry: c.leads[0] ? { leadId: c.leads[0].id, at: c.leads[0].createdAt.toISOString() } : null,
       devices: [...new Set([...summary.rentedDevices, ...interests])],
       rentedDevices: summary.rentedDevices,
       source: c.source,
@@ -339,6 +348,8 @@ export type ClientDetail = {
   };
   aliases: string[];
   gmail: { enabled: boolean; mailboxes: string[]; lastSyncAt: string | null };
+  // Klient vs „kontakt z zapytania” (prompt 2 v2, 1.0).
+  qualification: { active: boolean; qualified: boolean; at: string | null; reason: string | null; derived: boolean };
   // Sygnały klienta (CRM, prompt 2) — otwarte i zamknięte.
   leads: {
     id: string;
@@ -706,6 +717,17 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     },
     aliases: c.aliases.map((a) => a.alias),
     gmail: await gmailSummary(),
+    qualification: await (async () => {
+      const active = await isQualificationActive();
+      const derived = c.rentals.length > 0 || c.history.length > 0 || c.invoices.length > 0;
+      return {
+        active,
+        qualified: isQualified({ qualifiedAt: c.qualifiedAt, rentals: c.rentals.length, history: c.history.length, invoices: c.invoices.length }, active),
+        at: c.qualifiedAt?.toISOString() ?? null,
+        reason: c.qualifiedReason,
+        derived,
+      };
+    })(),
     suggestedEmails,
     leads: c.leads.map((l) => ({ id: l.id, title: l.title, stage: l.stage, createdAt: l.createdAt.toISOString(), nextActionAt: l.nextActionAt?.toISOString() ?? null })),
   };

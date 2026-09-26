@@ -33,7 +33,7 @@ export const LOST_REASON_LABEL = {
   INNE_URZADZENIE: "Wybrała inne urządzenie",
   BRAK_KONTAKTU: "Brak kontaktu",
   TYLKO_CENNIK: "Chciała tylko cennik",
-  ARCHIWUM_IMPORTU: "Archiwum importu",
+  ARCHIWUM_IMPORTU: "Archiwum (sprzed 2026)",
   INNE: "Inne",
 } as const;
 export type LostReasonKey = keyof typeof LOST_REASON_LABEL;

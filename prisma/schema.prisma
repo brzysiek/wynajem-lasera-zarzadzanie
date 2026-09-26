@@ -709,6 +709,12 @@ model Client {
   deviceInterests   Json? // DeviceInterest[]
   statusOverride    ClientStatusOverride?
   notes             String?               @db.Text
+  // Kwalifikacja (prompt 2 v2, 1.0): sygnał to zapytanie, klient to gabinet,
+  // z którym faktycznie był kontakt. null = „kontakt z zapytania” (nie na
+  // liście klientów). Wynajem / historia z kalendarza / faktura kwalifikują
+  // zawsze — liczone przy odczycie (src/lib/clients/qualification.ts).
+  qualifiedAt       DateTime?
+  qualifiedReason   String? // CALL | EMAIL_REPLY | RENTAL | HISTORY | MANUAL | BACKFILL | HUBSPOT
 
   // Mapowanie na HubSpot — import, deduplikacja i link „Otwórz w HubSpot” w
   // okresie przejściowym. hubspotSnapshot = wartości pól z ostatniej udanej
@@ -932,6 +938,9 @@ model Lead {
   returnAt        DateTime?
   rentalId        String?        @unique
   rental          Rental?        @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+  // Zaległe zapytanie z 2026 z importu HubSpota — lista „Do obdzwonienia”
+  // (prompt 2 v2, 1.0a) zamiast „Na dziś”. Nowe sygnały nigdy tu nie trafiają.
+  callList        Boolean        @default(false)
   utmSource       String?
   utmMedium       String?
   utmCampaign     String?
@@ -947,6 +956,7 @@ model Lead {
   @@index([stage])
   @@index([clientId])
   @@index([nextActionAt])
+  @@index([callList])
   @@map("leads")
 }
 

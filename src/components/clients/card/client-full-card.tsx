@@ -101,7 +101,13 @@ export function ClientFullCard({ initial, initialTab, isAdmin }: { initial: Clie
           <div className="min-w-0 flex-grow basis-[320px]">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="m-0 text-[26px] font-semibold leading-tight text-[var(--c-navy)]">{d.name}</h1>
-              <StatusChip status={d.summary.status} />
+              {d.qualification.qualified ? (
+                <StatusChip status={d.summary.status} />
+              ) : (
+                <span className="rounded-full border border-dashed border-[var(--c-faint)] px-2.5 py-[2px] text-xs font-semibold text-[var(--c-sidebar-text)]">
+                  Kontakt z zapytania
+                </span>
+              )}
               {overdue > 0 && (
                 <span className="rounded-full bg-[var(--c-red-soft)] px-2.5 py-[3px] text-xs font-semibold text-[var(--c-red)]">
                   {overdue} {overdue === 1 ? "faktura" : "faktury"} po terminie
@@ -236,7 +242,7 @@ export function ClientFullCard({ initial, initialTab, isAdmin }: { initial: Clie
             }}
             focusNote={focusNote}
           />}
-        {tab === "dane" && <TabData d={d} onChanged={setD} notify={notify} />}
+        {tab === "dane" && <TabData d={d} onChanged={setD} notify={notify} isAdmin={isAdmin} />}
       </div>
 
       {emailIds && <EmailViewer messageIds={emailIds} onClose={() => setEmailIds(null)} />}

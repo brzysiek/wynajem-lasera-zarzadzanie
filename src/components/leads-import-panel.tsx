@@ -158,8 +158,17 @@ export function LeadsImportPanel({ configured }: { configured: boolean }) {
             <Stat label="transakcji w HubSpot" value={p.dealsTotal} />
             <Stat label="do importu" value={p.toImport} tone="brand" />
             <Stat label="już w panelu" value={p.alreadyImported} />
-            <Stat label="pominięte (archiwum, inne lejki)" value={p.skipped} />
+            <Stat label="pominięte (sprzed 09.2025, inne lejki)" value={p.skipped} />
+            <Stat label="→ Do obdzwonienia (2026, bez kontaktu)" value={p.callList} tone="brand" />
+            <Stat label="→ Archiwum (2025, bez kontaktu)" value={p.archive} />
+            <Stat label="już w panelu — do przeliczenia" value={p.reclassifyExisting} />
           </div>
+          {!p.callsReadable && (
+            <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Rozmów zapisanych w HubSpot nie da się odczytać (brak uprawnienia aplikacji) — „obsłużone” rozpoznaję po notatkach,
+              etapie i e-mailach wysłanych z Gmaila.
+            </p>
+          )}
           <div className="grid gap-4 text-sm sm:grid-cols-3">
             <div>
               <p className="mb-1 font-semibold text-gray-800">Typ</p>

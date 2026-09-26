@@ -133,7 +133,13 @@ export function ClientCard({
               {[d.city, d.nip ? `NIP ${formatNip(d.nip)}` : null].filter(Boolean).join(" · ") || "brak adresu i NIP"}
             </div>
           </div>
-          <StatusChip status={d.summary.status} />
+          {d.qualification.qualified ? (
+            <StatusChip status={d.summary.status} />
+          ) : (
+            <span className="whitespace-nowrap rounded-full border border-dashed border-[var(--c-faint)] px-2 py-[2px] text-[11px] font-semibold text-[var(--c-sidebar-text)]">
+              Kontakt z zapytania
+            </span>
+          )}
           <button type="button" onClick={onClose} aria-label="Zamknij kartę" className="-mr-2 -mt-1 rounded-md p-1.5 text-[var(--c-muted)] hover:bg-[var(--c-bg)]">
             ✕
           </button>

@@ -7,7 +7,7 @@ import { STAGE_KEYS } from "@/lib/leads/labels";
 import type { LeadStageKey } from "@/lib/leads/parse-deal";
 import { logError, logInfo } from "@/lib/logger";
 
-const OUTCOMES: CallOutcome[] = ["talked", "no_answer", "callback", "note"];
+const OUTCOMES: CallOutcome[] = ["talked", "no_answer", "callback", "note", "email"];
 
 // Wynik rozmowy / notatka z karty sygnału. ADMIN/STAFF; KIEROWCA — 403.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

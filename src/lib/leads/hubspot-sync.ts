@@ -4,6 +4,7 @@ import { normalizePolishPhone } from "@/lib/reminders";
 import { logWarn } from "@/lib/logger";
 import {
   fetchAllDeals,
+  fetchDealAssociationCounts,
   fetchDealNotes,
   fetchDefaultPipelineStageIds,
   findHubspotContactByEmail,
@@ -20,6 +21,8 @@ import {
   type LeadTypeKey,
   type PlannedLead,
 } from "@/lib/leads/parse-deal";
+import { applyImportRules } from "@/lib/leads/call-list";
+import { qualifyClient } from "@/lib/clients/qualify";
 
 // Transakcje HubSpot → Sygnały (CRM, prompt 2A). Z HubSpota wyłącznie
 // odczyt. Ustalone 26.09.2026: po imporcie etap prowadzi PANEL — przy
@@ -29,6 +32,26 @@ import {
 // hosting ma limity czasu zapytania.
 
 const CURSOR_KEY = "leads_hubspot_cursor";
+// Moment wdrożenia listy „Do obdzwonienia” — zapisywany przy pierwszym
+// przebiegu tej wersji. Na listę trafiają tylko zapytania sprzed niego.
+const CALL_LIST_UNTIL_KEY = "leads_call_list_until";
+
+async function callListUntil(): Promise<Date> {
+  const row = await prisma.setting.findUnique({ where: { key: CALL_LIST_UNTIL_KEY } });
+  if (row) return new Date(row.value);
+  const now = new Date();
+  await prisma.setting.create({ data: { key: CALL_LIST_UNTIL_KEY, value: now.toISOString() } });
+  return now;
+}
+
+const ADVANCED: LeadStageKey[] = ["WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA"];
+
+// E-mail wysłany z naszej skrzynki do tej osoby po wpłynięciu zapytania
+// (Gmail — prompt 3C; e-maile z HubSpota były zsynchronizowane do Gmaila).
+async function repliedByEmail(clientId: string | null, since: Date): Promise<boolean> {
+  if (!clientId) return false;
+  return (await prisma.emailMessage.count({ where: { clientId, direction: "OUT", sentAt: { gte: since } } })) > 0;
+}
 const LAST_SYNC_KEY = "leads_hubspot_last_sync";
 
 type ContactRef = { id: string; clientId: string; phone: string | null };
@@ -146,14 +169,25 @@ const earliest = (notes: HsNote[]) => {
   return t.length ? new Date(Math.min(...t)) : null;
 };
 
-async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContext) {
-  const plan = planLeadFromDeal(deal.properties, normalizePolishPhone);
-  let ref = findExisting(plan, deal, ctx)?.ref ?? null;
-  if (!ref && (plan.email || plan.phone)) ref = await createClientForLead(plan, ctx);
+async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContext, calls: number, until: Date) {
+  const base = planLeadFromDeal(deal.properties, normalizePolishPhone);
+  let ref = findExisting(base, deal, ctx)?.ref ?? null;
+  if (!ref && (base.email || base.phone)) ref = await createClientForLead(base, ctx);
   // Telefon z formularza, którego brakuje osobie kontaktowej — uzupełniamy.
-  if (ref && plan.phone && !ref.phone) {
-    await prisma.clientContact.update({ where: { id: ref.id }, data: { phone: plan.phone } });
-    ref.phone = plan.phone;
+  if (ref && base.phone && !ref.phone) {
+    await prisma.clientContact.update({ where: { id: ref.id }, data: { phone: base.phone } });
+    ref.phone = base.phone;
+  }
+  const emailed = await repliedByEmail(ref?.clientId ?? null, base.createdAt);
+  const plan = applyImportRules(base, {
+    hsStage: deal.properties.dealstage ?? null,
+    createdAt: base.createdAt,
+    handled: notes.length > 0 || calls > 0 || emailed,
+    callListUntil: until,
+  });
+  // Kontakt już był (HubSpot / Gmail) → klient zakwalifikowany (prompt 2 v2, 1.0).
+  if (ref && (emailed || notes.length > 0 || calls > 0 || ADVANCED.includes(plan.stage))) {
+    await qualifyClient(ref.clientId, emailed ? "EMAIL_REPLY" : "HUBSPOT");
   }
   const client = ref ? await prisma.client.findUnique({ where: { id: ref.clientId }, select: { name: true } }) : null;
   const title = plan.fromForm && client ? leadTitle({ who: client.name, devices: plan.devices, days: plan.requestedDays, fallback: plan.title }) : plan.title;
@@ -180,6 +214,7 @@ async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContex
         firstContactAt: firstNote,
         lostReason: plan.lostReason,
         lostNote: plan.lostNote,
+        callList: plan.callList,
         createdAt: plan.createdAt,
       },
       select: { id: true },
@@ -206,10 +241,13 @@ export type DealsSyncResult = {
   notesAdded: number;
   refreshed: number;
   notesError: string | null;
+  callsError?: string | null;
+  reclassified?: number;
 };
 
-export async function syncDeals(opts: { maxNew?: number } = {}): Promise<DealsSyncResult> {
+export async function syncDeals(opts: { maxNew?: number; reclassify?: boolean } = {}): Promise<DealsSyncResult> {
   const maxNew = opts.maxNew ?? 25;
+  const until = await callListUntil();
   const deals = (await fetchAllDeals()).filter((d) => shouldImportDeal(d.properties));
   const existing = await prisma.lead.findMany({
     where: { hubspotDealId: { not: null } },
@@ -239,10 +277,21 @@ export async function syncDeals(opts: { maxNew?: number } = {}): Promise<DealsSy
     logWarn("leads_hubspot_notes_failed", { message: notesError });
   }
 
+  let calls = new Map<string, number>();
+  let callsError: string | null = null;
+  if (batch.length) {
+    try {
+      calls = await fetchDealAssociationCounts(batch.map((d) => d.id), "calls");
+    } catch (err) {
+      callsError = err instanceof Error ? err.message : String(err);
+      logWarn("leads_hubspot_calls_failed", { message: callsError });
+    }
+  }
+
   const ctx = await loadLinkContext();
   let created = 0;
   for (const deal of batch) {
-    await createLeadFromDeal(deal, notes.get(deal.id) ?? [], ctx);
+    await createLeadFromDeal(deal, notes.get(deal.id) ?? [], ctx, calls.get(deal.id) ?? 0, until);
     created++;
   }
 
@@ -280,7 +329,63 @@ export async function syncDeals(opts: { maxNew?: number } = {}): Promise<DealsSy
     create: { key: LAST_SYNC_KEY, value: now.toISOString() },
     update: { value: now.toISOString() },
   });
-  return { created, remaining, notesAdded, refreshed, notesError };
+  const reclassified = opts.reclassify && remaining === 0 ? await reclassifyImportedLeads(until) : 0;
+  return { created, remaining, notesAdded, refreshed, notesError, callsError, reclassified };
+}
+
+// Sygnały już zaimportowane (np. dociągnięte przez crona przed wdrożeniem
+// listy) przeliczane wg nowych reguł — tylko te, na których nikt z biura
+// jeszcze nie pracował (brak aktywności z autorem i prowadzącej osoby).
+export async function reclassifyImportedLeads(until: Date): Promise<number> {
+  const leads = await prisma.lead.findMany({
+    where: { hubspotDealId: { not: null }, ownerId: null, activities: { none: { userId: { not: null } } } },
+    select: {
+      id: true,
+      clientId: true,
+      createdAt: true,
+      stage: true,
+      callList: true,
+      lostReason: true,
+      lostNote: true,
+      hubspotDealId: true,
+      hubspotSnapshot: true,
+      _count: { select: { activities: { where: { hubspotEngagementId: { not: null } } } } },
+    },
+  });
+  let calls = new Map<string, number>();
+  try {
+    calls = await fetchDealAssociationCounts(leads.map((l) => l.hubspotDealId as string), "calls");
+  } catch {
+    // brak zakresu do rozmów — opieramy się na notatkach i Gmailu
+  }
+  let changed = 0;
+  for (const l of leads) {
+    const snap = (l.hubspotSnapshot ?? {}) as Record<string, string | null>;
+    const base = planLeadFromDeal({ ...snap, createdate: l.createdAt.toISOString() }, normalizePolishPhone);
+    const emailed = await repliedByEmail(l.clientId, l.createdAt);
+    const next = applyImportRules(base, {
+      hsStage: snap.dealstage ?? null,
+      createdAt: l.createdAt,
+      handled: l._count.activities > 0 || (calls.get(l.hubspotDealId as string) ?? 0) > 0 || emailed,
+      callListUntil: until,
+    });
+    if (l.clientId && (emailed || l._count.activities > 0 || ADVANCED.includes(next.stage))) {
+      await qualifyClient(l.clientId, emailed ? "EMAIL_REPLY" : "HUBSPOT");
+    }
+    if (next.stage === l.stage && next.callList === l.callList && next.lostReason === l.lostReason) continue;
+    await prisma.lead.update({
+      where: { id: l.id },
+      data: {
+        stage: next.stage,
+        callList: next.callList,
+        lostReason: next.lostReason,
+        lostNote: next.lostNote,
+        ...(next.stage !== l.stage ? { stageChangedAt: new Date() } : {}),
+      },
+    });
+    changed++;
+  }
+  return changed;
 }
 
 export async function lastDealsSync(): Promise<string | null> {
@@ -297,6 +402,10 @@ export type DealsImportPreview = {
   byStage: Partial<Record<LeadStageKey, number>>;
   link: Record<LinkMethod, number>;
   missingStages: string[]; // etapy z mapowania, których nie ma w HubSpocie
+  callList: number; // trafi do „Do obdzwonienia”
+  archive: number; // nieobsłużone sprzed 2026 → przegrana „Archiwum”
+  callsReadable: boolean; // czy rozmowy z HubSpota dało się odczytać
+  reclassifyExisting: number; // sygnały już w panelu, które zostaną przeliczone
   sample: { title: string; type: LeadTypeKey; stage: LeadStageKey; createdAt: string; phone: boolean }[];
 };
 
@@ -313,12 +422,41 @@ export async function previewDealsImport(): Promise<DealsImportPreview> {
   const byType: DealsImportPreview["byType"] = {};
   const byStage: DealsImportPreview["byStage"] = {};
   const link: Record<LinkMethod, number> = { contact: 0, email: 0, phone: 0, newClient: 0, none: 0 };
-  const plans = todo.map((d) => ({ d, p: planLeadFromDeal(d.properties, normalizePolishPhone) }));
-  for (const { d, p } of plans) {
+  const until = await callListUntil();
+  const ids = todo.map((d) => d.id);
+  const noteCounts = ids.length ? await fetchDealAssociationCounts(ids, "notes").catch(() => new Map<string, number>()) : new Map<string, number>();
+  let callCounts = new Map<string, number>();
+  let callsReadable = true;
+  if (ids.length) {
+    try {
+      callCounts = await fetchDealAssociationCounts(ids, "calls");
+    } catch {
+      callsReadable = false;
+    }
+  }
+  let callList = 0;
+  let archive = 0;
+  const plans = [];
+  for (const d of todo) {
+    const base = planLeadFromDeal(d.properties, normalizePolishPhone);
+    const found = findExisting(base, d, ctx);
+    const emailed = await repliedByEmail(found?.ref.clientId ?? null, base.createdAt);
+    const p = applyImportRules(base, {
+      hsStage: d.properties.dealstage ?? null,
+      createdAt: base.createdAt,
+      handled: (noteCounts.get(d.id) ?? 0) > 0 || (callCounts.get(d.id) ?? 0) > 0 || emailed,
+      callListUntil: until,
+    });
+    if (p.callList) callList++;
+    if (p.lostReason === "ARCHIWUM_IMPORTU") archive++;
     byType[p.type] = (byType[p.type] ?? 0) + 1;
     byStage[p.stage] = (byStage[p.stage] ?? 0) + 1;
-    link[linkMethod(p, d, ctx)]++;
+    link[linkMethod(base, d, ctx)]++;
+    plans.push({ d, p });
   }
+  const reclassifyExisting = await prisma.lead.count({
+    where: { hubspotDealId: { not: null }, ownerId: null, activities: { none: { userId: { not: null } } } },
+  });
   const stageIds = new Set(stages.map((s) => s.id));
   return {
     dealsTotal: all.length,
@@ -330,6 +468,10 @@ export async function previewDealsImport(): Promise<DealsImportPreview> {
     byStage,
     link,
     missingStages: Object.keys(HUBSPOT_STAGE_TO_LEAD).filter((id) => !stageIds.has(id)),
+    callList,
+    archive,
+    callsReadable,
+    reclassifyExisting,
     sample: plans
       .sort((a, b) => b.p.createdAt.getTime() - a.p.createdAt.getTime())
       .slice(0, 8)

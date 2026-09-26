@@ -4,6 +4,7 @@ import { sendSms } from "@/lib/integrations/szybkisms";
 import { STAGE_LABEL, LOST_REASON_LABEL } from "@/lib/leads/labels";
 import { leadTitle, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { nextWorkday } from "@/lib/leads/work-time";
+import { qualifyClient } from "@/lib/clients/qualify";
 import type { LeadPatch, NewLeadInput } from "@/lib/leads/validate";
 
 // Akcje na sygnałach z panelu (CRM, prompt 2A). Wszystko tylko w bazie
@@ -64,6 +65,7 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
       data.rental = { connect: { id: rental.id } };
       if (["SYGNAL", "WYWIAD", "OFERTA"].includes(lead.stage) && !patch.stage) Object.assign(data, stageData(lead, "REZERWACJA"));
       notes.push(`Powiązano z rezerwacją: ${rental.device.name}, ${rental.startsAt.toLocaleDateString("pl-PL")}`);
+      await qualifyClient(lead.clientId, "RENTAL");
     } else {
       data.rental = { disconnect: true };
       notes.push("Odpięto rezerwację");
@@ -100,7 +102,9 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
   });
 }
 
-export type CallOutcome = "talked" | "no_answer" | "callback" | "note";
+// „email” = „Odpowiedziałam mailem” (prompt 2 v2, 3.3) — kwalifikuje klienta
+// tak jak rozmowa; SMS i nieodebrane połączenie nie kwalifikują.
+export type CallOutcome = "talked" | "no_answer" | "callback" | "note" | "email";
 
 // Wynik rozmowy / notatka z karty sygnału (prompt 2, 3.3 „Zadzwoń”).
 export async function logLeadActivity(
@@ -110,7 +114,7 @@ export async function logLeadActivity(
 ) {
   const lead = await getLead(id);
   const now = new Date();
-  const type = input.outcome === "note" ? "NOTE" : input.outcome === "no_answer" ? "CALL_NO_ANSWER" : "CALL";
+  const type = input.outcome === "note" ? "NOTE" : input.outcome === "no_answer" ? "CALL_NO_ANSWER" : input.outcome === "email" ? "EMAIL" : "CALL";
   const data: Prisma.LeadUpdateInput = { ...claim(lead, userId) };
   if (type !== "NOTE" && !lead.firstContactAt) data.firstContactAt = now;
   if (input.outcome === "no_answer") data.nextActionAt = input.nextActionAt ?? nextWorkday(now);
@@ -120,7 +124,9 @@ export async function logLeadActivity(
   const body =
     input.outcome === "callback"
       ? [`Oddzwoni${input.nextActionAt ? ` — ${input.nextActionAt.toLocaleDateString("pl-PL")}` : ""}`, input.body].filter(Boolean).join(": ")
-      : input.body;
+      : input.outcome === "email"
+        ? ["Odpowiedziałam mailem", input.body].filter(Boolean).join(": ")
+        : input.body;
   if (type === "NOTE" && !body) throw new LeadError("Notatka nie może być pusta.");
 
   await prisma.$transaction([
@@ -130,6 +136,8 @@ export async function logLeadActivity(
       ? [prisma.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type: "STAGE_CHANGE", body: `${STAGE_LABEL[lead.stage]} → ${STAGE_LABEL[input.stage]}`, userId } })]
       : []),
   ]);
+  if (input.outcome === "talked" || input.outcome === "callback") await qualifyClient(lead.clientId, "CALL");
+  if (input.outcome === "email") await qualifyClient(lead.clientId, "EMAIL_REPLY");
 }
 
 // SMS z karty sygnału — ta sama bramka co reszta panelu (szybkisms), zapis
@@ -235,5 +243,7 @@ export async function createLead(input: NewLeadInput, userId: string): Promise<s
     },
     select: { id: true },
   });
+  // Sygnał z telefonu wpisany po rozmowie = kontakt już był.
+  if (input.type === "TELEFON") await qualifyClient(clientId, "CALL");
   return lead.id;
 }

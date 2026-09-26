@@ -87,7 +87,17 @@ function ContactCard({
   );
 }
 
-export function TabData({ d, onChanged, notify }: { d: ClientDetail; onChanged: (next: ClientDetail) => void; notify: (text: string, error?: boolean) => void }) {
+export function TabData({
+  d,
+  onChanged,
+  notify,
+  isAdmin = false,
+}: {
+  d: ClientDetail;
+  onChanged: (next: ClientDetail) => void;
+  notify: (text: string, error?: boolean) => void;
+  isAdmin?: boolean;
+}) {
   const [editing, setEditing] = useState<"client" | "notes" | { contact: string | "new" } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -122,6 +132,19 @@ export function TabData({ d, onChanged, notify }: { d: ClientDetail; onChanged: 
     setBusy(false);
     if (next?.ok) saved(next.data, 0, "Usunięto alias.");
     else notify(r.data.message ?? "Nie udało się usunąć aliasu.", true);
+  }
+
+  async function setQualification(action: "qualify" | "unqualify") {
+    let note = "";
+    if (action === "unqualify") {
+      note = window.prompt("Powód cofnięcia kwalifikacji (np. pomyłka, spam):")?.trim() ?? "";
+      if (!note) return;
+    }
+    setBusy(true);
+    const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}/qualification`, "POST", { action, note });
+    setBusy(false);
+    if (ok) saved(data.detail, 0, action === "qualify" ? "Zakwalifikowano jako klienta." : "Cofnięto kwalifikację.");
+    else notify(data.message ?? "Nie udało się.", true);
   }
 
   const edit = (label = "Edytuj", onClick: () => void) => (
@@ -239,6 +262,26 @@ export function TabData({ d, onChanged, notify }: { d: ClientDetail; onChanged: 
               {d.legacyHubspotTag && ` · tagi z HubSpota: ${d.legacyHubspotTag}`}
             </p>
             <p>Fakturownia: {d.nip ? `kontrahent po NIP ${formatNip(d.nip)}` : "brak NIP — faktury dopasowywane po nazwie"}</p>
+            {d.qualification.active && (
+              <p>
+                Lista klientów:{" "}
+                {d.qualification.qualified
+                  ? d.qualification.derived
+                    ? "klient (ma wynajem, historię albo fakturę)"
+                    : `klient od ${d.qualification.at ? new Date(d.qualification.at).toLocaleDateString("pl-PL") : "—"}`
+                  : "kontakt z zapytania — przejdzie do klientów po rozmowie albo odpowiedzi mailem"}
+                {isAdmin && !d.qualification.qualified && (
+                  <button type="button" disabled={busy} onClick={() => void setQualification("qualify")} className="ml-2 text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+                    Zakwalifikuj
+                  </button>
+                )}
+                {isAdmin && d.qualification.qualified && !d.qualification.derived && (
+                  <button type="button" disabled={busy} onClick={() => void setQualification("unqualify")} className="ml-2 text-xs font-semibold text-[var(--c-muted)] hover:text-[var(--c-red)]">
+                    Cofnij kwalifikację
+                  </button>
+                )}
+              </p>
+            )}
             <div>
               Aliasy z kalendarza:{" "}
               {d.aliases.length === 0 ? (

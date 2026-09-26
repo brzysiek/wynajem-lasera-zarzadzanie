@@ -35,6 +35,7 @@ describe("buildToday", () => {
   const now = at(25, 11);
   const lead = (p: Partial<TodayLead> & { id: string }): TodayLead => ({
     stage: "SYGNAL",
+    callList: false,
     createdAt: at(24, 10),
     firstContactAt: null,
     nextActionAt: null,
@@ -42,12 +43,13 @@ describe("buildToday", () => {
     ...p,
   });
 
-  it("dzieli na nowe, follow-upy, rezerwacje i zaległe", () => {
+  it("dzieli na nowe, follow-upy i rezerwacje; lista do obdzwonienia osobno", () => {
     const t = buildToday(
       [
         lead({ id: "new2", createdAt: at(25, 9) }),
         lead({ id: "new1", createdAt: at(23, 9) }),
         lead({ id: "old", createdAt: at(1, 9) }),
+        lead({ id: "call", createdAt: at(1, 9), callList: true }),
         lead({ id: "fu", stage: "OFERTA", firstContactAt: at(20), nextActionAt: at(25) }),
         lead({ id: "future", stage: "OFERTA", firstContactAt: at(20), nextActionAt: at(28) }),
         lead({ id: "res", stage: "REZERWACJA", firstContactAt: at(20), rentalStartsAt: at(27, 12) }),
@@ -56,8 +58,7 @@ describe("buildToday", () => {
       ],
       now,
     );
-    expect(t.fresh.map((l) => l.id)).toEqual(["new1", "new2"]);
-    expect(t.stale.map((l) => l.id)).toEqual(["old"]);
+    expect(t.fresh.map((l) => l.id)).toEqual(["old", "new1", "new2"]);
     expect(t.followUps.map((l) => l.id)).toEqual(["fu"]);
     expect(t.reservations.map((l) => l.id)).toEqual(["res"]);
   });

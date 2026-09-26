@@ -116,7 +116,7 @@ export const HUBSPOT_STAGE_TO_LEAD: Record<string, LeadStageKey> = {
   appointmentscheduled: "WYWIAD", // Szansa
   qualifiedtobuy: "OFERTA", // Wywiad/oferta
   presentationscheduled: "REZERWACJA", // Akceptacja/rezerwacja
-  "3080529125": "REZERWACJA", // Wysłany kontrakt
+  // „Wysłany kontrakt” (3080529125) należy do lejka „Wynajem” — pomijany.
   closedwon: "WYGRANA",
   closedlost: "PRZEGRANA",
   "3211592907": "PRZEGRANA", // Zamrażalnik
@@ -172,7 +172,7 @@ export type PlannedLead = {
   requestedFrom: Date | null;
   requestedDays: number | null;
   message: string | null;
-  lostReason: "INNE" | null;
+  lostReason: "INNE" | "ARCHIWUM_IMPORTU" | null;
   lostNote: string | null;
   createdAt: Date;
   stageChangedAt: Date;

@@ -6,16 +6,15 @@ import type { LeadStageKey } from "./parse-deal";
 export type TodayLead = {
   id: string;
   stage: LeadStageKey;
+  callList: boolean;
   createdAt: Date;
   firstContactAt: Date | null;
   nextActionAt: Date | null;
   rentalStartsAt: Date | null;
 };
 
-// Sygnał bez kontaktu starszy niż tyle dni nie jest już „nowy” — to
-// zaległość z HubSpota (dziesiątki pobrań cennika sprzed miesięcy), którą
-// trzeba przejrzeć i zamknąć, a nie alarm na czerwono.
-export const FRESH_DAYS = 14;
+// Zaległości z HubSpota (nieobsłużone zapytania z 2026) są na osobnej liście
+// „Do obdzwonienia” (callList) — nie zalewają „Na dziś” (prompt 2 v2, 1.0a).
 export const RESERVATION_CONFIRM_DAYS = 3;
 
 const DAY_MS = 86_400_000;
@@ -24,11 +23,10 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 const OPEN: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"];
 
 export function buildToday<T extends TodayLead>(leads: T[], now: Date) {
-  const freshFrom = new Date(now.getTime() - FRESH_DAYS * DAY_MS);
-  const waiting = leads.filter((l) => l.stage === "SYGNAL" && !l.firstContactAt);
-  const fresh = waiting.filter((l) => l.createdAt >= freshFrom).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  const stale = waiting.filter((l) => l.createdAt < freshFrom).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  const freshIds = new Set(waiting.map((l) => l.id));
+  const fresh = leads
+    .filter((l) => l.stage === "SYGNAL" && !l.firstContactAt && !l.callList)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const freshIds = new Set(fresh.map((l) => l.id));
   const followUps = leads
     .filter((l) => OPEN.includes(l.stage) && !freshIds.has(l.id) && l.nextActionAt && l.nextActionAt <= endOfDay(now))
     .sort((a, b) => a.nextActionAt!.getTime() - b.nextActionAt!.getTime());
@@ -36,7 +34,7 @@ export function buildToday<T extends TodayLead>(leads: T[], now: Date) {
   const reservations = leads
     .filter((l) => l.stage === "REZERWACJA" && l.rentalStartsAt && l.rentalStartsAt >= startOfDay(now) && l.rentalStartsAt <= confirmUntil)
     .sort((a, b) => a.rentalStartsAt!.getTime() - b.rentalStartsAt!.getTime());
-  return { fresh, followUps, reservations, stale };
+  return { fresh, followUps, reservations };
 }
 
 export type StatsLead = {

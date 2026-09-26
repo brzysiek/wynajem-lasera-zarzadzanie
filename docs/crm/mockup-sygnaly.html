@@ -38,6 +38,7 @@ button{font-family:inherit}
 <div role="tablist" aria-label="Widok" style="display: flex; gap: 4px; background: #F2F4F6; border-radius: 10px; padding: 4px; margin-left: 16px">
 <button type="button" role="tab" aria-selected="true" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 0; background: #FFFFFF; color: #14567F; font-size: 14px; font-weight: 600; box-shadow: 0 1px 2px rgba(12,52,80,0.1); cursor: pointer">Na dziś</button>
 <button type="button" role="tab" aria-selected="false" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 0; background: transparent; color: #5B6167; font-size: 14px; cursor: pointer">Tablica</button>
+<button type="button" role="tab" aria-selected="false" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 0; background: transparent; color: #5B6167; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 6px">Do obdzwonienia <span style="font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 8px; background: #F3EBFF; color: #5B2BB5">187</span></button>
 <button type="button" role="tab" aria-selected="false" style="height: 32px; padding: 0 14px; border-radius: 8px; border: 0; background: transparent; color: #5B6167; font-size: 14px; cursor: pointer">Lista</button>
 </div>
 <div style="flex-grow: 1"></div>
@@ -58,6 +59,14 @@ button{font-family:inherit}
 
 <!-- Today list -->
 <section aria-label="Na dziś" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; overflow: auto">
+
+<div style="background: #FFFFFF; border: 1px solid #E4D8FB; border-radius: 12px; padding: 14px 16px; display: flex; gap: 14px; align-items: center">
+<div style="flex-grow: 1; min-width: 0">
+<div style="font-size: 15px; font-weight: 600; color: #0C3450">Do obdzwonienia: 187 zapytań z 2026 bez odpowiedzi</div>
+<div style="display: flex; align-items: center; gap: 10px; margin-top: 6px"><div style="flex-grow: 1; max-width: 320px; height: 8px; border-radius: 4px; background: #F3EBFF; overflow: hidden"><div style="width: 22%; height: 8px; background: #7C3AED"></div></div><span style="font-size: 12px; color: #6F7378">obdzwoniono 42 z 187 · 23 zakwalifikowane jako klienci</span></div>
+</div>
+<a href="#" style="height: 36px; padding: 0 14px; border-radius: 8px; background: #7C3AED; color: #FFFFFF; font-size: 13px; font-weight: 600; display: flex; align-items: center; white-space: nowrap">Dzwoń po kolei →</a>
+</div>
 
 <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: #0C3450; display: flex; align-items: center; gap: 8px">Nowe — czekają na pierwszy kontakt <span style="font-size: 12px; font-weight: 600; background: #E08A5C; color: #FFFFFF; border-radius: 10px; padding: 1px 8px">4</span></h2>
 
@@ -112,7 +121,7 @@ button{font-family:inherit}
 <!-- Signal card preview -->
 <aside aria-label="Karta sygnału" style="width: 420px; flex-shrink: 0; background: #FFFFFF; border: 1px solid #E9EDF1; border-radius: 14px; display: flex; flex-direction: column; overflow: hidden">
 <div style="padding: 18px 20px; border-bottom: 1px solid #E9EDF1; display: flex; flex-direction: column; gap: 8px">
-<div style="display: flex; align-items: center; gap: 8px"><h2 style="margin: 0; font-size: 18px; font-weight: 600; color: #0C3450; flex-grow: 1">Kosmetologia Nowak</h2><span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: #F2F4F6; color: #5B6167">Potencjalny</span></div>
+<div style="display: flex; align-items: center; gap: 8px"><h2 style="margin: 0; font-size: 18px; font-weight: 600; color: #0C3450; flex-grow: 1">Kosmetologia Nowak</h2><span style="font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: #FFFFFF; border: 1px dashed #9AA1A8; color: #5B6167">Kontakt z zapytania</span></div>
 <div style="font-size: 13px; color: #6F7378">Wpłynęło 24.09, 20:14 · formularz „Pobierz cennik” · z HubSpota</div>
 <label style="display: flex; align-items: center; gap: 8px; font-size: 13px"><span style="color: #6F7378">Etap</span>
 <select style="height: 32px; border-radius: 8px; border: 1px solid #E9EDF1; font-family: inherit; font-size: 13px; padding: 0 8px; color: #0C3450; flex-grow: 1"><option>Sygnał</option><option>Wywiad</option><option>Oferta wysłana</option><option>Rezerwacja</option><option>Wygrana</option><option>Przegrana</option></select></label>
@@ -127,11 +136,12 @@ button{font-family:inherit}
 </div>
 <div style="padding: 14px 20px; display: flex; flex-direction: column; gap: 12px; overflow: auto">
 <div style="background: #F2F4F6; border-radius: 10px; padding: 12px 14px; font-size: 13px; display: flex; flex-direction: column; gap: 6px">
-<div style="font-weight: 600; color: #0C3450">Po rozmowie — wynik</div>
+<div style="font-weight: 600; color: #0C3450">Wynik kontaktu</div><div style="font-size: 12px; color: #6F7378">„Rozmawiałam” albo „Odpowiedziałam mailem” przenosi kontakt do Klientów jako Potencjalny.</div>
 <div style="display: flex; gap: 6px; flex-wrap: wrap">
 <button type="button" style="height: 30px; padding: 0 10px; border-radius: 15px; border: 1px solid #1B6FA8; background: #FFFFFF; color: #14567F; font-size: 12px; cursor: pointer">Rozmawiałam</button>
 <button type="button" style="height: 30px; padding: 0 10px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 12px; cursor: pointer">Nie odebrała → jutro + SMS</button>
 <button type="button" style="height: 30px; padding: 0 10px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 12px; cursor: pointer">Oddzwoni — termin</button>
+<button type="button" style="height: 30px; padding: 0 10px; border-radius: 15px; border: 1px solid #E9EDF1; background: #FFFFFF; color: #4A4A4A; font-size: 12px; cursor: pointer">Odpowiedziałam mailem</button>
 </div>
 </div>
 <div style="font-size: 13px; display: grid; grid-template-columns: 110px 1fr; row-gap: 6px">
