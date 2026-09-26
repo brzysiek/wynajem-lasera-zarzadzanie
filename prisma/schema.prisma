@@ -135,6 +135,7 @@ model User {
   proposalStatuses    ProposalStatusChange[]
   remarks             Remark[]
   cleanupRules        CleanupRule[]
+  apiTokens           ApiToken[]           @relation("ApiTokenUser")
 
   @@map("users")
 }
@@ -1223,4 +1224,43 @@ model CleanupRule {
   updatedAt   DateTime @updatedAt
 
   @@map("cleanup_rules")
+}
+
+// ---------------------------------------------------------------------------
+// API agenta (/api/agent/*) — tokeny przypisane do użytkownika z rolą AGENT.
+// W bazie tylko skrót SHA-256 tokenu; sam token pokazywany raz przy
+// utworzeniu. Unieważnienie = revokedAt (Ustawienia → Użytkownicy).
+model ApiToken {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation("ApiTokenUser", fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  tokenHash   String    @unique @db.VarChar(64)
+  prefix      String    @db.VarChar(16) // początek tokenu — do rozpoznania na liście
+  createdById String?
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+
+  calls ApiCallLog[]
+
+  @@index([userId])
+  @@map("api_tokens")
+}
+
+// Log wywołań API agenta (kto, co, kiedy) — też podstawa limitu zapytań.
+model ApiCallLog {
+  id         String   @id @default(cuid())
+  tokenId    String
+  token      ApiToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  userId     String
+  method     String   @db.VarChar(8)
+  path       String   @db.VarChar(255)
+  status     Int
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  @@index([tokenId, createdAt])
+  @@index([createdAt])
+  @@map("api_call_logs")
 }

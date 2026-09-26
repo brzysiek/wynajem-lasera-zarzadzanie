@@ -94,6 +94,9 @@ export const OPERATION_LABEL: Record<string, string> = {
   MATCH_RESET: "cofnięcie dopasowania",
   STATUS_CHANGE: "zmiana statusu",
   UNDO: "cofnięcie zmiany",
+  MERGE: "scalenie duplikatów",
+  MOVE_TO_INQUIRIES: "przeniesienie do kontaktów z zapytań",
+  DO_NOT_CONTACT: "oznaczenie „Nie kontaktować”",
 };
 
 export const FIELD_LABEL: Record<string, string> = {

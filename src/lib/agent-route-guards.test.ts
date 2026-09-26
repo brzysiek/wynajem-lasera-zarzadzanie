@@ -38,6 +38,15 @@ const AGENT_WRITES = [
   "POST porzadki/uwagi",
   "PATCH porzadki/uwagi/[id]",
   "POST porzadki/uwagi/[id]/wniosek",
+  // API agenta (token, /api/agent/*) — te same reguły co w panelu.
+  "POST agent/wnioski",
+  "PATCH agent/wnioski/[id]",
+  "POST agent/wnioski/[id]/komentarze",
+  "POST agent/uwagi",
+  "PATCH agent/uwagi/[id]",
+  "POST agent/dziennik",
+  "PATCH agent/klienci/[id]",
+  "PATCH agent/klienci/[id]/kontakty/[contactId]",
 ];
 
 const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;
@@ -77,7 +86,7 @@ function deniesAgent(h: Handler): boolean {
 }
 
 function allowsAgent(h: Handler): boolean {
-  return /requireSession\((OFFICE_AND_AGENT|ADMIN_AND_AGENT)\)/.test(h.body);
+  return /requireSession\((OFFICE_AND_AGENT|ADMIN_AND_AGENT)\)/.test(h.body) || /return withAgent\(req, /.test(h.body);
 }
 
 describe("trasy API a rola AGENT", () => {
@@ -142,11 +151,34 @@ describe("trasy API a rola AGENT", () => {
     }
   });
 
+  it("każda trasa /api/agent/* wymaga tokenu agenta", () => {
+    const agentRoutes = all.filter((h) => h.route.startsWith("agent/"));
+    expect(agentRoutes.length).toBeGreaterThan(10);
+    expect(agentRoutes.filter((h) => !/return withAgent\(req, /.test(h.body)).map((h) => `${h.method} ${h.route}`)).toEqual([]);
+  });
+
+  it("API agenta: zmiana klienta wymaga paczki, tokeny zarządza ADMIN", () => {
+    const body = (method: string, route: string) => all.find((h) => h.method === method && h.route === route)!.body;
+    expect(body("PATCH", "agent/klienci/[id]")).toContain("requireBatch: true");
+    expect(body("PATCH", "agent/klienci/[id]/kontakty/[contactId]")).toContain("requireBatch: true");
+    for (const [m, r] of [
+      ["POST", "users/[id]/tokens"],
+      ["DELETE", "users/[id]/tokens/[tokenId]"],
+      ["GET", "users/[id]/api-calls"],
+    ]) {
+      expect(body(m, r), `${m} ${r}`).toContain("requireAdminSession()");
+    }
+  });
+
   it("zapisy agenta z ograniczeniami mają je w kodzie", () => {
     const body = (method: string, route: string) => writes.find((h) => h.method === method && h.route === route)!.body;
-    expect(body("PATCH", "clients/[id]")).toContain("AGENT_CLIENT_FIELDS");
-    expect(body("PATCH", "clients/[id]")).toContain("parseProvenance(body, { required: isAgent })");
-    expect(body("PATCH", "clients/[id]/contacts/[contactId]")).toContain('required: session.user.role === "AGENT"');
+    // Zmiana klienta i osoby: wspólna logika w src/lib/clients/update.ts.
+    expect(body("PATCH", "clients/[id]")).toContain("patchClient(id, body, { userId: session.user.id, role: session.user.role })");
+    expect(body("PATCH", "clients/[id]/contacts/[contactId]")).toContain("patchContact(");
+    const update = readFileSync(join(__dirname, "clients", "update.ts"), "utf8");
+    expect(update).toContain("AGENT_CLIENT_FIELDS");
+    expect(update).toContain("parseProvenance(body, { required: isAgent })");
+    expect(update).toContain('parseProvenance(body, { required: actor.role === "AGENT" })');
     expect(body("POST", "clients/[id]/contacts")).toContain('required: session.user.role === "AGENT"');
     expect(body("PATCH", "tasks/[id]")).toContain("Agent zmienia tylko własne zadania.");
     expect(body("POST", "leads/[id]/activity")).toContain("Agent dodaje tylko notatki.");

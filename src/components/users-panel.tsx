@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
+import { AgentTokensPanel } from "@/components/agent-tokens-panel";
 
 type Role = "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
 type Gender = "M" | "F";
@@ -441,6 +442,7 @@ function UserRow({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [showTokens, setShowTokens] = useState(false);
 
   async function handleDelete() {
     setIsDeleting(true);
@@ -525,6 +527,15 @@ function UserRow({
             {isResending ? "Wysyłanie…" : "Wyślij zaproszenie ponownie"}
           </button>
         )}
+        {user.role === "AGENT" && (
+          <button
+            type="button"
+            onClick={() => setShowTokens((v) => !v)}
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Tokeny API
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setIsEditing(true)}
@@ -562,6 +573,11 @@ function UserRow({
             </button>
           ))}
       </div>
+      {showTokens && user.role === "AGENT" && (
+        <div className="w-full">
+          <AgentTokensPanel userId={user.id} />
+        </div>
+      )}
     </div>
   );
 }

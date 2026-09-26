@@ -1,48 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, requireStaffSession } from "@/lib/auth-guards";
 import { OFFICE_AND_AGENT } from "@/lib/permissions";
-import { changedFields } from "@/lib/changelog/diff";
-import { parseProvenance } from "@/lib/changelog/provenance";
-import { fieldEntries, recordChanges } from "@/lib/changelog/record";
 import { prisma } from "@/lib/prisma";
-import { normalizePolishPhone } from "@/lib/reminders";
 import { loadClientDetail } from "@/lib/clients/load";
-import { parseContactInput } from "@/lib/clients/validate";
-import { CONTACT_CACHE_KEYS, refreshFutureRentalCaches } from "@/lib/clients/refresh";
+import { refreshFutureRentalCaches } from "@/lib/clients/refresh";
+import { patchContact } from "@/lib/clients/update";
 import { logInfo } from "@/lib/logger";
 
 async function findContact(clientId: string, contactId: string) {
   return prisma.clientContact.findFirst({ where: { id: contactId, clientId } });
 }
 
-// Zmiana osoby kontaktowej — ADMIN/STAFF/AGENT, każda zmiana pola w
-// dzienniku zmian. AGENT: obowiązkowo źródło i pewność zmiany.
+// Zmiana osoby kontaktowej — ADMIN/STAFF/AGENT; logika (dziennik zmian,
+// źródło zmiany dla AGENT) w src/lib/clients/update.ts.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string; contactId: string }> }) {
   const session = await requireSession(OFFICE_AND_AGENT);
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const { id, contactId } = await params;
-  const contact = await findContact(id, contactId);
-  if (!contact) return NextResponse.json({ message: "Nie znaleziono osoby." }, { status: 404 });
-
   const body = await req.json().catch(() => null);
-  const provenance = parseProvenance(body ?? {}, { required: session.user.role === "AGENT" });
-  if (!provenance.ok) return NextResponse.json({ message: provenance.message }, { status: 400 });
-  const parsed = parseContactInput(body ?? {}, { normalizePhone: normalizePolishPhone });
-  if (!parsed.ok) return NextResponse.json({ message: parsed.message }, { status: 400 });
-  // Zdjęcie oznaczenia głównej osoby tylko przez wskazanie innej jako głównej.
-  const { isPrimary, ...data } = parsed.data;
-  const changes = changedFields(contact as unknown as Record<string, unknown>, { ...data, ...(isPrimary ? { isPrimary: true } : {}) });
-
-  await prisma.$transaction(async (tx) => {
-    if (isPrimary) await tx.clientContact.updateMany({ where: { clientId: id }, data: { isPrimary: false } });
-    await tx.clientContact.update({ where: { id: contactId }, data: { ...data, ...(isPrimary ? { isPrimary: true } : {}) } });
-    await recordChanges(tx, { userId: session.user.id, provenance: provenance.value }, fieldEntries("CONTACT", contactId, id, changes));
-  });
-
-  const touchesRentals = CONTACT_CACHE_KEYS.some((k) => k in data);
-  const refreshedRentals = touchesRentals ? await refreshFutureRentalCaches({ clientId: id, contactId }) : 0;
-  logInfo("client_contact_updated", { userId: session.user.id, clientId: id, contactId, fields: Object.keys(parsed.data), refreshedRentals });
-  return NextResponse.json({ detail: await loadClientDetail(id), refreshedRentals });
+  const result = await patchContact(id, contactId, body ?? {}, { userId: session.user.id, role: session.user.role });
+  if (!result.ok) return NextResponse.json({ message: result.message }, { status: result.status });
+  logInfo("client_contact_updated", { userId: session.user.id, clientId: id, contactId, fields: Object.keys(body ?? {}), refreshedRentals: result.refreshedRentals });
+  return NextResponse.json({ detail: await loadClientDetail(id), refreshedRentals: result.refreshedRentals });
 }
 
 // Usunięcie osoby: nie wolno usunąć OSTATNIEJ osoby, jeśli ma powiązane
