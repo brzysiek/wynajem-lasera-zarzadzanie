@@ -150,7 +150,7 @@ function CallButton({ r, onCall }: { r: LeadRow; onCall: () => void }) {
   );
 }
 
-function SectionTitle({ children, count, tone }: { children: React.ReactNode; count?: number; tone?: string }) {
+function SectionTitle({ children, count, tone, action }: { children: React.ReactNode; count?: number; tone?: string; action?: React.ReactNode }) {
   return (
     <h2 className="m-0 mt-2 flex items-center gap-2 text-[15px] font-semibold text-[var(--c-navy)] first:mt-0">
       {children}
@@ -159,7 +159,34 @@ function SectionTitle({ children, count, tone }: { children: React.ReactNode; co
           {count}
         </span>
       )}
+      {action && <span className="ml-auto font-normal">{action}</span>}
     </h2>
+  );
+}
+
+// Kolejność list — wybór zapamiętany w przeglądarce (to tylko wygoda,
+// bez znaczenia dla danych).
+type FreshOrder = "oldest" | "newest";
+type ListSort = "newest" | "oldest" | "next" | "stage" | "name";
+type CallSort = "priority" | "newest" | "oldest";
+const SORT_KEY = "wl_leads_sort";
+
+function SortSelect<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: [T, string][] }) {
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-[var(--c-muted)]">
+      Kolejność:
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as T)}
+        className="h-8 cursor-pointer rounded-full border border-[var(--c-border)] bg-white px-2.5 text-xs text-[var(--c-text)] hover:border-[var(--c-brand)] focus:border-[var(--c-brand)] focus:outline-none"
+      >
+        {options.map(([v, label]) => (
+          <option key={v} value={v}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -242,6 +269,29 @@ export function LeadsManager({
   const [cDevice, setCDevice] = useState<DeviceInterestKey | "">("");
   const [cCity, setCCity] = useState("");
   const [serial, setSerial] = useState(false);
+  const [freshOrder, setFreshOrder] = useState<FreshOrder>("oldest");
+  const [listSort, setListSort] = useState<ListSort>("newest");
+  const [callSort, setCallSort] = useState<CallSort>("priority");
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SORT_KEY) ?? "{}");
+      /* eslint-disable react-hooks/set-state-in-effect -- localStorage dostępny dopiero w przeglądarce */
+      if (saved.fresh) setFreshOrder(saved.fresh);
+      if (saved.list) setListSort(saved.list);
+      if (saved.calls) setCallSort(saved.calls);
+      /* eslint-enable react-hooks/set-state-in-effect */
+    } catch {
+      // brak localStorage — domyślna kolejność
+    }
+  }, []);
+  function saveSort(patch: Record<string, string>) {
+    try {
+      localStorage.setItem(SORT_KEY, JSON.stringify({ fresh: freshOrder, list: listSort, calls: callSort, ...patch }));
+    } catch {
+      // brak localStorage — kolejność tylko do odświeżenia strony
+    }
+  }
   const [serialDone, setSerialDone] = useState<Set<string>>(new Set());
   // Lista
   const [query, setQuery] = useState("");
@@ -306,7 +356,11 @@ export function LeadsManager({
 
   // „Do obdzwonienia” (prompt 2 v2, 1.0a).
   const progress = useMemo(() => callListProgress(list), [list]);
-  const pendingCalls = useMemo(() => sortCallList(list.filter(isCallListPending)), [list]);
+  const pendingCalls = useMemo(() => {
+    const pending = list.filter(isCallListPending);
+    if (callSort === "priority") return sortCallList(pending);
+    return [...pending].sort((a, b) => (callSort === "newest" ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt)));
+  }, [list, callSort]);
   const callCities = useMemo(
     () => [...new Set(pendingCalls.map((r) => r.city).filter((c): c is string => Boolean(c)))].sort((a, b) => a.localeCompare(b, "pl")),
     [pendingCalls],
@@ -416,6 +470,22 @@ export function LeadsManager({
       return true;
     });
   }, [list, query, fStage, fType, fDevice, fOwner, fNoClient, fCallList, fSource]);
+
+  const sortedList = useMemo(() => {
+    const byDate = (a: string | null, b: string | null) => (a ?? "9999").localeCompare(b ?? "9999");
+    const order = { SYGNAL: 0, WYWIAD: 1, OFERTA: 2, REZERWACJA: 3, WYGRANA: 4, PRZEGRANA: 5 } as const;
+    return [...filtered].sort((a, b) =>
+      listSort === "newest"
+        ? b.createdAt.localeCompare(a.createdAt)
+        : listSort === "oldest"
+          ? a.createdAt.localeCompare(b.createdAt)
+          : listSort === "next"
+            ? byDate(a.nextActionAt, b.nextActionAt) || b.createdAt.localeCompare(a.createdAt)
+            : listSort === "stage"
+              ? order[a.stage] - order[b.stage] || b.createdAt.localeCompare(a.createdAt)
+              : a.title.localeCompare(b.title, "pl"),
+    );
+  }, [filtered, listSort]);
 
   const since30 = now.getTime() - 30 * 86_400_000;
   const won30 = list.filter((r) => r.stage === "WYGRANA" && new Date(r.stageChangedAt).getTime() >= since30).length;
@@ -540,8 +610,27 @@ export function LeadsManager({
                     </div>
                   )}
 
-                  {today.fresh.length > 0 && <SectionTitle count={today.fresh.length}>Nowe — czekają na pierwszy kontakt</SectionTitle>}
-                  {back(today.fresh).map((r) => (
+                  {today.fresh.length > 0 && (
+                    <SectionTitle
+                      count={today.fresh.length}
+                      action={
+                        <SortSelect<FreshOrder>
+                          value={freshOrder}
+                          onChange={(v) => {
+                            setFreshOrder(v);
+                            saveSort({ fresh: v });
+                          }}
+                          options={[
+                            ["oldest", "od najdłużej czekających"],
+                            ["newest", "od najnowszych"],
+                          ]}
+                        />
+                      }
+                    >
+                      Nowe — czekają na pierwszy kontakt
+                    </SectionTitle>
+                  )}
+                  {(freshOrder === "newest" ? back(today.fresh).reverse() : back(today.fresh)).map((r) => (
                     <TodayRow
                       key={r.id}
                       r={r}
@@ -744,9 +833,19 @@ export function LeadsManager({
                         </option>
                       ))}
                     </select>
-                    <span className="text-xs text-[var(--c-muted)]">
-                      {visibleCalls.length} do obdzwonienia · najpierw zapytania o termin, potem kontakt, na końcu cennik
-                    </span>
+                    <SortSelect<CallSort>
+                      value={callSort}
+                      onChange={(v) => {
+                        setCallSort(v);
+                        saveSort({ calls: v });
+                      }}
+                      options={[
+                        ["priority", "zalecana (termin → kontakt → cennik)"],
+                        ["newest", "od najnowszych"],
+                        ["oldest", "od najstarszych"],
+                      ]}
+                    />
+                    <span className="text-xs text-[var(--c-muted)]">{visibleCalls.length} do obdzwonienia</span>
                   </div>
                   {visibleCalls.length === 0 ? (
                     <div className="rounded-xl border border-[var(--c-border)] bg-white px-6 py-8 text-center text-sm text-[var(--c-muted)]">
@@ -858,7 +957,7 @@ export function LeadsManager({
                     </button>
                     <button
                       type="button"
-                      onClick={() => exportCsv(filtered)}
+                      onClick={() => exportCsv(sortedList)}
                       disabled={filtered.length === 0}
                       className="ml-auto flex h-8 items-center gap-1.5 rounded-lg border border-[var(--c-border)] bg-white px-3 text-[13px] transition-colors hover:border-[var(--c-brand)] hover:text-[var(--c-brand-deep)] disabled:opacity-40"
                     >
@@ -866,7 +965,23 @@ export function LeadsManager({
                       CSV
                     </button>
                   </div>
-                  <p className="text-xs text-[var(--c-muted)]">{filtered.length} sygnałów</p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="m-0 text-xs text-[var(--c-muted)]">{filtered.length} sygnałów</p>
+                    <SortSelect<ListSort>
+                      value={listSort}
+                      onChange={(v) => {
+                        setListSort(v);
+                        saveSort({ list: v });
+                      }}
+                      options={[
+                        ["newest", "wpłynęło — od najnowszych"],
+                        ["oldest", "wpłynęło — od najstarszych"],
+                        ["next", "następny krok"],
+                        ["stage", "etap"],
+                        ["name", "nazwa A–Z"],
+                      ]}
+                    />
+                  </div>
                   <div className="overflow-x-auto rounded-xl border border-[var(--c-border)] bg-white">
                     <table className="w-full min-w-[760px] text-[13px]">
                       <thead className="bg-[var(--c-bg)] text-left text-xs text-[var(--c-muted)]">
@@ -881,7 +996,7 @@ export function LeadsManager({
                         </tr>
                       </thead>
                       <tbody>
-                        {filtered.slice(0, limit).map((r) => (
+                        {sortedList.slice(0, limit).map((r) => (
                           <tr
                             key={r.id}
                             onClick={() => open(r.id)}
