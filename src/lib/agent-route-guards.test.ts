@@ -30,6 +30,14 @@ const AGENT_WRITES = [
   "POST tasks",
   "PATCH tasks/[id]",
   "POST tasks/[id]/comments",
+  // Porządki: wnioski (statusy decyzyjne i tak tylko ADMIN — rules.ts), uwagi.
+  "POST porzadki/wnioski",
+  "PATCH porzadki/wnioski/[id]",
+  "POST porzadki/wnioski/[id]/komentarze",
+  "POST porzadki/wnioski/[id]/powiazania",
+  "POST porzadki/uwagi",
+  "PATCH porzadki/uwagi/[id]",
+  "POST porzadki/uwagi/[id]/wniosek",
 ];
 
 const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;
@@ -121,6 +129,11 @@ describe("trasy API a rola AGENT", () => {
       ["POST", "leads"],
       ["POST", "clients"],
       ["POST", "leads/import/run"],
+      ["POST", "porzadki/dziennik/[id]/cofnij"], // cofanie zmian — ADMIN
+      ["DELETE", "porzadki/wnioski/[id]/powiazania"],
+      ["POST", "porzadki/reguly"], // reguły — ADMIN
+      ["PATCH", "porzadki/reguly/[id]"],
+      ["DELETE", "porzadki/reguly/[id]"],
     ];
     for (const [method, route] of forbidden) {
       const h = find(method, route);

@@ -31,6 +31,11 @@ const AGENT_PAGE_PREFIXES = [
   "/urzadzenia",
   "/finanse/faktury",
   "/wysylka-sms",
+  // Porządki
+  "/wnioski",
+  "/uwagi",
+  "/dziennik",
+  "/reguly",
 ];
 const AGENT_BLOCKED_PAGES = ["/kalendarz/wynajem/nowy"];
 

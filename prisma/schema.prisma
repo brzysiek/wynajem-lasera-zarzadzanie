@@ -130,6 +130,11 @@ model User {
   leadActivities      LeadActivity[]
   changeLogs          ChangeLog[]          @relation("ChangeLogUser")
   taskComments        TaskComment[]
+  proposals           Proposal[]           @relation("ProposalAuthor")
+  proposalComments    ProposalComment[]
+  proposalStatuses    ProposalStatusChange[]
+  remarks             Remark[]
+  cleanupRules        CleanupRule[]
 
   @@map("users")
 }
@@ -745,6 +750,8 @@ model Client {
   messages Message[]
   emails   EmailMessage[]
   changeLogs ChangeLog[]
+  proposalLinks ProposalClient[]
+  remarks  Remark[]
 
   @@index([nip])
   @@index([name])
@@ -961,6 +968,7 @@ model Lead {
 
   activities LeadActivity[]
   tasks      Task[]
+  remarks    Remark[]
 
   @@index([stage])
   @@index([clientId])
@@ -1084,4 +1092,135 @@ model TaskComment {
 
   @@index([taskId])
   @@map("task_comments")
+}
+
+// ---------------------------------------------------------------------------
+// Porządki (docs: instrukcja „Wnioski, uwagi i dziennik porządków”). Wnioski
+// o zmiany w panelu, integracjach i procesie — z workflow akceptacji. Obszar,
+// typ, status i priorytet jako krótkie kody (etykiety: src/lib/porzadki/labels.ts),
+// bez enumów MySQL — lista może się zmieniać bez migracji.
+model Proposal {
+  id             String   @id @default(cuid())
+  number         Int      @unique @default(autoincrement()) // W-0001
+  title          String
+  area           String   @db.VarChar(32)
+  type           String   @db.VarChar(32)
+  problem        String?  @db.Text
+  evidence       String?  @db.Text
+  scale          String?
+  causes         Json? // string[] — hipoteza przyczyny
+  proposal       String?  @db.Text
+  priority       String   @default("MEDIUM") @db.VarChar(8) // HIGH | MEDIUM | LOW
+  priorityReason String?
+  blocksCleanup  Boolean  @default(false)
+  status         String   @default("NOWY") @db.VarChar(16)
+  decision       String?  @db.Text // decyzja / komentarz przy zmianie statusu
+  authorId       String?
+  author         User?    @relation("ProposalAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  clients   ProposalClient[]
+  comments  ProposalComment[]
+  statuses  ProposalStatusChange[]
+  relations ProposalRelation[] @relation("ProposalRelationFrom")
+  relatedBy ProposalRelation[] @relation("ProposalRelationTo")
+  remarks   Remark[]
+
+  @@index([status])
+  @@index([area])
+  @@map("proposals")
+}
+
+model ProposalClient {
+  proposalId String
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@id([proposalId, clientId])
+  @@index([clientId])
+  @@map("proposal_clients")
+}
+
+// Powiązanie wniosków: DUPLICATE_OF (ten jest duplikatem tamtego) |
+// DEPENDS_ON | SUPERSEDES.
+model ProposalRelation {
+  id     String   @id @default(cuid())
+  fromId String
+  from   Proposal @relation("ProposalRelationFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId   String
+  to     Proposal @relation("ProposalRelationTo", fields: [toId], references: [id], onDelete: Cascade)
+  kind   String   @db.VarChar(16)
+
+  @@unique([fromId, toId, kind])
+  @@index([toId])
+  @@map("proposal_relations")
+}
+
+model ProposalComment {
+  id         String   @id @default(cuid())
+  proposalId String
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  body       String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([proposalId])
+  @@map("proposal_comments")
+}
+
+// Historia statusów wniosku: kto, kiedy, z jakiego na jaki, komentarz.
+model ProposalStatusChange {
+  id         String   @id @default(cuid())
+  proposalId String
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fromStatus String?  @db.VarChar(16)
+  toStatus   String   @db.VarChar(16)
+  comment    String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([proposalId])
+  @@map("proposal_status_changes")
+}
+
+// Uwaga — obserwacja / podejrzenie bez workflow realizacji; da się ją
+// przekształcić we wniosek (proposalId).
+model Remark {
+  id         String    @id @default(cuid())
+  body       String    @db.Text
+  area       String?   @db.VarChar(32)
+  evidence   String?   @db.Text
+  status     String    @default("OPEN") @db.VarChar(8) // OPEN | CLOSED
+  clientId   String?
+  client     Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  leadId     String?
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  proposalId String?
+  proposal   Proposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  authorId   String?
+  author     User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([clientId])
+  @@index([status])
+  @@map("remarks")
+}
+
+// Reguły porządków — ustalenia, które agent czyta przed pracą
+// (np. „samo imię nigdy nie wystarcza do dopasowania”). Edytuje ADMIN.
+model CleanupRule {
+  id          String   @id @default(cuid())
+  body        String   @db.Text
+  example     String?  @db.Text
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("cleanup_rules")
 }

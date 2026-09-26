@@ -6,6 +6,8 @@ import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_LABEL, SOURCE_LABEL, formatNip, form
 import { AgentModeContext, ClientDataForm, ContactForm, NoteEditor, api } from "../client-forms";
 import { PencilIcon, fmtMoney } from "../ui";
 import { Panel } from "./shared";
+import { RemarksPanel } from "@/components/porzadki/remarks-panel";
+import { ChangeLogPanel } from "@/components/porzadki/changelog-panel";
 
 // Zakładka „Dane” (prompt 3B-karta, 2.4): osoby kontaktowe (dwa numery),
 // firma i adres, dane do wynajmu (stałe ustalenia = dawna notatka klienta,
@@ -315,6 +317,14 @@ export function TabData({
           </div>
         </Panel>
       </div>
+
+      {/* Porządki: uwagi o kliencie i historia zmian jego danych (dziennik). */}
+      <Panel title="Uwagi">
+        <RemarksPanel clientId={d.id} compact />
+      </Panel>
+      <Panel title="Historia porządków">
+        <ChangeLogPanel clientId={d.id} compact canUndo={isAdmin} />
+      </Panel>
     </div>
   );
 }

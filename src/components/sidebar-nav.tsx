@@ -77,6 +77,14 @@ function ClientsIcon() {
     </svg>
   );
 }
+function ChecklistIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M4 5.5l1.5 1.5L8 4.5M4 11l1.5 1.5L8 10M10.5 6h5.5M10.5 11.5h5.5M4 16h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function DeviceBoxIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -130,7 +138,7 @@ function GearIcon() {
   );
 }
 
-type PlainItem = { kind: "link"; href: string; label: string; match?: string; icon: React.ReactNode };
+type PlainItem = { kind: "link"; href: string; label: string; match?: string; matchAny?: string[]; icon: React.ReactNode };
 type FinanceItem = { kind: "finance" };
 
 // Widok kierowcy (prawdziwy albo podgląd) zachowuje dzisiejsze okrojenie:
@@ -147,6 +155,8 @@ function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT" | undefined): (
     // (role tutaj to rola efektywna — patrz (app)/layout.tsx).
     { kind: "link", href: "/sygnaly", label: "Sygnały", icon: <PulseNavIcon /> },
     { kind: "link", href: "/klienci", label: "Klienci", icon: <ClientsIcon /> },
+    // Porządki: wnioski, uwagi, dziennik zmian, reguły (zakładki na stronie).
+    { kind: "link", href: "/wnioski", label: "Porządki", matchAny: ["/wnioski", "/uwagi", "/dziennik", "/reguly"], icon: <ChecklistIcon /> },
     { kind: "link", href: "/urzadzenia", label: "Urządzenia", icon: <DeviceBoxIcon /> },
     { kind: "link", href: "/wysylka-sms", label: "Wysyłka SMS", icon: <SmsBubbleIcon /> },
   ];
@@ -365,7 +375,7 @@ export function SidebarNav({
     >
       {items.map((item) => {
         if (item.kind === "link") {
-          const active = pathname.startsWith(item.match ?? item.href);
+          const active = item.matchAny ? item.matchAny.some((m) => pathname.startsWith(m)) : pathname.startsWith(item.match ?? item.href);
           return (
             <div key={item.href}>
               <NavRow
