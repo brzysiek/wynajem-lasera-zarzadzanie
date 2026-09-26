@@ -15,6 +15,9 @@ export type TaskDto = {
   author: TaskAuthor;
   assignee: TaskPerson;
   createdAt: string;
+  // Zadanie utworzone z karty sygnału / klienta (CRM) — link w panelu.
+  leadId: string | null;
+  clientId: string | null;
 };
 
 type TaskRow = Task & {
@@ -35,6 +38,8 @@ export function taskDto(row: TaskRow): TaskDto {
       : null,
     assignee: row.assignee,
     createdAt: row.createdAt.toISOString(),
+    leadId: row.leadId,
+    clientId: row.clientId,
   };
 }
 

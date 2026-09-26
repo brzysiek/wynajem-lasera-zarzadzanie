@@ -69,6 +69,17 @@ export const CLIENT_STATUS_COLORS = {
   NIE_KONTAKTOWAC: { bg: APP.bg, fg: APP.textMuted, dot: APP.textFaint, strike: true },
 } as const;
 
+// Etapy sygnału (moduł Sygnały, docs/crm/mockup-sygnaly.html) — miękkie tło
+// z palety APP + ciemny odcień tekstu, jak chipy statusu klienta.
+export const LEAD_STAGE_COLORS = {
+  SYGNAL: { bg: APP.accentSoft, fg: APP_DEEP.accent, dot: APP.accent },
+  WYWIAD: { bg: APP.brandSoft, fg: APP.brandDeep, dot: APP.brand },
+  OFERTA: { bg: APP.goldSoft, fg: APP_DEEP.gold, dot: APP.gold },
+  REZERWACJA: { bg: APP.purpleSoft, fg: APP_DEEP.purple, dot: APP.purple },
+  WYGRANA: { bg: APP.greenSoft, fg: APP_DEEP.green, dot: APP.green },
+  PRZEGRANA: { bg: APP.redSoft, fg: APP.red, dot: APP.red },
+} as const;
+
 // Paleta APP jako zmienne CSS — ustawiane na korzeniu strony, żeby klasy
 // Tailwind mogły z nich korzystać także w stanach :hover/:focus
 // (np. `hover:bg-[var(--c-brand-soft)]`). Styl inline zawsze wygrywa z

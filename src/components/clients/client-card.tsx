@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { StageChip } from "@/components/leads/lead-ui";
 import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_LABEL, SOURCE_LABEL, formatNip, formatPhone } from "@/lib/clients/labels";
 import type { ClientContactDto, ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { Avatar, CalendarPlusIcon, DeviceTags, PencilIcon, PhoneIcon, SmsIcon, StatusChip, fmtAgo, fmtDate, fmtMoney } from "./ui";
@@ -435,6 +436,19 @@ export function ClientCard({
               <span className="whitespace-pre-line">{detail.notes}</span>
             </span>
           </button>
+        )}
+
+        {detail.leads.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <SectionTitle>Sygnały</SectionTitle>
+            {detail.leads.map((l) => (
+              <Link key={l.id} href={`/sygnaly?id=${l.id}`} className="flex items-center gap-2 text-[13px] hover:text-[var(--c-brand-deep)]">
+                <StageChip stage={l.stage} />
+                <span className="min-w-0 truncate">{l.title}</span>
+                <span className="ml-auto flex-none text-xs text-[var(--c-faint)]">{fmtDate(l.createdAt)}</span>
+              </Link>
+            ))}
+          </div>
         )}
 
         <div className="flex flex-col gap-2.5">

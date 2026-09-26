@@ -113,9 +113,9 @@ export function AppShell({
                 className={
                   isFullWidth
                     ? undefined
-                    : // Klienci: lista + karta klienta obok siebie (docs/crm/mockup-klienci.html)
+                    : // Klienci i Sygnały: lista + karta obok siebie (docs/crm/mockup-*.html)
                       // potrzebują szerokości ekranu, nie wąskiej kolumny max-w-6xl.
-                      pathname.startsWith("/klienci")
+                      pathname.startsWith("/klienci") || pathname.startsWith("/sygnaly")
                       ? "px-4 py-6 md:px-[30px] md:py-[26px]"
                       : "mx-auto max-w-6xl px-4 py-6 md:px-[30px] md:py-[26px]"
                 }

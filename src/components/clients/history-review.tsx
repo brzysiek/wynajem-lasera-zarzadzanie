@@ -77,7 +77,7 @@ function pct(score: number | null) {
 }
 
 // Wyszukiwarka klienta w popoverze — lokalnie, strzałki + Enter.
-function ClientPicker({
+export function ClientPicker({
   clients,
   onPick,
   onClose,

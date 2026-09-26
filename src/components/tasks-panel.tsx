@@ -588,6 +588,11 @@ function TaskRow({
           <span className="mt-1 flex flex-wrap items-center gap-2">
             {!done && <DueBadge dueDate={task.dueDate} status={task.status} />}
             {task.assignee && <AssigneePill person={task.assignee} />}
+            {task.leadId && (
+              <span className="text-xs" style={{ color: C.sub }}>
+                · sygnał
+              </span>
+            )}
             {showCreator && (
               <span className="text-xs" style={{ color: C.sub }}>
                 {verbZlecil(task.author!.gender)}: {task.author!.name}
@@ -631,7 +636,15 @@ function TaskRow({
               ))}
             </select>
           </div>
-          <div className="mt-2 flex justify-end">
+          <div className="mt-2 flex items-center justify-end gap-3">
+            {(task.leadId || task.clientId) && (
+              <a
+                href={task.leadId ? `${BASE_PATH}/sygnaly?id=${task.leadId}` : `${BASE_PATH}/klienci/${task.clientId}`}
+                className="mr-auto text-xs font-semibold text-[#1B6FA8] hover:underline"
+              >
+                {task.leadId ? "Otwórz sygnał →" : "Otwórz klienta →"}
+              </a>
+            )}
             <button
               type="button"
               onClick={onDelete}

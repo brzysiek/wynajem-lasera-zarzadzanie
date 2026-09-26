@@ -20,6 +20,36 @@ const FINANCE_SUB_ITEMS = [
   { href: "/finanse/faktury", label: "Faktury VAT" },
 ];
 
+function PulseNavIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M3 10h3l2-5 4 10 2-5h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Liczba nowych sygnałów bez kontaktu (plakietka przy „Sygnały”) — pobierana
+// przy wejściu i co 2 minuty; błąd = brak plakietki, menu działa dalej.
+function useFreshLeadsCount(enabled: boolean, pathname: string) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    const load = () =>
+      fetch(`${BASE_PATH}/api/leads/count`)
+        .then((r) => (r.ok ? r.json() : { count: 0 }))
+        .then((d) => alive && setCount(Number(d.count) || 0))
+        .catch(() => {});
+    load();
+    const t = setInterval(load, 120_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [enabled, pathname]);
+  return enabled ? count : 0;
+}
+
 function CalendarIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -115,6 +145,7 @@ function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | undefined): (PlainItem 
     { kind: "link", href: "/nadchodzace", label: "Nadchodzące", icon: <ClockIcon /> },
     // CRM (docs/crm/) — niewidoczne dla KIEROWCY, także w podglądzie kierowcy
     // (role tutaj to rola efektywna — patrz (app)/layout.tsx).
+    { kind: "link", href: "/sygnaly", label: "Sygnały", icon: <PulseNavIcon /> },
     { kind: "link", href: "/klienci", label: "Klienci", icon: <ClientsIcon /> },
     { kind: "link", href: "/urzadzenia", label: "Urządzenia", icon: <DeviceBoxIcon /> },
     { kind: "link", href: "/wysylka-sms", label: "Wysyłka SMS", icon: <SmsBubbleIcon /> },
@@ -129,12 +160,14 @@ function NavRow({
   icon,
   collapsed,
   active,
+  badge = 0,
 }: {
   href: string;
   label: string;
   icon: React.ReactNode;
   collapsed: boolean;
   active: boolean;
+  badge?: number;
 }) {
   return (
     <Link
@@ -145,8 +178,16 @@ function NavRow({
       }`}
       style={active ? { background: SHELL.brand, color: "#FFFFFF" } : { color: SHELL.sidebarText }}
     >
-      {icon}
-      {!collapsed && <span>{label}</span>}
+      <span className="relative flex">
+        {icon}
+        {collapsed && badge > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full" style={{ background: SHELL.accent }} />}
+      </span>
+      {!collapsed && <span className="flex-grow">{label}</span>}
+      {!collapsed && badge > 0 && (
+        <span className="rounded-full px-2 text-xs font-semibold text-white" style={{ background: SHELL.accent }}>
+          {badge}
+        </span>
+      )}
     </Link>
   );
 }
@@ -308,6 +349,7 @@ export function SidebarNav({
   }
 
   const items = itemsFor(role);
+  const freshLeads = useFreshLeadsCount(role === "ADMIN" || role === "STAFF", pathname);
 
   return (
     <nav
@@ -324,7 +366,14 @@ export function SidebarNav({
           const active = pathname.startsWith(item.match ?? item.href);
           return (
             <div key={item.href}>
-              <NavRow href={item.href} label={item.label} icon={item.icon} collapsed={collapsed} active={active} />
+              <NavRow
+                href={item.href}
+                label={item.label}
+                icon={item.icon}
+                collapsed={collapsed}
+                active={active}
+                badge={item.href === "/sygnaly" ? freshLeads : 0}
+              />
               {/* Tylko na samej sekcji Kalendarz — na innych stronach (np. Finanse)
                   ten filtr nie ma znaczenia, więc się nie pokazuje. */}
               {item.href === "/kalendarz" && active && <CalendarsSubItem collapsed={collapsed} role={role} />}

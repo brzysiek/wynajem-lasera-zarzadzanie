@@ -247,6 +247,8 @@ export type ClientDetail = {
     favoriteDevice: DeviceInterestKey | null;
   };
   history: ClientHistoryItem[];
+  // Sygnały klienta (CRM, prompt 2) — otwarte i zamknięte.
+  leads: { id: string; title: string; stage: "SYGNAL" | "WYWIAD" | "OFERTA" | "REZERWACJA" | "WYGRANA" | "PRZEGRANA"; createdAt: string }[];
 };
 
 export async function loadClientDetail(id: string, today = new Date()): Promise<ClientDetail | null> {
@@ -270,6 +272,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
         select: { ...HISTORY_FACT_SELECT, id: true, title: true, device: { select: { name: true, pricingCategory: true } } },
       },
       invoices: { where: INVOICE_FACT_WHERE, orderBy: { sellDate: "desc" }, select: { ...INVOICE_FACT_SELECT, id: true, number: true } },
+      leads: { orderBy: { createdAt: "desc" }, take: 20, select: { id: true, title: true, stage: true, createdAt: true } },
     },
   });
   if (!c) return null;
@@ -391,5 +394,33 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       favoriteDevice: summary.favoriteDevice,
     },
     history,
+    leads: c.leads.map((l) => ({ id: l.id, title: l.title, stage: l.stage, createdAt: l.createdAt.toISOString() })),
   };
+}
+
+// Status wybranych klientów (np. przy sygnałach: „Powracająca klientka”,
+// „Nie kontaktować”) — ta sama reguła co lista klientów, bez przychodu.
+export async function loadClientStatuses(ids: string[], today = new Date()): Promise<Map<string, ClientStatus>> {
+  if (ids.length === 0) return new Map();
+  const clients = await prisma.client.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      statusOverride: true,
+      rentals: { select: RENTAL_FACT_SELECT },
+      history: { where: HISTORY_FACT_WHERE, select: HISTORY_FACT_SELECT },
+      invoices: { where: INVOICE_FACT_WHERE, select: INVOICE_FACT_SELECT },
+    },
+  });
+  return new Map(
+    clients.map((c) => [
+      c.id,
+      summarizeClient({
+        statusOverride: c.statusOverride,
+        rentals: [...(c.rentals as RentalFactRow[]).map(toFact), ...c.history.map(historyToFact)],
+        invoices: c.invoices.map(invoiceToFact),
+        today,
+      }).status,
+    ]),
+  );
 }
