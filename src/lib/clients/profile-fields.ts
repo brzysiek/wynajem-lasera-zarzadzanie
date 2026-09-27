@@ -29,6 +29,7 @@ export type ClientProfilePatch = Partial<{
   seasonality: string | null;
   agreedPrice: string | null; // Decimal jako tekst
   paymentTerms: string | null;
+  paymentForm: "GOTOWKA" | "PRZELEW" | "OBA" | null;
   invoiceEmail: string | null;
   frameAgreement: FrameAgreement | null;
   marketingConsent: MarketingConsent | null;
@@ -55,6 +56,7 @@ export const CLIENT_PROFILE_FIELDS = [
   "seasonality",
   "agreedPrice",
   "paymentTerms",
+  "paymentForm",
   "invoiceEmail",
   "frameAgreement",
   "marketingConsent",
@@ -71,7 +73,7 @@ export const CONTACT_JSON_FIELDS = ["roles", "trainedOn"] as const;
 
 // Warunki handlowe ustala biuro — agent może je tylko zaproponować
 // (propozycje_dodaj, rodzaj „pole”), nie zmienić sam.
-export const PROPOSAL_ONLY_CLIENT_FIELDS = ["agreedPrice", "paymentTerms", "frameAgreement"] as const;
+export const PROPOSAL_ONLY_CLIENT_FIELDS = ["agreedPrice", "paymentTerms", "paymentForm", "transportPriceNet", "frameAgreement"] as const;
 
 export const CLIENT_FIELD_LABEL: Record<string, string> = {
   name: "pełna nazwa",
@@ -93,8 +95,10 @@ export const CLIENT_FIELD_LABEL: Record<string, string> = {
   links: "kanały online",
   ownDevices: "własne urządzenia",
   seasonality: "sezonowość",
-  agreedPrice: "cena ustalona",
+  agreedPrice: "cena ustalona (wynajem)",
+  transportPriceNet: "transport",
   paymentTerms: "warunki płatności",
+  paymentForm: "forma płatności",
   invoiceEmail: "e-mail do faktur",
   frameAgreement: "umowa ramowa",
   marketingConsent: "zgoda marketingowa",
@@ -259,6 +263,13 @@ export function parseClientProfilePatch(body: Record<string, unknown>): Result<C
       if (!Number.isFinite(n) || n < 0) return { ok: false, message: "Cena ustalona: kwota netto, np. 1180." };
       out.agreedPrice = n.toFixed(2);
     } else out.agreedPrice = null;
+  }
+  if (has("paymentForm")) {
+    const raw = text(body.paymentForm, 32);
+    const k = raw ? fold(raw).replace(/[^a-z]/g, "") : null;
+    const form = k === null ? null : k === "gotowka" ? "GOTOWKA" : k === "przelew" ? "PRZELEW" : k === "oba" || k === "gotowkaiprzelew" ? "OBA" : "invalid";
+    if (form === "invalid") return { ok: false, message: "Forma płatności: gotówka, przelew albo oba." };
+    out.paymentForm = form;
   }
   if (has("invoiceEmail")) {
     const e = text(body.invoiceEmail, 191)?.toLowerCase() ?? null;

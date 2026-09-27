@@ -4,15 +4,20 @@
 // z Fakturowni. „Po terminie” tylko dla faktur, które import sprawdził:
 // wystawionych od początku śledzenia wpłat i z terminem nie późniejszym niż
 // ostatni dzień wgranego wyciągu. Pozostałe nieopłacone = „nie sprawdzono”.
+// Klient może płacić gotówką (np. MiWiNi raz gotówką, raz przelewem), więc
+// brak przelewu = „po terminie” tylko u klienta z formą płatności PRZELEW;
+// u pozostałych = „brak przelewu” (do sprawdzenia: gotówka? przypomnienie?).
+// Gotówkę oznacza się ręcznie na karcie (data, kto przyjął).
 // Czyste funkcje bez zależności (vitest bez aliasu "@/").
 import { BANK_STATEMENT_SINCE } from "../invoicing/bank-since";
 
 export type PaymentStatus =
-  | { kind: "ZAPLACONA"; paidAt: Date; partial: boolean }
+  | { kind: "ZAPLACONA"; paidAt: Date; partial: boolean; method?: "CASH" | "TRANSFER" | "MANUAL" | null; receivedBy?: string | null }
   | { kind: "GOTOWKA" }
   | { kind: "PO_TERMINIE"; days: number }
   | { kind: "OCZEKUJE"; dueInDays: number | null }
   | { kind: "NIE_SPRAWDZONO"; days: number | null } // days = ile po terminie (informacyjnie)
+  | { kind: "BRAK_PRZELEWU"; days: number } // wyciąg obejmuje termin, przelewu nie ma — gotówka?
   | { kind: "ZAPLANOWANY" }
   | { kind: "BEZ_FAKTURY" };
 
@@ -45,6 +50,9 @@ function dayIndex(d: Date): number {
 export type InvoicePaymentInput = {
   paidAt: Date | null; // FakturowniaPayment.paidAt
   paidAmount?: number | null; // kwota przelewu, gdy opłacona przelewem z wyciągu
+  paidMethod?: "CASH" | "TRANSFER" | "MANUAL" | null;
+  paidReceivedBy?: string | null;
+  clientPaymentForm?: string | null; // GOTOWKA | PRZELEW | OBA (Client.paymentForm)
   totalGross?: number | null;
   paymentType: string | null;
   paymentTo: Date | null;
@@ -55,7 +63,7 @@ export type InvoicePaymentInput = {
 export function invoicePaymentStatus(inv: InvoicePaymentInput, today: Date, coverage: PaymentCoverage = null): PaymentStatus {
   if (inv.paidAt) {
     const partial = inv.paidAmount != null && inv.totalGross != null && inv.paidAmount < inv.totalGross - 0.01;
-    return { kind: "ZAPLACONA", paidAt: inv.paidAt, partial };
+    return { kind: "ZAPLACONA", paidAt: inv.paidAt, partial, method: inv.paidMethod ?? null, receivedBy: inv.paidReceivedBy ?? null };
   }
   if (inv.paymentType === "cash" || inv.cashConfirmed) return { kind: "GOTOWKA" };
   const due = inv.paymentTo ?? inv.issueDate ?? null;
@@ -66,7 +74,8 @@ export function invoicePaymentStatus(inv: InvoicePaymentInput, today: Date, cove
     coverage != null &&
     (!inv.issueDate || dayIndex(inv.issueDate) >= dayIndex(coverage.from)) &&
     dayIndex(due) + PAYMENT_GRACE_DAYS <= dayIndex(coverage.to);
-  return checked ? { kind: "PO_TERMINIE", days: diff } : { kind: "NIE_SPRAWDZONO", days: diff };
+  if (!checked) return { kind: "NIE_SPRAWDZONO", days: diff };
+  return inv.clientPaymentForm === "PRZELEW" ? { kind: "PO_TERMINIE", days: diff } : { kind: "BRAK_PRZELEWU", days: diff };
 }
 
 // Wiersz bez faktury: przyszły wynajem = zaplanowany; odebrana gotówka
@@ -82,7 +91,9 @@ const dm = (d: Date) => `${String(d.getDate()).padStart(2, "0")}.${String(d.getM
 export function paymentLabel(s: PaymentStatus): string {
   switch (s.kind) {
     case "ZAPLACONA":
-      return `${s.partial ? "Częściowo zapłacona" : "Zapłacona"} ${dm(s.paidAt)}`;
+      return s.method === "CASH"
+        ? `Gotówka ${dm(s.paidAt)}${s.receivedBy ? ` · ${s.receivedBy}` : ""}`
+        : `${s.partial ? "Częściowo zapłacona" : "Zapłacona"} ${dm(s.paidAt)}`;
     case "GOTOWKA":
       return "Gotówka";
     case "PO_TERMINIE":
@@ -91,6 +102,8 @@ export function paymentLabel(s: PaymentStatus): string {
       return s.dueInDays == null ? "Oczekuje" : s.dueInDays === 0 ? "Termin dziś" : `Oczekuje · ${s.dueInDays} ${s.dueInDays === 1 ? "dzień" : "dni"}`;
     case "NIE_SPRAWDZONO":
       return "Nie sprawdzono";
+    case "BRAK_PRZELEWU":
+      return "Brak przelewu";
     case "ZAPLANOWANY":
       return "Zaplanowany";
     case "BEZ_FAKTURY":

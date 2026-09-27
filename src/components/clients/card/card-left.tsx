@@ -303,11 +303,7 @@ function DeliverySection({ d, onChanged, notify, isAgent }: Props & { isAgent: b
           </Row>
           <Row label="Odległość z bazy">{d.distanceKm ? `${Number(d.distanceKm).toLocaleString("pl-PL")} km` : <Missing>auto z mapy – brak</Missing>}</Row>
           <Row label="Transport">
-            {d.transportPriceNet && Number(d.transportPriceNet) > 0
-              ? `${money(Number(d.transportPriceNet))} netto`
-              : p.agreedPrice
-                ? `w cenie pakietu ${money(Number(p.agreedPrice))} netto`
-                : <Missing>uzupełnij</Missing>}
+            {d.transportPriceNet && Number(d.transportPriceNet) > 0 ? `${money(Number(d.transportPriceNet))} netto` : <Missing>uzupełnij cenę transportu</Missing>}
           </Row>
           <Row label="Wejście / piętro">{n?.entrance || n?.floor ? [n.entrance, n.floor].filter(Boolean).join(" · ") : <Missing>uzupełnia kierowca{nextDay ? ` przy ${nextDay}` : ""}</Missing>}</Row>
           <Row label="Parking">{n?.parking ?? <Missing>uzupełnia kierowca</Missing>}</Row>

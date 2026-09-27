@@ -90,6 +90,7 @@ export async function POST(req: NextRequest) {
         fakturowniaInvoiceId: m.invoiceId,
         paidAt: new Date(`${m.candidates[0].date}T12:00:00.000Z`),
         bankTransferId: stored.transferId(m.candidates[0]),
+        method: "TRANSFER",
       })),
       skipDuplicates: true,
     });

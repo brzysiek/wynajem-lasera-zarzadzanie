@@ -12,7 +12,10 @@ describe("parseProposalItem", () => {
     });
   });
   it("pola poza zakresem agenta odrzucone", () => {
-    expect(parseProposalItem({ rodzaj: "pole", klient_id: "c1", pole: "transportPriceNet", proponowane: "150", ...prov }).ok).toBe(false);
+    expect(parseProposalItem({ rodzaj: "pole", klient_id: "c1", pole: "distanceKm", proponowane: "15", ...prov }).ok).toBe(false);
+    // Warunki handlowe (cena, transport, forma płatności) — tylko propozycja do akceptacji.
+    expect(parseProposalItem({ rodzaj: "pole", klient_id: "c1", pole: "transportPriceNet", proponowane: "180", ...prov }).ok).toBe(true);
+    expect(parseProposalItem({ rodzaj: "pole", klient_id: "c1", pole: "paymentForm", proponowane: "oba", ...prov }).ok).toBe(true);
     expect(parseProposalItem({ rodzaj: "osoba", klient_id: "c1", osoba_id: "p1", pole: "isPrimary", proponowane: true, ...prov }).ok).toBe(false);
   });
   it("osoba wymaga osoba_id; wartość null dozwolona", () => {

@@ -26,6 +26,8 @@ export type TxInvoice = {
   paymentType: string | null;
   paidAt: Date | null; // FakturowniaPayment.paidAt (przelew z wyciągu / ręcznie)
   paidAmount?: number | null; // kwota dopasowanego przelewu
+  paidMethod?: "CASH" | "TRANSFER" | "MANUAL" | null;
+  paidReceivedBy?: string | null;
   rentalId: string | null; // ClientInvoice.rentalId (faktura wynajmu z panelu)
   positions: string | null;
 };
@@ -45,7 +47,7 @@ export type TxRow = {
 const DAY = 86_400_000;
 const WINDOW = 7 * DAY;
 
-export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], today: Date, coverage: PaymentCoverage = null): TxRow[] {
+export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], today: Date, coverage: PaymentCoverage = null, clientPaymentForm: string | null = null): TxRow[] {
   const invByFakt = new Map(invoices.map((i) => [i.fakturowniaInvoiceId, i]));
   const used = new Set<string>();
   const attached = new Map<string, TxInvoice>(); // rental.id → faktura
@@ -79,6 +81,9 @@ export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], to
       {
         paidAt: inv.paidAt,
         paidAmount: inv.paidAmount ?? null,
+        paidMethod: inv.paidMethod ?? null,
+        paidReceivedBy: inv.paidReceivedBy ?? null,
+        clientPaymentForm,
         totalGross: inv.totalGross ?? null,
         paymentType: inv.paymentType,
         paymentTo: inv.paymentTo,
@@ -133,6 +138,8 @@ export type TxTotals = {
   dueCount: number;
   uncheckedNet: number; // po terminie, ale poza okresem wgranych wyciągów
   uncheckedCount: number;
+  noTransferNet: number; // w okresie wyciągów bez przelewu (gotówka? przypomnienie?)
+  noTransferCount: number;
   paymentsAsOf: string | null; // ISO — „wpłaty aktualne na”: ostatni dzień wgranych wyciągów
   paymentsFrom: string | null; // ISO — początek sprawdzanego okresu („wpłaty z okresu od–do”)
   withoutInvoice: number;
@@ -150,6 +157,7 @@ export function transactionTotals(rows: TxRow[], today: Date, coverage: PaymentC
   const due = withInv.filter((r) => isUnpaid(r.status));
   const oldest = [...overdue].sort((a, b) => (b.status.kind === "PO_TERMINIE" ? b.status.days : 0) - (a.status.kind === "PO_TERMINIE" ? a.status.days : 0))[0];
   const unchecked = withInv.filter((r) => r.status.kind === "NIE_SPRAWDZONO");
+  const noTransfer = withInv.filter((r) => r.status.kind === "BRAK_PRZELEWU");
   const noInvoice = rows.filter((r) => r.status.kind === "BEZ_FAKTURY");
   return {
     year,
@@ -164,6 +172,8 @@ export function transactionTotals(rows: TxRow[], today: Date, coverage: PaymentC
     dueCount: due.length,
     uncheckedNet: round2(unchecked.reduce((s, r) => s + (r.net ?? 0), 0)),
     uncheckedCount: unchecked.length,
+    noTransferNet: round2(noTransfer.reduce((s, r) => s + (r.net ?? 0), 0)),
+    noTransferCount: noTransfer.length,
     paymentsAsOf: coverage?.to.toISOString() ?? null,
     paymentsFrom: coverage?.from.toISOString() ?? null,
     withoutInvoice: noInvoice.length,
@@ -190,15 +200,20 @@ export function rhythmLabel(days: number): string {
 // Typowa forma płatności: z faktur (przelew / gotówka) + czy zwykle w terminie.
 // Tylko z faktur sprawdzonych wyciągiem (zapłacone i „po terminie”), od
 // 2 takich faktur; „zaległości” dopiero przy opóźnieniu ponad 14 dni.
-export function typicalPayment(rows: TxRow[]): string | null {
+export const PAYMENT_FORM_LABEL: Record<string, string> = { GOTOWKA: "gotówka", PRZELEW: "przelew", OBA: "gotówka i przelew" };
+
+export function typicalPayment(rows: TxRow[], clientPaymentForm: string | null = null): string | null {
   const inv = rows.filter((r) => r.invoice || r.status.kind === "GOTOWKA");
-  if (inv.length === 0) return null;
-  const cash = inv.filter((r) => r.status.kind === "GOTOWKA").length;
-  if (cash > inv.length / 2) return "gotówka";
-  const paid = inv.filter((r) => r.status.kind === "ZAPLACONA").length;
+  const isCash = (r: TxRow) => r.status.kind === "GOTOWKA" || (r.status.kind === "ZAPLACONA" && r.status.method === "CASH");
+  const cash = inv.filter(isCash).length;
+  const transfers = inv.filter((r) => r.status.kind === "ZAPLACONA" && r.status.method !== "CASH").length;
+  // Forma ustalona na karcie wygrywa; bez niej — z historii wpłat.
+  const form = clientPaymentForm ? PAYMENT_FORM_LABEL[clientPaymentForm] : cash && transfers ? "gotówka i przelew" : cash > inv.length / 2 ? "gotówka" : inv.length ? "przelew" : null;
+  if (!form) return null;
+  if (form === "gotówka") return form;
   const overdue = inv.filter((r) => r.status.kind === "PO_TERMINIE");
-  if (paid + overdue.length < 2) return "przelew";
+  if (transfers + overdue.length < 2) return form;
   const serious = overdue.filter((r) => r.status.kind === "PO_TERMINIE" && r.status.days > 14).length;
-  if (paid === 0) return serious ? "przelew, zaległości" : "przelew";
-  return overdue.length > paid / 3 ? "przelew, bywa po terminie" : "przelew, zwykle w terminie";
+  if (transfers === 0) return serious ? `${form}, zaległości` : form;
+  return overdue.length > transfers / 3 ? `${form}, bywa po terminie` : `${form}, zwykle w terminie`;
 }

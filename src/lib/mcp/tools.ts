@@ -289,7 +289,8 @@ export const TOOLS: McpTool[] = [
     name: "faktury",
     title: "Faktury z Fakturowni",
     description:
-      "Faktury (kopia w panelu) z paginacją i statusem wpłaty z wyciągów bankowych (Finanse, import CSV): zapłacona dd.mm / częściowo / po terminie / nie sprawdzono. " +
+      "Faktury (kopia w panelu) z paginacją i statusem wpłaty: zapłacona (przelew z wyciągu) / gotówka (oznaczona ręcznie: data, kto przyjął) / częściowo / " +
+      "po terminie (tylko klient z formą płatności „przelew”) / brak przelewu (wyciąg obejmuje termin, przelewu nie ma — może gotówka) / nie sprawdzono. " +
       "Filtry: data sprzedaży od/do, klient, NIP, bez klienta, bez wynajmu. faktura_id = ID faktury w Fakturowni (do narzędzia platnosci i propozycji dopasowanie_platnosci).",
     inputSchema: obj({
       od: s("Data sprzedaży od RRRR-MM-DD."),
@@ -314,7 +315,7 @@ export const TOOLS: McpTool[] = [
       const p = page(a);
       const [total, rows, coverage] = await Promise.all([
         prisma.clientInvoice.count({ where }),
-        prisma.clientInvoice.findMany({ where, orderBy: { sellDate: "desc" }, skip: p.skip, take: p.perPage, include: { client: { select: { name: true } } } }),
+        prisma.clientInvoice.findMany({ where, orderBy: { sellDate: "desc" }, skip: p.skip, take: p.perPage, include: { client: { select: { name: true, paymentForm: true } } } }),
         loadPaymentCoverage(),
       ]);
       const payments = await prisma.fakturowniaPayment.findMany({ where: { fakturowniaInvoiceId: { in: rows.map((r) => r.fakturowniaInvoiceId) } } });
@@ -330,6 +331,9 @@ export const TOOLS: McpTool[] = [
             {
               paidAt: pay?.paidAt ?? null,
               paidAmount: pay?.bankTransferId ? (amount.get(pay.bankTransferId) ?? null) : null,
+              paidMethod: (pay?.method as "CASH" | "TRANSFER" | "MANUAL" | null | undefined) ?? null,
+              paidReceivedBy: pay?.receivedBy ?? null,
+              clientPaymentForm: r.client?.paymentForm ?? null,
               totalGross: Number(r.totalGross.toString()),
               paymentType: r.paymentType,
               paymentTo: r.paymentTo,
@@ -353,7 +357,7 @@ export const TOOLS: McpTool[] = [
             rentalId: r.rentalId,
             matchState: r.matchState,
             paymentTo: r.paymentTo?.toISOString().slice(0, 10) ?? null,
-            payment: { status: status.kind, label: paymentLabel(status), paidAt: pay?.paidAt.toISOString().slice(0, 10) ?? null, byBankTransfer: !!pay?.bankTransferId },
+            payment: { status: status.kind, label: paymentLabel(status), paidAt: pay?.paidAt.toISOString().slice(0, 10) ?? null, method: pay?.method ?? null, receivedBy: pay?.receivedBy ?? null, byBankTransfer: !!pay?.bankTransferId },
           };
         }),
         page: p.page,
@@ -533,7 +537,8 @@ export const TOOLS: McpTool[] = [
       "source (źródło pozyskania, nie zmiany), deviceInterests, statusOverride oraz nowe pola karty: shortName, regon, legalForm, businessStartDate, pkd, vatStatus, bankAccounts, " +
       "deliveryAddress, deliveryNotes, services, openingHours, links, ownDevices, seasonality, invoiceEmail, marketingConsent, smsReminders, googleReview, " +
       "nextStepText + nextStepDueAt (baner „Następny krok”; pierwsza linia = krok, dalsze = kontekst). null czyści pole. " +
-      "Warunki handlowe (agreedPrice, paymentTerms, frameAgreement) tylko przez propozycje_dodaj. Wymagane: zrodlo, pewnosc, paczka.",
+      "Warunki handlowe (agreedPrice = cena ustalona za sam wynajem, transportPriceNet = transport, paymentForm = gotówka | przelew | oba, paymentTerms, frameAgreement) " +
+      "tylko przez propozycje_dodaj. Wymagane: zrodlo, pewnosc, paczka.",
     inputSchema: obj(
       {
         klient_id: s("ID klienta."),
@@ -905,7 +910,7 @@ export const TOOLS: McpTool[] = [
     title: "Zgłoś propozycje zmian",
     description:
       "Zgłasza hurtem propozycje do akceptacji administratora (Porządki → Propozycje). Każda: rodzaj (pole | osoba | archiwizacja | scalenie | wydzielenie | dopasowanie_platnosci | wykluczenie), klient_id, " +
-      "dla pola: pole + proponowane (także nowe pola karty jak w klient_zmien oraz agreedPrice, paymentTerms, frameAgreement); dla osoby: osoba_id + pole + proponowane (także roles, preferredChannel, salutation, trainedOn); dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id; " +
+      "dla pola: pole + proponowane (także nowe pola karty jak w klient_zmien oraz agreedPrice, transportPriceNet, paymentForm, paymentTerms, frameAgreement); dla osoby: osoba_id + pole + proponowane (także roles, preferredChannel, salutation, trainedOn); dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id; " +
       "dla wydzielenia (rodzaj: wydzielenie; klient-zlepek → nowy klient): osoby_ids, nazwa, opcjonalnie nip, ulica, kod, miasto, " +
       "invoiceNip (faktury z tym NIP-em nabywcy przechodzą; bez niego — faktury z NIP-em nowego klienta), historyKeys (klucze grup z kalendarzy z narzędzia dopasowania). " +
       "Nowy klient nie dziedziczy źródła ani tagu HubSpot zlepka. " +

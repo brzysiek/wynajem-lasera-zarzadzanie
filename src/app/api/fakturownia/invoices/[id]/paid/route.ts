@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.paid) {
     await prisma.fakturowniaPayment.upsert({
       where: { fakturowniaInvoiceId: invoiceId },
-      create: { fakturowniaInvoiceId: invoiceId, paidAt: new Date() },
+      create: { fakturowniaInvoiceId: invoiceId, paidAt: new Date(), method: "MANUAL", markedById: session.user.id },
       update: {}, // już oznaczona — nie nadpisuj oryginalnej daty zapłaty
     });
   } else {

@@ -57,7 +57,7 @@ describe("jakość danych", () => {
   };
   it("procent, braki i źródła bez powtórzeń", () => {
     const q = cardQuality(base);
-    expect(q.missing).toEqual(["status VAT", "dojazd i zasilanie", "własne urządzenia gabinetu", "data szkolenia", "warunki płatności", "zgoda marketingowa", "wpłaty (wyciąg z banku)"]);
+    expect(q.missing).toEqual(["status VAT", "dojazd i zasilanie", "własne urządzenia gabinetu", "data szkolenia", "forma płatności", "zgoda marketingowa", "wpłaty (wyciąg z banku)"]);
     expect(q.percent).toBe(68);
     expect(q.sources).toEqual(["CEIDG", "HubSpot", "Fresha", "panel", "Fakturownia", "kalendarze urządzeń"]);
   });

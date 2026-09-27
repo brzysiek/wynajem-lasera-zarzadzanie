@@ -42,7 +42,7 @@ export function TabTransactions({ d, isAdmin }: { d: ClientDetail; isAdmin: bool
   const t = d.txTotals;
   const rows = d.transactions;
   const years = useMemo(() => [...new Set(rows.map((r) => new Date(r.date).getFullYear()))].sort((a, b) => b - a), [rows]);
-  const unpaid = rows.filter((r) => r.status.kind === "PO_TERMINIE" || r.status.kind === "OCZEKUJE");
+  const unpaid = rows.filter((r) => r.status.kind === "PO_TERMINIE" || r.status.kind === "BRAK_PRZELEWU" || r.status.kind === "OCZEKUJE");
   const visible = filter === "all" ? rows : filter === "unpaid" ? unpaid : rows.filter((r) => new Date(r.date).getFullYear() === filter);
 
   async function remind(fakturowniaInvoiceId: number) {

@@ -142,13 +142,16 @@ export function Indicators({ d }: { d: ClientDetail }) {
   // Przychód 12 mies.: faktury i rozliczenia z ostatnich 12 miesięcy; wynajmy
   // bez kwoty (z kalendarza) — szacunek z ceny ustalonej.
   const { known, withoutAmount: unknown } = d.cardFacts.revenue12m;
-  const price = d.profile.agreedPrice ? Number(d.profile.agreedPrice) : null;
+  // Cena ustalona = wynajem + transport.
+  const price = d.profile.agreedPrice ? Number(d.profile.agreedPrice) + (d.transportPriceNet ? Number(d.transportPriceNet) : 0) : null;
   const estimate = known + (price ? unknown * price : 0);
   const estimated = unknown > 0 && !!price;
-  const warn = t.overdueCount > 0 || t.uncheckedCount > 0;
+  const warn = t.overdueCount > 0 || t.noTransferCount > 0 || t.uncheckedCount > 0;
   const due = t.overdueCount
     ? `${money(t.overdueNet)} po terminie`
-    : t.dueCount
+    : t.noTransferCount
+      ? `${t.noTransferCount} FV bez przelewu`
+      : t.dueCount
       ? `${money(t.dueNet)} do zapłaty`
       : t.uncheckedCount
         ? `${t.uncheckedCount} FV do sprawdzenia`

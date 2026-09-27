@@ -150,7 +150,15 @@ Zmienia dane klienta. Każde zmienione pole trafia do dziennika z wartością pr
 - zgody: `invoiceEmail`, `marketingConsent` (`{ email, sms, date, source }`), `smsReminders`, `googleReview` (`{ askedAt, given }`);
 - baner „Następny krok”: `nextStepText` (pierwsza linia to krok, dalsze to kontekst) i `nextStepDueAt`.
 
-Warunki handlowe (`agreedPrice`, `paymentTerms`, `frameAgreement`) zgłaszasz tylko propozycją `pole`.
+Warunki handlowe zgłaszasz tylko propozycją `pole`:
+
+- `agreedPrice`: cena ustalona za sam wynajem;
+- `transportPriceNet`: transport;
+- `paymentForm`: `gotówka`, `przelew` albo `oba`;
+- `paymentTerms`;
+- `frameAgreement`.
+
+Status „po terminie” dostaje tylko faktura klienta z formą płatności `przelew`, jeśli wyciąg obejmuje termin. Przy innej formie płatności faktura bez przelewu ma status „brak przelewu”. Gotówkę oznacza biuro na karcie klienta: data i kto przyjął.
 
 Osoba (MCP: `osoba_zmien`) ma dodatkowo:
 

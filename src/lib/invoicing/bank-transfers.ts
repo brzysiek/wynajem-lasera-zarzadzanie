@@ -107,7 +107,7 @@ export async function applyPaymentMatch(input: PaymentMatchInput, actor: ChangeA
   const paid = await prisma.fakturowniaPayment.findUnique({ where: { fakturowniaInvoiceId: input.fakturowniaInvoiceId } });
   if (paid) return { ok: false, message: "Faktura jest już oznaczona jako zapłacona." };
   await prisma.$transaction(async (tx) => {
-    await tx.fakturowniaPayment.create({ data: { fakturowniaInvoiceId: input.fakturowniaInvoiceId, paidAt: transfer.bookedAt, bankTransferId: transfer.id } });
+    await tx.fakturowniaPayment.create({ data: { fakturowniaInvoiceId: input.fakturowniaInvoiceId, paidAt: transfer.bookedAt, bankTransferId: transfer.id, method: "TRANSFER" } });
     await tx.bankTransfer.update({
       where: { id: transfer.id },
       data: { fakturowniaInvoiceId: input.fakturowniaInvoiceId, matchState: "MANUAL", matchedByUserId: actor.approvedById ?? actor.userId, matchedAt: new Date(), candidates: Prisma.DbNull },
@@ -171,7 +171,7 @@ export async function listPaymentsForAgent(q: PaymentsQuery) {
       ...(q.clientId ? { clientId: q.clientId } : {}),
     },
     orderBy: { issueDate: "asc" },
-    include: { client: { select: { id: true, name: true } } },
+    include: { client: { select: { id: true, name: true, paymentForm: true } } },
   });
   const paidIds = new Set(
     (await prisma.fakturowniaPayment.findMany({ where: { fakturowniaInvoiceId: { in: unpaidRows.map((r) => r.fakturowniaInvoiceId) } }, select: { fakturowniaInvoiceId: true } })).map(
@@ -181,7 +181,11 @@ export async function listPaymentsForAgent(q: PaymentsQuery) {
   const unpaid = unpaidRows
     .filter((r) => !paidIds.has(r.fakturowniaInvoiceId))
     .map((r) => {
-      const status = invoicePaymentStatus({ paidAt: null, paymentType: r.paymentType, paymentTo: r.paymentTo, issueDate: r.issueDate, cashConfirmed: false }, today, coverage);
+      const status = invoicePaymentStatus(
+        { paidAt: null, paymentType: r.paymentType, paymentTo: r.paymentTo, issueDate: r.issueDate, cashConfirmed: false, clientPaymentForm: r.client?.paymentForm ?? null },
+        today,
+        coverage,
+      );
       return {
         faktura_id: r.fakturowniaInvoiceId,
         numer: r.number,

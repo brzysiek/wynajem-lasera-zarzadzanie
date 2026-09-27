@@ -369,7 +369,7 @@ export type ClientDetail = {
     details: string | null;
     net: number | null;
     invoice: { id: string; fakturowniaInvoiceId: number; number: string; issueDate: string; totalGross: number | null } | null;
-    status: { kind: PaymentStatus["kind"]; label: string; days: number | null; paidAt: string | null };
+    status: { kind: PaymentStatus["kind"]; label: string; days: number | null; paidAt: string | null; method: string | null };
   }[];
   txTotals: TxTotals;
   // Pola liczone (karta klienta, sekcja 4): rytm, dzień tygodnia, urządzenie,
@@ -606,8 +606,9 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
   // --- Wynajmy i faktury ---
   const payments = await prisma.fakturowniaPayment.findMany({
     where: { fakturowniaInvoiceId: { in: c.invoices.map((i) => i.fakturowniaInvoiceId) } },
-    select: { fakturowniaInvoiceId: true, paidAt: true, bankTransferId: true },
+    select: { fakturowniaInvoiceId: true, paidAt: true, bankTransferId: true, method: true, receivedBy: true },
   });
+  const paymentBy = new Map(payments.map((p) => [p.fakturowniaInvoiceId, p]));
   const paidAt = new Map(payments.map((p) => [p.fakturowniaInvoiceId, p.paidAt]));
   const transferIds = payments.map((p) => p.bankTransferId).filter((x): x is string => !!x);
   const transfers = transferIds.length ? await prisma.bankTransfer.findMany({ where: { id: { in: transferIds } }, select: { id: true, amount: true } }) : [];
@@ -665,11 +666,14 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       totalGross: Number(i.totalGross.toString()),
       paidAt: paidAt.get(i.fakturowniaInvoiceId) ?? null,
       paidAmount: paidAmount.get(i.fakturowniaInvoiceId) ?? null,
+      paidMethod: (paymentBy.get(i.fakturowniaInvoiceId)?.method as "CASH" | "TRANSFER" | "MANUAL" | null | undefined) ?? null,
+      paidReceivedBy: paymentBy.get(i.fakturowniaInvoiceId)?.receivedBy ?? null,
       rentalId: i.rentalId,
       positions: i.positionsSummary,
     })),
     today,
     coverage,
+    c.paymentForm,
   );
 
   // --- Przegląd ---
@@ -836,8 +840,9 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       status: {
         kind: r.status.kind,
         label: paymentLabel(r.status),
-        days: r.status.kind === "PO_TERMINIE" ? r.status.days : null,
+        days: r.status.kind === "PO_TERMINIE" || r.status.kind === "BRAK_PRZELEWU" ? r.status.days : null,
         paidAt: r.status.kind === "ZAPLACONA" ? r.status.paidAt.toISOString() : null,
+        method: r.status.kind === "ZAPLACONA" ? (r.status.method ?? null) : null,
       },
     })),
     txTotals: transactionTotals(txRows, today, coverage),
@@ -874,7 +879,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       realizedCount: realizedDates.length,
       rhythmDays: rhythm.rhythmDays ?? rentalRhythmDays(realizedDates),
       lastContact: lastComm ? { at: lastComm.at, label: commLabel(lastComm) } : null,
-      typicalPayment: typicalPayment(txRows),
+      typicalPayment: typicalPayment(txRows, c.paymentForm),
       nextStep: step
         ? { text: step.text, at: step.at?.toISOString() ?? null, overdue: Boolean(step.at && step.at < startOfToday), href: step.href }
         : null,

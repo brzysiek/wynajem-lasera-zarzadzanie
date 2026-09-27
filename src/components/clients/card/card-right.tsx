@@ -4,7 +4,8 @@ import { useContext, useMemo, useState } from "react";
 import type { ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { cardQuality } from "@/lib/clients/card-quality";
 import { AgentModeContext, INPUT, api } from "../client-forms";
-import { BTN_OUTLINE, BTN_PRIMARY, Heading, LINK, Missing, Pill, Section, Tag, dm, dmy, money, num } from "./kit";
+import { BTN_OUTLINE, BTN_PRIMARY, Heading, LINK, Missing, Pill, Row, Section, Tag, dm, dmy, money, num } from "./kit";
+import { FieldsEditor } from "./fields-editor";
 
 // Prawa kolumna karty wg karta-klienta-wzor.html: Rytm współpracy (siatka
 // lata × miesiące), Oś zdarzeń z filtrami i szybką notatką, Faktury
@@ -19,7 +20,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
   const dc = r.deviceConfig;
   const risk = r.churnRisk;
   const riskColor = risk?.level === "niskie" ? "var(--c-ok)" : "var(--c-warn-text)";
-  const price = d.profile.agreedPrice ? Number(d.profile.agreedPrice) : null;
+  const price = agreedTotal(d).total;
   const year = new Date().getFullYear();
   const invoicedThisYear = d.transactions.filter((t) => t.invoice && new Date(t.date).getFullYear() === year && t.net);
   const avgInvoice = invoicedThisYear.length ? invoicedThisYear.reduce((s, t) => s + (t.net ?? 0), 0) / invoicedThisYear.length : null;
@@ -69,7 +70,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
         <Stat
           label={`Cena (${year})`}
           value={price ? `${money(price)} netto` : avgInvoice ? `≈ ${money(Math.round(avgInvoice))} netto` : "—"}
-          sub={price ? (d.profile.paymentTerms ?? "cena ustalona") : avgInvoice ? "średnia z faktur" : "brak faktur w tym roku"}
+          sub={price ? (d.transportPriceNet ? "wynajem + transport, cena ustalona" : "wynajem (bez transportu), cena ustalona") : avgInvoice ? "średnia z faktur" : "brak faktur w tym roku"}
         />
         <Stat
           label="Ryzyko odejścia"
@@ -349,39 +350,184 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
 // nie sprawdzono i oczekuje — neutralnie.
 function statusTone(kind: string): "warn" | "ok" | "neutral" {
   if (kind === "ZAPLACONA" || kind === "GOTOWKA") return "ok";
-  if (kind === "PO_TERMINIE" || kind === "BEZ_FAKTURY") return "warn";
+  if (kind === "PO_TERMINIE" || kind === "BRAK_PRZELEWU" || kind === "BEZ_FAKTURY") return "warn";
   return "neutral";
 }
 
-function InvoicesSection({ d, onShowAll }: { d: ClientDetail; onShowAll: () => void }) {
+export const PAYMENT_FORM_LABEL: Record<string, string> = { GOTOWKA: "gotówka", PRZELEW: "przelew", OBA: "gotówka i przelew" };
+
+// Cena ustalona = wynajem (agreedPrice) + transport (transportPriceNet).
+export function agreedTotal(d: ClientDetail): { rental: number | null; transport: number | null; total: number | null } {
+  const rental = d.profile.agreedPrice ? Number(d.profile.agreedPrice) : null;
+  const transport = d.transportPriceNet ? Number(d.transportPriceNet) : null;
+  return { rental, transport, total: rental != null ? rental + (transport ?? 0) : null };
+}
+
+function Terms({ d, onChanged, notify }: { d: ClientDetail; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
+  const agent = useContext(AgentModeContext);
+  const [edit, setEdit] = useState(false);
+  const p = d.profile;
+  const price = agreedTotal(d);
+  if (edit) {
+    return (
+      <FieldsEditor
+        clientId={d.id}
+        fields={[
+          { key: "paymentForm", label: "Forma płatności", kind: "select", options: Object.entries(PAYMENT_FORM_LABEL).map(([value, label]) => ({ value, label })) },
+          { key: "agreedPrice", label: "Wynajem netto (zł)", kind: "number", placeholder: "cena ustalona za wynajem, bez transportu" },
+          { key: "transportPriceNet", label: "Transport netto (zł)", kind: "number" },
+          { key: "paymentTerms", label: "Termin / uwagi", placeholder: "np. przelew 7 dni, gotówka przy dostawie" },
+          { key: "invoiceEmail", label: "E-mail do faktur" },
+        ]}
+        initial={{
+          paymentForm: p.paymentForm ?? "",
+          agreedPrice: price.rental != null ? String(price.rental) : "",
+          transportPriceNet: price.transport != null ? String(price.transport) : "",
+          paymentTerms: p.paymentTerms ?? "",
+          invoiceEmail: p.invoiceEmail ?? "",
+        }}
+        onCancel={() => setEdit(false)}
+        onSaved={(n) => {
+          setEdit(false);
+          onChanged(n);
+          notify("Zapisano warunki handlowe.");
+        }}
+      />
+    );
+  }
+  return (
+    <div className="flex flex-col">
+      <Row label="Forma płatności">{p.paymentForm ? PAYMENT_FORM_LABEL[p.paymentForm] : <Missing>ustal: gotówka / przelew / oba</Missing>}</Row>
+      <Row label="Cena ustalona">
+        {price.rental != null ? (
+          <>
+            <span className="font-semibold text-[var(--c-brand)]">{money(price.total!)} netto</span>
+            <span className="text-[var(--c-muted)]">
+              {" "}
+              = {money(price.rental)} wynajem + {price.transport != null ? `${money(price.transport)} transport` : "transport ?"}
+            </span>
+          </>
+        ) : (
+          <Missing>uzupełnij</Missing>
+        )}
+      </Row>
+      {p.paymentTerms && <Row label="Termin / uwagi">{p.paymentTerms}</Row>}
+      <Row label="E-mail do FV">{p.invoiceEmail ?? <Missing>uzupełnij</Missing>}</Row>
+      {!agent && (
+        <div className="border-t border-[var(--c-divider)] pt-2.5">
+          <button type="button" onClick={() => setEdit(true)} className={LINK}>
+            Zmień warunki
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CashForm({ d, fakturowniaId, onDone, onCancel, notify }: { d: ClientDetail; fakturowniaId: number; onDone: (n: ClientDetail) => void; onCancel: () => void; notify: (t: string, e?: boolean) => void }) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [receivedBy, setReceivedBy] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    setBusy(true);
+    const { ok, data } = await api<{ detail: ClientDetail | null }>(`/api/fakturownia/invoices/${fakturowniaId}/cash`, "POST", { date, receivedBy });
+    setBusy(false);
+    if (!ok) return notify(data.message ?? "Nie udało się oznaczyć gotówki.", true);
+    if (data.detail) onDone(data.detail);
+    notify("Oznaczono: opłacona gotówką.");
+  }
+  return (
+    <div className="mt-2 flex flex-wrap items-end gap-2 border border-[var(--c-border)] bg-white p-3">
+      <label className="flex flex-col gap-1 text-[14px] text-[var(--c-muted)]">
+        Data zapłaty
+        <input type="date" className={INPUT} value={date} onChange={(e) => setDate(e.target.value)} />
+      </label>
+      <label className="flex min-w-[200px] flex-grow flex-col gap-1 text-[14px] text-[var(--c-muted)]">
+        Kto przyjął
+        <input className={INPUT} placeholder="np. kierowca Marek" value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} />
+      </label>
+      <button type="button" className={BTN_OUTLINE} onClick={onCancel}>
+        Anuluj
+      </button>
+      <button type="button" className={BTN_PRIMARY} disabled={busy || !date} onClick={() => void save()}>
+        Opłacona gotówką
+      </button>
+      <span className="w-full text-[14px] text-[var(--c-muted)]">{d.name} — wpis trafi do dziennika zmian.</span>
+    </div>
+  );
+}
+
+function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail; onShowAll: () => void; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
+  const agent = useContext(AgentModeContext);
+  const [cashFor, setCashFor] = useState<number | null>(null);
   const rows = d.transactions.filter((t) => t.invoice).slice(0, 6);
   const t = d.txTotals;
+
+  async function undoCash(fakturowniaId: number) {
+    if (!window.confirm("Cofnąć oznaczenie „opłacona gotówką”?")) return;
+    const { ok, data } = await api<{ detail: ClientDetail | null }>(`/api/fakturownia/invoices/${fakturowniaId}/cash`, "DELETE");
+    if (!ok) return notify(data.message ?? "Nie udało się cofnąć.", true);
+    if (data.detail) onChanged(data.detail);
+  }
+
   return (
     <Section title="Faktury i płatności" wide gap="gap-2.5" tone="invoices">
+      <Terms d={d} onChanged={onChanged} notify={notify} />
       {rows.length === 0 ? (
         <p className="text-[14px] text-[var(--c-muted)]">Brak faktur w panelu.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <div className="min-w-[520px]">
-            <div className="grid gap-2 border-b border-[var(--c-divider)] pb-1.5 text-[14px] text-[var(--c-muted)]" style={{ gridTemplateColumns: "120px 110px minmax(0, 1fr) 170px" }}>
+        <div className="mt-2 overflow-x-auto">
+          <div className="min-w-[600px]">
+            <div className="grid gap-2 border-b border-[var(--c-divider)] pb-1.5 text-[14px] text-[var(--c-muted)]" style={{ gridTemplateColumns: "120px 110px minmax(0, 1fr) 190px 90px" }}>
               <span>Numer</span>
               <span>Sprzedaż</span>
               <span>Netto / brutto (zł)</span>
               <span>Status</span>
+              <span />
             </div>
-            {rows.map((r) => (
-              <div key={r.key} className="mt-2.5 grid items-center gap-2 text-[15px]" style={{ gridTemplateColumns: "120px 110px minmax(0, 1fr) 170px" }}>
-                <span className="truncate">{r.invoice!.number}</span>
-                <span>{dmy(r.date)}</span>
-                <span className="whitespace-nowrap" title="netto / brutto, zł">
-                  <span className="font-semibold text-[var(--c-brand)]">{r.net != null ? num(r.net, 2) : "—"}</span>
-                  {r.invoice!.totalGross != null && <span className="text-[var(--c-muted)]"> / {num(r.invoice!.totalGross, 2)}</span>}
-                </span>
-                <span title={r.status.label}>
-                  <Tag tone={statusTone(r.status.kind)}>{r.status.kind === "NIE_SPRAWDZONO" ? "nie sprawdzono" : r.status.label.toLowerCase()}</Tag>
-                </span>
-              </div>
-            ))}
+            {rows.map((r) => {
+              const cash = r.status.kind === "ZAPLACONA" && r.status.method === "CASH";
+              const unpaid = !["ZAPLACONA", "GOTOWKA"].includes(r.status.kind);
+              return (
+                <div key={r.key}>
+                  <div className="mt-2.5 grid items-center gap-2 text-[15px]" style={{ gridTemplateColumns: "120px 110px minmax(0, 1fr) 190px 90px" }}>
+                    <span className="truncate">{r.invoice!.number}</span>
+                    <span>{dmy(r.date)}</span>
+                    <span className="whitespace-nowrap" title="netto / brutto, zł">
+                      <span className="font-semibold text-[var(--c-brand)]">{r.net != null ? num(r.net, 2) : "—"}</span>
+                      {r.invoice!.totalGross != null && <span className="text-[var(--c-muted)]"> / {num(r.invoice!.totalGross, 2)}</span>}
+                    </span>
+                    <span title={r.status.label}>
+                      <Tag tone={statusTone(r.status.kind)}>{r.status.label.charAt(0).toLowerCase() + r.status.label.slice(1)}</Tag>
+                    </span>
+                    <span className="text-right">
+                      {!agent && unpaid && cashFor !== r.invoice!.fakturowniaInvoiceId && (
+                        <button type="button" className={LINK} onClick={() => setCashFor(r.invoice!.fakturowniaInvoiceId)}>
+                          gotówka
+                        </button>
+                      )}
+                      {!agent && cash && (
+                        <button type="button" className="text-[14px] text-[var(--c-muted)] hover:underline" onClick={() => void undoCash(r.invoice!.fakturowniaInvoiceId)}>
+                          cofnij
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {cashFor === r.invoice!.fakturowniaInvoiceId && (
+                    <CashForm
+                      d={d}
+                      fakturowniaId={r.invoice!.fakturowniaInvoiceId}
+                      notify={notify}
+                      onCancel={() => setCashFor(null)}
+                      onDone={(n) => {
+                        setCashFor(null);
+                        onChanged(n);
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -389,6 +535,9 @@ function InvoicesSection({ d, onShowAll }: { d: ClientDetail; onShowAll: () => v
         {[
           d.overview.typicalPayment ? `Płaci: ${d.overview.typicalPayment}.` : null,
           t.overdueCount ? `${t.overdueCount} po terminie (${money(t.overdueNet)}).` : null,
+          t.noTransferCount
+            ? `${t.noTransferCount} bez przelewu w okresie wyciągów (${money(t.noTransferNet)}) — jeśli zapłacono gotówką, oznacz „gotówka”; inaczej przypomnij o płatności.`
+            : null,
           t.uncheckedCount
             ? `${t.uncheckedCount} ${t.uncheckedCount === 1 ? "faktura" : "faktur"} nie sprawdzono — poza okresem wgranych wyciągów (wystawione przed ${t.paymentsFrom ? dmy(t.paymentsFrom) : "01.09.2026"} albo termin mniej niż 5 dni przed końcem wyciągu).`
             : null,
@@ -398,7 +547,6 @@ function InvoicesSection({ d, onShowAll }: { d: ClientDetail; onShowAll: () => v
       </div>
       <div className="text-[14px] text-[var(--c-text-2)]">
         {t.paymentsAsOf ? `Wpłaty z okresu ${t.paymentsFrom ? `${dm(t.paymentsFrom)}–` : "do "}${dm(t.paymentsAsOf)} (wyciągi z banku)` : "Brak wgranych wyciągów z banku"}
-        {d.profile.invoiceEmail ? ` · e-mail do FV: ${d.profile.invoiceEmail}` : ""}
       </div>
       <button type="button" onClick={onShowAll} className={`${LINK} self-start`}>
         Wszystkie wynajmy i faktury →
@@ -603,7 +751,7 @@ export function CardRight({
       <RhythmSection d={d} />
       <TimelineSection d={d} onChanged={onChanged} notify={notify} onOpenItem={onOpenItem} onShowAll={() => onTab("komunikacja")} />
       <div className="grid grid-cols-1 gap-6">
-        <InvoicesSection d={d} onShowAll={() => onTab("transakcje")} />
+        <InvoicesSection d={d} onShowAll={() => onTab("transakcje")} onChanged={onChanged} notify={notify} />
         <OpportunitiesSection d={d} onChanged={onChanged} notify={notify} />
       </div>
       <QualitySection d={d} onShowData={() => onTab("dane")} />

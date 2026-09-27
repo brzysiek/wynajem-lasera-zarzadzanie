@@ -15,12 +15,19 @@ describe("invoicePaymentStatus", () => {
     expect(invoicePaymentStatus({ ...base, issueDate: d(9, 18), paymentTo: d(9, 25) }, today, cov)).toEqual({ kind: "NIE_SPRAWDZONO", days: 1 });
     // Termin 3 dni przed końcem wyciągu — przelew mógł się jeszcze nie zaksięgować.
     expect(invoicePaymentStatus({ ...base, issueDate: d(9, 14), paymentTo: d(9, 21) }, today, cov)).toEqual({ kind: "NIE_SPRAWDZONO", days: 5 });
-    // Sprawdzona i nieopłacona.
-    expect(invoicePaymentStatus({ ...base, issueDate: d(9, 2), paymentTo: d(9, 9) }, today, cov)).toEqual({ kind: "PO_TERMINIE", days: 17 });
+    // Sprawdzona, bez przelewu: „po terminie” tylko u klienta płacącego przelewem.
+    expect(invoicePaymentStatus({ ...base, issueDate: d(9, 2), paymentTo: d(9, 9), clientPaymentForm: "PRZELEW" }, today, cov)).toEqual({ kind: "PO_TERMINIE", days: 17 });
+    expect(invoicePaymentStatus({ ...base, issueDate: d(9, 2), paymentTo: d(9, 9) }, today, cov)).toEqual({ kind: "BRAK_PRZELEWU", days: 17 });
+    expect(invoicePaymentStatus({ ...base, issueDate: d(9, 2), paymentTo: d(9, 9), clientPaymentForm: "OBA" }, today, cov)).toEqual({ kind: "BRAK_PRZELEWU", days: 17 });
+    // Gotówka oznaczona ręcznie.
+    const cash = invoicePaymentStatus({ ...base, paidAt: d(9, 12), paidMethod: "CASH", paidReceivedBy: "Marek", issueDate: d(9, 2), paymentTo: d(9, 9) }, today, cov);
+    expect(cash).toMatchObject({ kind: "ZAPLACONA", method: "CASH", receivedBy: "Marek" });
+    expect(paymentLabel(cash)).toBe("Gotówka 12.09 · Marek");
+    expect(paymentLabel({ kind: "BRAK_PRZELEWU", days: 3 })).toBe("Brak przelewu");
     // Bez żadnego wyciągu.
     expect(invoicePaymentStatus({ ...base, issueDate: d(9, 2), paymentTo: d(9, 9) }, today, null).kind).toBe("NIE_SPRAWDZONO");
     // Częściowa wpłata przelewem.
-    expect(invoicePaymentStatus({ ...base, paidAt: d(9, 10), paidAmount: 500, totalGross: 1451.4, issueDate: d(9, 2), paymentTo: d(9, 9) }, today, cov)).toEqual({ kind: "ZAPLACONA", paidAt: d(9, 10), partial: true });
+    expect(invoicePaymentStatus({ ...base, paidAt: d(9, 10), paidAmount: 500, totalGross: 1451.4, issueDate: d(9, 2), paymentTo: d(9, 9) }, today, cov)).toMatchObject({ kind: "ZAPLACONA", paidAt: d(9, 10), partial: true });
     expect(paymentLabel({ kind: "NIE_SPRAWDZONO", days: 152 })).toBe("Nie sprawdzono");
     expect(paymentLabel({ kind: "ZAPLACONA", paidAt: d(9, 10), partial: true })).toBe("Częściowo zapłacona 10.09");
   });
@@ -39,9 +46,11 @@ describe("invoicePaymentStatus", () => {
       kind: "ZAPLACONA",
       paidAt: d(9, 20),
       partial: false,
+      method: null,
+      receivedBy: null,
     });
     expect(invoicePaymentStatus({ paidAt: null, paymentType: "cash", paymentTo: d(9, 1), cashConfirmed: false }, today).kind).toBe("GOTOWKA");
-    expect(invoicePaymentStatus({ paidAt: null, paymentType: "transfer", paymentTo: d(9, 21), cashConfirmed: false }, today, track)).toEqual({
+    expect(invoicePaymentStatus({ paidAt: null, paymentType: "transfer", paymentTo: d(9, 21), cashConfirmed: false, clientPaymentForm: "PRZELEW" }, today, track)).toEqual({
       kind: "PO_TERMINIE",
       days: 5,
     });
@@ -96,6 +105,7 @@ describe("buildTransactions", () => {
     ],
     today,
     { from: d(1, 1), to: d(9, 30) },
+    "PRZELEW",
   );
 
   it("faktura z panelu raz, faktura w ±7 dniach dołączona, reszta osobno", () => {
@@ -120,7 +130,7 @@ describe("buildTransactions", () => {
       withoutInvoice: 1,
       withoutInvoiceAllCalendar: true,
     });
-    expect(typicalPayment(rows)).toBe("przelew, bywa po terminie");
+    expect(typicalPayment(rows)).toBe("gotówka i przelew, bywa po terminie");
   });
 
   it("MiWiNi bez wyciągu obejmującego FV: nigdzie „po terminie”, należność „nie sprawdzono”", () => {
@@ -133,11 +143,29 @@ describe("buildTransactions", () => {
   });
   it("typicalPayment: jedna faktura kilka dni po terminie to nie „zaległości”", () => {
     const cov = { from: d(9, 1), to: d(9, 25) };
-    const one = buildTransactions([], [invoice({ id: "a", fakturowniaInvoiceId: 9, sellDate: d(9, 2) })], today, cov);
+    const one = buildTransactions([], [invoice({ id: "a", fakturowniaInvoiceId: 9, sellDate: d(9, 2) })], today, cov, "PRZELEW");
     expect(one[0].status).toEqual({ kind: "PO_TERMINIE", days: 17 });
     expect(typicalPayment(one)).toBe("przelew");
-    const two = buildTransactions([], [invoice({ id: "a", fakturowniaInvoiceId: 9, sellDate: d(9, 2) }), invoice({ id: "b", fakturowniaInvoiceId: 8, sellDate: d(9, 3) })], today, cov);
+    const two = buildTransactions([], [invoice({ id: "a", fakturowniaInvoiceId: 9, sellDate: d(9, 2) }), invoice({ id: "b", fakturowniaInvoiceId: 8, sellDate: d(9, 3) })], today, cov, "PRZELEW");
     expect(typicalPayment(two)).toBe("przelew, zaległości");
+  });
+  it("MiWiNi: raz gotówka, raz przelew — bez przelewu to nie „po terminie”", () => {
+    const cov = { from: d(9, 1), to: d(9, 25) };
+    const rows3 = buildTransactions(
+      [],
+      [
+        invoice({ id: "a", fakturowniaInvoiceId: 9, sellDate: d(9, 2), paidAt: d(9, 5), paidMethod: "CASH", paidReceivedBy: "Marek" }),
+        invoice({ id: "b", fakturowniaInvoiceId: 8, sellDate: d(9, 3), paidAt: d(9, 8), paidMethod: "TRANSFER" }),
+        invoice({ id: "c", fakturowniaInvoiceId: 7, sellDate: d(9, 4) }),
+      ],
+      today,
+      cov,
+      "OBA",
+    );
+    expect(rows3.map((r) => r.status.kind)).toEqual(["BRAK_PRZELEWU", "ZAPLACONA", "ZAPLACONA"]);
+    expect(transactionTotals(rows3, today, cov)).toMatchObject({ overdueCount: 0, noTransferCount: 1, paidCount: 2 });
+    expect(typicalPayment(rows3, "OBA")).toBe("gotówka i przelew");
+    expect(typicalPayment(rows3)).toBe("gotówka i przelew");
   });
 });
 

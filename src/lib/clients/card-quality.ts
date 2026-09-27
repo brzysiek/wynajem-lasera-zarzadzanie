@@ -29,6 +29,7 @@ export type QualityInput = {
     ownDevices: string | null;
     invoiceEmail: string | null;
     paymentTerms: string | null;
+    paymentForm?: string | null;
     marketingConsent: unknown | null;
     smsReminders: boolean | null;
   };
@@ -73,7 +74,7 @@ export function cardQuality(q: QualityInput) {
     { key: "ownDevices", label: "własne urządzenia gabinetu", ok: !!p.ownDevices },
     { key: "trainedOn", label: "data szkolenia", ok: q.contacts.some((c) => c.trainedOn.length > 0) },
     { key: "invoiceEmail", label: "e-mail do faktur", ok: !!p.invoiceEmail },
-    { key: "paymentTerms", label: "warunki płatności", ok: !!p.paymentTerms },
+    { key: "paymentForm", label: "forma płatności", ok: !!p.paymentForm },
     { key: "marketingConsent", label: "zgoda marketingowa", ok: !!p.marketingConsent },
     { key: "smsReminders", label: "SMS-przypomnienia", ok: p.smsReminders !== null },
     { key: "payments", label: "wpłaty (wyciąg z banku)", ok: !!q.paymentsAsOf },

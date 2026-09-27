@@ -90,4 +90,4 @@ export const AGENT_CLIENT_FIELDS = [
 
 // Pola, które agent może zgłosić w propozycji (akceptuje ADMIN), ale nie
 // zmienić sam: AGENT_CLIENT_FIELDS + warunki handlowe.
-export const AGENT_PROPOSAL_CLIENT_FIELDS = [...AGENT_CLIENT_FIELDS, "agreedPrice", "paymentTerms", "frameAgreement"] as const;
+export const AGENT_PROPOSAL_CLIENT_FIELDS = [...AGENT_CLIENT_FIELDS, "agreedPrice", "paymentTerms", "paymentForm", "transportPriceNet", "frameAgreement"] as const;

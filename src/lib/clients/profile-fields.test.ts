@@ -49,6 +49,12 @@ describe("nowe pola klienta", () => {
       },
     });
   });
+  it("forma płatności", () => {
+    expect(parseClientProfilePatch({ paymentForm: "gotówka i przelew" })).toEqual({ ok: true, data: { paymentForm: "OBA" } });
+    expect(parseClientProfilePatch({ paymentForm: "PRZELEW" })).toEqual({ ok: true, data: { paymentForm: "PRZELEW" } });
+    expect(parseClientProfilePatch({ paymentForm: "" })).toEqual({ ok: true, data: { paymentForm: null } });
+    expect(parseClientProfilePatch({ paymentForm: "karta" }).ok).toBe(false);
+  });
   it("błędy i czyszczenie", () => {
     expect(parseClientProfilePatch({ invoiceEmail: "zly" }).ok).toBe(false);
     expect(parseClientProfilePatch({ frameAgreement: { url: "http://x" } }).ok).toBe(false);

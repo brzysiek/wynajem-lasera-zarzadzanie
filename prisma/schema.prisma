@@ -498,6 +498,13 @@ model FakturowniaPayment {
   // Przelew z wyciągu, który opłacił fakturę (null = oznaczenie ręczne /
   // wgranie sprzed zapisywania przelewów).
   bankTransferId       String?
+  // Jak zapłacono: TRANSFER (przelew z wyciągu), CASH (gotówka — oznaczenie
+  // ręczne z karty klienta), MANUAL (przełącznik na /finanse/faktury).
+  // null = wpis sprzed rozróżnienia.
+  method               String?  @db.VarChar(12)
+  receivedBy           String? // gotówka: kto przyjął (np. kierowca)
+  markedById           String? // kto oznaczył w panelu
+  note                 String?  @db.Text
   updatedAt            DateTime @updatedAt
 
   @@map("fakturownia_payments")
@@ -796,7 +803,8 @@ model Client {
   links              Json? // { www, instagram, facebook, booksy, fresha }
   ownDevices         String?   @db.Text
   seasonality        String?   @db.Text
-  agreedPrice        Decimal?  @db.Decimal(10, 2) // cena ustalona netto
+  agreedPrice        Decimal?  @db.Decimal(10, 2) // cena ustalona netto — sam wynajem (transport: transportPriceNet)
+  paymentForm        String?   @db.VarChar(12) // GOTOWKA | PRZELEW | OBA — jak zwykle płaci
   paymentTerms       String?   @db.Text // forma i termin płatności
   invoiceEmail       String?
   frameAgreement     Json? // { url, name, signedAt, note } — skan umowy ramowej / kaucji
