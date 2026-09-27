@@ -1,10 +1,10 @@
-// Czas pracy biura dla Sygnałów (prompt 2, 3.2): pon–pt 8–18, czas lokalny.
+// Czas pracy biura dla Sygnałów (lejek, decyzja 27.09.2026): pon–pt 8–17, czas lokalny.
 // Serwer i przeglądarki biura działają w Europe/Warsaw (jak reszta panelu,
 // src/lib/clients/status.ts), więc liczymy po lokalnych składowych daty.
 // Czyste funkcje bez zależności (vitest bez aliasu "@/").
 
 export const WORK_START_HOUR = 8;
-export const WORK_END_HOUR = 18;
+export const WORK_END_HOUR = 17;
 // Sygnał czekający dłużej na pierwszy kontakt jest „pilny” (czerwony).
 export const URGENT_AFTER_WORK_HOURS = 24;
 

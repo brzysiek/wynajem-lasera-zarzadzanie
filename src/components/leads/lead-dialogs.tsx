@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { APP_CSS_VARS } from "@/components/shell-tokens";
-import { LOST_REASON_KEYS, LOST_REASON_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
+import { LOST_REASON_PICK, LOST_REASON_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadTypeKey } from "@/lib/leads/parse-deal";
 import { DEVICE_INTEREST_KEYS, type DeviceInterestKey } from "@/lib/clients/labels";
 import type { ReviewClient } from "@/lib/history/review-load";
@@ -50,10 +50,12 @@ export function LostDialog({
   const [returnAt, setReturnAt] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const reasons = LOST_REASON_KEYS.filter((k) => k !== "ARCHIWUM_IMPORTU");
+  // Siatka powodów jak we wzorze lejka; „Inne” tylko z opisem.
+  const reasons = LOST_REASON_PICK;
 
   async function save() {
     if (!reason) return setError("Wybierz powód.");
+    if (reason === "INNE" && !note.trim()) return setError("Przy „Inne” opisz powód.");
     setSaving(true);
     const err = await onSubmit({ lostReason: reason, lostNote: note, returnAt });
     setSaving(false);
@@ -62,15 +64,16 @@ export function LostDialog({
 
   return (
     <Modal title={count > 1 ? `Przegrana — ${count} sygnałów` : "Przegrana"} onClose={onClose}>
-      <div className="flex flex-wrap gap-1.5">
+      <p className="-mt-1 text-xs text-[var(--c-muted)]">Powód jest obowiązkowy — trafia do raportu lejka.</p>
+      <div className="grid grid-cols-2 gap-1">
         {reasons.map((k) => (
           <button
             key={k}
             type="button"
             onClick={() => setReason(k)}
             aria-pressed={reason === k}
-            className={`h-8 rounded-full border px-3 text-[13px] transition-colors ${
-              reason === k ? "border-[var(--c-red)] bg-[var(--c-red-soft)] font-semibold text-[var(--c-red)]" : "border-[var(--c-border)] hover:border-[var(--c-red)]"
+            className={`border px-2 py-1.5 text-left text-[13px] transition-colors ${
+              reason === k ? "border-[var(--c-navy)] bg-[var(--c-navy)] font-semibold text-white" : "border-[#C9D3DC] bg-white hover:border-[var(--c-navy)]"
             }`}
           >
             {LOST_REASON_LABEL[k]}
@@ -78,7 +81,7 @@ export function LostDialog({
         ))}
       </div>
       <label className={LABEL}>
-        Notatka <span className="font-normal text-[var(--c-faint)]">(opcjonalnie)</span>
+        Notatka <span className="font-normal text-[var(--c-faint)]">{reason === "INNE" ? "(wymagana przy „Inne”)" : "(opcjonalnie)"}</span>
         <textarea rows={2} className={`${INPUT} h-auto py-2`} value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
       <label className={LABEL}>

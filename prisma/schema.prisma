@@ -1182,6 +1182,8 @@ enum LeadType {
   SZKOLENIE_WWW
   TELEFON
   EMAIL
+  OLX
+  POLECENIE
   INNE
 }
 
@@ -1193,6 +1195,7 @@ enum LostReason {
   INNE_URZADZENIE
   BRAK_KONTAKTU
   TYLKO_CENNIK
+  POZA_BRANZA
   ARCHIWUM_IMPORTU
   INNE
 }
@@ -1220,6 +1223,16 @@ model Lead {
   contactEmail    String?
   firstContactAt  DateTime? // pierwsza rozmowa/SMS/notatka — czas reakcji
   nextActionAt    DateTime? // następny krok — napędza „Na dziś”
+  // Lejek (wniosek 18, etap L1): rodzaj i opis następnego kroku ustawiane
+  // przez wynik kontaktu (src/lib/leads/funnel.ts), próby bez odebrania,
+  // numer follow-upu oferty, ostatni kontakt, odnośnik źródła (wątek Gmail /
+  // numer telefonu).
+  nextStepType    String?        @db.VarChar(20) // PIERWSZY_KONTAKT | PONOWNA_PROBA | FOLLOW_UP_OFERTY | ODDZWONI | DOPYTAC | INNE
+  nextStepNote    String?        @db.Text
+  attempts        Int            @default(0)
+  followUpNo      Int            @default(0)
+  lastContactAt   DateTime?
+  sourceRef       String?        @db.VarChar(191)
   lostReason      LostReason?
   lostNote        String?        @db.Text
   returnAt        DateTime?

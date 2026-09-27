@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { LeadDetail } from "@/lib/leads/load";
 import { ACTIVITY_LABEL, LOST_REASON_LABEL, STAGE_KEYS, STAGE_LABEL, TYPE_LABEL, type ActivityTypeKey, type LostReasonKey } from "@/lib/leads/labels";
-import { NO_ANSWER_LIMIT } from "@/lib/leads/call-list";
+import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, NO_ANSWER_LIMIT, OPEN_STAGES, workDurationLabel, type NextStepType } from "@/lib/leads/funnel";
+import { workHoursBetween } from "@/lib/leads/work-time";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { DEVICE_INTEREST_KEYS, formatPhone, type DeviceInterestKey } from "@/lib/clients/labels";
 import { addWorkdays, nextWorkday } from "@/lib/leads/work-time";
@@ -15,6 +16,7 @@ import { EmailViewer } from "@/components/clients/email-viewer";
 import { ArchiveDialog } from "@/components/porzadki/archive-dialog";
 import { BTN, BTN_PRIMARY, LostDialog } from "./lead-dialogs";
 import { StageChip, TaskIcon, XCircleIcon, fmtRange, fmtWhen } from "./lead-ui";
+import { Dots } from "./funnel-views";
 
 // Karta sygnału (prompt 2, 3.3) — panel boczny z każdego widoku. Szybkie
 // akcje na górze, zawsze widoczne; pod nimi następny krok, rezerwacja, dane
@@ -222,8 +224,10 @@ export function LeadCard({
           ) : (
             d.clientStatus && <StatusChip status={d.clientStatus} />
           )}
-          {d.callList && d.stage === "SYGNAL" && (
-            <span className="rounded-md bg-[var(--c-purple-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-purple-deep)]">Do obdzwonienia</span>
+          {d.attempts > 0 && OPEN_STAGES.includes(d.stage) && (
+            <span className="text-[11.5px] text-[#5C6166]">
+              <Dots attempts={d.attempts} /> {d.attempts}× nie odebrała
+            </span>
           )}
           {returning && (
             <span className="rounded-md bg-[var(--c-green-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-green-deep)]">Powracająca klientka</span>
@@ -260,8 +264,9 @@ export function LeadCard({
               }}
             >
               {STAGE_KEYS.map((s) => (
-                <option key={s} value={s}>
+                <option key={s} value={s} disabled={s === "WYGRANA" && !d.rentalId && d.stage !== "WYGRANA"}>
                   {STAGE_LABEL[s]}
+                  {s === "WYGRANA" && !d.rentalId && d.stage !== "WYGRANA" ? " (tylko z wynajmem)" : ""}
                 </option>
               ))}
             </select>
@@ -278,6 +283,7 @@ export function LeadCard({
             </select>
           </label>
         </div>
+        <Stepper stage={d.stage} />
         {d.stage === "PRZEGRANA" && d.lostReason && (
           <p className="text-xs text-[var(--c-red)]">
             Powód: <b className="font-semibold">{LOST_REASON_LABEL[d.lostReason]}</b>
@@ -299,7 +305,7 @@ export function LeadCard({
           </button>
         </div>
       ) : (
-      <div className="grid grid-cols-3 gap-2 border-b border-[var(--c-border)] px-5 py-3">
+      <div className="grid grid-cols-4 gap-2 border-b border-[var(--c-border)] px-5 py-3">
         {phone ? (
           <a href={`tel:${phone}`} onClick={() => setPanel("call")} className={`${quick} bg-[var(--c-brand)] text-white hover:bg-[var(--c-brand-deep)]`}>
             <PhoneIcon size={18} />
@@ -321,8 +327,17 @@ export function LeadCard({
           <SmsIcon size={18} />
           SMS
         </button>
+        <a
+          href={d.email ? `mailto:${d.email}?subject=${encodeURIComponent(`Wynajem ${d.devices.map((x) => LEAD_DEVICE_LABEL[x]).join(", ") || "urządzenia"}`)}` : undefined}
+          aria-disabled={!d.email}
+          title={d.email ? "Szkic maila w programie pocztowym" : "Brak e-maila"}
+          className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)] ${d.email ? "" : "pointer-events-none opacity-40"}`}
+        >
+          <span aria-hidden className="text-[16px] leading-none">✉</span>
+          Szkic maila
+        </a>
         <Link
-          href={`/kalendarz/wynajem/nowy${d.requestedFrom ? `?date=${toDay(d.requestedFrom)}` : ""}`}
+          href={`/kalendarz/wynajem/nowy?${new URLSearchParams({ ...(d.requestedFrom ? { date: toDay(d.requestedFrom) } : {}), sygnal: d.id }).toString()}`}
           className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}
           title="Nowy wynajem w kalendarzu — potem powiąż go z sygnałem niżej"
         >
@@ -359,7 +374,27 @@ export function LeadCard({
           </p>
         )}
 
-        {panel === "call" && (
+        {!agent && OPEN_STAGES.includes(d.stage) && d.attempts >= NO_ANSWER_LIMIT && (
+          <div className="flex flex-wrap items-center gap-2 border-l-[3px] border-[#E08A5C] bg-[#FBF0E7] px-3 py-2 text-[13px] text-[#B8612F]">
+            <span className="flex-grow">
+              {d.attempts} próby bez odebrania. Oznaczyć jako przegrana – <b className="font-semibold">brak kontaktu</b>?
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              className="h-8 rounded-[6px] bg-[#B8612F] px-3 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+              onClick={() => void patch({ stage: "PRZEGRANA", lostReason: "BRAK_KONTAKTU", lostNote: `${d.attempts} próby bez odebrania` }, "Przegrana — brak kontaktu.")}
+            >
+              Tak, przegrana
+            </button>
+            {phone && (
+              <button type="button" className={`${BTN} h-8`} onClick={() => setPanel("sms")}>
+                Szkic SMS
+              </button>
+            )}
+          </div>
+        )}
+        {!agent && OPEN_STAGES.includes(d.stage) && (
           <CallResult
             stage={d.stage}
             busy={busy}
@@ -367,18 +402,22 @@ export function LeadCard({
             phone={phone}
             clientName={d.clientName ?? d.person}
             unqualified={Boolean(d.clientId) && !d.clientQualified}
-            noAnswerCount={d.noAnswerCount}
+            noAnswerCount={d.attempts}
+            nextStepType={d.nextStepType}
+            followUpNo={d.followUpNo}
             onLost={(preset) => setLost({ preset })}
             onDone={(outcome) => {
               setPanel(null);
               if (outcome) onOutcome?.();
             }}
+            onSmsDraft={() => setPanel("sms")}
             run={(body, msg) => run(`/api/leads/${leadId}/activity`, "POST", body, msg)}
             sendSms={(message) => run(`/api/leads/${leadId}/sms`, "POST", { phone, message }, "SMS wysłany.")}
           />
         )}
         {panel === "sms" && phone && (
           <SmsBox
+            initial={d.attempts >= NO_ANSWER_LIMIT && noAnswerTpl ? applySmsPlaceholders(noAnswerTpl.body, { clientName: d.clientName ?? d.person }) : ""}
             templates={templates}
             phone={phone}
             clientName={d.clientName ?? d.person}
@@ -409,6 +448,25 @@ export function LeadCard({
         {!agent && d.stage !== "WYGRANA" && d.stage !== "PRZEGRANA" && (
           <div className="flex flex-wrap items-center gap-2 rounded-[10px] bg-[var(--c-bg)] px-3 py-2.5">
             <span className="text-[13px] font-semibold text-[var(--c-navy)]">Następny krok</span>
+            <span className="w-full text-[12.5px] text-[var(--c-text)]">
+              {d.nextActionAt ? (
+                <>
+                  <b className={`font-semibold ${new Date(d.nextActionAt) < new Date() ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>
+                    {new Date(d.nextActionAt).toLocaleString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </b>
+                  {" · "}
+                  {NEXT_STEP_LABEL[(d.nextStepType as NextStepType) ?? "INNE"] ?? d.nextStepType}
+                  {d.nextStepNote ? ` · ${d.nextStepNote}` : ""}
+                </>
+              ) : (
+                <span className="text-[#B8612F]">brak — ustaw termin</span>
+              )}
+              {!d.firstContactAt && (
+                <span className="text-[var(--c-muted)]">
+                  {" · "}SLA {FIRST_CONTACT_SLA_HOURS} h rob. (czeka {workDurationLabel(workHoursBetween(new Date(d.createdAt), new Date()))})
+                </span>
+              )}
+            </span>
             <input
               type="date"
               className={DATE_INPUT}
@@ -462,6 +520,7 @@ export function LeadCard({
           ) : (
             <p className="text-[13px] text-[var(--c-faint)]">Brak wynajmu do powiązania. Utwórz rezerwację w kalendarzu przyciskiem wyżej.</p>
           )}
+          <p className="text-[12px] text-[var(--c-muted)]">Wynajem dla tego klienta w kalendarzu sam przesuwa sygnał do „Rezerwacja”, a zrealizowany — do „Wygrana”.</p>
         </Section>
 
         {/* Dane z formularza */}
@@ -545,7 +604,9 @@ export function LeadCard({
                     </span>
                     <span className="flex flex-wrap gap-x-1.5 text-[11px] text-[var(--c-muted)]">
                       {fmtWhen(a.at)}
-                      {a.userName && <span>· {a.userName}</span>}
+                      <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[#1B6FA8]">
+                        · {a.userRole === "AGENT" ? "agent" : a.userName ? a.userName : a.emailIds ? "e-mail" : "system"}
+                      </span>
                       {a.fromHubspot && <span className="rounded bg-[var(--c-accent-soft)] px-1 text-[var(--c-accent-deep)]">HubSpot</span>}
                       {a.otherLead && <span>· {a.otherLead}</span>}
                     </span>
@@ -581,19 +642,40 @@ export function LeadCard({
   );
 }
 
-// Wynik rozmowy (prompt 2, 3.3): „Rozmawiałam” / „Nie odebrała” / „Oddzwoni”.
+// Etapy lejka nad kartą (wzór s3): zakończone jaśniej, bieżący wyróżniony.
+const STEPS: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA"];
+function Stepper({ stage }: { stage: LeadStageKey }) {
+  const at = STEPS.indexOf(stage);
+  return (
+    <div className="flex">
+      {STEPS.map((s, i) => (
+        <span
+          key={s}
+          className={`flex-1 border-r-2 border-white py-[5px] text-center text-[11.5px] last:border-0 ${
+            stage === "PRZEGRANA" ? "bg-[#EEF0F2] text-[#8A939B]" : i === at ? "bg-[#1B6FA8] font-semibold text-white" : i < at ? "bg-[#BFD8EC] text-[#0C3450]" : "bg-[#EEF0F2] text-[#5C6166]"
+          }`}
+        >
+          {s === "OFERTA" ? "Oferta" : STAGE_LABEL[s]}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// Wynik kontaktu (lejek, wzór s3): chip ustawia następny krok wg reguł
+// (src/lib/leads/funnel.ts — planOutcome), serwer liczy termin i próby.
 function CallResult({
   stage,
   busy,
-  noAnswerTpl,
   phone,
-  clientName,
   unqualified,
   noAnswerCount,
+  nextStepType,
+  followUpNo,
   onDone,
   onLost,
+  onSmsDraft,
   run,
-  sendSms,
 }: {
   stage: LeadStageKey;
   busy: boolean;
@@ -602,62 +684,72 @@ function CallResult({
   clientName: string | null;
   unqualified: boolean;
   noAnswerCount: number;
+  nextStepType: string | null;
+  followUpNo: number;
   onDone: (outcome: boolean) => void; // outcome = zapisano wynik (tryb seryjny idzie dalej)
   onLost: (preset?: LostReasonKey) => void;
+  onSmsDraft: () => void;
   run: (body: Record<string, unknown>, msg: string) => Promise<boolean>;
   sendSms: (message: string) => Promise<boolean>;
 }) {
-  const [mode, setMode] = useState<"talked" | "callback" | "email" | "noAnswerDone" | null>(null);
-  const attempts = noAnswerCount + (mode === "noAnswerDone" ? 1 : 0);
+  const [mode, setMode] = useState<"talked" | "callback" | "email" | null>(null);
   const [note, setNote] = useState("");
-  const [toInterview, setToInterview] = useState(stage === "SYGNAL");
   const [date, setDate] = useState("");
   const chip = (on: boolean) =>
-    `h-8 rounded-full border px-3 text-[13px] transition-colors ${on ? "border-[var(--c-brand)] bg-white font-semibold text-[var(--c-brand-deep)]" : "border-[var(--c-border)] bg-white hover:border-[var(--c-brand)]"}`;
+    `rounded-[14px] border px-2.5 py-[3px] text-[12px] transition-colors disabled:opacity-40 ${on ? "border-[#0C3450] bg-[#0C3450] text-white" : "border-[#C9D3DC] bg-white hover:border-[#0C3450]"}`;
+  const followUp = nextStepType === "FOLLOW_UP_OFERTY" && followUpNo === 1;
+  const noAnswerHint = followUp
+    ? "Bez odpowiedzi na 1. follow-up → 2. follow-up za 7 dni rob."
+    : noAnswerCount >= NO_ANSWER_LIMIT
+      ? `Już ${noAnswerCount} próby bez odebrania — kolejna jutro 10:00, ale lepiej SMS albo przegrana „brak kontaktu” (baner wyżej).`
+      : `Próba ${noAnswerCount + 1} z ${NO_ANSWER_LIMIT}, następny krok jutro 10:00.${noAnswerCount + 1 >= NO_ANSWER_LIMIT ? " To ostatnia — potem szkic SMS i propozycja przegranej „brak kontaktu”." : ""}`;
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-[10px] bg-[var(--c-bg)] p-3">
-      <div className="flex items-center">
-        <span className="flex-grow text-[13px] font-semibold text-[var(--c-navy)]">Wynik kontaktu</span>
-        <button type="button" onClick={() => onDone(false)} className="text-xs text-[var(--c-muted)] hover:text-[var(--c-text)]">
-          zamknij
-        </button>
-      </div>
-      {unqualified && (
-        <p className="-mt-1 text-xs text-[var(--c-muted)]">„Rozmawiałam” albo „Odpowiedziałam mailem” przenosi kontakt do Klientów jako Potencjalny.</p>
-      )}
+    <div className="flex flex-col gap-2 border-t border-[var(--c-border)] pt-3">
+      <span className="text-[10px] uppercase tracking-[0.12em] text-[#5C6166]">Wynik kontaktu</span>
+      {unqualified && <p className="-mt-1 text-xs text-[var(--c-muted)]">„Rozmawiam”, „Oddzwoni” i „Wysłałam ofertę” przenoszą kontakt do Klientów jako Potencjalny.</p>}
       <div className="flex flex-wrap gap-1.5">
-        <button type="button" className={chip(mode === "talked")} onClick={() => setMode("talked")}>
-          Rozmawiałam
+        <button type="button" className={chip(mode === "talked")} onClick={() => setMode(mode === "talked" ? null : "talked")}>
+          Rozmawiam
         </button>
         <button
           type="button"
           disabled={busy}
-          className={chip(mode === "noAnswerDone")}
-          onClick={async () => (await run({ outcome: "no_answer" }, "Zapisano: nie odebrała. Następny krok: jutro.")) && setMode("noAnswerDone")}
+          title={noAnswerHint}
+          className={chip(false)}
+          onClick={async () => {
+            const ok = await run({ outcome: "no_answer" }, followUp ? "Bez odpowiedzi — 2. follow-up za 7 dni rob." : "Zapisano: nie odebrała. Następny krok: jutro 10:00.");
+            if (!ok) return;
+            if (!followUp && noAnswerCount + 1 >= NO_ANSWER_LIMIT && phone) onSmsDraft();
+            else onDone(true);
+          }}
         >
-          Nie odebrała → jutro
+          {followUp ? "Bez odpowiedzi → 2. follow-up" : "Nie odebrała → jutro"}
         </button>
-        <button type="button" className={chip(mode === "callback")} onClick={() => setMode("callback")}>
-          Oddzwoni — termin
+        <button type="button" className={chip(mode === "callback")} onClick={() => setMode(mode === "callback" ? null : "callback")}>
+          Oddzwoni – termin
         </button>
-        <button type="button" className={chip(mode === "email")} onClick={() => setMode("email")}>
+        <button
+          type="button"
+          disabled={busy}
+          className={chip(false)}
+          onClick={async () => (await run({ outcome: "offer_sent" }, "Oferta wysłana — follow-up za 3 dni rob.")) && onDone(true)}
+        >
+          Wysłałam ofertę → follow-up +3 dni
+        </button>
+        <button type="button" className={chip(mode === "email")} onClick={() => setMode(mode === "email" ? null : "email")}>
           Odpowiedziałam mailem
         </button>
         <button type="button" className={chip(false)} onClick={() => onLost()}>
           Nie zainteresowana
         </button>
       </div>
+      {!mode && <p className="text-[11.5px] text-[#1B6FA8]">{noAnswerHint}</p>}
 
       {mode === "email" && (
         <div className="flex flex-wrap items-center gap-2">
           <input className={`${INPUT} h-8 min-w-0 flex-grow`} placeholder="Co wysłałaś? (np. cennik, oferta na LightSheer)" value={note} onChange={(e) => setNote(e.target.value)} />
-          <button
-            type="button"
-            disabled={busy}
-            className={`${BTN_PRIMARY} h-8`}
-            onClick={async () => (await run({ outcome: "email", body: note }, "Zapisano odpowiedź mailem.")) && onDone(true)}
-          >
+          <button type="button" disabled={busy} className={`${BTN_PRIMARY} h-8`} onClick={async () => (await run({ outcome: "email", body: note }, "Zapisano odpowiedź mailem.")) && onDone(true)}>
             Zapisz
           </button>
         </div>
@@ -667,26 +759,17 @@ function CallResult({
         <>
           <textarea autoFocus rows={3} className={`${INPUT} h-auto py-2`} placeholder="Co ustaliłaś? (urządzenie, termin, cena, dojazd…)" value={note} onChange={(e) => setNote(e.target.value)} />
           <div className="flex flex-wrap items-center gap-3 text-[13px]">
-            {stage === "SYGNAL" && (
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <input type="checkbox" checked={toInterview} onChange={(e) => setToInterview(e.target.checked)} className="accent-[var(--c-brand)]" />
-                przesuń na „Wywiad”
-              </label>
-            )}
+            {stage === "SYGNAL" && <span className="text-xs text-[var(--c-muted)]">etap → Wywiad</span>}
             <label className="flex items-center gap-1.5 text-[var(--c-muted)]">
               następny krok
               <input type="date" className={DATE_INPUT} value={date} onChange={(e) => setDate(e.target.value)} />
+              {!date && <span className="text-xs">(domyślnie za 2 dni rob.)</span>}
             </label>
             <button
               type="button"
               disabled={busy}
               className={`${BTN_PRIMARY} ml-auto h-8`}
-              onClick={async () =>
-                (await run(
-                  { outcome: "talked", body: note, ...(date ? { nextActionAt: date } : {}), ...(toInterview && stage === "SYGNAL" ? { stage: "WYWIAD" } : {}) },
-                  "Zapisano rozmowę.",
-                )) && onDone(true)
-              }
+              onClick={async () => (await run({ outcome: "talked", body: note, ...(date ? { nextActionAt: date } : {}) }, "Zapisano rozmowę.")) && onDone(true)}
             >
               Zapisz rozmowę
             </button>
@@ -708,44 +791,12 @@ function CallResult({
           </button>
         </div>
       )}
-
-      {mode === "noAnswerDone" && attempts >= NO_ANSWER_LIMIT && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">
-          <span className="flex-grow">To już {attempts}. próba bez odpowiedzi.</span>
-          <button type="button" className="h-8 rounded-lg bg-[var(--c-red)] px-3 text-[13px] font-semibold text-white hover:opacity-90" onClick={() => onLost("BRAK_KONTAKTU")}>
-            Przegrana — brak kontaktu
-          </button>
-        </div>
-      )}
-      {mode === "noAnswerDone" && (
-        <div className="flex flex-wrap items-center gap-2 text-[13px]">
-          {noAnswerTpl && phone ? (
-            <>
-              <span className="text-[var(--c-muted)]">Wysłać SMS „{noAnswerTpl.label.replace(/^Sygnał:\s*/, "")}”?</span>
-              <button
-                type="button"
-                disabled={busy}
-                className={`${BTN_PRIMARY} h-8`}
-                onClick={async () => (await sendSms(applySmsPlaceholders(noAnswerTpl.body, { clientName }))) && onDone(true)}
-              >
-                Wyślij SMS
-              </button>
-              <button type="button" className={`${BTN} h-8`} onClick={() => onDone(true)}>
-                Nie teraz
-              </button>
-            </>
-          ) : (
-            <button type="button" className={`${BTN} h-8`} onClick={() => onDone(true)}>
-              Gotowe
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
 function SmsBox({
+  initial = "",
   templates,
   phone,
   clientName,
@@ -753,6 +804,7 @@ function SmsBox({
   onCancel,
   onSend,
 }: {
+  initial?: string;
   templates: Template[];
   phone: string;
   clientName: string | null;
@@ -760,7 +812,8 @@ function SmsBox({
   onCancel: () => void;
   onSend: (message: string) => void;
 }) {
-  const [message, setMessage] = useState("");
+  // Szkic (np. po 3. próbie bez odebrania) — do poprawienia, nie wysyła się sam.
+  const [message, setMessage] = useState(initial);
   // Najpierw szablony sygnałów, potem reszta (bez przypomnień o wynajmie).
   const list = [...templates.filter((t) => t.key.startsWith("lead_")), ...templates.filter((t) => t.key.startsWith("custom_"))];
   return (

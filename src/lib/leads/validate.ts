@@ -36,6 +36,7 @@ export type LeadPatch = Partial<{
   contactEmail: string | null;
   rentalId: string | null;
   clientId: string | null;
+  nextStepNote: string | null;
 }>;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -50,6 +51,8 @@ export function parseLeadPatch(body: Record<string, unknown>, deps: { normalizeP
       if (!LOST_REASON_KEYS.includes(body.lostReason as LostReasonKey)) return { ok: false, message: "Wybierz powód przegranej." };
       out.lostReason = body.lostReason as LostReasonKey;
       out.lostNote = text(body.lostNote);
+      // „Inne” tylko z opisem (lejek: powód przegranej obowiązkowy).
+      if (out.lostReason === "INNE" && !out.lostNote) return { ok: false, message: "Przy powodzie „Inne” opisz, dlaczego przegrana." };
       if ("returnAt" in body) {
         const r = parseDay(body.returnAt);
         if (r === undefined) return { ok: false, message: "Nieprawidłowa data powrotu do kontaktu." };
@@ -96,6 +99,7 @@ export function parseLeadPatch(body: Record<string, unknown>, deps: { normalizeP
     if (e && !EMAIL_RE.test(e)) return { ok: false, message: "Nieprawidłowy adres e-mail." };
     out.contactEmail = e;
   }
+  if ("nextStepNote" in body) out.nextStepNote = text(body.nextStepNote, 500);
   if ("rentalId" in body) out.rentalId = typeof body.rentalId === "string" && body.rentalId ? body.rentalId : null;
   if ("clientId" in body) out.clientId = typeof body.clientId === "string" && body.clientId ? body.clientId : null;
   return { ok: true, data: out };
@@ -112,6 +116,7 @@ export type NewLeadInput = {
   requestedDays: number | null;
   message: string | null;
   location: string | null;
+  sourceRef?: string | null; // ID wątku Gmail / numer telefonu (lejek, sygnały z maili i telefonów)
 };
 
 export function parseNewLead(body: Record<string, unknown>, deps: { normalizePhone: (raw: string) => string | null }): Result<NewLeadInput> {
@@ -144,6 +149,7 @@ export function parseNewLead(body: Record<string, unknown>, deps: { normalizePho
       requestedDays: p.requestedDays ?? null,
       message: p.message ?? null,
       location: p.location ?? null,
+      sourceRef: text(body.sourceRef, 191),
     },
   };
 }

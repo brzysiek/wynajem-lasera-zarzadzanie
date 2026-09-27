@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncAllDevices } from "@/lib/device-sync";
 import { linkUnassignedRentalsSafe } from "@/lib/clients/rental-match";
+import { syncLeadsWithRentalsSafe } from "@/lib/leads/rental-link";
 import { logWarn, logError, logInfo } from "@/lib/logger";
 
 // Internal-only endpoint, meant to be hit by a real cPanel Cron Job on a
@@ -20,6 +21,8 @@ export async function POST(req: NextRequest) {
     const results = await syncAllDevices();
     // Rezerwacje bez klienta → klient po aliasie / serii (wniosek 13).
     const linked = await linkUnassignedRentalsSafe();
+    // Lejek: nowe wynajmy → sygnał „Rezerwacja”, zakończone → „Wygrana”, anulowane → „Oferta”.
+    await syncLeadsWithRentalsSafe();
     const totalEvents = results.reduce((sum, r) => sum + r.count, 0);
     const errors = results.filter((r) => r.status === "ERROR");
 

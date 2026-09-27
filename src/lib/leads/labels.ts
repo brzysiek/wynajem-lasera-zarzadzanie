@@ -21,21 +21,27 @@ export const TYPE_LABEL: Record<LeadTypeKey, string> = {
   SZKOLENIE_WWW: "Szkolenie WWW",
   TELEFON: "Telefon",
   EMAIL: "E-mail",
+  OLX: "OLX",
+  POLECENIE: "Polecenie",
   INNE: "Inne",
 };
 export const TYPE_KEYS = Object.keys(TYPE_LABEL) as LeadTypeKey[];
 
 export const LOST_REASON_LABEL = {
+  ODLEGLOSC: "Za daleko",
   CENA: "Cena",
-  TERMIN_ZAJETY: "Termin zajęty",
-  ODLEGLOSC: "Odległość",
-  KUPILA_URZADZENIE: "Kupiła urządzenie",
+  KUPILA_URZADZENIE: "Ma / kupiła urządzenie",
   INNE_URZADZENIE: "Wybrała inne urządzenie",
+  TERMIN_ZAJETY: "Termin zajęty",
   BRAK_KONTAKTU: "Brak kontaktu",
-  TYLKO_CENNIK: "Chciała tylko cennik",
+  TYLKO_CENNIK: "Tylko cennik",
+  POZA_BRANZA: "Poza branżą",
   ARCHIWUM_IMPORTU: "Archiwum (sprzed 2026)",
-  INNE: "Inne",
+  INNE: "Inne – opis",
 } as const;
+// Powody do wyboru przy przegranej (wzór: siatka w karcie sygnału) — bez
+// „Archiwum importu” (tylko z importu HubSpota).
+export const LOST_REASON_PICK: LostReasonKey[] = ["ODLEGLOSC", "CENA", "KUPILA_URZADZENIE", "TERMIN_ZAJETY", "BRAK_KONTAKTU", "TYLKO_CENNIK", "POZA_BRANZA", "INNE_URZADZENIE", "INNE"];
 export type LostReasonKey = keyof typeof LOST_REASON_LABEL;
 export const LOST_REASON_KEYS = Object.keys(LOST_REASON_LABEL) as LostReasonKey[];
 

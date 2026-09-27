@@ -7,9 +7,43 @@ import { RentalForm } from "@/components/rental-form";
 export default async function NewRentalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ device?: string; date?: string }>;
+  searchParams: Promise<{ device?: string; date?: string; sygnal?: string }>;
 }) {
-  const { device, date } = await searchParams;
+  const { device, date, sygnal } = await searchParams;
+  // Rezerwacja z sygnału (lejek): klient z sygnału, tytuł = klient, po zapisie
+  // wynajem wiąże się z sygnałem (etap „Rezerwacja”).
+  const lead = sygnal
+    ? await prisma.lead.findUnique({
+        where: { id: sygnal },
+        select: {
+          id: true,
+          contactName: true,
+          contactPhone: true,
+          contactEmail: true,
+          client: { select: { name: true, shortName: true } },
+          clientContact: { select: { hubspotContactId: true, firstName: true, lastName: true, phone: true, email: true } },
+        },
+      })
+    : null;
+  const hs = lead?.clientContact?.hubspotContactId ?? null;
+  const prefill = lead
+    ? {
+        leadId: lead.id,
+        title: lead.client?.shortName ?? lead.client?.name ?? lead.contactName ?? null,
+        contact: hs
+          ? {
+              id: hs,
+              name: [lead.clientContact?.firstName, lead.clientContact?.lastName].filter(Boolean).join(" ") || lead.contactName,
+              phone: lead.clientContact?.phone ?? lead.contactPhone,
+              email: lead.clientContact?.email ?? lead.contactEmail,
+              company: lead.client?.name ?? null,
+              address: null,
+              transportPrice: null,
+              url: null,
+            }
+          : null,
+      }
+    : undefined;
   const session = await auth();
   const isAdmin = session?.user.role === "ADMIN";
 
@@ -51,6 +85,7 @@ export default async function NewRentalPage({
       rental={null}
       defaultDeviceId={device}
       defaultDateIso={date}
+      prefill={prefill}
       reminderTemplates={reminderTemplates}
       drivers={drivers}
       vehicles={vehicles}

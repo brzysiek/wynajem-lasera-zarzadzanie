@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/integrations/szybkisms";
 import { STAGE_LABEL, LOST_REASON_LABEL } from "@/lib/leads/labels";
 import { leadTitle, type LeadStageKey } from "@/lib/leads/parse-deal";
-import { nextWorkday } from "@/lib/leads/work-time";
+import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, addWorkHours, planOutcome, type NextStepType, type Outcome } from "@/lib/leads/funnel";
+import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { qualifyClient } from "@/lib/clients/qualify";
 import type { LeadPatch, NewLeadInput } from "@/lib/leads/validate";
 
@@ -11,10 +12,24 @@ import type { LeadPatch, NewLeadInput } from "@/lib/leads/validate";
 // panelu — odsyłanie do HubSpota to krok 2B (wtedy z tych samych miejsc
 // trafi wpis do kolejki). Każda zmiana zostawia ślad na osi czasu.
 
-type Lead = { id: string; title: string; stage: LeadStageKey; clientId: string | null; ownerId: string | null; firstContactAt: Date | null };
+type Lead = {
+  id: string;
+  title: string;
+  stage: LeadStageKey;
+  clientId: string | null;
+  ownerId: string | null;
+  firstContactAt: Date | null;
+  rentalId: string | null;
+  nextStepType: string | null;
+  attempts: number;
+  followUpNo: number;
+};
 
 async function getLead(id: string): Promise<Lead> {
-  const lead = await prisma.lead.findUnique({ where: { id }, select: { id: true, title: true, stage: true, clientId: true, ownerId: true, firstContactAt: true } });
+  const lead = await prisma.lead.findUnique({
+    where: { id },
+    select: { id: true, title: true, stage: true, clientId: true, ownerId: true, firstContactAt: true, rentalId: true, nextStepType: true, attempts: true, followUpNo: true },
+  });
   if (!lead) throw new LeadError("Sygnał nie istnieje.", 404);
   return lead;
 }
@@ -46,8 +61,13 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
   const data: Prisma.LeadUpdateInput = {};
   const notes: string[] = [];
 
+  // Wygrana tylko z wynajmem w kalendarzu (lejek, decyzja 5) — także z tablicy.
+  if (patch.stage === "WYGRANA" && !lead.rentalId && !patch.rentalId) {
+    throw new LeadError("Wygrana tylko z powiązanym wynajmem — najpierw powiąż sygnał z wynajmem w kalendarzu.");
+  }
   if (patch.stage && patch.stage !== lead.stage) {
     Object.assign(data, stageData(lead, patch.stage));
+    if (patch.stage === "WYGRANA" || patch.stage === "PRZEGRANA") Object.assign(data, { nextActionAt: null, nextStepType: null, nextStepNote: null });
     notes.push(`${STAGE_LABEL[lead.stage]} → ${STAGE_LABEL[patch.stage]}`);
     if (patch.stage === "PRZEGRANA") {
       data.lostReason = patch.lostReason;
@@ -76,6 +96,9 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
     data.clientContact = { disconnect: true };
   }
   if (patch.ownerId !== undefined) data.owner = patch.ownerId ? { connect: { id: patch.ownerId } } : { disconnect: true };
+  // Ręcznie ustawiony termin bez rodzaju kroku = „kolejny krok”.
+  if (patch.nextActionAt !== undefined && patch.nextActionAt && !lead.nextStepType) data.nextStepType = "INNE";
+  if (patch.nextStepNote !== undefined) data.nextStepNote = patch.nextStepNote;
   for (const key of ["nextActionAt", "requestedFrom", "requestedDays", "location", "message", "title", "contactName", "contactPhone", "contactEmail"] as const) {
     if (patch[key] !== undefined) (data as Record<string, unknown>)[key] = patch[key];
   }
@@ -104,9 +127,13 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
 
 // „email” = „Odpowiedziałam mailem” (prompt 2 v2, 3.3) — kwalifikuje klienta
 // tak jak rozmowa; SMS i nieodebrane połączenie nie kwalifikują.
-export type CallOutcome = "talked" | "no_answer" | "callback" | "note" | "email";
+// „offer_sent” = „Wysłałam ofertę” (lejek, etap L1).
+export type CallOutcome = Outcome | "note";
 
-// Wynik rozmowy / notatka z karty sygnału (prompt 2, 3.3 „Zadzwoń”).
+const whenLabel = (d: Date) => d.toLocaleString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+// Wynik kontaktu / notatka z karty sygnału. Następny krok, próby i
+// follow-upy wg reguł lejka (src/lib/leads/funnel.ts — planOutcome).
 export async function logLeadActivity(
   id: string,
   input: { outcome: CallOutcome; body: string | null; nextActionAt?: Date | null; stage?: LeadStageKey },
@@ -115,28 +142,41 @@ export async function logLeadActivity(
   const lead = await getLead(id);
   const now = new Date();
   const type = input.outcome === "note" ? "NOTE" : input.outcome === "no_answer" ? "CALL_NO_ANSWER" : input.outcome === "email" ? "EMAIL" : "CALL";
+  if (type === "NOTE" && !input.body) throw new LeadError("Notatka nie może być pusta.");
+  if (input.outcome === "callback" && !input.nextActionAt) throw new LeadError("Wybierz termin, kiedy oddzwoni.");
   const data: Prisma.LeadUpdateInput = { ...claim(lead, userId) };
-  if (type !== "NOTE" && !lead.firstContactAt) data.firstContactAt = now;
-  if (input.outcome === "no_answer") data.nextActionAt = input.nextActionAt ?? nextWorkday(now);
-  else if (input.nextActionAt !== undefined) data.nextActionAt = input.nextActionAt;
-  if (input.stage && input.stage !== lead.stage) Object.assign(data, stageData(lead, input.stage));
+  let stageTo: LeadStageKey | null = input.stage && input.stage !== lead.stage ? input.stage : null;
+  let body = input.body;
 
-  const body =
-    input.outcome === "callback"
-      ? [`Oddzwoni${input.nextActionAt ? ` — ${input.nextActionAt.toLocaleDateString("pl-PL")}` : ""}`, input.body].filter(Boolean).join(": ")
-      : input.outcome === "email"
-        ? ["Odpowiedziałam mailem", input.body].filter(Boolean).join(": ")
-        : input.body;
-  if (type === "NOTE" && !body) throw new LeadError("Notatka nie może być pusta.");
+  if (input.outcome !== "note") {
+    const plan = planOutcome(lead, input.outcome, now, { at: input.nextActionAt ?? null, note: null });
+    if (plan.contact) {
+      if (!lead.firstContactAt) data.firstContactAt = now;
+      data.lastContactAt = now;
+    }
+    Object.assign(data, { nextActionAt: plan.nextActionAt, nextStepType: plan.nextStepType, nextStepNote: plan.nextStepNote, attempts: plan.attempts, followUpNo: plan.followUpNo });
+    stageTo = stageTo ?? (plan.stage && plan.stage !== lead.stage ? plan.stage : null);
+    const next = plan.nextActionAt ? ` Następny krok: ${NEXT_STEP_LABEL[plan.nextStepType as NextStepType]}, ${whenLabel(plan.nextActionAt)}.` : "";
+    const head =
+      input.outcome === "callback"
+        ? "Oddzwoni"
+        : input.outcome === "email"
+          ? "Odpowiedziałam mailem"
+          : input.outcome === "offer_sent"
+            ? "Wysłałam ofertę"
+            : input.outcome === "no_answer"
+              ? `Nie odebrała (${plan.attempts || lead.attempts}. próba)`
+              : null;
+    body = [[head, input.body].filter(Boolean).join(": "), next.trim()].filter(Boolean).join(" · ") || null;
+  }
+  if (stageTo) Object.assign(data, stageData(lead, stageTo));
 
   await prisma.$transaction([
     prisma.lead.update({ where: { id }, data }),
     prisma.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type, body, userId } }),
-    ...(input.stage && input.stage !== lead.stage
-      ? [prisma.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type: "STAGE_CHANGE", body: `${STAGE_LABEL[lead.stage]} → ${STAGE_LABEL[input.stage]}`, userId } })]
-      : []),
+    ...(stageTo ? [prisma.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type: "STAGE_CHANGE", body: `${STAGE_LABEL[lead.stage]} → ${STAGE_LABEL[stageTo]}`, userId } })] : []),
   ]);
-  if (input.outcome === "talked" || input.outcome === "callback") await qualifyClient(lead.clientId, "CALL");
+  if (input.outcome === "talked" || input.outcome === "callback" || input.outcome === "offer_sent") await qualifyClient(lead.clientId, "CALL");
   if (input.outcome === "email") await qualifyClient(lead.clientId, "EMAIL_REPLY");
 }
 
@@ -160,7 +200,7 @@ export async function sendLeadSms(id: string, phone: string, message: string, us
   });
   if (!result.ok) throw new LeadError(result.message, 502);
   await prisma.$transaction([
-    prisma.lead.update({ where: { id }, data: { ...claim(lead, userId), ...(lead.firstContactAt ? {} : { firstContactAt: new Date() }) } }),
+    prisma.lead.update({ where: { id }, data: { ...claim(lead, userId), lastContactAt: new Date(), ...(lead.firstContactAt ? {} : { firstContactAt: new Date() }) } }),
     prisma.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type: "SMS", body: message, userId, messageId: msg.id } }),
   ]);
 }
@@ -235,13 +275,20 @@ export async function createLead(input: NewLeadInput, userId: string): Promise<s
     }
   }
   const client = clientId ? await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } }) : null;
+  const now = new Date();
+  // Telefon wpisany po rozmowie = kontakt już był; inaczej pierwszy kontakt w SLA 4 h rob.
+  const talkedAlready = input.type === "TELEFON";
   const lead = await prisma.lead.create({
     data: {
       clientId,
       clientContactId: contactId,
       title: leadTitle({ who: client?.name ?? input.contactName, devices: input.deviceInterest, days: input.requestedDays, fallback: "Nowy sygnał" }),
       type: input.type,
-      ownerId: userId,
+      ownerId: await defaultLeadOwnerId(userId),
+      sourceRef: input.sourceRef ?? null,
+      ...(talkedAlready
+        ? { firstContactAt: now, lastContactAt: now, nextActionAt: addWorkHours(now, 16), nextStepType: "INNE", nextStepNote: "po rozmowie telefonicznej" }
+        : { nextActionAt: addWorkHours(now, FIRST_CONTACT_SLA_HOURS), nextStepType: "PIERWSZY_KONTAKT" }),
       deviceInterest: input.deviceInterest.length ? input.deviceInterest : undefined,
       requestedFrom: input.requestedFrom,
       requestedDays: input.requestedDays,

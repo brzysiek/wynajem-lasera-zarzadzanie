@@ -11,7 +11,7 @@ import { STAGE_KEYS } from "@/lib/leads/labels";
 import type { LeadStageKey } from "@/lib/leads/parse-deal";
 import { logError, logInfo } from "@/lib/logger";
 
-const OUTCOMES: CallOutcome[] = ["talked", "no_answer", "callback", "note", "email"];
+const OUTCOMES: CallOutcome[] = ["talked", "no_answer", "callback", "offer_sent", "note", "email"];
 
 // Wynik rozmowy / notatka z karty sygnału. ADMIN/STAFF; AGENT — tylko
 // notatka (bez przejęcia sygnału, etapu i terminu), zapisana też w dzienniku

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { releaseLeadForDeletedRental } from "@/lib/leads/rental-link";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { resolveDeliveryAddressId } from "@/lib/clients/delivery";
@@ -204,6 +205,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   try {
     await deleteCalendarEvent(rental.googleCalendarId, rental.googleEventId);
+    // Lejek: sygnał z tą rezerwacją wraca do „Oferta wysłana” (dopytać).
+    await releaseLeadForDeletedRental(id).catch((err) => logError("lead_release_failed", err, { rentalId: id }));
     // Hard-delete: reminder_rules cascade-delete with the rental (no pending
     // reminders survive a deleted rental), and messages.rentalId is set to
     // NULL on delete so already-sent SMS history stays visible in Bramka.

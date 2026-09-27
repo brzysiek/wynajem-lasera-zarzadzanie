@@ -13,7 +13,7 @@ describe("workHoursBetween", () => {
     expect(workHoursBetween(at(24, 20), at(25, 10))).toBe(2);
   });
   it("przez weekend", () => {
-    expect(workHoursBetween(at(25, 17), at(28, 9))).toBe(2); // pt 17–18 + pon 8–9
+    expect(workHoursBetween(at(25, 16), at(28, 9))).toBe(2); // pt 16–17 + pon 8–9 (biuro 8–17)
   });
   it("odwrotna kolejność = 0", () => {
     expect(workHoursBetween(at(25, 10), at(25, 9))).toBe(0);
@@ -79,8 +79,8 @@ describe("leadStats", () => {
   it("liczy 4 wskaźniki z ostatnich 30 dni", () => {
     const s = leadStats(
       [
-        l({ firstContactAt: at(22, 9) }), // pn 9 → wt 9 = 10 h
-        l({ firstContactAt: at(23, 9), stage: "REZERWACJA" }), // 20 h
+        l({ firstContactAt: at(22, 9) }), // pn 9 → wt 9 = 9 h (biuro 8–17)
+        l({ firstContactAt: at(23, 9), stage: "REZERWACJA" }), // 18 h
         l({ stage: "PRZEGRANA", lostReason: "CENA", stageChangedAt: at(24) }),
         l({ stage: "PRZEGRANA", lostReason: "CENA", stageChangedAt: at(24) }),
         l({ stage: "PRZEGRANA", lostReason: "ODLEGLOSC", stageChangedAt: at(24) }),
@@ -89,7 +89,7 @@ describe("leadStats", () => {
       now,
     );
     expect(s.newCount).toBe(5);
-    expect(s.medianFirstContactHours).toBe(15);
+    expect(s.medianFirstContactHours).toBe(13.5);
     expect(s.reservationRate).toBeCloseTo(1 / 5);
     expect(s.topLostReason).toBe("CENA");
     expect(s.topLostCount).toBe(2);

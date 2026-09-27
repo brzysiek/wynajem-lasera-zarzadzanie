@@ -1,4 +1,6 @@
 import { loadExclusionMatcher } from "@/lib/porzadki/exclusion-load";
+import { FIRST_CONTACT_SLA_HOURS, FUNNEL_FROM, addWorkHours } from "@/lib/leads/funnel";
+import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { isLocked, readFieldMeta } from "@/lib/clients/profile-fields";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -202,6 +204,15 @@ async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContex
   const client = ref ? await prisma.client.findUnique({ where: { id: ref.clientId }, select: { name: true } }) : null;
   const title = plan.fromForm && client ? leadTitle({ who: client.name, devices: plan.devices, days: plan.requestedDays, fallback: plan.title }) : plan.title;
   const firstNote = earliest(notes);
+  // Lejek (L1): otwarty sygnał z 2026 dostaje prowadzącą (Ania) i pierwszy
+  // kontakt w SLA 4 h rob. od wpłynięcia.
+  const openNew = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(plan.stage) && plan.createdAt >= FUNNEL_FROM;
+  const funnel = openNew
+    ? {
+        ownerId: await defaultLeadOwnerId(),
+        ...(firstNote ? { lastContactAt: firstNote } : { nextActionAt: addWorkHours(plan.createdAt, FIRST_CONTACT_SLA_HOURS), nextStepType: "PIERWSZY_KONTAKT" }),
+      }
+    : {};
 
   await prisma.$transaction(async (tx) => {
     const lead = await tx.lead.create({
@@ -226,6 +237,7 @@ async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContex
         lostNote: plan.lostNote,
         callList: plan.callList,
         createdAt: plan.createdAt,
+        ...funnel,
       },
       select: { id: true },
     });

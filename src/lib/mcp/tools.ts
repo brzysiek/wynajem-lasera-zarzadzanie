@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { callQueueIds } from "@/lib/leads/funnel";
 import { normalizePolishPhone } from "@/lib/reminders";
 import type { AgentCtx } from "@/lib/agent-api/handler";
 import { AgentApiError } from "@/lib/agent-api/handler";
@@ -277,12 +278,14 @@ export const TOOLS: McpTool[] = [
     run: async (a) => {
       const from = day(a, "od");
       const q = str(a, "q")?.toLowerCase() ?? "";
-      const rows = (await loadLeadRows()).filter(
+      const all = await loadLeadRows();
+      const queue = callQueueIds(all, new Date());
+      const rows = all.filter(
         (r) =>
           (!str(a, "etap") || r.stage === str(a, "etap")) &&
           (!str(a, "typ") || r.type === str(a, "typ")) &&
           (!from || new Date(r.createdAt) >= from) &&
-          (a.do_obdzwonienia !== true || r.callList) &&
+          (a.do_obdzwonienia !== true || queue.has(r.id)) &&
           (!str(a, "klient_id") || r.clientId === str(a, "klient_id")) &&
           (!q || [r.title, r.person, r.email, r.phone, r.clientName, r.city].filter(Boolean).join(" ").toLowerCase().includes(q)),
       );

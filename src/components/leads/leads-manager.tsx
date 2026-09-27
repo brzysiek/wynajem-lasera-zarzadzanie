@@ -5,19 +5,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { APP_CSS_VARS, LEAD_STAGE_COLORS } from "@/components/shell-tokens";
 import type { LeadRow } from "@/lib/leads/load";
-import type { LeadStats } from "@/lib/leads/today";
-import { buildToday } from "@/lib/leads/today";
-import { callListProgress, isCallListPending, sortCallList } from "@/lib/leads/call-list";
 import { BOARD_STAGES, LOST_REASON_LABEL, STAGE_KEYS, STAGE_LABEL, TYPE_KEYS, TYPE_LABEL } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadStageKey, type LeadTypeKey } from "@/lib/leads/parse-deal";
 import { DEVICE_INTEREST_KEYS, formatPhone, type DeviceInterestKey } from "@/lib/clients/labels";
 import type { ReviewClient } from "@/lib/history/review-load";
 import { api } from "@/components/clients/client-forms";
-import { DownloadIcon, PhoneIcon, SearchIcon, StatusChip, fmtAgo, fmtDate } from "@/components/clients/ui";
+import { DownloadIcon, SearchIcon, fmtDate } from "@/components/clients/ui";
 import { useMediaQuery } from "@/components/clients/use-media-query";
 import { LeadCard, type CardIntent } from "./lead-card";
+import { CallsView, NaDzisView, toFunnel, type LinkSuggestion } from "./funnel-views";
+import { callQueue } from "@/lib/leads/funnel";
 import { BTN, LostDialog, NewLeadDialog } from "./lead-dialogs";
-import { DevicePill, OwnerAvatar, RefreshIcon, StageChip, TypeTag, Waiting, fmtRange, isUrgent } from "./lead-ui";
+import { DevicePill, OwnerAvatar, RefreshIcon, StageChip, TypeTag, fmtRange } from "./lead-ui";
 
 // Sygnały (/sygnaly) — wygląd wg docs/crm/mockup-sygnaly.html, logika wg
 // docs/crm/prompt-claude-code-crm-2-sygnaly.md (sekcja 3). Sygnałów jest
@@ -77,93 +76,6 @@ function daysIn(iso: string, now: Date) {
   return Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 86_400_000));
 }
 
-function StatTile({ label, value, small }: { label: string; value: string; small?: boolean }) {
-  return (
-    <div className="rounded-xl border border-[var(--c-border)] bg-white px-4 py-3">
-      <div className="text-[13px] text-[var(--c-muted)]">{label}</div>
-      <div className={`font-semibold text-[var(--c-navy)] tabular-nums ${small ? "pt-1 text-lg" : "text-[24px]"}`}>{value}</div>
-    </div>
-  );
-}
-
-// Wiersz widoku „Na dziś” — cały klikalny (otwiera kartę), z akcją po prawej.
-function TodayRow({
-  r,
-  bar,
-  right,
-  actions,
-  selected,
-  onOpen,
-}: {
-  r: LeadRow;
-  bar?: string;
-  right?: React.ReactNode;
-  actions: React.ReactNode;
-  selected: boolean;
-  onOpen: () => void;
-}) {
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => e.key === "Enter" && onOpen()}
-      className={`flex cursor-pointer flex-wrap items-center gap-x-3.5 gap-y-2 rounded-xl border bg-white px-4 py-3 transition-colors hover:border-[var(--c-brand)] ${
-        selected ? "border-[var(--c-brand)]" : "border-[var(--c-border)]"
-      }`}
-      style={bar ? { boxShadow: `inset 3px 0 0 ${bar}` } : undefined}
-    >
-      <div className="min-w-0 flex-grow basis-[260px]">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-0.5 text-[15px] font-semibold text-[var(--c-navy)]">{r.title}</span>
-          {r.clientStatus && RETURNING.has(r.clientStatus) && (
-            <span className="rounded-md bg-[var(--c-green-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-green-deep)]">Powracająca klientka</span>
-          )}
-          {r.clientStatus === "NIE_KONTAKTOWAC" && <StatusChip status="NIE_KONTAKTOWAC" />}
-          <TypeTag type={r.type} />
-          <DevicePill devices={r.devices} from={r.requestedFrom} days={r.requestedDays} />
-        </div>
-        <div className="mt-0.5 truncate text-[13px] text-[var(--c-muted)]">
-          {[r.clientName && r.clientName !== r.title ? r.clientName : null, r.person, r.city, r.phone ? formatPhone(r.phone) : null].filter(Boolean).join(" · ")}
-          {r.message && <span className="text-[var(--c-sidebar-text)]"> · „{r.message.slice(0, 90)}{r.message.length > 90 ? "…" : ""}”</span>}
-        </div>
-      </div>
-      {right}
-      <div className="flex flex-none gap-1.5" onClick={(e) => e.stopPropagation()}>
-        {actions}
-      </div>
-    </div>
-  );
-}
-
-function CallButton({ r, onCall }: { r: LeadRow; onCall: () => void }) {
-  const cls = "flex h-9 items-center gap-1.5 rounded-lg bg-[var(--c-brand)] px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]";
-  return r.phone ? (
-    <a href={`tel:${r.phone}`} onClick={onCall} className={cls}>
-      <PhoneIcon size={14} />
-      Zadzwoń
-    </a>
-  ) : (
-    <button type="button" onClick={onCall} className={cls} title="Brak telefonu — otwórz kartę">
-      Otwórz
-    </button>
-  );
-}
-
-function SectionTitle({ children, count, tone, action }: { children: React.ReactNode; count?: number; tone?: string; action?: React.ReactNode }) {
-  return (
-    <h2 className="m-0 mt-2 flex items-center gap-2 text-[15px] font-semibold text-[var(--c-navy)] first:mt-0">
-      {children}
-      {count !== undefined && count > 0 && (
-        <span className="rounded-full px-2 text-xs font-semibold text-white" style={{ background: tone ?? "var(--c-accent)" }}>
-          {count}
-        </span>
-      )}
-      {action && <span className="ml-auto font-normal">{action}</span>}
-    </h2>
-  );
-}
-
 // Kolejność list — wybór zapamiętany w przeglądarce (to tylko wygoda,
 // bez znaczenia dla danych).
 type FreshOrder = "oldest" | "newest";
@@ -190,56 +102,15 @@ function SortSelect<T extends string>({ value, onChange, options }: { value: T; 
   );
 }
 
-// Pasek „Do obdzwonienia” — na „Na dziś” i nad samą listą (makieta:
-// docs/crm/zrzuty/sygnaly-na-dzis.png).
-function CallListBanner({
-  progress,
-  onStart,
-  serial = false,
-  canStart = true,
-}: {
-  progress: { total: number; done: number; pending: number; qualified: number };
-  onStart: () => void;
-  serial?: boolean;
-  canStart?: boolean;
-}) {
-  const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
-  return (
-    <div className="flex flex-wrap items-center gap-4 rounded-xl border border-[var(--c-border)] bg-white px-4 py-3.5">
-      <div className="min-w-0 flex-grow basis-[320px]">
-        <div className="text-[15px] font-semibold text-[var(--c-navy)]">
-          Do obdzwonienia: {progress.pending} {progress.pending === 1 ? "zapytanie" : "zapytań"} z 2026 bez odpowiedzi
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <div className="h-2 w-40 overflow-hidden rounded-full bg-[var(--c-bg)]">
-            <div className="h-full rounded-full bg-[var(--c-purple)] transition-[width] duration-500" style={{ width: `${pct}%` }} />
-          </div>
-          <span className="text-xs text-[var(--c-muted)]">
-            obdzwoniono {progress.done} z {progress.total} · {progress.qualified} zakwalifikowane jako klienci
-          </span>
-        </div>
-      </div>
-      {progress.pending > 0 && canStart && (
-        <button
-          type="button"
-          onClick={onStart}
-          className="h-9 rounded-lg bg-[var(--c-purple)] px-4 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
-        >
-          {serial ? "Tryb seryjny włączony" : "Dzwoń po kolei →"}
-        </button>
-      )}
-    </div>
-  );
-}
-
 export function LeadsManager({
   rows,
   users,
   currentUserId,
   isAdmin,
   readOnly = false,
-  stats,
   lastSync,
+  linkSuggestions,
+  callStats,
   hubspotConfigured,
   clients,
   initialSelectedId,
@@ -251,8 +122,10 @@ export function LeadsManager({
   // Rola AGENT: podgląd sygnałów, notatki, zadania i „Przenieś do klientów”;
   // bez nowych sygnałów, pobierania, zmian etapu i dzwonienia (API tak samo).
   readOnly?: boolean;
-  stats: LeadStats;
   lastSync: string | null;
+  // „Rezerwacje do spięcia” — podpowiedź wynajmu dla sygnału bez wynajmu.
+  linkSuggestions: Record<string, LinkSuggestion>;
+  callStats: { talked: number; noAnswer: number };
   hubspotConfigured: boolean;
   clients: ReviewClient[];
   initialSelectedId: string | null;
@@ -272,8 +145,6 @@ export function LeadsManager({
   const [lostIds, setLostIds] = useState<string[] | null>(null);
   // Do obdzwonienia — filtry i tryb seryjny (po wyniku rozmowy karta
   // przechodzi do następnego kontaktu z listy).
-  const [cDevice, setCDevice] = useState<DeviceInterestKey | "">("");
-  const [cCity, setCCity] = useState("");
   const [serial, setSerial] = useState(false);
   const [freshOrder, setFreshOrder] = useState<FreshOrder>("oldest");
   const [listSort, setListSort] = useState<ListSort>("newest");
@@ -306,7 +177,6 @@ export function LeadsManager({
   const [fDevice, setFDevice] = useState<DeviceInterestKey | "">("");
   const [fOwner, setFOwner] = useState("");
   const [fNoClient, setFNoClient] = useState(false);
-  const [fCallList, setFCallList] = useState(false);
   const [fSource, setFSource] = useState<"" | "hubspot" | "panel">("");
   const [limit, setLimit] = useState(60);
   // Optymistyczne etapy po przeciągnięciu — ważne tylko dla tej wersji
@@ -343,35 +213,11 @@ export function LeadsManager({
 
   const list = useMemo(() => rows.map((r) => (moved.has(r.id) ? { ...r, stage: moved.get(r.id)! } : r)), [rows, moved]);
 
-  const today = useMemo(
-    () =>
-      buildToday(
-        list.map((r) => ({
-          ...r,
-          createdAt: new Date(r.createdAt),
-          firstContactAt: r.firstContactAt ? new Date(r.firstContactAt) : null,
-          nextActionAt: r.nextActionAt ? new Date(r.nextActionAt) : null,
-          rentalStartsAt: r.rentalStartsAt ? new Date(r.rentalStartsAt) : null,
-        })),
-        now,
-      ),
-    [list, now],
-  );
   const byId = useMemo(() => new Map(list.map((r) => [r.id, r])), [list]);
-  const back = (xs: { id: string }[]) => xs.map((x) => byId.get(x.id)!).filter(Boolean);
 
-  // „Do obdzwonienia” (prompt 2 v2, 1.0a).
-  const progress = useMemo(() => callListProgress(list), [list]);
-  const pendingCalls = useMemo(() => {
-    const pending = list.filter(isCallListPending);
-    if (callSort === "priority") return sortCallList(pending);
-    return [...pending].sort((a, b) => (callSort === "newest" ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt)));
-  }, [list, callSort]);
-  const callCities = useMemo(
-    () => [...new Set(pendingCalls.map((r) => r.city).filter((c): c is string => Boolean(c)))].sort((a, b) => a.localeCompare(b, "pl")),
-    [pendingCalls],
-  );
-  const visibleCalls = pendingCalls.filter((r) => (!cDevice || r.devices.includes(cDevice)) && (!cCity || r.city === cCity));
+  // „Do obdzwonienia” — kolejka liczona na bieżąco (lejek, L1); tryb seryjny
+  // po wyniku kontaktu otwiera następny kontakt z kolejki.
+  const visibleCalls = useMemo(() => callQueue(toFunnel(list), now).map((f) => byId.get(f.id)!).filter(Boolean), [list, now, byId]);
 
   function nextCall(afterId: string | null): LeadRow | null {
     const done = new Set(serialDone);
@@ -379,14 +225,6 @@ export function LeadsManager({
     const i = afterId ? visibleCalls.findIndex((r) => r.id === afterId) : -1;
     const rest = [...visibleCalls.slice(i + 1), ...visibleCalls.slice(0, Math.max(i, 0))];
     return rest.find((r) => !done.has(r.id)) ?? null;
-  }
-
-  function startSerial() {
-    setView("calls");
-    setSerial(true);
-    setSerialDone(new Set());
-    const first = nextCall(null);
-    if (first) open(first.id, "call");
   }
 
   function onOutcome() {
@@ -448,6 +286,13 @@ export function LeadsManager({
     refresh();
   }
 
+  async function linkRental(leadId: string, rentalId: string) {
+    const { ok, data } = await api(`/api/leads/${leadId}`, "PATCH", { rentalId });
+    if (!ok) return setToast({ text: data.message ?? "Nie udało się powiązać.", error: true });
+    setToast({ text: "Powiązano z wynajmem — etap: Rezerwacja." });
+    refresh();
+  }
+
   async function markLost(ids: string[], v: { lostReason: string; lostNote: string; returnAt: string }): Promise<string | null> {
     const body = { stage: "PRZEGRANA", lostReason: v.lostReason, lostNote: v.lostNote, returnAt: v.returnAt || null };
     const { ok, data } =
@@ -469,13 +314,12 @@ export function LeadsManager({
       if (fDevice && !r.devices.includes(fDevice)) return false;
       if (fOwner && r.ownerId !== (fOwner === "none" ? null : fOwner)) return false;
       if (fNoClient && r.clientId) return false;
-      if (fCallList && !r.callList) return false;
       if (fSource === "hubspot" && !r.fromHubspot) return false;
       if (fSource === "panel" && r.fromHubspot) return false;
       if (s.length >= 2 && !r.search.includes(s) && !(digits.length >= 3 && (r.phone ?? "").replace(/\D/g, "").includes(digits))) return false;
       return true;
     });
-  }, [list, query, fStage, fType, fDevice, fOwner, fNoClient, fCallList, fSource]);
+  }, [list, query, fStage, fType, fDevice, fOwner, fNoClient, fSource]);
 
   const sortedList = useMemo(() => {
     const byDate = (a: string | null, b: string | null) => (a ?? "9999").localeCompare(b ?? "9999");
@@ -496,7 +340,6 @@ export function LeadsManager({
   const since30 = now.getTime() - 30 * 86_400_000;
   const won30 = list.filter((r) => r.stage === "WYGRANA" && new Date(r.stageChangedAt).getTime() >= since30).length;
   const lost30 = list.filter((r) => r.stage === "PRZEGRANA" && new Date(r.stageChangedAt).getTime() >= since30).length;
-  const nothingToday = today.fresh.length + today.followUps.length + today.reservations.length === 0;
 
   const card = selectedId ? (
     <LeadCard
@@ -540,9 +383,9 @@ export function LeadsManager({
                   }`}
                 >
                   {VIEW_LABEL[v]}
-                  {v === "calls" && progress.pending > 0 && (
+                  {v === "calls" && visibleCalls.length > 0 && (
                     <span className="ml-1.5 rounded-full bg-[var(--c-purple-soft)] px-1.5 text-[11px] font-semibold text-[var(--c-purple-deep)] tabular-nums">
-                      {progress.pending}
+                      {visibleCalls.length}
                     </span>
                   )}
                 </button>
@@ -593,135 +436,18 @@ export function LeadsManager({
             </div>
           ) : (
             <>
-              {/* Podsumowanie 30 dni */}
-              <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-                <StatTile label="Nowe sygnały · 30 dni" value={String(stats.newCount)} />
-                <StatTile
-                  label="Czas do pierwszego kontaktu (mediana)"
-                  value={stats.medianFirstContactHours == null ? "—" : `${stats.medianFirstContactHours.toLocaleString("pl-PL")} h rob.`}
-                />
-                <StatTile label="Doszło do rezerwacji" value={stats.reservationRate == null ? "—" : `${Math.round(stats.reservationRate * 100)}%`} />
-                <StatTile
-                  label="Najczęstszy powód przegranej"
-                  value={stats.topLostReason ? `${LOST_REASON_LABEL[stats.topLostReason as keyof typeof LOST_REASON_LABEL] ?? stats.topLostReason} (${stats.topLostCount})` : "—"}
-                  small
-                />
-              </div>
-
               {view === "today" && (
-                <section aria-label="Na dziś" className="flex flex-col gap-2.5">
-                  {progress.total > 0 && (
-                    <CallListBanner progress={progress} onStart={startSerial} canStart={!readOnly} />
-                  )}
-                  {nothingToday && (
-                    <div className="rounded-xl border border-[var(--c-border)] bg-white px-6 py-8 text-center">
-                      <p className="text-[15px] font-semibold text-[var(--c-green-deep)]">Wszystko obsłużone 🎉</p>
-                      <p className="mt-1 text-sm text-[var(--c-muted)]">Nie ma nowych sygnałów ani zaplanowanych kroków na dziś.</p>
-                    </div>
-                  )}
-
-                  {today.fresh.length > 0 && (
-                    <SectionTitle
-                      count={today.fresh.length}
-                      action={
-                        <SortSelect<FreshOrder>
-                          value={freshOrder}
-                          onChange={(v) => {
-                            setFreshOrder(v);
-                            saveSort({ fresh: v });
-                          }}
-                          options={[
-                            ["oldest", "od najdłużej czekających"],
-                            ["newest", "od najnowszych"],
-                          ]}
-                        />
-                      }
-                    >
-                      Nowe — czekają na pierwszy kontakt
-                    </SectionTitle>
-                  )}
-                  {(freshOrder === "newest" ? back(today.fresh).reverse() : back(today.fresh)).map((r) => (
-                    <TodayRow
-                      key={r.id}
-                      r={r}
-                      selected={selectedId === r.id}
-                      onOpen={() => open(r.id)}
-                      bar={isUrgent(r.createdAt, now) ? "var(--c-red)" : "var(--c-brand)"}
-                      right={<Waiting since={r.createdAt} now={now} />}
-                      actions={<CallButton r={r} onCall={() => open(r.id, "call")} />}
-                    />
-                  ))}
-
-                  {today.followUps.length > 0 && <SectionTitle count={today.followUps.length} tone="var(--c-brand)">Follow-up na dziś</SectionTitle>}
-                  {back(today.followUps).map((r) => {
-                    const noAnswer = r.lastActivity?.type === "CALL_NO_ANSWER";
-                    const overdue = r.nextActionAt && new Date(r.nextActionAt) < new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                    return (
-                      <TodayRow
-                        key={r.id}
-                        r={r}
-                        selected={selectedId === r.id}
-                        onOpen={() => open(r.id)}
-                        bar={overdue ? "var(--c-accent)" : undefined}
-                        right={
-                          <div className="flex flex-col items-end gap-1 text-right">
-                            {noAnswer ? (
-                              <span className="rounded-md bg-[var(--c-purple-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-purple-deep)]">
-                                Nie odebrała {fmtAgo(r.lastActivity!.at, now)}
-                                {r.noAnswerCount > 1 ? ` · ${r.noAnswerCount}. próba` : ""}
-                              </span>
-                            ) : (
-                              <StageChip stage={r.stage} suffix={r.stage === "OFERTA" ? fmtDate(r.stageChangedAt).slice(0, 5) : undefined} />
-                            )}
-                            {overdue && <span className="text-[11px] font-semibold text-[var(--c-accent-deep)]">zaległe od {fmtDate(r.nextActionAt!).slice(0, 5)}</span>}
-                          </div>
-                        }
-                        actions={
-                          <>
-                            {r.phone && (
-                              <button
-                                type="button"
-                                onClick={() => open(r.id, "sms")}
-                                className="h-9 rounded-lg bg-[var(--c-brand-soft)] px-3 text-[13px] font-semibold text-[var(--c-brand-deep)] transition-colors hover:bg-[var(--c-navy-soft)]"
-                              >
-                                SMS
-                              </button>
-                            )}
-                            <CallButton r={r} onCall={() => open(r.id, "call")} />
-                          </>
-                        }
-                      />
-                    );
-                  })}
-
-                  {today.reservations.length > 0 && (
-                    <SectionTitle count={today.reservations.length} tone="var(--c-purple)">
-                      Rezerwacje do potwierdzenia (3 dni)
-                    </SectionTitle>
-                  )}
-                  {back(today.reservations).map((r) => (
-                    <TodayRow
-                      key={r.id}
-                      r={r}
-                      selected={selectedId === r.id}
-                      onOpen={() => open(r.id)}
-                      right={
-                        <span className="whitespace-nowrap rounded-md bg-[var(--c-brand-soft)] px-[7px] py-0.5 text-[11px] text-[var(--c-brand-deep)]">
-                          {r.rentalDevice} · {new Date(r.rentalStartsAt!).toLocaleDateString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit" })}
-                        </span>
-                      }
-                      actions={
-                        <Link
-                          href={`/kalendarz/wynajem/${r.rentalId}?from=/sygnaly`}
-                          className="flex h-9 items-center rounded-lg bg-[var(--c-brand-soft)] px-3.5 text-[13px] font-semibold text-[var(--c-brand-deep)] transition-colors hover:bg-[var(--c-navy-soft)]"
-                        >
-                          Otwórz wynajem
-                        </Link>
-                      }
-                    />
-                  ))}
-
-                </section>
+                <NaDzisView
+                  rows={list}
+                  now={now}
+                  users={users}
+                  currentUserId={currentUserId}
+                  selectedId={selectedId}
+                  readOnly={readOnly}
+                  suggestions={linkSuggestions}
+                  onOpen={(id, i) => open(id, i ?? null)}
+                  onLink={(leadId, rentalId) => void linkRental(leadId, rentalId)}
+                />
               )}
 
               {view === "board" && (
@@ -729,7 +455,7 @@ export function LeadsManager({
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {BOARD_STAGES.map((stage) => {
                       const col = list
-                        .filter((r) => r.stage === stage && !isCallListPending(r))
+                        .filter((r) => r.stage === stage)
                         .sort((a, b) => b.stageChangedAt.localeCompare(a.stageChangedAt));
                       const c = LEAD_STAGE_COLORS[stage];
                       return (
@@ -824,83 +550,17 @@ export function LeadsManager({
               )}
 
               {view === "calls" && (
-                <section aria-label="Do obdzwonienia" className="flex flex-col gap-3">
-                  <CallListBanner progress={progress} onStart={startSerial} serial={serial} canStart={!readOnly} />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select aria-label="Urządzenie" className={selectCls(Boolean(cDevice))} value={cDevice} onChange={(e) => setCDevice(e.target.value as DeviceInterestKey | "")}>
-                      <option value="">Każde urządzenie</option>
-                      {DEVICE_INTEREST_KEYS.filter((k) => k !== "SZKOLENIE").map((k) => (
-                        <option key={k} value={k}>
-                          {LEAD_DEVICE_LABEL[k]}
-                        </option>
-                      ))}
-                    </select>
-                    <select aria-label="Miejscowość" className={selectCls(Boolean(cCity))} value={cCity} onChange={(e) => setCCity(e.target.value)}>
-                      <option value="">Każda miejscowość</option>
-                      {callCities.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                    <SortSelect<CallSort>
-                      value={callSort}
-                      onChange={(v) => {
-                        setCallSort(v);
-                        saveSort({ calls: v });
-                      }}
-                      options={[
-                        ["priority", "zalecana (termin → kontakt → cennik)"],
-                        ["newest", "od najnowszych"],
-                        ["oldest", "od najstarszych"],
-                      ]}
-                    />
-                    <span className="text-xs text-[var(--c-muted)]">{visibleCalls.length} do obdzwonienia</span>
-                  </div>
-                  {visibleCalls.length === 0 ? (
-                    <div className="rounded-xl border border-[var(--c-border)] bg-white px-6 py-8 text-center text-sm text-[var(--c-muted)]">
-                      {progress.total === 0 ? "Lista pojawi się po imporcie sygnałów z HubSpota." : "Wszystko obdzwonione 🎉"}
-                    </div>
-                  ) : (
-                    <ul className="overflow-hidden rounded-xl border border-[var(--c-border)] bg-white">
-                      {visibleCalls.map((r) => (
-                        <li
-                          key={r.id}
-                          onClick={() => open(r.id)}
-                          className={`flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--c-border)] px-4 py-3 last:border-0 hover:bg-[var(--c-bg)] ${
-                            selectedId === r.id ? "bg-[var(--c-brand-soft)]/60" : ""
-                          }`}
-                        >
-                          <div className="min-w-0 flex-grow basis-[240px]">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="mr-0.5 text-[14px] font-semibold text-[var(--c-navy)]">{r.title}</span>
-                              <TypeTag type={r.type} />
-                              <DevicePill devices={r.devices} from={r.requestedFrom} days={r.requestedDays} />
-                              {r.noAnswerCount > 0 && (
-                                <span className="rounded-md bg-[var(--c-purple-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-purple-deep)]">
-                                  {r.noAnswerCount}× nie odebrała
-                                </span>
-                              )}
-                            </div>
-                            <div className="mt-0.5 truncate text-[13px] text-[var(--c-muted)]">
-                              {[r.person, r.city, r.phone ? formatPhone(r.phone) : "brak telefonu — tylko e-mail", r.email].filter(Boolean).join(" · ")}
-                            </div>
-                          </div>
-                          <span className="text-xs text-[var(--c-muted)] tabular-nums">{fmtDate(r.createdAt)}</span>
-                          <span onClick={(e) => e.stopPropagation()}>
-                            <CallButton
-                              r={r}
-                              onCall={() => {
-                                setSerial(true);
-                                open(r.id, "call");
-                              }}
-                            />
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
+                <CallsView
+                  rows={list}
+                  now={now}
+                  selectedId={selectedId}
+                  readOnly={readOnly}
+                  callStats={callStats}
+                  onOpen={(id, i) => {
+                    if (i === "call") setSerial(true);
+                    open(id, i ?? null);
+                  }}
+                />
               )}
 
               {view === "list" && (
@@ -961,9 +621,6 @@ export function LeadsManager({
                     </select>
                     <button type="button" aria-pressed={fNoClient} onClick={() => setFNoClient((v) => !v)} className={`${selectCls(fNoClient)} px-3`}>
                       Bez klienta
-                    </button>
-                    <button type="button" aria-pressed={fCallList} onClick={() => setFCallList((v) => !v)} className={`${selectCls(fCallList)} px-3`}>
-                      Z listy do obdzwonienia
                     </button>
                     <button
                       type="button"

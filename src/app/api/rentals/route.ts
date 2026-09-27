@@ -13,6 +13,8 @@ import { resolveDriverId } from "@/lib/rental-driver";
 import { resolveContactDistanceKm, resolveVehicleId } from "@/lib/rental-vehicle";
 import { saveRentalFinance } from "@/lib/finance";
 import { linkUnassignedRentalsSafe } from "@/lib/clients/rental-match";
+import { syncLeadsWithRentalsSafe } from "@/lib/leads/rental-link";
+import { updateLead } from "@/lib/leads/actions";
 
 const RENTAL_INCLUDE = {
   device: true,
@@ -202,6 +204,13 @@ export async function POST(req: NextRequest) {
 
     // Klient po kontakcie HubSpot / aliasie / serii tytułu (wniosek 13).
     await linkUnassignedRentalsSafe({ userId: session.user.id, rentalIds: [rental.id] });
+    // Lejek: rezerwacja utworzona z sygnału → od razu powiązana; poza tym
+    // otwarty sygnał tego klienta → „Rezerwacja” z tym wynajmem.
+    const leadId = typeof body?.leadId === "string" ? body.leadId : "";
+    if (leadId) {
+      await updateLead(leadId, { rentalId: rental.id }, session.user.id).catch((err) => logWarn("rental_lead_link_failed", { leadId, rentalId: rental.id, message: err instanceof Error ? err.message : String(err) }));
+    }
+    await syncLeadsWithRentalsSafe();
     // Adres z paszportu innego klienta niż ten, do którego trafił wynajem — odpinamy.
     if (deliveryAddressId) {
       const linked = await prisma.rental.findUnique({ where: { id: rental.id }, select: { clientId: true, deliveryAddressRef: { select: { clientId: true } } } });

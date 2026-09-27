@@ -31,6 +31,8 @@ const TYPE_RANK: Record<LeadTypeKey, number> = {
   KONTAKT: 1,
   TELEFON: 1,
   EMAIL: 1,
+  OLX: 1,
+  POLECENIE: 1,
   INNE: 2,
   POBRANIE_CENNIKA: 3,
 };

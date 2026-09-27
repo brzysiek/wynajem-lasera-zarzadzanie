@@ -6,6 +6,7 @@ import { hubspotDealUrl } from "@/lib/integrations/hubspot-deals";
 import { loadQualifiedMap } from "@/lib/clients/qualify";
 import type { LeadStageKey, LeadTypeKey } from "@/lib/leads/parse-deal";
 import type { ActivityTypeKey, LostReasonKey } from "@/lib/leads/labels";
+import { FUNNEL_FROM, buildNaDzis } from "@/lib/leads/funnel";
 
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
@@ -37,6 +38,12 @@ const ROW_SELECT = {
   message: true,
   firstContactAt: true,
   nextActionAt: true,
+  nextStepType: true,
+  nextStepNote: true,
+  attempts: true,
+  followUpNo: true,
+  lastContactAt: true,
+  sourceRef: true,
   lostReason: true,
   rentalId: true,
   ownerId: true,
@@ -70,6 +77,14 @@ export type LeadRow = {
   message: string | null;
   firstContactAt: string | null;
   nextActionAt: string | null;
+  // Lejek (L1): rodzaj i opis kroku, próby bez odebrania, follow-up oferty,
+  // ostatni kontakt, odnośnik źródła.
+  nextStepType: string | null;
+  nextStepNote: string | null;
+  attempts: number;
+  followUpNo: number;
+  lastContactAt: string | null;
+  sourceRef: string | null;
   lostReason: LostReasonKey | null;
   rentalId: string | null;
   rentalStartsAt: string | null;
@@ -122,6 +137,12 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     message: l.message,
     firstContactAt: l.firstContactAt?.toISOString() ?? null,
     nextActionAt: l.nextActionAt?.toISOString() ?? null,
+    nextStepType: l.nextStepType,
+    nextStepNote: l.nextStepNote,
+    attempts: l.attempts,
+    followUpNo: l.followUpNo,
+    lastContactAt: l.lastContactAt?.toISOString() ?? null,
+    sourceRef: l.sourceRef,
     lostReason: l.lostReason,
     rentalId: l.rentalId,
     rentalStartsAt: l.rental?.startsAt.toISOString() ?? null,
@@ -155,10 +176,46 @@ export async function loadLeadRows(): Promise<LeadRow[]> {
   return leads.map((l) => toRow(l, extra));
 }
 
-// Plakietka w menu: nowe sygnały z „Na dziś” bez żadnego kontaktu — bez
-// listy „Do obdzwonienia” (prompt 2 v2, 1.0a).
-export async function countFreshLeads(): Promise<number> {
-  return prisma.lead.count({ where: { stage: "SYGNAL", firstContactAt: null, callList: false, archivedAt: null } });
+// Plakietka w menu (lejek, L1): zaległe + na dziś zalogowanej osoby — te same
+// reguły co „Na dziś” (nowe bez kontaktu z 30 dni i kroki do dziś).
+export async function countLeadWork(userId: string, now = new Date()): Promise<number> {
+  const leads = await prisma.lead.findMany({
+    where: { archivedAt: null, ownerId: userId, stage: { in: ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"] }, createdAt: { gte: FUNNEL_FROM } },
+    select: { id: true, stage: true, type: true, createdAt: true, firstContactAt: true, lastContactAt: true, stageChangedAt: true, nextActionAt: true, nextStepType: true, attempts: true, ownerId: true, rentalId: true, contactPhone: true },
+  });
+  const d = buildNaDzis(leads.map((l) => ({ ...l, phone: l.contactPhone })), now);
+  return d.due.length + d.fresh.length;
+}
+
+// „Rezerwacje do spięcia”: podpowiedź wynajmu dla sygnału „Rezerwacja” bez
+// wynajmu — ten sam klient albo telefon / e-mail, termin ±14 dni od zgłoszonego.
+export async function loadLinkSuggestions(rows: LeadRow[]): Promise<Record<string, { id: string; startsAt: string; title: string; deviceName: string; clientId: string | null }>> {
+  const todo = rows.filter((r) => r.stage === "REZERWACJA" && !r.rentalId);
+  if (!todo.length) return {};
+  const rentals = await prisma.rental.findMany({
+    where: { deletedInGoogle: false, lead: null, startsAt: { gte: new Date(Date.now() - 45 * 86_400_000) } },
+    orderBy: { startsAt: "asc" },
+    select: { id: true, startsAt: true, title: true, clientId: true, contactPhoneCache: true, contactEmailCache: true, device: { select: { name: true } } },
+  });
+  const digits = (p: string | null) => (p ?? "").replace(/\D/g, "").slice(-9);
+  const out: Record<string, { id: string; startsAt: string; title: string; deviceName: string; clientId: string | null }> = {};
+  for (const r of todo) {
+    const around = r.requestedFrom ? new Date(r.requestedFrom).getTime() : null;
+    const hit = rentals.find(
+      (x) =>
+        ((r.clientId && x.clientId === r.clientId) || (r.phone && digits(x.contactPhoneCache) === digits(r.phone)) || (r.email && x.contactEmailCache?.toLowerCase() === r.email.toLowerCase())) &&
+        (around == null || Math.abs(x.startsAt.getTime() - around) <= 14 * 86_400_000),
+    );
+    if (hit) out[r.id] = { id: hit.id, startsAt: hit.startsAt.toISOString(), title: hit.title, deviceName: hit.device.name, clientId: hit.clientId };
+  }
+  return out;
+}
+
+// „Dziś obdzwoniono”: rozmowy i nieodebrane z dzisiaj (wszyscy).
+export async function todayCallStats(now = new Date()): Promise<{ talked: number; noAnswer: number }> {
+  const since = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const rows = await prisma.leadActivity.groupBy({ by: ["type"], where: { createdAt: { gte: since }, leadId: { not: null }, type: { in: ["CALL", "CALL_NO_ANSWER"] } }, _count: { _all: true } });
+  return { talked: rows.find((r) => r.type === "CALL")?._count._all ?? 0, noAnswer: rows.find((r) => r.type === "CALL_NO_ANSWER")?._count._all ?? 0 };
 }
 
 export type LeadActivityDto = {
@@ -167,6 +224,7 @@ export type LeadActivityDto = {
   body: string | null;
   at: string;
   userName: string | null;
+  userRole: string | null; // AGENT → „agent” w historii, brak → „system”
   fromHubspot: boolean;
   otherLead: string | null; // aktywność klienta z innego sygnału / bez sygnału
   emailIds?: string[]; // e-mail z Gmaila (prompt 3C) — podgląd po kliknięciu
@@ -198,7 +256,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
       where: { OR: [{ leadId: id }, ...(lead.clientId ? [{ clientId: lead.clientId }] : [])] },
       orderBy: { createdAt: "desc" },
       take: 200,
-      select: { id: true, type: true, body: true, createdAt: true, hubspotEngagementId: true, leadId: true, user: { select: { name: true } }, lead: { select: { title: true } } },
+      select: { id: true, type: true, body: true, createdAt: true, hubspotEngagementId: true, leadId: true, user: { select: { name: true, role: true } }, lead: { select: { title: true } } },
     }),
     lead.clientId
       ? prisma.lead.findMany({
@@ -261,6 +319,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
         body: `${e.direction === "IN" ? "↓ od klienta" : "↑ do klienta"}: ${e.subject ?? "(bez tematu)"}${e.snippet ? ` — ${e.snippet}` : ""}`,
         at: e.sentAt.toISOString(),
         userName: null,
+        userRole: null,
         fromHubspot: false,
         otherLead: e.mailbox,
         emailIds: [e.id],
@@ -271,6 +330,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
       body: a.body,
       at: a.createdAt.toISOString(),
       userName: a.user?.name ?? null,
+      userRole: a.user?.role ?? null,
       fromHubspot: Boolean(a.hubspotEngagementId),
       otherLead: a.leadId && a.leadId !== id ? (a.lead?.title ?? "inny sygnał") : a.leadId ? null : "bez sygnału",
       })),

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth-guards";
 import { OFFICE_AND_AGENT } from "@/lib/permissions";
-import { countFreshLeads } from "@/lib/leads/load";
+import { countLeadWork } from "@/lib/leads/load";
 
-// Plakietka „Sygnały” w menu: nowe sygnały bez kontaktu. ADMIN/STAFF/AGENT.
+// Plakietka „Sygnały” w menu: zaległe + na dziś zalogowanej osoby (lejek). ADMIN/STAFF/AGENT.
 export async function GET() {
   const session = await requireSession(OFFICE_AND_AGENT);
   if (!session) return NextResponse.json({ count: 0 }, { status: 403 });
-  return NextResponse.json({ count: await countFreshLeads() });
+  return NextResponse.json({ count: await countLeadWork(session.user.id) });
 }

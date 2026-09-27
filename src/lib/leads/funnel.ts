@@ -1,0 +1,269 @@
+// Lejek sprzedaży (wniosek 18, etap L1): reguły wyniku kontaktu (następny
+// krok, próby, follow-upy), „Na dziś”, kolejka „Do obdzwonienia” i wskaźniki.
+// Czas pracy: pn–pt 8–17 (work-time.ts). Czyste funkcje (vitest bez "@/").
+import { WORK_END_HOUR, WORK_START_HOUR, addWorkdays, nextWorkday, workHoursBetween } from "./work-time";
+import type { LeadStageKey, LeadTypeKey } from "./parse-deal";
+
+export const OPEN_STAGES: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"];
+// Sygnały sprzed 2026 nie trafiają do „Na dziś” ani „Do obdzwonienia”.
+export const FUNNEL_FROM = new Date("2025-12-31T23:00:00.000Z");
+export const FIRST_CONTACT_SLA_HOURS = 4;
+export const NO_ANSWER_LIMIT = 3;
+export const OFFER_FOLLOW_UP_DAYS = [3, 7] as const; // dni robocze: 1. i 2. follow-up oferty
+
+export type NextStepType = "PIERWSZY_KONTAKT" | "PONOWNA_PROBA" | "FOLLOW_UP_OFERTY" | "ODDZWONI" | "DOPYTAC" | "INNE";
+export const NEXT_STEP_LABEL: Record<NextStepType, string> = {
+  PIERWSZY_KONTAKT: "pierwszy kontakt",
+  PONOWNA_PROBA: "ponowna próba",
+  FOLLOW_UP_OFERTY: "follow-up oferty",
+  ODDZWONI: "oddzwoni",
+  DOPYTAC: "dopytać",
+  INNE: "kolejny krok",
+};
+// Kroki telefoniczne — trafiają do „Do obdzwonienia”, gdy przypadają.
+export const PHONE_STEPS: NextStepType[] = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA", "FOLLOW_UP_OFERTY", "ODDZWONI", "DOPYTAC"];
+
+const STAGE_ORDER: Record<LeadStageKey, number> = { SYGNAL: 0, WYWIAD: 1, OFERTA: 2, REZERWACJA: 3, WYGRANA: 4, PRZEGRANA: 5 };
+const atHour = (d: Date, h: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), h);
+export const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+export const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+
+// Następny dzień roboczy o 10:00 („jutro 10:00”).
+export function nextWorkdayAt10(now: Date): Date {
+  return atHour(nextWorkday(now), 10);
+}
+
+// Chwila po `hours` godzinach roboczych od `from` (SLA pierwszego kontaktu).
+export function addWorkHours(from: Date, hours: number): Date {
+  let t = new Date(from);
+  let left = hours;
+  for (let guard = 0; guard < 60 && left > 0; guard++) {
+    const day = startOfDay(t);
+    const wd = t.getDay() >= 1 && t.getDay() <= 5;
+    const open = atHour(day, WORK_START_HOUR);
+    const close = atHour(day, WORK_END_HOUR);
+    if (!wd || t >= close) {
+      t = atHour(nextWorkday(day), WORK_START_HOUR);
+      continue;
+    }
+    if (t < open) t = open;
+    const avail = (close.getTime() - t.getTime()) / 3_600_000;
+    if (avail >= left) return new Date(t.getTime() + left * 3_600_000);
+    left -= avail;
+    t = atHour(nextWorkday(day), WORK_START_HOUR);
+  }
+  return t;
+}
+
+// ------------------------------------------------------------------ wynik kontaktu
+
+export type Outcome = "talked" | "no_answer" | "callback" | "offer_sent" | "email";
+
+export type OutcomeState = { stage: LeadStageKey; nextStepType: string | null; attempts: number; followUpNo: number };
+
+export type OutcomePlan = {
+  stage: LeadStageKey | null; // null = bez zmiany etapu
+  nextActionAt: Date | null;
+  nextStepType: NextStepType | null;
+  nextStepNote: string | null;
+  attempts: number;
+  followUpNo: number;
+  contact: boolean; // był kontakt (rozmowa / mail) — pierwszy i ostatni kontakt
+  noAnswerLimit: boolean; // 3. próba bez odebrania: szkic SMS + propozycja przegranej
+};
+
+// Reguły z decyzji Tomka (27.09.2026, pkt 3):
+// - Rozmawiam → etap co najmniej Wywiad, krok wybrany (domyślnie +2 dni rob.);
+// - Nie odebrała → próba +1, jutro 10:00; przy 3. — szkic SMS + „brak kontaktu?”;
+//   przy 1. follow-upie oferty bez odpowiedzi → 2. follow-up +7 dni rob.;
+// - Oddzwoni → wybrany termin;
+// - Wysłałam ofertę → Oferta wysłana, follow-up +3 dni rob. (10:00);
+// - Odpowiedziałam mailem → kontakt, sprawdzić odpowiedź za 3 dni rob.
+export function planOutcome(s: OutcomeState, outcome: Outcome, now: Date, opts: { at?: Date | null; note?: string | null } = {}): OutcomePlan {
+  const base = { attempts: s.attempts, followUpNo: s.followUpNo, noAnswerLimit: false };
+  if (outcome === "talked") {
+    return {
+      ...base,
+      stage: STAGE_ORDER[s.stage] < STAGE_ORDER.WYWIAD ? "WYWIAD" : null,
+      nextActionAt: opts.at ?? atHour(addWorkdays(now, 2), 10),
+      nextStepType: "INNE",
+      nextStepNote: opts.note ?? "po rozmowie",
+      attempts: 0,
+      contact: true,
+    };
+  }
+  if (outcome === "callback") {
+    return { ...base, stage: STAGE_ORDER[s.stage] < STAGE_ORDER.WYWIAD ? "WYWIAD" : null, nextActionAt: opts.at ?? nextWorkdayAt10(now), nextStepType: "ODDZWONI", nextStepNote: opts.note ?? null, attempts: 0, contact: true };
+  }
+  if (outcome === "offer_sent") {
+    return {
+      ...base,
+      stage: STAGE_ORDER[s.stage] < STAGE_ORDER.OFERTA ? "OFERTA" : null,
+      nextActionAt: atHour(addWorkdays(now, OFFER_FOLLOW_UP_DAYS[0]), 10),
+      nextStepType: "FOLLOW_UP_OFERTY",
+      nextStepNote: "follow-up 1 z 2",
+      attempts: 0,
+      followUpNo: 1,
+      contact: true,
+    };
+  }
+  if (outcome === "email") {
+    return { ...base, stage: null, nextActionAt: opts.at ?? atHour(addWorkdays(now, 3), 10), nextStepType: "INNE", nextStepNote: opts.note ?? "sprawdzić odpowiedź na maila", attempts: 0, contact: true };
+  }
+  // Nie odebrała.
+  if (s.nextStepType === "FOLLOW_UP_OFERTY" && s.followUpNo === 1) {
+    return {
+      ...base,
+      stage: null,
+      nextActionAt: atHour(addWorkdays(now, OFFER_FOLLOW_UP_DAYS[1]), 10),
+      nextStepType: "FOLLOW_UP_OFERTY",
+      nextStepNote: "follow-up 2 z 2 (bez odpowiedzi na 1.)",
+      followUpNo: 2,
+      contact: false,
+    };
+  }
+  const attempts = s.attempts + 1;
+  return {
+    ...base,
+    stage: null,
+    nextActionAt: nextWorkdayAt10(now),
+    nextStepType: "PONOWNA_PROBA",
+    nextStepNote: `próba ${Math.min(attempts + 1, NO_ANSWER_LIMIT + 1)} (nie odebrała ${attempts}×)`,
+    attempts,
+    contact: false,
+    noAnswerLimit: attempts >= NO_ANSWER_LIMIT,
+  };
+}
+
+// ------------------------------------------------------------------ widoki
+
+export type FunnelLead = {
+  id: string;
+  stage: LeadStageKey;
+  type: LeadTypeKey;
+  createdAt: Date;
+  firstContactAt: Date | null;
+  lastContactAt: Date | null;
+  stageChangedAt: Date;
+  nextActionAt: Date | null;
+  nextStepType: string | null;
+  attempts: number;
+  ownerId: string | null;
+  rentalId: string | null;
+  phone: string | null;
+};
+
+// Wiersz z datami ISO (LeadRow) → wiersz lejka z datami.
+export function funnelFromRow<T extends { createdAt: string; firstContactAt: string | null; lastContactAt: string | null; stageChangedAt: string; nextActionAt: string | null }>(
+  r: T,
+): Omit<T, "createdAt" | "firstContactAt" | "lastContactAt" | "stageChangedAt" | "nextActionAt"> & Pick<FunnelLead, "createdAt" | "firstContactAt" | "lastContactAt" | "stageChangedAt" | "nextActionAt"> {
+  return {
+    ...r,
+    createdAt: new Date(r.createdAt),
+    firstContactAt: r.firstContactAt ? new Date(r.firstContactAt) : null,
+    lastContactAt: r.lastContactAt ? new Date(r.lastContactAt) : null,
+    stageChangedAt: new Date(r.stageChangedAt),
+    nextActionAt: r.nextActionAt ? new Date(r.nextActionAt) : null,
+  };
+}
+
+// Id sygnałów w kolejce „Do obdzwonienia” (API agenta, filtr do_obdzwonienia).
+export function callQueueIds<T extends Parameters<typeof funnelFromRow>[0] & Omit<FunnelLead, "createdAt" | "firstContactAt" | "lastContactAt" | "stageChangedAt" | "nextActionAt">>(rows: T[], now: Date): Set<string> {
+  return new Set(callQueue(rows.map((r) => funnelFromRow(r) as unknown as FunnelLead), now).map((l) => l.id));
+}
+
+const isOpen = (l: FunnelLead) => OPEN_STAGES.includes(l.stage);
+const in2026 = (l: FunnelLead) => l.createdAt >= FUNNEL_FROM;
+
+// „Na dziś”: zaległe i dzisiejsze kroki (po pierwszym kontakcie), nowe bez
+// kontaktu z 30 dni, rezerwacje bez wynajmu. Tylko sygnały z 2026.
+export function buildNaDzis<T extends FunnelLead>(leads: T[], now: Date) {
+  const eod = endOfDay(now);
+  const from30 = new Date(now.getTime() - 30 * 86_400_000);
+  const open = leads.filter((l) => isOpen(l) && in2026(l));
+  const due = open
+    .filter((l) => l.firstContactAt && l.nextActionAt && l.nextActionAt <= eod && l.stage !== "REZERWACJA")
+    .sort((a, b) => a.nextActionAt!.getTime() - b.nextActionAt!.getTime());
+  const fresh = open.filter((l) => !l.firstContactAt && l.createdAt >= from30).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const toLink = open.filter((l) => l.stage === "REZERWACJA" && !l.rentalId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  return { due, fresh, toLink };
+}
+
+// Zaległy = krok przed dzisiejszym dniem (albo SLA pierwszego kontaktu minęło).
+export function isOverdue(l: { nextActionAt: Date | null }, now: Date): boolean {
+  return !!l.nextActionAt && l.nextActionAt < now;
+}
+
+// „Do obdzwonienia” — liczona na bieżąco: otwarte z 2026 bez kontaktu albo
+// z telefonicznym krokiem ≤ dziś. Kolejność: zaległe → rezerwacje WWW →
+// formularze → pobrania cennika; w grupie od najnowszych.
+const TYPE_RANK: Record<LeadTypeKey, number> = {
+  REZERWACJA_WWW: 1,
+  SZKOLENIE_WWW: 1,
+  KONTAKT: 2,
+  TELEFON: 2,
+  EMAIL: 2,
+  OLX: 2,
+  POLECENIE: 2,
+  INNE: 2,
+  POBRANIE_CENNIKA: 3,
+};
+
+export function callQueue<T extends FunnelLead>(leads: T[], now: Date): T[] {
+  const eod = endOfDay(now);
+  const sod = startOfDay(now);
+  const rows = leads.filter(
+    (l) =>
+      isOpen(l) &&
+      in2026(l) &&
+      l.stage !== "REZERWACJA" &&
+      (!l.firstContactAt || (!!l.nextActionAt && l.nextActionAt <= eod && PHONE_STEPS.includes(l.nextStepType as NextStepType))),
+  );
+  const rank = (l: T) => (l.nextActionAt && l.nextActionAt < sod ? 0 : TYPE_RANK[l.type]);
+  return rows.sort((a, b) => rank(a) - rank(b) || b.createdAt.getTime() - a.createdAt.getTime());
+}
+
+// ------------------------------------------------------------------ wskaźniki
+
+function median(xs: number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+}
+
+// Mediana czasu do 1. kontaktu (godziny robocze) — z czekającymi: sygnał bez
+// kontaktu liczony do teraz, więc zaległości podnoszą wynik.
+export function medianFirstContactHours(leads: { createdAt: Date; firstContactAt: Date | null }[], now: Date): number | null {
+  const m = median(leads.map((l) => workHoursBetween(l.createdAt, l.firstContactAt ?? now)));
+  return m == null ? null : Math.round(m * 10) / 10;
+}
+
+export function naDzisKpis<T extends FunnelLead>(leads: T[], now: Date) {
+  const { due, fresh } = buildNaDzis(leads, now);
+  const work = [...due, ...fresh];
+  const from30 = new Date(now.getTime() - 30 * 86_400_000);
+  const from90 = new Date(now.getTime() - 90 * 86_400_000);
+  const new30 = leads.filter((l) => l.createdAt >= from30);
+  const created90 = leads.filter((l) => l.createdAt >= from90);
+  const offers = leads.filter(
+    (l) => l.stage === "OFERTA" && in2026(l) && workHoursBetween(l.stageChangedAt, now) > 3 * (WORK_END_HOUR - WORK_START_HOUR) && (!l.lastContactAt || l.lastContactAt <= l.stageChangedAt),
+  );
+  return {
+    overdue: work.filter((l) => isOverdue(l, now)).length,
+    today: work.filter((l) => !isOverdue(l, now)).length,
+    new30: new30.length,
+    new30NoContact: new30.filter((l) => !l.firstContactAt && isOpen(l)).length,
+    medianFirstContact: medianFirstContactHours(new30, now),
+    offersNoAnswer: offers.length,
+    conversion90: created90.length ? created90.filter((l) => l.rentalId || l.stage === "REZERWACJA" || l.stage === "WYGRANA").length / created90.length : null,
+  };
+}
+
+// „8 h rob.” / „2,4 dnia” (dzień roboczy = 9 h).
+export function workDurationLabel(hours: number | null): string {
+  if (hours == null) return "—";
+  const perDay = WORK_END_HOUR - WORK_START_HOUR;
+  if (hours < perDay) return `${Math.round(hours * 10) / 10} h rob.`.replace(".", ",");
+  const d = Math.round((hours / perDay) * 10) / 10;
+  return `${String(d).replace(".", ",")} dnia rob.`;
+}

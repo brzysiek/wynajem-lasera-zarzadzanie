@@ -414,7 +414,7 @@ type ContactSummary = {
   company: string | null;
 };
 
-type AssignedContact = {
+export type AssignedContact = {
   id: string;
   name: string | null;
   phone: string | null;
@@ -766,6 +766,7 @@ export function RentalForm({
   rental,
   defaultDeviceId,
   defaultDateIso,
+  prefill,
   reminderTemplates,
   smsTemplates = [],
   drivers = [],
@@ -781,6 +782,9 @@ export function RentalForm({
   rental: Rental | null;
   defaultDeviceId?: string;
   defaultDateIso?: string;
+  // Nowa rezerwacja z sygnału (lejek): kontakt HubSpot, tytuł i sygnał do
+  // powiązania z zapisanym wynajmem.
+  prefill?: { leadId: string; title: string | null; contact: AssignedContact | null };
   reminderTemplates: ReminderTemplatePreview[];
   smsTemplates?: SmsTemplateOption[];
   drivers?: DriverOption[];
@@ -797,7 +801,7 @@ export function RentalForm({
   const router = useRouter();
   const isEditing = Boolean(rental);
   const [deviceId, setDeviceId] = useState(rental?.deviceId ?? defaultDeviceId ?? devices[0]?.id ?? "");
-  const [title, setTitle] = useState(rental?.title ?? "");
+  const [title, setTitle] = useState(rental?.title ?? prefill?.title ?? "");
   const [description, setDescription] = useState(rental?.description ?? "");
   // Opis bywa pusty w większości rezerwacji — rozwijany, domyślnie otwarty
   // tylko gdy już coś w nim jest (edycja istniejącej rezerwacji z opisem).
@@ -828,7 +832,7 @@ export function RentalForm({
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingContact, setPendingContact] = useState<AssignedContact | null>(null);
+  const [pendingContact, setPendingContact] = useState<AssignedContact | null>(prefill?.contact ?? null);
   const [deliveryAddress, setDeliveryAddress] = useState(rental?.deliveryAddress ?? rental?.contactAddressCache ?? "");
   const [deliveryAddressId, setDeliveryAddressId] = useState<string | null>(rental?.deliveryAddressId ?? null);
   // Adres domyślny podstawiamy sami tylko, gdy nic nie wybrano ani nie wpisano
@@ -963,6 +967,7 @@ export function RentalForm({
     if (!isEditing && pendingContact) {
       body.contactId = pendingContact.id;
     }
+    if (!isEditing && prefill?.leadId) body.leadId = prefill.leadId;
 
     const { ok, data } = isEditing
       ? await api(`/api/rentals/${rental!.id}`, { method: "PATCH", body: JSON.stringify(body) })
@@ -1165,7 +1170,7 @@ export function RentalForm({
               <p className="mb-2 text-sm text-gray-700">Klient (HubSpot)</p>
               <ContactSection
                 rentalId={isEditing ? rental!.id : null}
-                initialContact={isEditing ? contactFromRental(rental) : null}
+                initialContact={isEditing ? contactFromRental(rental) : (prefill?.contact ?? null)}
                 onContactChange={handleContactChange}
               />
             </div>

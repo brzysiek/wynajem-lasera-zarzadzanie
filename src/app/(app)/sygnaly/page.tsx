@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { requireClientsPageAccess } from "@/lib/clients/page-access";
-import { loadLeadRows, loadStaffUsers } from "@/lib/leads/load";
+import { loadLeadRows, loadLinkSuggestions, loadStaffUsers, todayCallStats } from "@/lib/leads/load";
+import { syncLeadsWithRentalsSafe } from "@/lib/leads/rental-link";
 import { lastDealsSync } from "@/lib/leads/hubspot-sync";
-import { leadStats } from "@/lib/leads/today";
 import { LeadsManager } from "@/components/leads/leads-manager";
 import { agentAssignees } from "@/lib/agent-api/assignees";
 
@@ -11,6 +11,8 @@ import { agentAssignees } from "@/lib/agent-api/assignees";
 export default async function LeadsPage({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
   const session = await requireClientsPageAccess();
   const { id } = await searchParams;
+  // Lejek ↔ kalendarz: świeże powiązania przed odczytem (także bez crona).
+  await syncLeadsWithRentalsSafe();
   const [rows, users, lastSync, clients] = await Promise.all([
     loadLeadRows(),
     // Agent przydziela zadania tylko wskazanym osobom (Tomek, Ania).
@@ -22,17 +24,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       select: { id: true, name: true, city: true, contacts: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true } } },
     }),
   ]);
-  const stats = leadStats(
-    rows.map((r) => ({
-      createdAt: new Date(r.createdAt),
-      firstContactAt: r.firstContactAt ? new Date(r.firstContactAt) : null,
-      stage: r.stage,
-      stageChangedAt: new Date(r.stageChangedAt),
-      lostReason: r.lostReason,
-      hasRental: Boolean(r.rentalId),
-    })),
-    new Date(),
-  );
+  const [linkSuggestions, callStats] = await Promise.all([loadLinkSuggestions(rows), todayCallStats()]);
   return (
     <LeadsManager
       rows={rows}
@@ -40,7 +32,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       currentUserId={session.user.id}
       isAdmin={session.user.role === "ADMIN"}
       readOnly={session.user.role === "AGENT"}
-      stats={stats}
+      linkSuggestions={linkSuggestions}
+      callStats={callStats}
       lastSync={lastSync}
       hubspotConfigured={Boolean(process.env.HUBSPOT_ACCESS_TOKEN)}
       clients={clients.map((c) => {

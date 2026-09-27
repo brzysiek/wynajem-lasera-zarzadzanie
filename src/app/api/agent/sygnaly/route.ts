@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { callQueueIds } from "@/lib/leads/funnel";
 import { json, withAgent, AgentApiError } from "@/lib/agent-api/handler";
 import { loadLeadRows } from "@/lib/leads/load";
 import { dayParam, paginate, pagination } from "@/lib/agent-api/token";
@@ -11,12 +12,14 @@ export async function GET(req: NextRequest) {
     const from = dayParam(sp.get("od"));
     if (from === "invalid") throw new AgentApiError("od: data RRRR-MM-DD.");
     const q = sp.get("q")?.toLowerCase().trim() ?? "";
-    const rows = (await loadLeadRows()).filter(
+    const all = await loadLeadRows();
+      const queue = callQueueIds(all, new Date());
+      const rows = all.filter(
       (r) =>
         (!sp.get("etap") || r.stage === sp.get("etap")) &&
         (!sp.get("typ") || r.type === sp.get("typ")) &&
         (!from || new Date(r.createdAt) >= from) &&
-        (sp.get("do_obdzwonienia") !== "1" || r.callList) &&
+        (sp.get("do_obdzwonienia") !== "1" || queue.has(r.id)) &&
         (!sp.get("klient") || r.clientId === sp.get("klient")) &&
         (!q || [r.title, r.person, r.email, r.phone, r.clientName, r.city].filter(Boolean).join(" ").toLowerCase().includes(q)),
     );

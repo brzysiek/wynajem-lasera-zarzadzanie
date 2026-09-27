@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Lejek – wzór ekranów</title>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#FDFBF8;--navy:#0C3450;--blue:#1B6FA8;--lblue:#EAF4FB;--queue:#2B5B82;--green:#2F7A68;--lgreen:#EEF6F2;--terra:#E08A5C;--terraT:#B8612F;--warm:#FBF0E7;--grey:#5C6166;--lgrey:#EEF0F2;--line:#E3E6E9}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#E9ECEF;font:13px/1.45 Jost,"Segoe UI",Arial,sans-serif;color:#2A3540;min-width:1440px}
+.screen{width:1440px;margin:0 0 28px;background:var(--bg);display:grid;grid-template-columns:220px 1220px;box-shadow:0 1px 6px rgba(0,0,0,.06)}
+.cap{width:1440px;padding:18px 28px 8px;font-size:12px;color:var(--grey)}
+.cap b{color:var(--navy);font-size:15px;margin-right:8px}
+.side{background:#fff;border-right:1px solid var(--line);padding:14px 12px;font-size:14px}
+.side .logo{font-weight:600;font-size:15px;padding:4px 8px 16px;color:var(--navy)}
+.side a{display:flex;justify-content:space-between;padding:8px 10px;color:#3A4450;border-radius:6px;margin-bottom:2px}
+.side a.on{background:var(--blue);color:#fff}
+.side .cnt{background:var(--terra);color:#fff;font-size:11px;padding:0 6px;border-radius:9px}
+.top{height:52px;border-bottom:1px solid var(--line);background:#fff;display:flex;justify-content:flex-end;align-items:center;padding:0 20px;color:var(--grey)}
+.page{padding:20px 28px 28px}
+h1{font-size:26px;font-weight:600;color:var(--navy);line-height:1.15}
+h2{font-size:16px;font-weight:600;color:var(--navy);display:inline-block;border-bottom:2px solid var(--terra);padding-bottom:2px;margin-bottom:8px}
+.row{display:flex;align-items:center;gap:10px}
+.sp{flex:1}
+.tabs{display:flex;gap:4px;margin-left:18px}
+.tabs span{padding:5px 12px;border-radius:6px;color:var(--grey)}
+.tabs span.on{background:#fff;border:1px solid var(--line);color:var(--navy);font-weight:600}
+.btn{height:32px;font:inherit;padding:0 12px;border:1px solid #C9D3DC;background:#fff;color:var(--navy);border-radius:6px;white-space:nowrap}
+.btn.pri{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.sm{height:26px;padding:0 9px;font-size:12px}
+.lbl{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--grey)}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);background:var(--lblue);margin-top:14px}
+.kpis>div{padding:10px 14px;border-right:1px solid #D4E6F3}
+.kpis>div:last-child{border:0}
+.kpis .n{font-size:20px;font-weight:500;color:var(--navy);line-height:1.2;font-variant-numeric:tabular-nums}
+.kpis small{display:block;color:var(--grey);font-size:11.5px}
+.kpis .warn .n{color:var(--terraT)}
+.seg{display:inline-flex;border:1px solid #C9D3DC;border-radius:6px;overflow:hidden;font-size:12px;background:#fff}
+.seg span{padding:4px 10px;border-right:1px solid var(--line)}
+.seg span:last-child{border:0}
+.seg span.on{background:var(--navy);color:#fff}
+.chip{display:inline-block;background:var(--lblue);padding:1px 7px;font-size:11.5px;color:var(--navy)}
+.tag{display:inline-block;font:600 9.5px Jost,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;padding:1px 6px}
+.t-new{background:var(--blue);color:#fff}.t-warn{background:var(--warm);color:var(--terraT);border:1px solid #E6CDB8}.t-ok{background:var(--lgreen);color:var(--green)}.t-grey{background:var(--lgrey);color:var(--grey)}
+.av{display:inline-flex;width:20px;height:20px;border-radius:50%;background:var(--queue);color:#fff;font-size:10.5px;align-items:center;justify-content:center;font-weight:600}
+.sec{margin-top:18px}
+.list{background:#fff;border:1px solid var(--line)}
+.li{display:grid;grid-template-columns:22px 1.5fr 1fr 1.3fr 150px 190px;gap:12px;align-items:center;padding:9px 14px;border-bottom:1px solid #F0F1F2}
+.li:last-child{border:0}
+.li .nm{font-weight:600;color:var(--navy)}
+.li .meta{color:var(--grey);font-size:12px}
+.due{font-size:12px;font-variant-numeric:tabular-nums}
+.due.late{color:var(--terraT);font-weight:600}
+.due.today{color:var(--blue);font-weight:600}
+.dots{letter-spacing:2px;color:var(--terra)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+/* kanban */
+.kb{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}
+.col{background:#F4F6F8;padding:10px}
+.colh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.colh b{color:var(--navy);font-size:14px}
+.colh .conv{font-size:11px;color:var(--grey)}
+.card{background:#fff;border:1px solid var(--line);border-left:3px solid var(--blue);padding:8px 10px;margin-bottom:8px}
+.card.late{border-left-color:var(--terra)}
+.card .nm{font-weight:600;color:var(--navy)}
+.card .meta{font-size:11.5px;color:var(--grey);margin-top:2px}
+.card .ft{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11.5px}
+.more{font-size:12px;color:var(--blue);text-align:center;padding:4px}
+.foot{display:flex;gap:10px;margin-top:12px}
+.foot div{background:#fff;border:1px solid var(--line);padding:8px 14px}
+/* drawer */
+.drawer{background:#fff;border:1px solid var(--line);box-shadow:-4px 0 14px rgba(0,0,0,.06);padding:16px 18px}
+.stepper{display:flex;margin:10px 0 12px}
+.stepper span{flex:1;text-align:center;font-size:11.5px;padding:5px 0;background:var(--lgrey);color:var(--grey);border-right:2px solid #fff}
+.stepper span.done{background:#BFD8EC;color:var(--navy)}
+.stepper span.on{background:var(--blue);color:#fff;font-weight:600}
+.fld{display:grid;grid-template-columns:120px 1fr;gap:8px;padding:5px 0;border-bottom:1px solid #F0F1F2;align-items:center}
+.fld .lbl{font-size:9.5px}
+.res{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.res span{border:1px solid #C9D3DC;border-radius:14px;padding:3px 10px;font-size:12px;background:#fff}
+.res span.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.hint{font-size:11.5px;color:var(--blue);margin-top:4px}
+.ev{display:grid;grid-template-columns:92px 64px 1fr;gap:8px;padding:5px 0;border-bottom:1px solid #F0F1F2;font-size:12.5px}
+.ev .k{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--blue);padding-top:2px}
+.reason{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px}
+.reason span{border:1px solid #C9D3DC;padding:4px 8px;font-size:12px;background:#fff}
+/* potencjalni */
+.th{display:grid;grid-template-columns:1.6fr 1fr 140px 150px 170px 1.2fr 110px;gap:12px;padding:6px 14px;border-bottom:1.5px solid var(--navy);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--grey)}
+.tr{display:grid;grid-template-columns:1.6fr 1fr 140px 150px 170px 1.2fr 110px;gap:12px;padding:8px 14px;border-bottom:1px solid #F0F1F2;align-items:center;background:#fff}
+/* charts */
+.chartbox{background:#fff;border:1px solid var(--line);padding:14px 16px}
+.fun{display:grid;grid-template-columns:120px 1fr 150px;gap:10px;align-items:center;margin:6px 0}
+.fun .bar{height:22px;background:var(--blue);border-radius:0 4px 4px 0}
+.fun .v{font-variant-numeric:tabular-nums;color:var(--navy);font-weight:500}
+.fun .c{font-size:11.5px;color:var(--grey)}
+.hb{display:grid;grid-template-columns:150px 1fr 40px;gap:10px;align-items:center;margin:5px 0;font-size:12.5px}
+.hb .bar{height:14px;background:var(--queue);border-radius:0 4px 4px 0}
+.note{font-size:11.5px;color:var(--grey);margin-top:8px}
+</style>
+</head>
+<body>
+
+<!-- ===================== 1. NA DZIŚ ===================== -->
+<div class="cap"><b>1. Sygnały → Na dziś</b> Pulpit Ani na każdy dzień: najpierw zaległe i dzisiejsze kroki, potem nowe, oferty bez odpowiedzi i rezerwacje do spięcia z kalendarzem. Sygnały sprzed 2026 nie pojawiają się tutaj.</div>
+<div class="screen" id="s1">
+ <nav class="side"><div class="logo">WynajemLasera.pl</div><a>Kalendarz</a><a>Nadchodzące</a><a class="on">Sygnały <span class="cnt">19</span></a><a>Klienci</a><a>Urządzenia</a><a>Wysyłka SMS</a><a>Porządki</a><a>Ustawienia</a></nav>
+ <div><div class="top">Ania · Wyloguj</div>
+ <div class="page">
+  <div class="row"><h1>Sygnały</h1><div class="tabs"><span class="on">Na dziś</span><span>Tablica</span><span>Do obdzwonienia</span><span>Lista</span><span>Raport</span></div><div class="sp"></div>
+   <span class="seg"><span class="on">Moje</span><span>Ania</span><span>Tomek</span><span>Wszyscy</span></span><button class="btn">+ Sygnał z maila / telefonu</button><button class="btn pri">+ Nowy sygnał</button></div>
+  <div class="kpis">
+   <div class="warn"><span class="lbl">Zaległe</span><div class="n">7</div><small>następny krok po terminie</small></div>
+   <div><span class="lbl">Na dziś</span><div class="n">12</div><small>telefony i follow-upy</small></div>
+   <div><span class="lbl">Nowe · 30 dni</span><div class="n">17</div><small>5 bez kontaktu</small></div>
+   <div class="warn"><span class="lbl">Czas do 1. kontaktu</span><div class="n">2,4 dnia</div><small>mediana z czekającymi · cel 4 h rob.</small></div>
+   <div><span class="lbl">Oferty bez odpowiedzi</span><div class="n">5</div><small>&gt; 3 dni rob. od wysłania</small></div>
+   <div><span class="lbl">Konwersja · 90 dni</span><div class="n">12%</div><small>sygnał → rezerwacja</small></div>
+  </div>
+
+  <div class="sec"><h2>Zaległe i na dziś</h2> <span class="tag t-warn">7 zaległych</span>
+   <div class="list">
+    <div class="li"><span class="av">A</span><div><span class="nm">Anna Guzik</span> <span class="chip">LightSheer</span><div class="meta">Oferta wysłana 27.08 · follow-up 1 z 2</div></div><div class="meta">„follow-up 17.08” – niewykonany</div><div class="meta">Oferta · 31 dni w etapie</div><span class="due late">zaległe 41 dni</span><div class="row"><button class="btn sm">Zadzwoń</button><button class="btn sm">SMS</button><button class="btn sm">Otwórz</button></div></div>
+    <div class="li"><span class="av">A</span><div><span class="nm">Karolina Piela</span> <span class="chip">Alma z obsługą</span><div class="meta">Oferta 27.08 · 2 otwarte sygnały → scalić</div></div><div class="meta">brak odpowiedzi na ofertę</div><div class="meta">Oferta · 31 dni</div><span class="due late">zaległe 24 dni</span><div class="row"><button class="btn sm">Zadzwoń</button><button class="btn sm">SMS</button><button class="btn sm">Otwórz</button></div></div>
+    <div class="li"><span class="av">A</span><div><span class="nm">ola.stochal@…</span><div class="meta">Oferta wysłana 02.09</div></div><div class="meta">follow-up +3 dni rob. (auto)</div><div class="meta">Oferta · 25 dni</div><span class="due late">zaległe 20 dni</span><div class="row"><button class="btn sm">Zadzwoń</button><button class="btn sm">SMS</button><button class="btn sm">Otwórz</button></div></div>
+    <div class="li"><span class="av">A</span><div><span class="nm">nina.stachyra@…</span> <span class="chip">pokaz urządzenia 28.09</span><div class="meta">Oferta 25.09 · rozważa wynajem vs leasing</div></div><div class="meta">follow-up 1 z 2 (auto)</div><div class="meta">Oferta · 2 dni</div><span class="due today">dziś</span><div class="row"><button class="btn sm">Zadzwoń</button><button class="btn sm">SMS</button><button class="btn sm">Otwórz</button></div></div>
+    <div class="li"><span class="av">A</span><div><span class="nm">nikola@swiercz…</span><div class="meta">Wywiad · „wysłano ofertę” 25.09</div></div><div class="meta">przenieść do „Oferta wysłana”?</div><div class="meta">Wywiad · 2 dni</div><span class="due today">dziś</span><div class="row"><button class="btn sm">Zadzwoń</button><button class="btn sm">SMS</button><button class="btn sm">Otwórz</button></div></div>
+   </div>
+  </div>
+
+  <div class="grid2 sec">
+   <div><h2>Nowe – czekają na pierwszy kontakt</h2> <span class="tag t-grey">cel 4 h rob.</span>
+    <div class="list">
+     <div class="li" style="grid-template-columns:1.5fr 1fr 110px 90px"><div><span class="nm">gabinetlanka@…</span><div class="meta">Pobranie cennika · +48 576 301 189</div></div><div class="meta">nowa w bazie</div><span class="due today">1 h rob.</span><button class="btn sm pri">Zadzwoń</button></div>
+     <div class="li" style="grid-template-columns:1.5fr 1fr 110px 90px"><div><span class="nm">piotrowskiiimichal@…</span><div class="meta">Pobranie cennika</div></div><div class="meta">nowa w bazie</div><span class="due late">1 dzień</span><button class="btn sm pri">Zadzwoń</button></div>
+     <div class="li" style="grid-template-columns:1.5fr 1fr 110px 90px"><div><span class="nm">kosmetologstarachowice@…</span><div class="meta">Pobranie cennika</div></div><div class="meta">Świętokrzyskie</div><span class="due late">4 dni</span><button class="btn sm pri">Zadzwoń</button></div>
+     <div class="li" style="grid-template-columns:1.5fr 1fr 110px 90px"><div><span class="nm">kontakt@loovbe.pl</span><div class="meta">Pobranie cennika</div></div><div class="meta">domena firmowa</div><span class="due late">10 dni</span><button class="btn sm pri">Zadzwoń</button></div>
+    </div></div>
+   <div><h2>Rezerwacje do spięcia z kalendarzem</h2> <span class="tag t-warn">bez wynajmu</span>
+    <div class="list">
+     <div class="li" style="grid-template-columns:1.5fr 1fr 150px"><div><span class="nm">AmeLab (Kucewicz)</span><div class="meta">Observ · 16–17.10 · Warszawa</div></div><div class="meta">w kalendarzu: „Aleksandra Kucewicz – W-wa” 06.11 bez klienta</div><button class="btn sm">Powiąż z wynajmem</button></div>
+     <div class="li" style="grid-template-columns:1.5fr 1fr 150px"><div><span class="nm">m.cybul88@…</span><div class="meta">Observ</div></div><div class="meta">brak wynajmu</div><button class="btn sm">Utwórz rezerwację</button></div>
+     <div class="li" style="grid-template-columns:1.5fr 1fr 150px"><div><span class="nm">Angelika Latos</span><div class="meta">LightSheer</div></div><div class="meta">brak wynajmu</div><button class="btn sm">Utwórz rezerwację</button></div>
+    </div></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ===================== 2. TABLICA ===================== -->
+<div class="cap"><b>2. Sygnały → Tablica (lejek)</b> Jedyny lejek w panelu. Na każdej karcie: osoba prowadząca, następny krok z datą (terakota = po terminie), wiek w etapie. Pod nagłówkiem kolumny: konwersja do następnego etapu. Sygnały sprzed 2026 bez kontaktu są w „Archiwum 2025”.</div>
+<div class="screen" id="s2">
+ <nav class="side"><div class="logo">WynajemLasera.pl</div><a>Kalendarz</a><a>Nadchodzące</a><a class="on">Sygnały <span class="cnt">19</span></a><a>Klienci</a><a>Urządzenia</a><a>Wysyłka SMS</a><a>Porządki</a><a>Ustawienia</a></nav>
+ <div><div class="top">Ania · Wyloguj</div>
+ <div class="page">
+  <div class="row"><h1>Sygnały</h1><div class="tabs"><span>Na dziś</span><span class="on">Tablica</span><span>Do obdzwonienia</span><span>Lista</span><span>Raport</span></div><div class="sp"></div>
+   <span class="seg"><span class="on">2026</span><span>90 dni</span><span>Archiwum 2025 (84)</span></span><span class="seg"><span class="on">Wszyscy</span><span>Ania</span><span>Tomek</span></span><button class="btn pri">+ Nowy sygnał</button></div>
+  <div class="kb">
+   <div class="col"><div class="colh"><b>Sygnał · 56</b><span class="conv">→ 38% do wywiadu</span></div>
+    <div class="card"><div class="nm">gabinetlanka@…</div><div class="meta">Pobranie cennika · dziś</div><div class="ft"><span class="av">A</span><span class="due today">zadzwonić dziś</span></div></div>
+    <div class="card late"><div class="nm">kosmetologstarachowice@…</div><div class="meta">Pobranie cennika · 4 dni</div><div class="ft"><span class="av">A</span><span class="due late">po terminie 3 dni</span></div></div>
+    <div class="card late"><div class="nm">Anna Kamińska — LightSheer 1 dzień</div><div class="meta">Rezerwacja WWW · 13.01</div><div class="ft"><span class="av">A</span><span><span class="dots">●●○</span> <span class="due late">3. próba</span></span></div></div>
+    <div class="more">+ 53 więcej</div></div>
+   <div class="col"><div class="colh"><b>Wywiad · 14</b><span class="conv">→ 45% do oferty</span></div>
+    <div class="card"><div class="nm">nikola@swiercz…</div><div class="meta">wysłano ofertę 25.09</div><div class="ft"><span class="av">A</span><span class="due today">dziś: przenieść</span></div></div>
+    <div class="card"><div class="nm">Lightsheer Sosnowiec</div><div class="meta">Telefon · 17 dni</div><div class="ft"><span class="av">A</span><span class="due">oddzwoni 30.09</span></div></div>
+    <div class="more">+ 12 więcej</div></div>
+   <div class="col"><div class="colh"><b>Oferta wysłana · 5</b><span class="conv">→ 30% do rezerwacji</span></div>
+    <div class="card"><div class="nm">nina.stachyra@…</div><div class="meta">oferta 25.09 · follow-up 1 z 2</div><div class="ft"><span class="av">A</span><span class="due today">dziś</span></div></div>
+    <div class="card late"><div class="nm">Anna Guzik · LightSheer</div><div class="meta">oferta 27.08 · follow-up 1 z 2</div><div class="ft"><span class="av">A</span><span class="due late">po terminie 41 dni</span></div></div>
+    <div class="card late"><div class="nm">Karolina Piela · Alma z obsługą</div><div class="meta">oferta 27.08</div><div class="ft"><span class="av">A</span><span class="due late">po terminie 24 dni</span></div></div>
+    <div class="more">+ 2 więcej</div></div>
+   <div class="col"><div class="colh"><b>Rezerwacja · 4</b><span class="conv">→ wygrana po wynajmie</span></div>
+    <div class="card"><div class="nm">AmeLab · Observ</div><div class="meta">16–17.10 · <span style="color:var(--terraT)">bez wynajmu w kalendarzu</span></div><div class="ft"><span class="av">A</span><span class="due today">powiąż z wynajmem</span></div></div>
+    <div class="card"><div class="nm">Bell Beauty · Alma</div><div class="meta">wynajem 07–08.10 ✓ powiązany</div><div class="ft"><span class="av">T</span><span class="due">po wynajmie → Wygrana</span></div></div>
+    <div class="more">+ 2 więcej</div></div>
+  </div>
+  <div class="foot"><div><span class="lbl">Wygrane · 2026</span> <b style="color:var(--green);font-size:16px"> 3</b> <span class="chip">tylko z wynajmem</span></div><div><span class="lbl">Przegrane · 2026</span> <b style="color:var(--navy);font-size:16px"> 13</b> <span class="note">za daleko 4 · tylko cennik 3 · cena 2 · brak kontaktu 2 · ma urządzenie 1 · inne 1</span></div></div>
+ </div></div>
+</div>
+
+<!-- ===================== 3. DO OBDZWONIENIA + KARTA SYGNAŁU ===================== -->
+<div class="cap"><b>3. Sygnały → Do obdzwonienia + karta sygnału</b> Kolejka liczona na bieżąco (otwarte z 2026 bez kontaktu lub z krokiem ≤ dziś), w kolejności: zaległe → rezerwacje WWW → formularze → cennik. Wynik kontaktu jednym kliknięciem ustawia następny krok.</div>
+<div class="screen" id="s3">
+ <nav class="side"><div class="logo">WynajemLasera.pl</div><a>Kalendarz</a><a>Nadchodzące</a><a class="on">Sygnały <span class="cnt">19</span></a><a>Klienci</a><a>Urządzenia</a><a>Wysyłka SMS</a><a>Porządki</a><a>Ustawienia</a></nav>
+ <div><div class="top">Ania · Wyloguj</div>
+ <div class="page" style="display:grid;grid-template-columns:1fr 440px;gap:18px">
+  <div>
+   <div class="row"><h1>Sygnały</h1><div class="tabs"><span>Na dziś</span><span>Tablica</span><span class="on">Do obdzwonienia</span><span>Lista</span><span>Raport</span></div></div>
+   <div class="kpis" style="grid-template-columns:repeat(4,1fr)"><div><span class="lbl">W kolejce</span><div class="n">50</div><small>2026, bez kontaktu lub krok ≤ dziś</small></div><div><span class="lbl">Dziś obdzwoniono</span><div class="n">6</div><small>4 rozmowy · 2 nie odebrały</small></div><div><span class="lbl">Po 3 próbach</span><div class="n">3</div><small>SMS + propozycja przegranej</small></div><div><span class="lbl">Bez telefonu</span><div class="n">1</div><small>tylko e-mail → szkic</small></div></div>
+   <div class="row sec"><span class="seg"><span class="on">Każde urządzenie</span><span>LightSheer</span><span>Alma</span><span>Cooltech</span><span>ResurFX</span><span>Observ</span></span><span class="seg"><span class="on">Każdy region</span><span>Małopolska</span><span>Śląsk</span><span>Inne</span></span></div>
+   <div class="list" style="margin-top:10px">
+    <div class="li" style="grid-template-columns:28px 1.5fr 1fr 70px 120px"><b style="color:var(--grey)">1</b><div><span class="nm">Anna Kamińska</span> <span class="chip">LightSheer 1 dzień</span><div class="meta">Rezerwacja WWW 13.01 · +48 … · Kraków</div></div><div class="meta">„Nie odebrała” 24.09, 25.09</div><span class="dots">●●○</span><span class="due late">3. próba dziś</span></div>
+    <div class="li" style="grid-template-columns:28px 1.5fr 1fr 70px 120px;background:var(--lblue)"><b style="color:var(--grey)">2</b><div><span class="nm">Daria Ditkowska</span> <span class="chip">Alma 1 dzień</span><div class="meta">Rezerwacja WWW 21.01 · +48 …</div></div><div class="meta">brak kontaktu</div><span class="dots">○○○</span><span class="due today">dziś</span></div>
+    <div class="li" style="grid-template-columns:28px 1.5fr 1fr 70px 120px"><b style="color:var(--grey)">3</b><div><span class="nm">Mirek Strucki</span><div class="meta">Formularz kontaktowy 03.01</div></div><div class="meta">brak kontaktu</div><span class="dots">○○○</span><span class="due today">dziś</span></div>
+    <div class="li" style="grid-template-columns:28px 1.5fr 1fr 70px 120px"><b style="color:var(--grey)">4</b><div><span class="nm">HoliCosmetology &amp; HoliGym</span><div class="meta">Pobranie cennika 14.01</div></div><div class="meta">brak kontaktu</div><span class="dots">○○○</span><span class="due today">dziś</span></div>
+    <div class="li" style="grid-template-columns:28px 1.5fr 1fr 70px 120px"><b style="color:var(--grey)">5</b><div><span class="nm">anna.bonislawska@…</span><div class="meta">Pobranie cennika 05.01</div></div><div class="meta">brak kontaktu</div><span class="dots">○○○</span><span class="due today">dziś</span></div>
+   </div>
+   <div class="note">Kropki = próby kontaktu (maks. 3). Kolejność: zaległe → rezerwacje WWW → formularze → pobrania cennika; w grupie od najstarszych.</div>
+  </div>
+
+  <div class="drawer">
+   <div class="row"><span class="lbl">Sygnał · Rezerwacja WWW · 21.01.2026</span><div class="sp"></div><span style="color:var(--grey)">✕</span></div>
+   <div style="font-size:18px;font-weight:600;color:var(--navy);margin-top:4px">Daria Ditkowska</div>
+   <div class="meta" style="color:var(--grey)">Alma Harmony · 1 dzień · +48 … · e-mail … · <span class="chip">Potencjalny</span></div>
+   <div class="stepper"><span class="on">Sygnał</span><span>Wywiad</span><span>Oferta</span><span>Rezerwacja</span><span>Wygrana</span></div>
+   <div class="fld"><span class="lbl">Prowadzi</span><span><span class="av">A</span> Ania (domyślnie)</span></div>
+   <div class="fld"><span class="lbl">Następny krok</span><span><b style="color:var(--blue)">dziś</b> · pierwszy kontakt · SLA 4 h rob.</span></div>
+   <div style="margin-top:10px"><span class="lbl">Wynik kontaktu</span>
+    <div class="res"><span>Rozmawiam</span><span class="on">Nie odebrała → jutro</span><span>Oddzwoni – termin</span><span>Wysłałam ofertę → follow-up +3 dni</span><span>Nie zainteresowana</span></div>
+    <div class="hint">Po kliknięciu: próba 1 z 3, następny krok jutro 10:00. Po 3. próbie: szkic SMS + propozycja przegranej „brak kontaktu”.</div></div>
+   <div style="margin-top:12px"><span class="lbl">Przegrana – powód (obowiązkowy)</span>
+    <div class="reason"><span>Za daleko</span><span>Cena</span><span>Ma / kupiła urządzenie</span><span>Termin zajęty</span><span>Brak kontaktu</span><span>Tylko cennik</span><span>Poza branżą</span><span>Inne – opis</span></div></div>
+   <div style="margin-top:12px"><span class="lbl">Rezerwacja</span><div class="fld" style="grid-template-columns:1fr"><span class="meta" style="color:var(--grey)">Wynajem dla tego klienta w kalendarzu automatycznie przesuwa sygnał do „Rezerwacja”, zrealizowany → „Wygrana”.</span></div></div>
+   <div style="margin-top:10px"><span class="lbl">Historia</span>
+    <div class="ev"><span>21.01.2026</span><span class="k">system</span><span>Formularz rezerwacji WWW (HubSpot)</span></div>
+    <div class="ev"><span>27.09.2026</span><span class="k">agent</span><span>Karta: brak historii wynajmów, Alma wolna 02.10 i 09.10</span></div></div>
+   <div class="row" style="margin-top:12px"><button class="btn pri">Zadzwoń</button><button class="btn">SMS</button><button class="btn">Szkic maila</button><button class="btn">Zadanie</button></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ===================== 4. POTENCJALNI ===================== -->
+<div class="cap"><b>4. Klienci → Potencjalni</b> Bez własnych etapów – etap i następny krok pochodzą z otwartego sygnału. Filtry pokazują, kogo jeszcze nie ma w lejku i komu brakuje danych.</div>
+<div class="screen" id="s4">
+ <nav class="side"><div class="logo">WynajemLasera.pl</div><a>Kalendarz</a><a>Nadchodzące</a><a>Sygnały <span class="cnt">19</span></a><a class="on">Klienci</a><a>Urządzenia</a><a>Wysyłka SMS</a><a>Porządki</a><a>Ustawienia</a></nav>
+ <div><div class="top">Ania · Wyloguj</div>
+ <div class="page">
+  <div class="row"><h1>Klienci</h1><div class="tabs"><span>Klienci 98</span><span class="on">Potencjalni 355</span><span>Archiwum</span></div><div class="sp"></div><button class="btn">Eksport CSV</button><button class="btn pri">+ Nowy klient</button></div>
+  <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
+   <div><span class="lbl">W lejku</span><div class="n">151</div><small>z otwartym sygnałem</small></div>
+   <div class="warn"><span class="lbl">Poza lejkiem</span><div class="n">180</div><small>bez sygnału · 101 z telefonem</small></div>
+   <div><span class="lbl">Archiwum 2025</span><div class="n">84</div><small>do kampanii przed sezonem</small></div>
+   <div class="warn"><span class="lbl">Nazwa = e-mail</span><div class="n">244</div><small>do uzupełnienia (agent)</small></div>
+   <div><span class="lbl">Bez telefonu</span><div class="n">94</div><small>tylko e-mail</small></div>
+  </div>
+  <div class="row sec"><span class="seg"><span class="on">Wszyscy</span><span>W lejku</span><span>Poza lejkiem</span><span>Archiwum 2025</span></span><span class="seg"><span class="on">Każdy etap</span><span>Sygnał</span><span>Wywiad</span><span>Oferta</span><span>Rezerwacja</span></span><span class="seg"><span>nazwa = e-mail</span><span>bez telefonu</span><span>bez miasta</span></span></div>
+  <div style="margin-top:10px">
+   <div class="th"><span>Kontakt</span><span>Pyta o</span><span>Etap (z sygnału)</span><span>Następny krok</span><span>Ostatni kontakt</span><span>Dane</span><span>Akcja</span></div>
+   <div class="tr"><div><b style="color:var(--navy)">AmeLab</b><div class="meta" style="color:var(--grey)">Aleksandra Kucewicz · Warszawa</div></div><span class="chip">Observ</span><span class="tag t-new">Rezerwacja</span><span class="due today">dziś: powiąż wynajem</span><span class="meta">24.08 · e-mail</span><span class="meta">komplet</span><button class="btn sm">Otwórz</button></div>
+   <div class="tr"><div><b style="color:var(--navy)">nina.stachyra@…</b><div class="meta" style="color:var(--grey)">nazwa do ustalenia</div></div><span class="meta">wynajem vs leasing</span><span class="tag t-grey">Oferta</span><span class="due today">dziś: follow-up</span><span class="meta">25.09 · telefon</span><span><span class="tag t-warn">nazwa = e-mail</span></span><button class="btn sm">Zadzwoń</button></div>
+   <div class="tr"><div><b style="color:var(--navy)">Anna Kamińska</b><div class="meta" style="color:var(--grey)">Kraków</div></div><span class="chip">LightSheer</span><span class="tag t-grey">Sygnał</span><span class="due late">3. próba · zaległe</span><span class="meta">25.09 · nie odebrała</span><span class="meta">komplet</span><button class="btn sm">Zadzwoń</button></div>
+   <div class="tr"><div><b style="color:var(--navy)">01pszczola@…</b><div class="meta" style="color:var(--grey)">nazwa do ustalenia</div></div><span class="meta">—</span><span class="meta" style="color:var(--terraT)">poza lejkiem</span><span class="meta">—</span><span class="meta">12.12.2025 · e-mail</span><span><span class="tag t-warn">nazwa = e-mail</span> <span class="tag t-warn">miasto</span></span><button class="btn sm">+ Sygnał</button></div>
+   <div class="tr"><div><b style="color:var(--navy)">a.marciniukbeautycorner@…</b><div class="meta" style="color:var(--grey)">nazwa do ustalenia</div></div><span class="meta">—</span><span class="tag t-grey">Archiwum 2025</span><span class="meta">kampania przed sezonem</span><span class="meta">22.10.2025 · e-mail</span><span><span class="tag t-warn">nazwa = e-mail</span></span><button class="btn sm">Przywróć</button></div>
+  </div>
+ </div></div>
+</div>
+
+<!-- ===================== 5. RAPORT LEJKA ===================== -->
+<div class="cap"><b>5. Sygnały → Raport</b> Tygodniowy obraz lejka: konwersja etapów, czas reakcji, powody przegranych, źródła i oferty bez follow-upu. Jedna seria = jeden kolor (niebieski); terakota tylko dla „wymaga uwagi”. Wykresy z tooltipem po najechaniu.</div>
+<div class="screen" id="s5">
+ <nav class="side"><div class="logo">WynajemLasera.pl</div><a>Kalendarz</a><a>Nadchodzące</a><a class="on">Sygnały <span class="cnt">19</span></a><a>Klienci</a><a>Urządzenia</a><a>Wysyłka SMS</a><a>Porządki</a><a>Ustawienia</a></nav>
+ <div><div class="top">Tomek · Wyloguj</div>
+ <div class="page">
+  <div class="row"><h1>Sygnały</h1><div class="tabs"><span>Na dziś</span><span>Tablica</span><span>Do obdzwonienia</span><span>Lista</span><span class="on">Raport</span></div><div class="sp"></div><span class="seg"><span>30 dni</span><span>90 dni</span><span class="on">2026</span></span><span class="seg"><span class="on">Wszystkie źródła</span><span>WWW</span><span>Telefon</span><span>E-mail</span></span></div>
+  <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
+   <div><span class="lbl">Sygnały 2026</span><div class="n">95</div><small>6–15 miesięcznie</small></div>
+   <div class="warn"><span class="lbl">Bez kontaktu</span><div class="n">50</div><small>53% sygnałów 2026</small></div>
+   <div class="warn"><span class="lbl">Czas do 1. kontaktu</span><div class="n">2,4 dnia</div><small>mediana z czekającymi</small></div>
+   <div><span class="lbl">Wygrane</span><div class="n">3</div><small>3% · tylko z wynajmem</small></div>
+   <div class="warn"><span class="lbl">Oferty bez follow-upu</span><div class="n">4 z 5</div><small>&gt; 7 dni bez aktywności</small></div>
+  </div>
+  <div class="grid2 sec">
+   <div class="chartbox"><h2>Lejek 2026</h2>
+    <div class="fun"><span>Sygnał</span><div class="bar" style="width:100%"></div><span class="v">95 <span class="c">100%</span></span></div>
+    <div class="fun"><span>Kontakt</span><div class="bar" style="width:47%"></div><span class="v">45 <span class="c">47% z sygnałów</span></span></div>
+    <div class="fun"><span>Wywiad</span><div class="bar" style="width:28%"></div><span class="v">27 <span class="c">60% z kontaktu</span></span></div>
+    <div class="fun"><span>Oferta</span><div class="bar" style="width:13%"></div><span class="v">12 <span class="c">44% z wywiadu</span></span></div>
+    <div class="fun"><span>Rezerwacja</span><div class="bar" style="width:7%"></div><span class="v">7 <span class="c">58% z oferty</span></span></div>
+    <div class="fun"><span>Wygrana</span><div class="bar" style="width:3%"></div><span class="v">3 <span class="c">43% z rezerwacji</span></span></div>
+    <div class="note">Liczone „kiedykolwiek osiągnęło etap” (także te, które potem przegrały). Liczby orientacyjne – przeliczy panel.</div></div>
+   <div class="chartbox"><h2>Powody przegranych 2026</h2>
+    <div class="hb"><span>Za daleko</span><div class="bar" style="width:100%"></div><b>4</b></div>
+    <div class="hb"><span>Tylko cennik</span><div class="bar" style="width:75%"></div><b>3</b></div>
+    <div class="hb"><span>Cena</span><div class="bar" style="width:50%"></div><b>2</b></div>
+    <div class="hb"><span>Brak kontaktu</span><div class="bar" style="width:50%"></div><b>2</b></div>
+    <div class="hb"><span>Ma / kupiła urządzenie</span><div class="bar" style="width:25%"></div><b>1</b></div>
+    <div class="hb"><span>Inne</span><div class="bar" style="width:25%"></div><b>1</b></div>
+    <div class="note">Przykład po uzupełnieniu powodów z notatek (dziś wszystkie 13 = „Inne”).</div></div>
+  </div>
+  <div class="grid2 sec">
+   <div class="chartbox"><h2>Czas do pierwszego kontaktu</h2>
+    <div class="hb"><span>≤ 4 h rob. (cel)</span><div class="bar" style="width:18%;background:var(--green)"></div><b>9</b></div>
+    <div class="hb"><span>tego samego dnia</span><div class="bar" style="width:24%"></div><b>12</b></div>
+    <div class="hb"><span>1–3 dni</span><div class="bar" style="width:30%"></div><b>15</b></div>
+    <div class="hb"><span>&gt; 3 dni</span><div class="bar" style="width:18%;background:var(--terra)"></div><b>9</b></div>
+    <div class="hb"><span>wciąż bez kontaktu</span><div class="bar" style="width:100%;background:var(--terra)"></div><b>50</b></div>
+    <div class="note">Zielony = w celu, terakota = wymaga uwagi (kolor statusu + etykieta).</div></div>
+   <div class="chartbox"><h2>Źródła sygnałów 2026</h2>
+    <div class="hb"><span>Pobranie cennika</span><div class="bar" style="width:100%"></div><b>58</b></div>
+    <div class="hb"><span>Rezerwacja WWW</span><div class="bar" style="width:22%"></div><b>13</b></div>
+    <div class="hb"><span>Formularz kontaktowy</span><div class="bar" style="width:19%"></div><b>11</b></div>
+    <div class="hb"><span>Telefon</span><div class="bar" style="width:22%"></div><b>13</b></div>
+    <div class="hb"><span>E-mail</span><div class="bar" style="width:0%"></div><b>0</b></div>
+    <div class="note">E-mail = 0, bo maile nie tworzą dziś sygnałów – po zmianie pojawią się tutaj.</div></div>
+  </div>
+ </div></div>
+</div>
+
+</body>
+</html>
+
