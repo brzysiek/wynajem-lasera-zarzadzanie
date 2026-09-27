@@ -16,6 +16,7 @@ import { LIST_URL_KEY } from "../card/client-full-card";
 import { RhythmHelp, RiskDot, Strip, StripCellBox } from "./rhythm";
 import { PotentialTable, STAGES, stageOf, type Stage } from "./potential";
 import { BulkTaskDialog } from "./bulk";
+import { RhythmView } from "./rhythm-view";
 import { STATUS_BADGE, STATUS_TILE, TAB_STATUSES, daysBetween, dm, dmSmart, downloadCsv, mY, wd, wdLong } from "./format";
 
 // Lista klientów (/klienci) — wygląd 1:1 z lista-klientow-wzor.html (1440 px),
@@ -167,6 +168,8 @@ export function ClientsList({
   const [trained, setTrained] = useState(iq.szkolenie === "1");
   const [special, setSpecial] = useState<Special>(iq.widok && iq.widok in SPECIAL_LABEL ? (iq.widok as Special) : null);
   const [sort, setSort] = useState<SortKey>(iq.sort && iq.sort in SORT_LABEL ? (iq.sort as SortKey) : "next");
+  // Widok zakładki Klienci: lista albo „Rytm (plan obłożenia)”; Mapa — później.
+  const [mode, setMode] = useState<"lista" | "rytm">(iq.tryb === "rytm" ? "rytm" : "lista");
   const [limit, setLimit] = useState(PAGE);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [card, setCard] = useState<{ id: string; intent: CardIntent } | null>(iq.klient ? { id: iq.klient, intent: null } : null);
@@ -198,6 +201,7 @@ export function ClientsList({
     if (trained) p.set("szkolenie", "1");
     if (special) p.set("widok", special);
     if (sort !== "next") p.set("sort", sort);
+    if (mode === "rytm") p.set("tryb", "rytm");
     const listSearch = p.toString() ? `?${p.toString()}` : "";
     window.history.replaceState(null, "", `${BASE_PATH}/klienci${listSearch}`);
     try {
@@ -205,7 +209,7 @@ export function ClientsList({
     } catch {
       // brak sessionStorage — powrót z karty wróci do czystej listy
     }
-  }, [tab, debounced, status, stage, region, device, clinicType, source, risk, overdue, noStep, gap, trained, special, sort]);
+  }, [tab, debounced, status, stage, region, device, clinicType, source, risk, overdue, noStep, gap, trained, special, sort, mode]);
 
   const clientsRows = useMemo(() => allRows.filter((r) => r.status !== "POTENCJALNY"), [allRows]);
   const potentialRows = useMemo(() => allRows.filter((r) => r.status === "POTENCJALNY"), [allRows]);
@@ -486,10 +490,27 @@ export function ClientsList({
           </Link>
         </div>
         <div className="mb-1.5 flex overflow-hidden rounded-[6px] border border-[#D6DADE] text-[12.5px]" aria-label="Widok">
-          <span className="bg-[#0C3450] px-3 py-[5px] text-white">Lista</span>
-          <span aria-disabled title="wkrótce" className="cursor-not-allowed border-l border-[#D6DADE] px-3 py-[5px] text-[#9AA1A8]">
-            Rytm (plan obłożenia)
-          </span>
+          {(
+            [
+              ["lista", "Lista"],
+              ["rytm", "Rytm (plan obłożenia)"],
+            ] as const
+          ).map(([k, label], i) => {
+            const on = tab === "KLIENCI" ? mode === k : k === "lista";
+            return (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={on}
+                disabled={tab !== "KLIENCI" && k === "rytm"}
+                title={tab !== "KLIENCI" && k === "rytm" ? "Rytm tylko dla zakładki Klienci" : undefined}
+                onClick={() => setMode(k)}
+                className={`px-3 py-[5px] disabled:cursor-not-allowed disabled:text-[#9AA1A8] ${i > 0 ? "border-l border-[#D6DADE]" : ""} ${on ? "bg-[#0C3450] text-white" : "bg-white text-[#5C6166] hover:text-[#0C3450]"}`}
+              >
+                {label}
+              </button>
+            );
+          })}
           <span aria-disabled title="wkrótce" className="cursor-not-allowed border-l border-[#D6DADE] px-3 py-[5px] text-[#9AA1A8]">
             Mapa
           </span>
@@ -754,7 +775,9 @@ export function ClientsList({
         </div>
       </div>
 
-      {tab === "POTENCJALNI" ? (
+      {tab === "KLIENCI" && mode === "rytm" ? (
+        <RhythmView rows={visible} monthLabels={monthLabels} currentMonth={11} />
+      ) : tab === "POTENCJALNI" ? (
         <div className="mt-3">
           <PotentialTable rows={page} total={visible.length} onMore={() => setLimit((l) => l + PAGE)} today={today} />
         </div>
