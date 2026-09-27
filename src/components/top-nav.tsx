@@ -19,10 +19,10 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/nadchodzace", label: "Nadchodzące" },
   { href: "/urzadzenia", label: "Urządzenia" },
   { href: "/wysylka-sms", label: "Wysyłka SMS" },
-  { href: "/wnioski", label: "Porządki" },
   // Wrażliwe dane finansowe firmy — tylko ADMIN (filtr niżej).
   { href: "/finanse/przychody", label: "Finanse", match: "/finanse", adminOnly: true },
   { href: "/ustawienia/przypomnienia-sms", label: "Ustawienia", match: "/ustawienia" },
+  { href: "/wnioski", label: "Porządki/optymalizacje" },
 ];
 
 // A driver only ever has the read-only calendar.
@@ -30,8 +30,9 @@ const DRIVER_NAV_ITEMS = NAV_ITEMS.filter((item) => item.href === "/kalendarz");
 
 // Agent AI: bez Ustawień; z Finansów tylko Faktury VAT (src/lib/permissions.ts).
 const AGENT_NAV_ITEMS: NavItem[] = [
-  ...NAV_ITEMS.filter((item) => !item.match),
+  ...NAV_ITEMS.filter((item) => !item.match && item.href !== "/wnioski"),
   { href: "/finanse/faktury", label: "Faktury VAT", match: "/finanse" },
+  { href: "/wnioski", label: "Porządki/optymalizacje" },
 ];
 
 // Placeholder tekstowy — czeka na lokalny plik graficzny w public/ (patrz

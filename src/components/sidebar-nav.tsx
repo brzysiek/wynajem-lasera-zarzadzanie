@@ -155,14 +155,21 @@ function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT" | undefined): (
     // (role tutaj to rola efektywna — patrz (app)/layout.tsx).
     { kind: "link", href: "/sygnaly", label: "Sygnały", icon: <PulseNavIcon /> },
     { kind: "link", href: "/klienci", label: "Klienci", icon: <ClientsIcon /> },
-    // Porządki: wnioski, uwagi, dziennik zmian, reguły (zakładki na stronie).
-    { kind: "link", href: "/wnioski", label: "Porządki", matchAny: ["/wnioski", "/uwagi", "/dziennik", "/reguly", "/archiwum", "/propozycje"], icon: <ChecklistIcon /> },
     { kind: "link", href: "/urzadzenia", label: "Urządzenia", icon: <DeviceBoxIcon /> },
     { kind: "link", href: "/wysylka-sms", label: "Wysyłka SMS", icon: <SmsBubbleIcon /> },
   ];
   if (role === "ADMIN") items.push({ kind: "finance" });
   // Agent AI: z Finansów tylko Faktury VAT (odczyt + „FV bez faktury”).
   if (role === "AGENT") items.push({ kind: "link", href: "/finanse/faktury", label: "Faktury VAT", match: "/finanse", icon: <FinanceBarsIcon /> });
+  // Porządki/optymalizacje — na dole listy: wnioski, uwagi, propozycje,
+  // dziennik zmian, reguły, archiwum (zakładki na stronie).
+  items.push({
+    kind: "link",
+    href: "/wnioski",
+    label: "Porządki/optymalizacje",
+    matchAny: ["/wnioski", "/uwagi", "/dziennik", "/reguly", "/archiwum", "/propozycje"],
+    icon: <ChecklistIcon />,
+  });
   return items;
 }
 
