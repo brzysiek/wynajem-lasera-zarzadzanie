@@ -30,6 +30,7 @@ describe("warunki handlowe", () => {
     expect(invoiceDefaults("PARTIAL", 500)).toEqual({ vatApplicable: true, invoiceNet: 500 });
     expect(invoiceDefaults("NONE", null)).toEqual({ vatApplicable: false, invoiceNet: null });
     expect(invoiceDefaults(null, null)).toBeNull();
+    expect(invoiceDefaults("PARTIAL", null)).toBeNull();
   });
 
   it("odchylenie od warunków powyżej 10%", () => {

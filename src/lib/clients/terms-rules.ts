@@ -75,7 +75,8 @@ export function invoiceNetOf(f: { vatApplicable: boolean; invoiceNet: number | n
 export function invoiceDefaults(mode: InvoiceMode | null, partDefault: number | null): { vatApplicable: boolean; invoiceNet: number | null } | null {
   if (mode === "NONE") return { vatApplicable: false, invoiceNet: null };
   if (mode === "FULL") return { vatApplicable: true, invoiceNet: null };
-  if (mode === "PARTIAL") return { vatApplicable: true, invoiceNet: partDefault };
+  // „Część” bez ustalonej kwoty — nic nie podstawiamy (nie zgadujemy całości).
+  if (mode === "PARTIAL") return partDefault != null ? { vatApplicable: true, invoiceNet: partDefault } : null;
   return null;
 }
 
