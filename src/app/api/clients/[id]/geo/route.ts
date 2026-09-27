@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { setManualGeo } from "@/lib/clients/geocode";
+import { syncManualPinToDefault } from "@/lib/clients/delivery";
 import { logInfo } from "@/lib/logger";
 
 // Ręczna poprawka pinezki na mapie ({ lat, lng }) albo { reset: true } —
@@ -21,6 +22,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     geo = { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
   }
   if (!(await setManualGeo(id, geo))) return NextResponse.json({ message: "Nie znaleziono klienta." }, { status: 404 });
+  await syncManualPinToDefault(id, geo);
   logInfo("client_geo_manual", { userId: session.user.id, clientId: id, reset: !geo });
   return NextResponse.json({ ok: true });
 }

@@ -9,8 +9,9 @@ import { PERSON_ROLE_LABEL, type PersonRole } from "@/lib/clients/profile-fields
 import { monthsLabel } from "@/lib/clients/rhythm";
 import { ContactForm, api } from "../client-forms";
 import { FieldsEditor, boolInput, dateInput, type FieldDef } from "./fields-editor";
-import { LINK, Missing, Quote, Row, Section, dm, dmy, money } from "./kit";
+import { LINK, Missing, Quote, Row, Section, dm, dmy } from "./kit";
 import { isConfirmingSource } from "./sources";
+import { DeliverySection } from "./delivery-passport";
 
 // Lewa kolumna karty wg karta-kierunek.html (etap 1, 27.09.2026): Dane firmy
 // (dane do faktury zwinięte), Osoby, Paszport dostawy, a Profil gabinetu,
@@ -93,7 +94,8 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
     invoiceBuyerNip: p.invoiceBuyerNip ? (formatNip(p.invoiceBuyerNip) ?? p.invoiceBuyerNip) : "",
   };
   const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const region = d.city || d.zip ? REGION_LABEL[computeRegion(d.zip, d.city)] : null;
+  const geo = d.delivery.addresses.find((a) => a.isDefault);
+  const region = d.city || d.zip ? REGION_LABEL[computeRegion(d.zip, d.city, geo && { state: geo.geoState, county: geo.geoCounty })] : null;
 
   async function enrich() {
     setEnriching(true);
@@ -323,73 +325,6 @@ function PeopleSection({ d, onChanged, notify }: Props) {
   );
 }
 
-// ------------------------------------------------------------------ Paszport dostawy
-
-function DeliverySection({ d, onChanged, notify, isAgent }: Props & { isAgent: boolean }) {
-  const [edit, setEdit] = useState(false);
-  const p = d.profile;
-  const n = p.deliveryNotes;
-  const company = [d.street, d.city].filter(Boolean).join(", ");
-  const fields: FieldDef[] = [
-    { key: "deliveryAddress", label: "Adres dostawy", placeholder: company ? `puste = adres firmy (${company})` : undefined },
-    { key: "deliveryNotes.entrance", label: "Wejście" },
-    { key: "deliveryNotes.floor", label: "Piętro" },
-    { key: "deliveryNotes.parking", label: "Parking" },
-    { key: "deliveryNotes.power", label: "Zasilanie", placeholder: "gniazdo, bezpiecznik" },
-    { key: "deliveryNotes.receiver", label: "Kto odbiera" },
-    ...(isAgent
-      ? []
-      : ([
-          { key: "transportPriceNet", label: "Transport netto (zł)", kind: "number" },
-          { key: "distanceKm", label: "Odległość (km)", kind: "number" },
-        ] as FieldDef[])),
-  ];
-  const initial = {
-    deliveryAddress: p.deliveryAddress ?? "",
-    "deliveryNotes.entrance": n?.entrance ?? "",
-    "deliveryNotes.floor": n?.floor ?? "",
-    "deliveryNotes.parking": n?.parking ?? "",
-    "deliveryNotes.power": n?.power ?? "",
-    "deliveryNotes.receiver": n?.receiver ?? "",
-    transportPriceNet: d.transportPriceNet ? String(Number(d.transportPriceNet)) : "",
-    distanceKm: d.distanceKm ? String(Number(d.distanceKm)) : "",
-  };
-  const next = d.overview.nextRental;
-  const nextDay = next ? dm(next.startsAt) : null;
-  return (
-    <Section title="Paszport dostawy" sub="Dla kierowcy i instalatora." action={!edit && <EditLink onClick={() => setEdit(true)} />}>
-      {edit ? (
-        <FieldsEditor
-          clientId={d.id}
-          fields={fields}
-          initial={initial}
-          onCancel={() => setEdit(false)}
-          onSaved={(x) => {
-            setEdit(false);
-            onChanged(x);
-            notify("Zapisano paszport dostawy.");
-          }}
-        />
-      ) : (
-        <>
-          <Row label="Adres dostawy">{p.deliveryAddress ?? (company || <Missing>uzupełnij</Missing>)}</Row>
-          <Row label="Godzina">
-            {d.cardFacts.usualStartTime ? `${d.cardFacts.usualStartTime.time} (z rezerwacji ${dm(d.cardFacts.usualStartTime.fromAt)})` : <Missing>brak rezerwacji z godziną</Missing>}
-          </Row>
-          <Row label="Odległość">{d.distanceKm ? `${Number(d.distanceKm).toLocaleString("pl-PL")} km` : <Missing>auto z mapy</Missing>}</Row>
-          <Row label="Transport">
-            {d.transportPriceNet && Number(d.transportPriceNet) > 0 ? `${money(Number(d.transportPriceNet))} netto` : <Missing>uzupełnij w warunkach</Missing>}
-          </Row>
-          <Row label="Wejście / piętro">{n?.entrance || n?.floor ? [n.entrance, n.floor].filter(Boolean).join(" · ") : <Missing>uzupełnia kierowca{nextDay ? ` ${nextDay}` : ""}</Missing>}</Row>
-          <Row label="Parking">{n?.parking ?? <Missing>uzupełnia kierowca</Missing>}</Row>
-          <Row label="Zasilanie">{n?.power ?? <Missing>uzupełnia instalator</Missing>}</Row>
-          {n?.receiver && <Row label="Kto odbiera">{n.receiver}</Row>}
-        </>
-      )}
-    </Section>
-  );
-}
-
 // ------------------------------------------------------------------ Profil gabinetu
 
 const LINK_LABEL: Record<string, string> = { www: "WWW", instagram: "Instagram", facebook: "Facebook", booksy: "Booksy", fresha: "Fresha" };
@@ -410,7 +345,6 @@ function ProfileSection({ d, onChanged, notify, headless }: Props & { headless?:
       options: (Object.keys(CLINIC_TYPE_LABEL) as ClinicTypeKey[]).map((k) => ({ value: k, label: CLINIC_TYPE_LABEL[k] })),
     },
     { key: "services", label: "Usługi", kind: "list" },
-    { key: "openingHours", label: "Godziny", placeholder: "pn–pt 9–20 · sob 9–15" },
     { key: "links.www", label: "WWW" },
     { key: "links.instagram", label: "Instagram" },
     { key: "links.facebook", label: "Facebook" },
@@ -422,7 +356,6 @@ function ProfileSection({ d, onChanged, notify, headless }: Props & { headless?:
   const initial = {
     clinicType: d.clinicType ?? "",
     services: p.services.join("\n"),
-    openingHours: p.openingHours ?? "",
     "links.www": p.links?.www ?? "",
     "links.instagram": p.links?.instagram ?? "",
     "links.facebook": p.links?.facebook ?? "",
@@ -451,7 +384,6 @@ function ProfileSection({ d, onChanged, notify, headless }: Props & { headless?:
         <>
           <Row label="Typ">{d.clinicType ? CLINIC_TYPE_LABEL[d.clinicType].toLowerCase() : <Missing>uzupełnij</Missing>}</Row>
           <Row label="Usługi">{p.services.length ? p.services.join(", ") : <Missing>do sprawdzenia</Missing>}</Row>
-          <Row label="Godziny">{p.openingHours ?? <Missing>do sprawdzenia</Missing>}</Row>
           <Row label="Online">
             {links.length ? (
               links.map(({ k, v }, i) => {

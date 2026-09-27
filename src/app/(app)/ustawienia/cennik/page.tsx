@@ -2,16 +2,19 @@ import { requireAdmin } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
 import { PricingPanel } from "@/components/pricing-panel";
+import { DeliverySettingsPanel } from "@/components/delivery-settings-panel";
+import { loadDeliverySettings } from "@/lib/clients/delivery";
 
 export default async function PricingSettingsPage() {
   await requireAdmin();
 
-  const [priceRules, pulseTiers, settings] = await Promise.all([
+  const [priceRules, pulseTiers, settings, delivery] = await Promise.all([
     prisma.priceRule.findMany({
       orderBy: [{ pricingCategory: "asc" }, { variant: "asc" }, { durationDays: "asc" }],
     }),
     prisma.pulseTier.findMany({ orderBy: [{ durationDays: "asc" }, { order: "asc" }] }),
     prisma.pricingSetting.findMany({ orderBy: { key: "asc" } }),
+    loadDeliverySettings(),
   ]);
 
   return (
@@ -40,6 +43,7 @@ export default async function PricingSettingsPage() {
         }))}
         initialSettings={settings.map((s) => ({ key: s.key, value: s.value.toString() }))}
       />
+      <DeliverySettingsPanel initialBase={delivery.base} initialZones={delivery.zones} />
     </div>
   );
 }

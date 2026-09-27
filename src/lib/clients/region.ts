@@ -83,6 +83,35 @@ export function regionFromCity(city: string | null | undefined): RegionKey | nul
   return best?.region ?? null;
 }
 
-export function computeRegion(zip: string | null | undefined, city: string | null | undefined): RegionKey {
-  return regionFromZip(zip) ?? regionFromCity(city) ?? "INNE";
+// Paszport dostawy (etap B): województwo / powiat z geokodowania adresu
+// domyślnego — przed słownikiem miast, więc wsie nie wpadają do „Inne”.
+export type RegionGeo = { state: string | null; county: string | null } | null | undefined;
+
+const plainGeo = (s: string | null | undefined) =>
+  (s ?? "")
+    .toLowerCase()
+    .replace(/ł/g, "l")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/^(wojewodztwo|powiat)\s+/, "")
+    .trim();
+
+// Województwo / powiat z Nominatim → region listy. Powiat krakowski = strefa
+// dostaw wokół Krakowa (jak kody 30-, 31-, 32-0xx): Kraków, powiat
+// krakowski i wielicki. null = geokodowanie nie dało województwa.
+export function regionFromGeo(state: string | null | undefined, county: string | null | undefined): RegionKey | null {
+  const s = plainGeo(state);
+  if (!s) return null;
+  if (s === "malopolskie") {
+    const c = plainGeo(county);
+    return c === "krakowski" || c === "wielicki" || c === "krakow" ? "KRAKOWSKI" : "MALOPOLSKA";
+  }
+  if (s === "podkarpackie") return "PODKARPACIE";
+  if (s === "slaskie") return "SLASK";
+  if (s === "swietokrzyskie") return "SWIETOKRZYSKIE";
+  return "INNE";
+}
+
+export function computeRegion(zip: string | null | undefined, city: string | null | undefined, geo?: RegionGeo): RegionKey {
+  return regionFromZip(zip) ?? regionFromGeo(geo?.state, geo?.county) ?? regionFromCity(city) ?? "INNE";
 }

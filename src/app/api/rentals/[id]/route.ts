@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
+import { resolveDeliveryAddressId } from "@/lib/clients/delivery";
 import { updateCalendarEvent, deleteCalendarEvent, moveCalendarEvent } from "@/lib/integrations/google-calendar";
 import { logInfo, logWarn, logError } from "@/lib/logger";
 import { CONFIRMATION_OFFSET, REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
@@ -46,6 +47,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     typeof body?.transportPrice === "string" ? body.transportPrice.trim() : rental.transportPrice ?? "";
   const eventType =
     body?.eventType === "SZKOLENIE" ? "SZKOLENIE" : body?.eventType === "WYNAJEM" ? "WYNAJEM" : rental.eventType;
+
+  const addressResolved = await resolveDeliveryAddressId(body?.deliveryAddressId, rental.clientId);
+  if (!addressResolved.ok) return NextResponse.json({ message: addressResolved.message }, { status: 400 });
+  const deliveryAddressId = eventType === "SZKOLENIE" ? null : addressResolved.id === undefined ? rental.deliveryAddressId : addressResolved.id;
 
   let contactDistanceKm: number | null = rental.contactDistanceKm !== null ? Number(rental.contactDistanceKm) : null;
   if (body && "contactDistanceKm" in body) {
@@ -138,6 +143,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         deviceId: requestedDeviceId,
         googleCalendarId: targetCalendarId,
         deliveryAddress: deliveryAddress || null,
+        deliveryAddressId,
         deliveryTime,
         pickupTime,
         transportPrice: transportPrice || null,

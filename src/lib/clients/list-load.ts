@@ -5,6 +5,7 @@ import { isRealizedRental, type ClientStatus } from "@/lib/clients/status";
 import { computeRhythm, headsFromText, monthsLabel, warsawDay, type RhythmRental } from "@/lib/clients/rhythm";
 import { isBeforeSeason, rhythmStrip, seasonWindow, statusCheck, type StripCell } from "@/lib/clients/list-rules";
 import { computeRegion, type RegionKey } from "@/lib/clients/region";
+import { addressNeedsGeo } from "@/lib/clients/delivery-rules";
 import { BASE, distanceKm, geoKey, mapAddress } from "@/lib/clients/geo-rules";
 import { readFieldMeta } from "@/lib/clients/profile-fields";
 import { isQualified } from "@/lib/clients/qualification";
@@ -197,6 +198,11 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       history: { where: HISTORY_FACT_WHERE, select: { startsAt: true, endsAt: true, kind: true, title: true, description: true, device: { select: { pricingCategory: true, name: true } } } },
       invoices: { where: INVOICE_FACT_WHERE, select: INVOICE_FACT_SELECT },
       aliases: { select: { alias: true } },
+      deliveryAddresses: {
+        where: { isDefault: true },
+        take: 1,
+        select: { street: true, zip: true, city: true, geoQuery: true, lat: true, routeCalculatedAt: true, geoState: true, geoCounty: true, distanceKm: true, durationMin: true },
+      },
       qualifiedAt: true,
       leads: {
         where: { archivedAt: null },
@@ -258,7 +264,8 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
     });
     const primary = c.contacts[0] ?? null;
     const interests = parseInterests(c.deviceInterests);
-    const region = computeRegion(c.zip, c.city);
+    const delivery = c.deliveryAddresses[0] ?? null;
+    const region = computeRegion(c.zip, c.city, delivery && { state: delivery.geoState, county: delivery.geoCounty });
     if (region !== c.region) regionFixes.set(region, [...(regionFixes.get(region) ?? []), c.id]);
 
     // --- Rytm (jak na karcie: wynajmy z panelu + historia kalendarzy) ---
@@ -424,8 +431,9 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       overdueRatio,
       pickupAt,
       geo,
-      geoPending: !!addr && c.geoSource !== "MANUAL" && geoKey(addr) !== c.geoQuery,
-      baseKm: geo ? distanceKm(BASE, geo) : null,
+      geoPending: (!!addr && c.geoSource !== "MANUAL" && geoKey(addr) !== c.geoQuery) || (!!delivery && addressNeedsGeo(delivery)),
+      // Trasa od bazy z paszportu dostawy (OSRM), inaczej linia prosta.
+      baseKm: delivery?.routeCalculatedAt && delivery.distanceKm != null ? Number(delivery.distanceKm) : geo ? distanceKm(BASE, geo) : null,
       trained: c.rentals.some((r) => r.eventType === "SZKOLENIE" && !r.deletedInGoogle) || c.history.some((h) => h.kind === "SZKOLENIE"),
       search: [c.name, c.shortName, c.nip, c.city, ...c.aliases.map((a) => a.alias), ...c.contacts.flatMap((p) => [personName(p), p.email])]
         .filter(Boolean)

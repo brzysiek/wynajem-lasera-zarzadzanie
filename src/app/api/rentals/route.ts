@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
+import { resolveDeliveryAddressId } from "@/lib/clients/delivery";
 import { insertCalendarEvent } from "@/lib/integrations/google-calendar";
 import { getHubspotContact, formatHubspotAddress } from "@/lib/integrations/hubspot";
 import { logInfo, logWarn, logError } from "@/lib/logger";
@@ -77,6 +78,9 @@ export async function POST(req: NextRequest) {
 
   const distanceResolved = resolveContactDistanceKm(body?.contactDistanceKm);
   if (!distanceResolved.ok) return distanceResolved.response;
+  const addressResolved = await resolveDeliveryAddressId(body?.deliveryAddressId, null);
+  if (!addressResolved.ok) return NextResponse.json({ message: addressResolved.message }, { status: 400 });
+  const deliveryAddressId = eventType === "SZKOLENIE" ? null : (addressResolved.id ?? null);
   const contactDistanceKm = distanceResolved.distanceKm;
 
   if (!deviceId || !title || !startsAt || !endsAt || isNaN(startsAt.getTime()) || isNaN(endsAt.getTime())) {
@@ -131,6 +135,7 @@ export async function POST(req: NextRequest) {
         endsAt,
         allDay,
         deliveryAddress: deliveryAddress || null,
+        deliveryAddressId,
         deliveryTime,
         pickupTime,
         transportPrice: transportPrice || null,
@@ -191,6 +196,11 @@ export async function POST(req: NextRequest) {
 
     // Klient po kontakcie HubSpot / aliasie / serii tytułu (wniosek 13).
     await linkUnassignedRentalsSafe({ userId: session.user.id, rentalIds: [rental.id] });
+    // Adres z paszportu innego klienta niż ten, do którego trafił wynajem — odpinamy.
+    if (deliveryAddressId) {
+      const linked = await prisma.rental.findUnique({ where: { id: rental.id }, select: { clientId: true, deliveryAddressRef: { select: { clientId: true } } } });
+      if (linked && linked.clientId !== linked.deliveryAddressRef?.clientId) await prisma.rental.update({ where: { id: rental.id }, data: { deliveryAddressId: null } });
+    }
 
     logInfo("rental_created", { userId: session.user.id, rentalId: rental.id, deviceId: device.id });
 

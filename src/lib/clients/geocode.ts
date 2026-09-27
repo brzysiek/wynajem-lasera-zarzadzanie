@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { logWarn } from "@/lib/logger";
-import { geoAttempts, geoKey, mapAddress } from "@/lib/clients/geo-rules";
+import { geoAttempts, geoKey, mapAddress, type GeoAddress } from "@/lib/clients/geo-rules";
 
 // Współrzędne klientek z Nominatim (OpenStreetMap) — mapa na /klienci.
 // Zasady Nominatim: max 1 zapytanie na sekundę, przedstawiający się
@@ -10,20 +10,61 @@ import { geoAttempts, geoKey, mapAddress } from "@/lib/clients/geo-rules";
 
 const UA = "WynajemLasera-Panel/1.0 (kontakt@wynajemlasera.pl)";
 const GAP_MS = 1100;
-const BATCH_MS = 25_000;
+export const BATCH_MS = 25_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function nominatim(params: Record<string, string>): Promise<{ lat: number; lng: number } | null> {
-  const qs = new URLSearchParams({ format: "jsonv2", limit: "1", countrycodes: "pl", ...params });
+export type GeoHit = { lat: number; lng: number; state: string | null; county: string | null };
+
+// Zasada Nominatim „max 1 zapytanie na sekundę” — pilnowana w procesie,
+// niezależnie od tego, kto pyta (partia z mapy, zapis adresu, baza).
+let lastCallAt = 0;
+async function throttle() {
+  const wait = lastCallAt + GAP_MS - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastCallAt = Date.now();
+}
+
+type NominatimAddress = { state?: string; county?: string; city?: string };
+// Miasto na prawach powiatu (Kraków) nie ma „county” — wtedy nazwa miasta.
+const countyOf = (a: NominatimAddress | undefined) => a?.county ?? a?.city ?? null;
+
+async function nominatim(params: Record<string, string>): Promise<GeoHit | null> {
+  await throttle();
+  const qs = new URLSearchParams({ format: "jsonv2", limit: "1", countrycodes: "pl", addressdetails: "1", ...params });
   const res = await fetch(`https://nominatim.openstreetmap.org/search?${qs.toString()}`, {
     headers: { "User-Agent": UA, "Accept-Language": "pl" },
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`);
-  const body = (await res.json().catch(() => [])) as { lat?: string; lon?: string }[];
+  const body = (await res.json().catch(() => [])) as { lat?: string; lon?: string; address?: NominatimAddress }[];
   const hit = body[0];
-  return hit?.lat && hit?.lon ? { lat: Number(hit.lat), lng: Number(hit.lon) } : null;
+  if (!hit?.lat || !hit?.lon) return null;
+  return { lat: Number(hit.lat), lng: Number(hit.lon), state: hit.address?.state ?? null, county: countyOf(hit.address) };
+}
+
+// Województwo i powiat dla znanych współrzędnych (region bez kodu pocztowego).
+export async function reverseGeocode(p: { lat: number; lng: number }): Promise<{ state: string | null; county: string | null } | null> {
+  await throttle();
+  const qs = new URLSearchParams({ format: "jsonv2", lat: String(p.lat), lon: String(p.lng), zoom: "10", addressdetails: "1" });
+  const res = await fetch(`https://nominatim.openstreetmap.org/reverse?${qs.toString()}`, {
+    headers: { "User-Agent": UA, "Accept-Language": "pl" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`);
+  const body = (await res.json().catch(() => null)) as { address?: NominatimAddress } | null;
+  return body?.address ? { state: body.address.state ?? null, county: countyOf(body.address) } : null;
+}
+
+// Jeden adres — kolejne zapytania od najdokładniejszego.
+// Rzuca przy błędzie sieci / limicie; null = adresu nie znaleziono.
+export async function geocodeAddress(a: GeoAddress): Promise<(GeoHit & { precision: string }) | null> {
+  const attempts = geoAttempts(a);
+  for (let i = 0; i < attempts.length; i++) {
+    const hit = await nominatim(attempts[i].params);
+    if (hit) return { ...hit, precision: attempts[i].precision };
+  }
+  return null;
 }
 
 // Klientki z historią (wynajem, wpis z kalendarza albo faktura) — te są na
@@ -57,14 +98,13 @@ export async function countPendingGeocode(): Promise<number> {
   return (await pending()).length;
 }
 
-export async function geocodeBatch(): Promise<{ done: number; found: number; notFound: number; remaining: number }> {
+export async function geocodeBatch(deadline = Date.now() + BATCH_MS): Promise<{ done: number; found: number; notFound: number; remaining: number }> {
   const todo = await pending();
-  const started = Date.now();
   let done = 0;
   let found = 0;
   for (const c of todo) {
-    if (Date.now() - started > BATCH_MS) break;
-    let hit: { lat: number; lng: number } | null = null;
+    if (Date.now() > deadline) break;
+    let hit: GeoHit | null = null;
     let precision: string | null = null;
     for (const a of geoAttempts(c.address)) {
       try {

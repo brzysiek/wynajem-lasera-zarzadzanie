@@ -139,6 +139,7 @@ model User {
   remarks             Remark[]
   cleanupRules        CleanupRule[]
   apiTokens           ApiToken[]           @relation("ApiTokenUser")
+  deliveryFeedback    DeliveryFeedback[]   @relation("DeliveryFeedbackDriver")
 
   @@map("users")
 }
@@ -266,20 +267,26 @@ model Rental {
   // późniejszym kroku. SetNull: usunięcie klienta nigdy nie usuwa wynajmu.
   clientId        String?
   clientContactId String?
+  // Adres z „Paszportu dostawy” klienta (karta klienta, etap B). null = adres
+  // domyślny klienta; tekst deliveryAddress zostaje (kalendarz, nawigacja).
+  deliveryAddressId String?
 
-  device        Device         @relation(fields: [deviceId], references: [id])
-  driver        User?          @relation("RentalDriver", fields: [driverId], references: [id])
-  vehicle       Vehicle?       @relation(fields: [vehicleId], references: [id])
-  client        Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  clientContact ClientContact? @relation(fields: [clientContactId], references: [id], onDelete: SetNull)
-  reminderRules ReminderRule[]
-  messages      Message[]
-  finance       RentalFinance?
-  lead          Lead?
+  device          Device                 @relation(fields: [deviceId], references: [id])
+  driver          User?                  @relation("RentalDriver", fields: [driverId], references: [id])
+  vehicle         Vehicle?               @relation(fields: [vehicleId], references: [id])
+  client          Client?                @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientContact   ClientContact?         @relation(fields: [clientContactId], references: [id], onDelete: SetNull)
+  deliveryAddressRef ClientDeliveryAddress? @relation(fields: [deliveryAddressId], references: [id], onDelete: SetNull)
+  reminderRules   ReminderRule[]
+  messages        Message[]
+  finance         RentalFinance?
+  lead            Lead?
+  deliveryFeedback DeliveryFeedback[]
 
   @@unique([googleCalendarId, googleEventId])
   @@index([clientId])
   @@index([clientContactId])
+  @@index([deliveryAddressId])
   @@map("rentals")
 }
 
@@ -852,11 +859,73 @@ model Client {
   changeProposals ChangeProposal[]
   proposalLinks ProposalClient[]
   remarks  Remark[]
+  deliveryAddresses ClientDeliveryAddress[]
 
   @@index([nip])
   @@index([name])
   @@index([archivedAt])
   @@map("clients")
+}
+
+// Paszport dostawy (karta klienta, etap B): adresy, pod które jedzie kierowca
+// — wiele na klienta (np. Wieliczka i Kraków). Domyślny podstawia się w
+// rezerwacji i na mapie. Odległość i czas z trasy OSRM od bazy (Ustawienia →
+// Cennik), liczone przy zapisie adresu. Stare pola Client.deliveryAddress /
+// deliveryNotes / openingHours / distanceKm są lustrem adresu domyślnego.
+model ClientDeliveryAddress {
+  id                String    @id @default(cuid())
+  clientId          String
+  label             String    @db.VarChar(64) // Gabinet, Wieliczka…
+  isDefault         Boolean   @default(false)
+  street            String?   @db.VarChar(191)
+  zip               String?   @db.VarChar(8)
+  city              String?   @db.VarChar(191)
+  lat               Float?
+  lng               Float?
+  geoPrecision      String?   @db.VarChar(16) // ADRES | MIEJSCOWOSC
+  geoQuery          String?   @db.VarChar(255) // adres, dla którego liczono
+  geoState          String?   @db.VarChar(64) // województwo z geokodowania (region)
+  geoCounty         String?   @db.VarChar(64) // powiat z geokodowania
+  distanceKm       Decimal?  @db.Decimal(6, 1) // trasa od bazy (OSRM) albo dawna wartość z wynajmów
+  durationMin       Int?
+  routeCalculatedAt DateTime?
+  // Na miejscu — widoczne dla kierowcy.
+  entrance          String?   @db.Text
+  floor             String?   @db.Text
+  parking           String?   @db.Text
+  power             String?   @db.Text
+  receiver          String?   @db.Text
+  openingHours      String?   @db.Text
+  usualStartTime    String?   @db.VarChar(16)
+  officeNotes       String?   @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  client   Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  rentals  Rental[]
+  feedback DeliveryFeedback[]
+
+  @@index([clientId])
+  @@map("client_delivery_addresses")
+}
+
+// Uwagi kierowcy o adresie — wpisywane po dostawie / odbiorze (widok
+// kierowcy), na karcie klienta ostatnie 3, starsze pod „więcej”.
+model DeliveryFeedback {
+  id        String   @id @default(cuid())
+  addressId String
+  rentalId  String?
+  driverId  String?
+  text      String   @db.Text
+  createdAt DateTime @default(now())
+
+  address ClientDeliveryAddress @relation(fields: [addressId], references: [id], onDelete: Cascade)
+  rental  Rental?               @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+  driver  User?                 @relation("DeliveryFeedbackDriver", fields: [driverId], references: [id], onDelete: SetNull)
+
+  @@index([addressId, createdAt])
+  @@index([rentalId])
+  @@map("delivery_feedback")
 }
 
 model ClientContact {

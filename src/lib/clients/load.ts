@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { loadClientAddresses, loadDeliverySettings, type DeliveryAddressDto } from "@/lib/clients/delivery";
+import type { TransportZone } from "@/lib/clients/delivery-rules";
 import { getHubspotContactUrl } from "@/lib/integrations/hubspot";
 import type { ClinicTypeKey, DeviceInterestKey, SourceKey } from "@/lib/clients/labels";
 import { summarizeClient } from "@/lib/clients/summary";
@@ -128,6 +130,8 @@ export type ClientDetail = {
   contacts: ClientContactDto[];
   // Karta klienta, sekcja 3: nowe pola, pochodzenie pól, szanse, powiązania.
   profile: ClientProfileDto;
+  // Paszport dostawy (etap B): adresy z trasą od bazy i uwagami kierowców.
+  delivery: { addresses: DeliveryAddressDto[]; zones: TransportZone[]; baseAddress: string };
   fieldMeta: FieldMetaDto;
   opportunities: OpportunityDto[];
   lineage: LineageDto;
@@ -519,7 +523,11 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     .flatMap((r) => r.messages)
     .filter((m) => m.channel === "SMS" && m.status === "SENT" && m.sentAt)
     .map((m) => m.sentAt!.getTime());
-  const extras = await loadCardExtras(c.id, [c.fieldMeta, ...c.contacts.map((p) => p.fieldMeta)]);
+  const [extras, deliveryAddresses, deliverySettings] = await Promise.all([
+    loadCardExtras(c.id, [c.fieldMeta, ...c.contacts.map((p) => p.fieldMeta)]),
+    loadClientAddresses(c.id),
+    loadDeliverySettings(),
+  ]);
   const rhythm = computeRhythm({ realized: rhythmRentals.filter((x) => x.at <= today), planned: rhythmRentals.filter((x) => x.at > today), today });
   const deviceCounts = new Map<string, number>();
   for (const r of txRentals) if (r.startsAt <= today) deviceCounts.set(r.deviceName, (deviceCounts.get(r.deviceName) ?? 0) + 1);
@@ -576,6 +584,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       return primaryHs ? getHubspotContactUrl(primaryHs) : null;
     })(),
     profile: profileDto(c),
+    delivery: { addresses: deliveryAddresses, zones: deliverySettings.zones, baseAddress: deliverySettings.base.address },
     fieldMeta: extras.withNames(c.fieldMeta),
     opportunities: extras.opportunities,
     lineage: extras.lineage,

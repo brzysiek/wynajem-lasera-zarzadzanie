@@ -8,6 +8,8 @@ import { listSmsTemplates } from "@/lib/message-templates";
 import { RentalForm, type Rental, type ReminderOffset } from "@/components/rental-form";
 import { RentalReadonlyView, DriverTripInfo, type ReadonlyRental } from "@/components/rental-readonly-view";
 import { DriverFinancePanel } from "@/components/driver-finance-panel";
+import { DriverDeliveryPassport, DriverFeedbackForm } from "@/components/driver-delivery-passport";
+import { loadRentalAddress } from "@/lib/clients/delivery";
 import { AgentRentalSummary } from "@/components/agent-rental-summary";
 import { financeDto, loadFinanceFormContext } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
@@ -78,6 +80,7 @@ export default async function RentalDetailPage({
     if (!rental || (!preview && rental.driverId !== session!.user.id)) {
       notFound();
     }
+    const passport = rental.eventType === "WYNAJEM" ? await loadRentalAddress(rental) : null;
 
     const tripRental: ReadonlyRental = {
       startsAt: rental.startsAt.toISOString(),
@@ -85,7 +88,7 @@ export default async function RentalDetailPage({
       device: { name: rental.device.name },
       deviceVariant: rental.finance?.deviceVariant ?? null,
       eventType: rental.eventType,
-      deliveryAddress: rental.deliveryAddress,
+      deliveryAddress: rental.deliveryAddress || passport?.line || null,
       deliveryTime: rental.deliveryTime,
       pickupTime: rental.pickupTime,
       internalNotes: rental.internalNotes,
@@ -114,7 +117,13 @@ export default async function RentalDetailPage({
             vehicleId={rental.vehicleId}
             vehicleName={rental.vehicle?.name ?? null}
             vehicles={vehicles}
-            tripInfoSlot={<DriverTripInfo rental={tripRental} />}
+            tripInfoSlot={
+              <>
+                <DriverTripInfo rental={tripRental} />
+                {passport && <DriverDeliveryPassport address={passport} />}
+              </>
+            }
+            feedbackSlot={passport && <DriverFeedbackForm rentalId={rental.id} label={passport.label} />}
           />
         }
       />
@@ -134,7 +143,10 @@ export default async function RentalDetailPage({
       },
     });
     if (!rental) notFound();
-    const linked = await prisma.clientInvoice.findFirst({ where: { rentalId: rental.id }, select: { number: true } });
+    const [linked, passport] = await Promise.all([
+      prisma.clientInvoice.findFirst({ where: { rentalId: rental.id }, select: { number: true } }),
+      rental.eventType === "WYNAJEM" ? loadRentalAddress(rental) : null,
+    ]);
     const tripRental: ReadonlyRental = {
       startsAt: rental.startsAt.toISOString(),
       endsAt: rental.endsAt.toISOString(),
@@ -156,7 +168,12 @@ export default async function RentalDetailPage({
         rental={tripRental}
         financeSlot={
           <AgentRentalSummary
-            tripInfo={<DriverTripInfo rental={tripRental} />}
+            tripInfo={
+              <>
+                <DriverTripInfo rental={tripRental} />
+                {passport && <DriverDeliveryPassport address={passport} />}
+              </>
+            }
             info={{
               title: rental.title,
               clientId: rental.clientId,
@@ -216,6 +233,8 @@ export default async function RentalDetailPage({
 
   const rentalDto: Rental = {
     id: rental.id,
+    clientId: rental.clientId,
+    deliveryAddressId: rental.deliveryAddressId,
     deviceId: rental.deviceId,
     title: rental.title,
     description: rental.description,

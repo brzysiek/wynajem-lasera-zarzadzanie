@@ -46,6 +46,7 @@ export function DriverFinancePanel({
   vehicleName,
   vehicles,
   tripInfoSlot,
+  feedbackSlot,
 }: {
   rentalId: string;
   eventType: RentalEventType;
@@ -68,6 +69,8 @@ export function DriverFinancePanel({
   // Karta „Klientka" + „Uwaga z biura" — renderowane zaraz po banerze
   // płatności (mockup-master), przed rozbiciem kwoty.
   tripInfoSlot?: React.ReactNode;
+  // Uwaga kierowcy o adresie (paszport dostawy) — przy uwagach do dostawy / odbioru.
+  feedbackSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const isSzkolenie = eventType === "SZKOLENIE";
@@ -482,6 +485,7 @@ export function DriverFinancePanel({
         {tripInfoSlot}
         {deliveryNotesCard}
         {pickupNotesCard}
+        {feedbackSlot}
         {statusLine}
       </div>
     );
@@ -932,6 +936,7 @@ export function DriverFinancePanel({
 
       {deliveryNotesCard}
       {pickupNotesCard}
+      {feedbackSlot}
 
       {/* Odstęp pod stałym paskiem na dole — bez tego ostatnia karta (uwaga do
           odbioru) chowałaby się częściowo pod paskiem. Wysokość z zapasem na

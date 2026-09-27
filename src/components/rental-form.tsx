@@ -88,6 +88,8 @@ export type Rental = {
   contactDistanceKm?: string | null;
   internalNotes?: string | null;
   deliveryAddress?: string | null;
+  // Adres z paszportu dostawy klienta (null = domyślny klienta / wpisany ręcznie).
+  deliveryAddressId?: string | null;
   deliveryTime?: string | null;
   pickupTime?: string | null;
   transportPrice?: string | null;
@@ -468,6 +470,74 @@ function contactFromRental(rental: Rental | null): AssignedContact | null {
   };
 }
 
+type AddressOption = { id: string; label: string; isDefault: boolean; line: string; distanceKm: number | null; durationMin: number | null };
+
+// Paszport dostawy (etap B): adresy dostawy klienta do wyboru, domyślny
+// podstawiony. Klient z rezerwacji albo — przy nowej — z kontaktu HubSpot.
+function DeliveryAddressPicker({
+  clientId,
+  contactId,
+  value,
+  autoPick,
+  onPick,
+}: {
+  clientId: string | null;
+  contactId: string | null;
+  value: string | null;
+  // true = wolno samemu podstawić adres domyślny (adres nie był wybrany ani wpisany ręcznie)
+  autoPick: boolean;
+  onPick: (a: AddressOption | null, auto: boolean) => void;
+}) {
+  const [loaded, setLoaded] = useState<{ key: string; addresses: AddressOption[] } | null>(null);
+  const key = clientId ? `klient=${encodeURIComponent(clientId)}` : contactId ? `kontakt=${encodeURIComponent(contactId)}` : "";
+  const pickRef = useRef({ autoPick, onPick });
+  useEffect(() => {
+    pickRef.current = { autoPick, onPick };
+  });
+
+  useEffect(() => {
+    if (!key) return;
+    let cancelled = false;
+    void fetch(`${BASE_PATH}/api/rentals/delivery-addresses?${key}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { addresses?: AddressOption[] } | null) => {
+        if (cancelled) return;
+        const addresses = data?.addresses ?? [];
+        setLoaded({ key, addresses });
+        const def = addresses.find((a) => a.isDefault);
+        if (def && pickRef.current.autoPick) pickRef.current.onPick(def, true);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+
+  const addresses = loaded?.key === key ? loaded.addresses : [];
+  if (!key || addresses.length === 0) return null;
+  const route = (a: AddressOption) => (a.distanceKm != null ? ` · ${Math.round(a.distanceKm)} km${a.durationMin != null ? ` · ${a.durationMin} min` : ""}` : "");
+  return (
+    <label className="flex flex-col gap-1 text-sm text-gray-700">
+      Adres z karty klienta
+      <select
+        value={value ?? ""}
+        onChange={(e) => onPick(addresses.find((a) => a.id === e.target.value) ?? null, false)}
+        className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+      >
+        <option value="">— inny adres (wpisz niżej) —</option>
+        {addresses.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.label}
+            {a.isDefault ? " (domyślny)" : ""} — {a.line}
+            {route(a)}
+          </option>
+        ))}
+      </select>
+      <span className="text-xs text-gray-400">Kierowca zobaczy przy wynajmie wskazówki z paszportu dostawy tego adresu.</span>
+    </label>
+  );
+}
+
 function ContactSection({
   rentalId,
   initialContact,
@@ -759,6 +829,11 @@ export function RentalForm({
   const [error, setError] = useState<string | null>(null);
   const [pendingContact, setPendingContact] = useState<AssignedContact | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState(rental?.deliveryAddress ?? rental?.contactAddressCache ?? "");
+  const [deliveryAddressId, setDeliveryAddressId] = useState<string | null>(rental?.deliveryAddressId ?? null);
+  // Adres domyślny podstawiamy sami tylko, gdy nic nie wybrano ani nie wpisano
+  // ręcznie (pusty albo przepisany z kontaktu HubSpot).
+  const autoPickAddress =
+    !deliveryAddressId && (!deliveryAddress.trim() || deliveryAddress.trim() === (rental?.contactAddressCache ?? "").trim());
   const [deliveryTime, setDeliveryTime] = useState(rental?.deliveryTime ?? "");
   const [pickupTime, setPickupTime] = useState(rental?.pickupTime ?? "");
   const [transportPrice, setTransportPrice] = useState(
@@ -849,6 +924,7 @@ export function RentalForm({
       endsAt: new Date(endsAt).toISOString(),
       reminderDays: effectiveReminderDays,
       deliveryAddress: isSzkolenie ? "" : deliveryAddress,
+      deliveryAddressId: isSzkolenie ? null : deliveryAddressId,
       deliveryTime: isSzkolenie ? "" : deliveryTime,
       pickupTime: isSzkolenie ? "" : pickupTime,
       transportPrice: isSzkolenie ? "" : transportPrice,
@@ -1123,11 +1199,27 @@ export function RentalForm({
 
             {!isSzkolenie && (
               <>
+                <DeliveryAddressPicker
+                  clientId={rental?.clientId ?? null}
+                  contactId={pendingContact?.id ?? rental?.hubspotContactId ?? null}
+                  value={deliveryAddressId}
+                  autoPick={autoPickAddress}
+                  onPick={(a, auto) => {
+                    setDeliveryAddressId(a?.id ?? null);
+                    if (!a) return;
+                    setDeliveryAddress(a.line);
+                    if (a.distanceKm != null && (!auto || !contactDistanceKm.trim())) setContactDistanceKm(String(a.distanceKm).replace(".", ","));
+                  }}
+                />
                 <label className="flex flex-col gap-1 text-sm text-gray-700">
                   Adres dostawy
                   <textarea
                     value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    onChange={(e) => {
+                      setDeliveryAddress(e.target.value);
+                      // Ręczna zmiana tekstu = inny adres niż z karty klienta.
+                      if (deliveryAddressId) setDeliveryAddressId(null);
+                    }}
                     rows={2}
                     placeholder="Uzupełnia się automatycznie z adresu klienta, jeśli jest dostępny"
                     className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"

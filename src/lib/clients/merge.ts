@@ -1,6 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { refreshFutureRentalCaches } from "@/lib/clients/refresh";
+import { mirrorDefaultToClient } from "@/lib/clients/delivery";
+import { sameAddress } from "@/lib/clients/delivery-rules";
 import { changedFields, toLogValue } from "@/lib/changelog/diff";
 import { parseProvenance } from "@/lib/changelog/provenance";
 import { fieldEntries, recordChanges, type ChangeEntry } from "@/lib/changelog/record";
@@ -48,6 +50,7 @@ export async function mergeClients(
   const changes = changedFields(target as unknown as Record<string, unknown>, fill);
 
   const moved: Record<string, number> = {};
+  let targetHadAddresses = true;
   await prisma.$transaction(async (tx) => {
     const where = { clientId: sourceId };
     const data = { clientId: targetId };
@@ -67,6 +70,21 @@ export async function mergeClients(
     moved.emaile = (await tx.emailMessage.updateMany({ where, data })).count;
     moved.uwagi = (await tx.remark.updateMany({ where, data })).count;
     moved.aliasy = (await tx.clientAlias.updateMany({ where, data })).count;
+    // Paszport dostawy: nowe adresy przechodzą (domyślny tylko, gdy docelowy
+    // nie ma żadnego), a ten sam adres — rezerwacje i uwagi kierowców na adres docelowego.
+    const targetAddrs = await tx.clientDeliveryAddress.findMany({ where: { clientId: targetId } });
+    moved.adresy = 0;
+    for (const a of await tx.clientDeliveryAddress.findMany({ where })) {
+      const same = targetAddrs.find((t) => sameAddress(t, a));
+      if (same) {
+        await tx.rental.updateMany({ where: { deliveryAddressId: a.id }, data: { deliveryAddressId: same.id } });
+        await tx.deliveryFeedback.updateMany({ where: { addressId: a.id }, data: { addressId: same.id } });
+      } else {
+        await tx.clientDeliveryAddress.update({ where: { id: a.id }, data: { clientId: targetId, isDefault: targetAddrs.length === 0 && a.isDefault } });
+        moved.adresy++;
+      }
+    }
+    targetHadAddresses = targetAddrs.length > 0;
     const links = await tx.proposalClient.findMany({ where: { clientId: sourceId }, select: { proposalId: true } });
     for (const l of links) {
       await tx.proposalClient.upsert({ where: { proposalId_clientId: { proposalId: l.proposalId, clientId: targetId } }, create: { proposalId: l.proposalId, clientId: targetId }, update: {} });
@@ -114,5 +132,6 @@ export async function mergeClients(
 
   // Przeniesione wynajmy: przyszłe dostają dane klienta docelowego.
   if (moved.wynajmy) await refreshFutureRentalCaches({ clientId: targetId, clientFields: true });
+  if (moved.adresy && !targetHadAddresses) await mirrorDefaultToClient(targetId);
   return { ok: true, moved };
 }
