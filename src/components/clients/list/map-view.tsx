@@ -16,14 +16,46 @@ import { STATUS_BADGE, dm, wd } from "./format";
 // Współrzędne z Nominatim (OpenStreetMap) — uzupełniane partiami z przycisku;
 // biuro może przeciągnąć pinezkę, gdy adres trafił obok.
 
+// Kolory statusów jak na liście, ale pełne i ciemniejsze tam, gdzie na
+// wyszarzonym podkładzie ginęły (Były, Nie kontaktować).
 const COLOR: Record<ClientStatus, string> = {
   STALY: "#2F7A68",
   NOWY: "#1B6FA8",
-  USPIONY: "#E08A5C",
-  BYLY: "#9AA1A8",
-  NIE_KONTAKTOWAC: "#5C6166",
-  POTENCJALNY: "#A9D2EC",
+  USPIONY: "#D9733E",
+  BYLY: "#6B7280",
+  NIE_KONTAKTOWAC: "#3A3F44",
+  POTENCJALNY: "#5FA3D0",
 };
+// Litera w pinezce — status czytelny bez rozróżniania kolorów.
+const LETTER: Record<ClientStatus, string> = { STALY: "S", NOWY: "N", USPIONY: "U", BYLY: "B", NIE_KONTAKTOWAC: "×", POTENCJALNY: "P" };
+
+// Pinezka-kropla 28×38: kolor statusu, biała obwódka, cień, litera w środku.
+// Przybliżone położenie (tylko miejscowość) — przerywana obwódka.
+function pinHtml(color: string, letter: string, opts: { approx?: boolean; faded?: boolean; halo?: boolean } = {}): string {
+  const halo = opts.halo ? `<span class="wl-pulse"></span>` : "";
+  return `<div class="wl-pin" style="opacity:${opts.faded ? 0.35 : 1}">${halo}<svg width="28" height="38" viewBox="0 0 28 38" aria-hidden="true">
+    <path d="M14 36.5C14 36.5 2.5 22.3 2.5 14a11.5 11.5 0 1 1 23 0c0 8.3-11.5 22.5-11.5 22.5z" fill="${color}" stroke="#fff" stroke-width="2.5" ${opts.approx ? 'stroke-dasharray="4 3"' : ""}/>
+    <circle cx="14" cy="14" r="6.8" fill="#fff"/>
+    <text x="14" y="17.6" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="10" font-weight="700" fill="${color}">${letter}</text>
+  </svg></div>`;
+}
+
+const BASE_PIN = `<div class="wl-pin"><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
+  <rect x="2" y="2" width="28" height="28" rx="6" fill="#0C3450" stroke="#fff" stroke-width="2.5"/>
+  <path d="M9 16.5 16 10l7 6.5V23h-4.5v-4h-5v4H9z" fill="#fff"/>
+</svg></div>`;
+
+// Style tylko dla tej mapy: wyszarzony podkład (pinezki są wtedy wyraźne),
+// podpisy nazw od przybliżenia 10, pulsujący pierścień „blisko trasy”.
+const MAP_CSS = `
+.wl-map .leaflet-tile-pane { filter: grayscale(0.9) contrast(0.92) brightness(1.06); }
+.wl-map .wl-pin { position: relative; filter: drop-shadow(0 2px 3px rgba(0,0,0,.45)); }
+.wl-map .wl-pulse { position: absolute; left: 50%; top: 14px; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; border: 3px solid #E08A5C; animation: wl-pulse 1.6s ease-out infinite; }
+@keyframes wl-pulse { 0% { transform: scale(.6); opacity: .9 } 100% { transform: scale(1.35); opacity: 0 } }
+.wl-map .wl-label { background: #fff; border: 1px solid #C9D6E0; border-radius: 4px; box-shadow: 0 1px 3px rgba(12,52,80,.25); color: #0C3450; font: 600 11.5px/1.2 inherit; padding: 2px 6px; white-space: nowrap; }
+.wl-map .wl-label::before { display: none; }
+.wl-map:not(.wl-zoomed) .wl-label { display: none; }
+`;
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 
@@ -111,6 +143,10 @@ export function MapView({ rows, canEdit, todayIso }: { rows: ClientListRow[]; ca
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · współrzędne: Nominatim',
       }).addTo(m);
       map.current = m;
+      // Podpisy nazw dopiero po przybliżeniu — przy całym województwie by się nakładały.
+      const zoomClass = () => box.current?.classList.toggle("wl-zoomed", m.getZoom() >= 10);
+      m.on("zoomend", zoomClass);
+      zoomClass();
       layer.current = L.layerGroup().addTo(m);
       dayLayer.current = L.layerGroup().addTo(m);
       setReady(true);
@@ -130,19 +166,25 @@ export function MapView({ rows, canEdit, todayIso }: { rows: ClientListRow[]; ca
     g.clearLayers();
     L.marker([BASE.lat, BASE.lng], {
       title: BASE.label,
-      icon: L.divIcon({ className: "", html: `<span style="display:block;width:16px;height:16px;background:#0C3450;border:2px solid #fff;box-shadow:0 0 0 1px #0C3450"></span>`, iconSize: [16, 16], iconAnchor: [8, 8] }),
+      zIndexOffset: 500,
+      icon: L.divIcon({ className: "", html: BASE_PIN, iconSize: [32, 32], iconAnchor: [16, 16] }),
     })
       .bindTooltip(BASE.label)
       .addTo(g);
     for (const r of onMap) {
       const approx = r.geo!.precision === "MIEJSCOWOSC";
+      const halo = nearIds.has(r.id);
       const icon = L.divIcon({
         className: "",
-        html: `<span style="display:block;width:14px;height:14px;border-radius:50%;background:${COLOR[r.status]};border:2px ${approx ? "dashed" : "solid"} #fff;box-shadow:${nearIds.has(r.id) ? "0 0 0 3px #E08A5C,0 0 0 5px rgba(224,138,92,.35)" : "0 0 0 1px rgba(12,52,80,.55)"};opacity:${stops && !nearIds.has(r.id) ? 0.45 : approx ? 0.7 : 1}"></span>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
+        html: pinHtml(COLOR[r.status], LETTER[r.status], { approx, halo, faded: !!stops && !halo }),
+        iconSize: [28, 38],
+        iconAnchor: [14, 37],
+        popupAnchor: [0, -32],
+        tooltipAnchor: [0, 2],
       });
-      const mk = L.marker([r.geo!.lat, r.geo!.lng], { icon, title: r.shortName ?? r.name, draggable: editPins }).bindPopup(popupHtml(r));
+      const mk = L.marker([r.geo!.lat, r.geo!.lng], { icon, title: r.shortName ?? r.name, draggable: editPins, zIndexOffset: halo ? 400 : 0, riseOnHover: true })
+        .bindPopup(popupHtml(r))
+        .bindTooltip(esc(r.shortName ?? r.name), { permanent: true, direction: "bottom", className: "wl-label", opacity: 1 });
       if (editPins) {
         mk.on("dragend", async () => {
           const p = mk.getLatLng();
@@ -179,7 +221,12 @@ export function MapView({ rows, canEdit, todayIso }: { rows: ClientListRow[]; ca
       const bg = s.kind === "DOSTAWA" ? "#1B6FA8" : "#0C3450";
       L.marker([s.geo!.lat, s.geo!.lng], {
         zIndexOffset: 1000,
-        icon: L.divIcon({ className: "", html: `<span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:${bg};color:#fff;font:600 11px/1 sans-serif;border:2px solid #fff;box-shadow:0 0 0 1px ${bg}">${n}</span>`, iconSize: [22, 22], iconAnchor: [11, 11] }),
+        icon: L.divIcon({
+          className: "",
+          html: `<div class="wl-pin"><span style="display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:${bg};color:#fff;font:700 12px/1 Arial,sans-serif;border:2.5px solid #fff">${n}</span></div>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 40],
+        }),
       })
         .bindTooltip(`${n}. ${s.time ?? "bez godziny"} · ${s.kind === "DOSTAWA" ? "dostawa" : "odbiór"} · ${esc(s.clientName ?? s.title)}`)
         .addTo(g);
@@ -232,12 +279,14 @@ export function MapView({ rows, canEdit, todayIso }: { rows: ClientListRow[]; ca
         <span className="ml-auto flex flex-wrap items-center gap-3">
           {(["STALY", "NOWY", "USPIONY", "BYLY"] as ClientStatus[]).map((s) => (
             <span key={s} className="flex items-center gap-1">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: COLOR[s] }} />
+              <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ background: COLOR[s] }}>
+                {LETTER[s]}
+              </span>
               {STATUS_BADGE[s].label}
             </span>
           ))}
           <span className="flex items-center gap-1">
-            <span className="h-2.5 w-2.5 bg-[#0C3450]" />
+            <span className="h-[18px] w-[18px] rounded-[4px] bg-[#0C3450]" />
             baza
           </span>
           <span>przerywana obwódka = tylko miejscowość</span>
@@ -277,7 +326,8 @@ export function MapView({ rows, canEdit, todayIso }: { rows: ClientListRow[]; ca
           </span>
         )}
       </div>
-      <div ref={box} className="h-[calc(100vh-340px)] min-h-[440px] w-full" aria-label="Mapa klientek" />
+      <style>{MAP_CSS}</style>
+      <div ref={box} className="wl-map h-[calc(100vh-340px)] min-h-[440px] w-full" aria-label="Mapa klientek" />
       {stops && (
         <div className="grid gap-4 border-t border-[#E4E7EA] px-3.5 py-3 text-[12.5px] lg:grid-cols-2">
           <div>
