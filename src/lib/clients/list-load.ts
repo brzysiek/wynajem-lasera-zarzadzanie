@@ -5,6 +5,7 @@ import { isRealizedRental, type ClientStatus } from "@/lib/clients/status";
 import { computeRhythm, headsFromText, monthsLabel, warsawDay, type RhythmRental } from "@/lib/clients/rhythm";
 import { isBeforeSeason, rhythmStrip, seasonWindow, statusCheck, type StripCell } from "@/lib/clients/list-rules";
 import { computeRegion, type RegionKey } from "@/lib/clients/region";
+import { BASE, distanceKm, geoKey, mapAddress } from "@/lib/clients/geo-rules";
 import { readFieldMeta } from "@/lib/clients/profile-fields";
 import { isQualified } from "@/lib/clients/qualification";
 import { isQualificationActive } from "@/lib/clients/qualify";
@@ -85,6 +86,10 @@ export type ClientListRow = {
   overdueRatio: number | null; // dni od ostatniego / rytm, bez rezerwacji
   pickupAt: string | null; // odbiór 1–3 dni temu bez kontaktu po nim
   trained: boolean; // było szkolenie (widok „Alma po szkoleniu”)
+  // Mapa (etap 1): współrzędne i odległość od bazy w linii prostej.
+  geo: { lat: number; lng: number; precision: string | null; manual: boolean } | null;
+  geoPending: boolean; // adres jest, współrzędnych jeszcze nie liczono (albo adres się zmienił)
+  baseKm: number | null;
   // Indeks wyszukiwania: nazwa, nazwa robocza, aliasy z kalendarzy, NIP,
   // miasto, osoby, e-maile; telefony osobno, same cyfry bez prefiksu 48.
   search: string;
@@ -167,6 +172,13 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       city: true,
       zip: true,
       region: true,
+      street: true,
+      deliveryAddress: true,
+      lat: true,
+      lng: true,
+      geoSource: true,
+      geoPrecision: true,
+      geoQuery: true,
       nip: true,
       statusOverride: true,
       source: true,
@@ -345,6 +357,8 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       .filter((x): x is LastContact => !!x)
       .sort((a, b) => b.at.getTime() - a.at.getTime())[0];
     const inquiry = c.leads[0];
+    const addr = mapAddress(c);
+    const geo = c.lat != null && c.lng != null ? { lat: c.lat, lng: c.lng, precision: c.geoPrecision, manual: c.geoSource === "MANUAL" } : null;
 
     return {
       id: c.id,
@@ -409,6 +423,9 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       beforeSeason,
       overdueRatio,
       pickupAt,
+      geo,
+      geoPending: !!addr && c.geoSource !== "MANUAL" && geoKey(addr) !== c.geoQuery,
+      baseKm: geo ? distanceKm(BASE, geo) : null,
       trained: c.rentals.some((r) => r.eventType === "SZKOLENIE" && !r.deletedInGoogle) || c.history.some((h) => h.kind === "SZKOLENIE"),
       search: [c.name, c.shortName, c.nip, c.city, ...c.aliases.map((a) => a.alias), ...c.contacts.flatMap((p) => [personName(p), p.email])]
         .filter(Boolean)

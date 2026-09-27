@@ -1,0 +1,8 @@
+-- AlterTable
+ALTER TABLE `clients` ADD COLUMN `geoPrecision` VARCHAR(16) NULL,
+    ADD COLUMN `geoQuery` VARCHAR(255) NULL,
+    ADD COLUMN `geoSource` VARCHAR(16) NULL,
+    ADD COLUMN `geocodedAt` DATETIME(3) NULL,
+    ADD COLUMN `lat` DOUBLE NULL,
+    ADD COLUMN `lng` DOUBLE NULL;
+

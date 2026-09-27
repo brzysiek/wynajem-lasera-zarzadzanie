@@ -17,6 +17,7 @@ import { RhythmHelp, RiskDot, Strip, StripCellBox } from "./rhythm";
 import { PotentialTable, STAGES, stageOf, type Stage } from "./potential";
 import { BulkTaskDialog } from "./bulk";
 import { RhythmView } from "./rhythm-view";
+import { MapView } from "./map-view";
 import { STATUS_BADGE, STATUS_TILE, TAB_STATUSES, daysBetween, dm, dmSmart, downloadCsv, mY, wd, wdLong } from "./format";
 
 // Lista klientów (/klienci) — wygląd 1:1 z lista-klientow-wzor.html (1440 px),
@@ -169,7 +170,7 @@ export function ClientsList({
   const [special, setSpecial] = useState<Special>(iq.widok && iq.widok in SPECIAL_LABEL ? (iq.widok as Special) : null);
   const [sort, setSort] = useState<SortKey>(iq.sort && iq.sort in SORT_LABEL ? (iq.sort as SortKey) : "next");
   // Widok zakładki Klienci: lista albo „Rytm (plan obłożenia)”; Mapa — później.
-  const [mode, setMode] = useState<"lista" | "rytm">(iq.tryb === "rytm" ? "rytm" : "lista");
+  const [mode, setMode] = useState<"lista" | "rytm" | "mapa">(iq.tryb === "rytm" || iq.tryb === "mapa" ? iq.tryb : "lista");
   const [limit, setLimit] = useState(PAGE);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [card, setCard] = useState<{ id: string; intent: CardIntent } | null>(iq.klient ? { id: iq.klient, intent: null } : null);
@@ -201,7 +202,7 @@ export function ClientsList({
     if (trained) p.set("szkolenie", "1");
     if (special) p.set("widok", special);
     if (sort !== "next") p.set("sort", sort);
-    if (mode === "rytm") p.set("tryb", "rytm");
+    if (mode !== "lista") p.set("tryb", mode);
     const listSearch = p.toString() ? `?${p.toString()}` : "";
     window.history.replaceState(null, "", `${BASE_PATH}/klienci${listSearch}`);
     try {
@@ -494,6 +495,7 @@ export function ClientsList({
             [
               ["lista", "Lista"],
               ["rytm", "Rytm (plan obłożenia)"],
+              ["mapa", "Mapa"],
             ] as const
           ).map(([k, label], i) => {
             const on = tab === "KLIENCI" ? mode === k : k === "lista";
@@ -502,8 +504,8 @@ export function ClientsList({
                 key={k}
                 type="button"
                 aria-pressed={on}
-                disabled={tab !== "KLIENCI" && k === "rytm"}
-                title={tab !== "KLIENCI" && k === "rytm" ? "Rytm tylko dla zakładki Klienci" : undefined}
+                disabled={tab !== "KLIENCI" && k !== "lista"}
+                title={tab !== "KLIENCI" && k !== "lista" ? "Tylko dla zakładki Klienci" : undefined}
                 onClick={() => setMode(k)}
                 className={`px-3 py-[5px] disabled:cursor-not-allowed disabled:text-[#9AA1A8] ${i > 0 ? "border-l border-[#D6DADE]" : ""} ${on ? "bg-[#0C3450] text-white" : "bg-white text-[#5C6166] hover:text-[#0C3450]"}`}
               >
@@ -511,9 +513,6 @@ export function ClientsList({
               </button>
             );
           })}
-          <span aria-disabled title="wkrótce" className="cursor-not-allowed border-l border-[#D6DADE] px-3 py-[5px] text-[#9AA1A8]">
-            Mapa
-          </span>
         </div>
       </div>
 
@@ -775,7 +774,9 @@ export function ClientsList({
         </div>
       </div>
 
-      {tab === "KLIENCI" && mode === "rytm" ? (
+      {tab === "KLIENCI" && mode === "mapa" ? (
+        <MapView rows={visible} canEdit={!agent} />
+      ) : tab === "KLIENCI" && mode === "rytm" ? (
         <RhythmView rows={visible} monthLabels={monthLabels} currentMonth={11} />
       ) : tab === "POTENCJALNI" ? (
         <div className="mt-3">

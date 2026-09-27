@@ -758,6 +758,14 @@ model Client {
   // Region do filtra listy (src/lib/clients/region.ts) — pole liczone z kodu
   // pocztowego / miasta, odświeżane przy odczycie listy, gdy się rozjedzie.
   region            String?               @db.VarChar(16)
+  // Mapa klientek (etap 1): współrzędne adresu dostawy (albo adresu firmy)
+  // z Nominatim (OpenStreetMap) albo przesunięte ręcznie na mapie.
+  lat               Float?
+  lng               Float?
+  geoSource         String?               @db.VarChar(16) // NOMINATIM | MANUAL
+  geoPrecision      String?               @db.VarChar(16) // ADRES | MIEJSCOWOSC
+  geoQuery          String?               @db.VarChar(255) // adres, dla którego liczono (zmiana adresu = ponowne liczenie)
+  geocodedAt        DateTime?
   country           String?               @default("Polska")
   transportPriceNet Decimal?              @db.Decimal(10, 2) // dawne HubSpot „ustalona_cena_transportu”
   distanceKm        Decimal?              @db.Decimal(6, 1) // ostatnia znana odległość (z wynajmów)
