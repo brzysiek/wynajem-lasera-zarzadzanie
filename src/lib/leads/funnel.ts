@@ -10,6 +10,26 @@ export const FUNNEL_FROM = new Date("2025-12-31T23:00:00.000Z");
 export const FIRST_CONTACT_SLA_HOURS = 4;
 export const NO_ANSWER_LIMIT = 3;
 export const OFFER_FOLLOW_UP_DAYS = [3, 7] as const; // dni robocze: 1. i 2. follow-up oferty
+// Archiwum „2025 – bez kontaktu” (powód archiwizacji sygnału, Porządki).
+export const ARCHIVE_2025 = "BEZ_KONTAKTU_2025";
+
+// Najwyższy etap, jaki sygnał kiedykolwiek osiągnął (raport i konwersja):
+// bieżący etap + zmiany etapów z historii (wpisy „Wywiad → Oferta wysłana”).
+export const REACH_ORDER: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA"];
+export function maxStageReached(current: LeadStageKey, stageChangeBodies: (string | null)[], labels: Record<LeadStageKey, string>, hasRental: boolean): LeadStageKey {
+  let best = current === "PRZEGRANA" ? 0 : REACH_ORDER.indexOf(current);
+  for (const body of stageChangeBodies) {
+    if (!body) continue;
+    for (let i = REACH_ORDER.length - 1; i > best; i--) {
+      if (body.includes(labels[REACH_ORDER[i]])) {
+        best = i;
+        break;
+      }
+    }
+  }
+  if (hasRental) best = Math.max(best, REACH_ORDER.indexOf("REZERWACJA"));
+  return REACH_ORDER[best];
+}
 
 export type NextStepType = "PIERWSZY_KONTAKT" | "PONOWNA_PROBA" | "FOLLOW_UP_OFERTY" | "ODDZWONI" | "DOPYTAC" | "INNE";
 export const NEXT_STEP_LABEL: Record<NextStepType, string> = {

@@ -76,6 +76,9 @@ export const ARCHIVE_REASON_LABEL = {
   DOSTAWCA: "dostawca",
   JEDNORAZOWY: "adres jednorazowy",
   DUPLIKAT: "duplikat",
+  // Lejek (wniosek 18): otwarte sygnały sprzed 2026 bez kontaktu — do kampanii
+  // przed sezonem, z możliwością przywrócenia.
+  BEZ_KONTAKTU_2025: "2025 – bez kontaktu",
   INNE: "inne",
 } as const;
 export type ArchiveReasonKey = keyof typeof ARCHIVE_REASON_LABEL;

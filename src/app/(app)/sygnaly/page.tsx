@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireClientsPageAccess } from "@/lib/clients/page-access";
-import { loadLeadRows, loadLinkSuggestions, loadStaffUsers, todayCallStats } from "@/lib/leads/load";
+import { loadArchived2025Rows, loadLeadRows, loadLinkSuggestions, loadStaffUsers, todayCallStats } from "@/lib/leads/load";
 import { syncLeadsWithRentalsSafe } from "@/lib/leads/rental-link";
 import { lastDealsSync } from "@/lib/leads/hubspot-sync";
 import { LeadsManager } from "@/components/leads/leads-manager";
@@ -24,7 +24,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       select: { id: true, name: true, city: true, contacts: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true } } },
     }),
   ]);
-  const [linkSuggestions, callStats] = await Promise.all([loadLinkSuggestions(rows), todayCallStats()]);
+  const [linkSuggestions, callStats, archivedRows] = await Promise.all([loadLinkSuggestions(rows), todayCallStats(), loadArchived2025Rows()]);
   return (
     <LeadsManager
       rows={rows}
@@ -34,6 +34,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       readOnly={session.user.role === "AGENT"}
       linkSuggestions={linkSuggestions}
       callStats={callStats}
+      archivedRows={archivedRows}
       lastSync={lastSync}
       hubspotConfigured={Boolean(process.env.HUBSPOT_ACCESS_TOKEN)}
       clients={clients.map((c) => {

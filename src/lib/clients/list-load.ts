@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { ARCHIVE_2025 } from "@/lib/leads/funnel";
 import type { ClinicTypeKey, DeviceInterestKey, SourceKey } from "@/lib/clients/labels";
 import { summarizeClient } from "@/lib/clients/summary";
 import { isRealizedRental, type ClientStatus } from "@/lib/clients/status";
@@ -57,7 +58,23 @@ export type ClientListRow = {
   // Klient vs „kontakt z zapytania” (prompt 2 v2, 1.0) i ostatni sygnał.
   qualified: boolean;
   lastInquiry: { leadId: string; at: string } | null;
-  lead: { id: string; stage: string; callList: boolean; lostReason: string | null; title: string; interests: DeviceInterestKey[]; at: string } | null;
+  lead: {
+    id: string;
+    stage: string;
+    callList: boolean;
+    lostReason: string | null;
+    title: string;
+    interests: DeviceInterestKey[];
+    at: string;
+    // Lejek (L2): następny krok z sygnału.
+    nextActionAt: string | null;
+    nextStepType: string | null;
+    nextStepNote: string | null;
+  } | null;
+  // Potencjalni (lejek): W lejku = otwarty sygnał; Archiwum 2025 = ostatni
+  // sygnał w archiwum „2025 – bez kontaktu” (id do „Przywróć”); poza tym Poza lejkiem.
+  funnel: "IN" | "OUT" | "ARCHIVE";
+  archivedLeadId: string | null;
   revenueNet: number;
   // Wynajmowane (od najczęstszego), potem deklarowane zainteresowania.
   devices: DeviceInterestKey[];
@@ -205,9 +222,21 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       },
       qualifiedAt: true,
       leads: {
-        where: { archivedAt: null },
         orderBy: { createdAt: "desc" },
-        select: { id: true, createdAt: true, stage: true, callList: true, lostReason: true, title: true, deviceInterest: true, nextActionAt: true },
+        select: {
+          id: true,
+          createdAt: true,
+          stage: true,
+          callList: true,
+          lostReason: true,
+          title: true,
+          deviceInterest: true,
+          nextActionAt: true,
+          nextStepType: true,
+          nextStepNote: true,
+          archivedAt: true,
+          archiveReason: true,
+        },
       },
     },
   });
@@ -311,7 +340,7 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
     const meta = readFieldMeta(c.fieldMeta).nextStepText;
     const author = meta?.verifiedBy ? authorBy.get(meta.verifiedBy) : undefined;
     const task = taskBy.get(c.id);
-    const lead = c.leads.find((l) => (OPEN_LEAD_STAGES as readonly string[]).includes(l.stage) && l.nextActionAt);
+    const lead = c.leads.find((l) => !l.archivedAt && (OPEN_LEAD_STAGES as readonly string[]).includes(l.stage) && l.nextActionAt);
     const nextStep: ClientListRow["nextStep"] = c.nextStepText
       ? { text: c.nextStepText, dueAt: c.nextStepDueAt?.toISOString() ?? null, person: author?.name ?? null, agent: author?.role === "AGENT" || meta?.source === "agent", href: null }
       : proposalBy.has(c.id)
@@ -363,7 +392,9 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
     const lastContact = [contact ? { at: contact.at, channel: contact.channel } : null, lastRentalPast ? { at: lastRentalPast, channel: "wynajem" } : null]
       .filter((x): x is LastContact => !!x)
       .sort((a, b) => b.at.getTime() - a.at.getTime())[0];
-    const inquiry = c.leads[0];
+    const liveLeads = c.leads.filter((l) => !l.archivedAt);
+    const inquiry = liveLeads[0];
+    const archivedLead = !inquiry ? c.leads.find((l) => l.archiveReason === ARCHIVE_2025) : undefined;
     const addr = mapAddress(c);
     const geo = c.lat != null && c.lng != null ? { lat: c.lat, lng: c.lng, precision: c.geoPrecision, manual: c.geoSource === "MANUAL" } : null;
 
@@ -399,8 +430,13 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
             title: inquiry.title,
             interests: parseInterests(inquiry.deviceInterest),
             at: inquiry.createdAt.toISOString(),
+            nextActionAt: inquiry.nextActionAt?.toISOString() ?? null,
+            nextStepType: inquiry.nextStepType,
+            nextStepNote: inquiry.nextStepNote,
           }
         : null,
+      funnel: inquiry && ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(inquiry.stage) ? "IN" : archivedLead ? "ARCHIVE" : "OUT",
+      archivedLeadId: archivedLead?.id ?? null,
       devices: [...new Set([...summary.rentedDevices, ...interests])],
       rentedDevices: summary.rentedDevices,
       source: c.source,

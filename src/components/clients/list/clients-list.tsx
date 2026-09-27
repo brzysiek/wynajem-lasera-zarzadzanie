@@ -14,7 +14,9 @@ import { ClientCard, type CardIntent } from "../client-card";
 import { AgentModeContext, NewClientDialog } from "../client-forms";
 import { LIST_URL_KEY } from "../card/client-full-card";
 import { RhythmHelp, RiskDot, Strip, StripCellBox } from "./rhythm";
-import { PotentialTable, STAGES, stageOf, type Stage } from "./potential";
+import { FUNNELS, LEAD_STAGES, PotentialTable, isEmailName, potentialCounts, type Funnel } from "./potential";
+import { STAGE_LABEL as LEAD_STAGE_LABEL } from "@/lib/leads/labels";
+import type { LeadStageKey } from "@/lib/leads/parse-deal";
 import { BulkTaskDialog } from "./bulk";
 import { RhythmView } from "./rhythm-view";
 import { MapView } from "./map-view";
@@ -38,8 +40,8 @@ const SORT_LABEL: Record<SortKey, string> = {
   created: "Data dodania",
 };
 type Risk = "niskie" | "średnie" | "wysokie" | "brak";
-type Gap = "phone" | "nip" | "city" | "email" | "zip";
-const GAP_LABEL: Record<Gap, string> = { phone: "bez telefonu", nip: "bez NIP", city: "bez miasta", email: "bez e-maila", zip: "bez kodu pocztowego" };
+type Gap = "phone" | "nip" | "city" | "email" | "zip" | "emailName";
+const GAP_LABEL: Record<Gap, string> = { phone: "bez telefonu", nip: "bez NIP", city: "bez miasta", email: "bez e-maila", zip: "bez kodu pocztowego", emailName: "nazwa = e-mail" };
 type Special = "season" | "afterRental" | "stepSoon" | "check" | null;
 const SPECIAL_LABEL: Record<Exclude<Special, null>, string> = {
   season: "Przed sezonem",
@@ -62,6 +64,7 @@ function gapOf(r: ClientListRow, g: Gap): boolean {
   if (g === "nip") return !r.nip;
   if (g === "city") return !r.city;
   if (g === "email") return !r.primaryEmail;
+  if (g === "emailName") return isEmailName(r);
   return !r.zip;
 }
 
@@ -157,7 +160,9 @@ export function ClientsList({
   const [query, setQuery] = useState(iq.q ?? "");
   const [debounced, setDebounced] = useState(iq.q ?? "");
   const [status, setStatus] = useState<ClientStatus | "">((TAB_STATUSES as string[]).includes(iq.status ?? "") ? (iq.status as ClientStatus) : "");
-  const [stage, setStage] = useState<Stage | "">(STAGES.some((s) => s.key === iq.etap) ? (iq.etap as Stage) : "");
+  // Potencjalni: grupa lejka (W lejku / Poza lejkiem / Archiwum 2025) i etap z sygnału.
+  const [stage, setStage] = useState<Funnel | "">(FUNNELS.some((s) => s.key === iq.etap) ? (iq.etap as Funnel) : "");
+  const [leadStage, setLeadStage] = useState<LeadStageKey | "">(LEAD_STAGES.includes(iq.sygnal as LeadStageKey) ? (iq.sygnal as LeadStageKey) : "");
   const [region, setRegion] = useState<RegionKey | "">((REGIONS as readonly string[]).includes(iq.region ?? "") ? (iq.region as RegionKey) : "");
   const [device, setDevice] = useState<DeviceInterestKey | "">((DEVICE_INTEREST_KEYS as string[]).includes(iq.urzadzenie ?? "") ? (iq.urzadzenie as DeviceInterestKey) : "");
   const [clinicType, setClinicType] = useState<ClinicTypeKey | "">(iq.rodzaj && iq.rodzaj in CLINIC_TYPE_LABEL ? (iq.rodzaj as ClinicTypeKey) : "");
@@ -191,6 +196,7 @@ export function ClientsList({
     if (debounced.trim()) p.set("q", debounced.trim());
     if (status) p.set("status", status);
     if (stage) p.set("etap", stage);
+    if (leadStage) p.set("sygnal", leadStage);
     if (region) p.set("region", region);
     if (device) p.set("urzadzenie", device);
     if (clinicType) p.set("rodzaj", clinicType);
@@ -210,7 +216,7 @@ export function ClientsList({
     } catch {
       // brak sessionStorage — powrót z karty wróci do czystej listy
     }
-  }, [tab, debounced, status, stage, region, device, clinicType, source, risk, overdue, noStep, gap, trained, special, sort, mode]);
+  }, [tab, debounced, status, stage, leadStage, region, device, clinicType, source, risk, overdue, noStep, gap, trained, special, sort, mode]);
 
   const clientsRows = useMemo(() => allRows.filter((r) => r.status !== "POTENCJALNY"), [allRows]);
   const potentialRows = useMemo(() => allRows.filter((r) => r.status === "POTENCJALNY"), [allRows]);
@@ -221,11 +227,7 @@ export function ClientsList({
     for (const r of clientsRows) c[r.status] = (c[r.status] ?? 0) + 1;
     return c;
   }, [clientsRows]);
-  const stageCounts = useMemo(() => {
-    const c = Object.fromEntries(STAGES.map((s) => [s.key, 0])) as Record<Stage, number>;
-    for (const r of potentialRows) c[stageOf(r)]++;
-    return c;
-  }, [potentialRows]);
+  const pCounts = useMemo(() => potentialCounts(potentialRows), [potentialRows]);
 
   // Przed sezonem: najpierw po terminie wg rytmu, potem liczba wynajmów.
   const seasonRows = useMemo(
@@ -260,7 +262,8 @@ export function ClientsList({
       }
       if (specialSet && !specialSet.has(r.id)) return false;
       if (tab === "KLIENCI" && status && r.status !== status) return false;
-      if (tab === "POTENCJALNI" && stage && stageOf(r) !== stage) return false;
+      if (tab === "POTENCJALNI" && stage && r.funnel !== stage) return false;
+      if (tab === "POTENCJALNI" && leadStage && (r.funnel !== "IN" || r.lead?.stage !== leadStage)) return false;
       if (region && r.region !== region) return false;
       if (device && !r.devices.includes(device)) return false;
       if (clinicType && r.clinicType !== clinicType) return false;
@@ -286,7 +289,7 @@ export function ClientsList({
       created: (a, b) => b.createdAt.localeCompare(a.createdAt),
     };
     return list.sort(sorters[sort]);
-  }, [tabRows, tab, debounced, special, seasonRows, afterRental, soon, checks, status, stage, region, device, clinicType, source, risk, overdue, noStep, gap, trained, sort]);
+  }, [tabRows, tab, debounced, special, seasonRows, afterRental, soon, checks, status, stage, leadStage, region, device, clinicType, source, risk, overdue, noStep, gap, trained, sort]);
 
   const page = visible.slice(0, limit);
   const selectedRows = allRows.filter((r) => selected.has(r.id));
@@ -298,6 +301,7 @@ export function ClientsList({
   function clearFilters() {
     setStatus("");
     setStage("");
+    setLeadStage("");
     setRegion("");
     setDevice("");
     setClinicType("");
@@ -337,6 +341,7 @@ export function ClientsList({
     setTab(t);
     setStatus("");
     setStage("");
+    setLeadStage("");
     setSpecial(null);
     setSelected(new Set());
     resetPage();
@@ -397,7 +402,7 @@ export function ClientsList({
   }
 
   const { past: pastLabel, future: futureLabel, months: monthLabels } = useMemo(() => stripLabels(today), [today]);
-  const anyFilter = Boolean(status || stage || region || device || clinicType || source || risk || overdue || noStep || gap || trained || special || debounced.trim().length >= 2);
+  const anyFilter = Boolean(status || stage || leadStage || region || device || clinicType || source || risk || overdue || noStep || gap || trained || special || debounced.trim().length >= 2);
   const seasonOpen = useSyncExternalStore(subscribeSeason, readSeasonOpen, () => false);
   const [todayOpen, setTodayOpen] = useState<TodayKey | null>(null);
 
@@ -519,19 +524,14 @@ export function ClientsList({
         </div>
       </div>
 
-      {/* Pas statusów / etapów — jeden rząd; opis kafla w dymku */}
+      {/* Pas statusów (Klienci) — jeden rząd; opis kafla w dymku */}
+      {tab === "KLIENCI" ? (
       <div className="mt-4 grid grid-cols-2 gap-2 bg-[#EAF4FB] px-4 py-2 sm:grid-cols-3 md:px-7 xl:grid-cols-6">
-        {(tab === "KLIENCI"
-          ? [
+        {[
               { key: "", title: "Wszyscy", n: clientsRows.length, hint: "z historią wynajmów", marker: "bg-[#0C3450]" },
               ...TAB_STATUSES.map((s) => ({ key: s, title: STATUS_TILE[s].title, n: statusCounts[s] ?? 0, hint: STATUS_TILE[s].hint, marker: STATUS_TILE[s].marker })),
-            ]
-          : [
-              { key: "", title: "Wszyscy", n: potentialRows.length, hint: "kontakty z zapytań", marker: "bg-[#0C3450]" },
-              ...STAGES.map((s) => ({ key: s.key, title: s.label, n: stageCounts[s.key], hint: s.key === "PRZEGRANE" ? "z powodem" : "etap lejka", marker: s.key === "PRZEGRANE" ? "bg-[#5C6166]" : "border-[1.5px] border-[#A9D2EC]" })),
-            ]
-        ).map((t) => {
-          const on = tab === "KLIENCI" ? status === t.key && !special : stage === t.key;
+        ].map((t) => {
+          const on = status === t.key && !special;
           return (
             <button
               key={t.key || "all"}
@@ -540,8 +540,7 @@ export function ClientsList({
               title={t.hint}
               onClick={() => {
                 setSpecial(null);
-                if (tab === "KLIENCI") setStatus(t.key as ClientStatus | "");
-                else setStage(t.key as Stage | "");
+                setStatus(t.key as ClientStatus | "");
                 resetPage();
               }}
               className={`flex h-12 items-center justify-between gap-2 px-3 text-left ${on ? "border-2 border-[#1B6FA8] bg-white" : "border-2 border-transparent bg-white/55 hover:bg-white"}`}
@@ -555,6 +554,58 @@ export function ClientsList({
           );
         })}
       </div>
+      ) : (
+        <>
+          {/* Potencjalni (lejek, wzór s4): bez własnych etapów — grupy lejka i braki danych */}
+          <div className="mx-4 mt-4 grid grid-cols-2 bg-[#EAF4FB] sm:grid-cols-3 md:mx-7 xl:grid-cols-5">
+            {[
+              { key: "IN", label: "W lejku", n: pCounts.inFunnel, sub: "z otwartym sygnałem", on: stage === "IN", click: () => setStage(stage === "IN" ? "" : "IN") },
+              { key: "OUT", label: "Poza lejkiem", n: pCounts.out, sub: `bez sygnału · ${pCounts.outWithPhone} z telefonem`, warn: true, on: stage === "OUT", click: () => setStage(stage === "OUT" ? "" : "OUT") },
+              { key: "ARCHIVE", label: "Archiwum 2025", n: pCounts.archive, sub: "do kampanii przed sezonem", on: stage === "ARCHIVE", click: () => setStage(stage === "ARCHIVE" ? "" : "ARCHIVE") },
+              { key: "emailName", label: "Nazwa = e-mail", n: pCounts.emailName, sub: "do uzupełnienia (agent)", warn: true, on: gap === "emailName", click: () => setGap(gap === "emailName" ? "" : "emailName") },
+              { key: "phone", label: "Bez telefonu", n: pCounts.noPhone, sub: "tylko e-mail", on: gap === "phone", click: () => setGap(gap === "phone" ? "" : "phone") },
+            ].map((k) => (
+              <button
+                key={k.key}
+                type="button"
+                aria-pressed={k.on}
+                onClick={() => {
+                  k.click();
+                  resetPage();
+                }}
+                className={`border-r border-[#D4E6F3] px-3.5 py-2.5 text-left last:border-0 ${k.on ? "outline outline-2 -outline-offset-2 outline-[#1B6FA8]" : "hover:bg-white/50"}`}
+              >
+                <span className="text-[10px] uppercase tracking-[0.12em] text-[#5C6166]">{k.label}</span>
+                <div className={`text-[20px] font-medium leading-[1.2] tabular-nums ${k.warn ? "text-[#B8612F]" : "text-[#0C3450]"}`}>{k.n}</div>
+                <small className="block text-[11.5px] text-[#5C6166]">{k.sub}</small>
+              </button>
+            ))}
+          </div>
+          <div className="mx-4 mt-3 flex flex-wrap items-center gap-2 md:mx-7">
+            {[
+              [[["", "Wszyscy"], ...FUNNELS.map((f) => [f.key, f.label])] as [string, string][], stage, (v: string) => setStage(v as Funnel | "")] as const,
+              [[["", "Każdy etap"], ...LEAD_STAGES.map((k) => [k, k === "OFERTA" ? "Oferta" : LEAD_STAGE_LABEL[k]])] as [string, string][], leadStage, (v: string) => setLeadStage(v as LeadStageKey | "")] as const,
+              [[["emailName", "nazwa = e-mail"], ["phone", "bez telefonu"], ["city", "bez miasta"]] as [string, string][], gap, (v: string) => setGap((gap === v ? "" : v) as Gap | "")] as const,
+            ].map(([opts, value, set], i) => (
+              <span key={i} className="inline-flex overflow-hidden rounded-[6px] border border-[#C9D3DC] bg-white text-[12px]">
+                {opts.map(([k, label]) => (
+                  <button
+                    key={k || "all"}
+                    type="button"
+                    onClick={() => {
+                      set(k);
+                      resetPage();
+                    }}
+                    className={`border-r border-[#E3E6E9] px-2.5 py-1 last:border-0 ${value === k ? "bg-[#0C3450] text-white" : "text-[#2A3540] hover:bg-[#F4F6F8]"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
 
       {tab === "KLIENCI" && (
         <>
@@ -783,7 +834,7 @@ export function ClientsList({
         <RhythmView rows={visible} monthLabels={monthLabels} currentMonth={11} />
       ) : tab === "POTENCJALNI" ? (
         <div className="mt-3">
-          <PotentialTable rows={page} total={visible.length} onMore={() => setLimit((l) => l + PAGE)} today={today} />
+          <PotentialTable rows={page} total={visible.length} onMore={() => setLimit((l) => l + PAGE)} today={today} canEdit={!agent} onChanged={() => router.refresh()} />
         </div>
       ) : (
         <>

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { APP_CSS_VARS, LEAD_STAGE_COLORS } from "@/components/shell-tokens";
+import { APP_CSS_VARS } from "@/components/shell-tokens";
 import type { LeadRow } from "@/lib/leads/load";
 import { BOARD_STAGES, LOST_REASON_LABEL, STAGE_KEYS, STAGE_LABEL, TYPE_KEYS, TYPE_LABEL } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadStageKey, type LeadTypeKey } from "@/lib/leads/parse-deal";
@@ -14,9 +14,10 @@ import { DownloadIcon, SearchIcon, fmtDate } from "@/components/clients/ui";
 import { useMediaQuery } from "@/components/clients/use-media-query";
 import { LeadCard, type CardIntent } from "./lead-card";
 import { CallsView, NaDzisView, toFunnel, type LinkSuggestion } from "./funnel-views";
+import { BoardView } from "./board-view";
 import { callQueue } from "@/lib/leads/funnel";
 import { BTN, LostDialog, NewLeadDialog } from "./lead-dialogs";
-import { DevicePill, OwnerAvatar, RefreshIcon, StageChip, TypeTag, fmtRange } from "./lead-ui";
+import { DevicePill, RefreshIcon, StageChip, fmtRange } from "./lead-ui";
 
 // Sygnały (/sygnaly) — wygląd wg docs/crm/mockup-sygnaly.html, logika wg
 // docs/crm/prompt-claude-code-crm-2-sygnaly.md (sekcja 3). Sygnałów jest
@@ -26,7 +27,6 @@ import { DevicePill, OwnerAvatar, RefreshIcon, StageChip, TypeTag, fmtRange } fr
 type View = "today" | "board" | "calls" | "list";
 const VIEW_LABEL: Record<View, string> = { today: "Na dziś", board: "Tablica", calls: "Do obdzwonienia", list: "Lista" };
 
-const RETURNING = new Set(["STALY", "USPIONY"]);
 
 function csvCell(v: string | number | null): string {
   const s = v == null ? "" : String(v);
@@ -72,9 +72,6 @@ function syncAgo(iso: string, now: Date) {
   return fmtDate(iso);
 }
 
-function daysIn(iso: string, now: Date) {
-  return Math.max(0, Math.floor((now.getTime() - new Date(iso).getTime()) / 86_400_000));
-}
 
 // Kolejność list — wybór zapamiętany w przeglądarce (to tylko wygoda,
 // bez znaczenia dla danych).
@@ -111,6 +108,7 @@ export function LeadsManager({
   lastSync,
   linkSuggestions,
   callStats,
+  archivedRows,
   hubspotConfigured,
   clients,
   initialSelectedId,
@@ -126,6 +124,8 @@ export function LeadsManager({
   // „Rezerwacje do spięcia” — podpowiedź wynajmu dla sygnału bez wynajmu.
   linkSuggestions: Record<string, LinkSuggestion>;
   callStats: { talked: number; noAnswer: number };
+  // Tablica → „Archiwum 2025”.
+  archivedRows: LeadRow[];
   hubspotConfigured: boolean;
   clients: ReviewClient[];
   initialSelectedId: string | null;
@@ -140,8 +140,6 @@ export function LeadsManager({
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [now, setNow] = useState(() => new Date());
   // Tablica
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dropStage, setDropStage] = useState<LeadStageKey | "LOST" | null>(null);
   const [lostIds, setLostIds] = useState<string[] | null>(null);
   // Do obdzwonienia — filtry i tryb seryjny (po wyniku rozmowy karta
   // przechodzi do następnego kontaktu z listy).
@@ -337,9 +335,6 @@ export function LeadsManager({
     );
   }, [filtered, listSort]);
 
-  const since30 = now.getTime() - 30 * 86_400_000;
-  const won30 = list.filter((r) => r.stage === "WYGRANA" && new Date(r.stageChangedAt).getTime() >= since30).length;
-  const lost30 = list.filter((r) => r.stage === "PRZEGRANA" && new Date(r.stageChangedAt).getTime() >= since30).length;
 
   const card = selectedId ? (
     <LeadCard
@@ -451,102 +446,17 @@ export function LeadsManager({
               )}
 
               {view === "board" && (
-                <section aria-label="Tablica" className="flex flex-col gap-3">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {BOARD_STAGES.map((stage) => {
-                      const col = list
-                        .filter((r) => r.stage === stage)
-                        .sort((a, b) => b.stageChangedAt.localeCompare(a.stageChangedAt));
-                      const c = LEAD_STAGE_COLORS[stage];
-                      return (
-                        <div
-                          key={stage}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            setDropStage(stage);
-                          }}
-                          onDragLeave={() => setDropStage((s) => (s === stage ? null : s))}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            setDropStage(null);
-                            if (dragId && !readOnly) void moveTo(dragId, stage);
-                          }}
-                          className={`flex min-h-[200px] flex-col gap-2 rounded-xl border-2 p-2 transition-colors ${
-                            dropStage === stage ? "border-[var(--c-brand)] bg-[var(--c-brand-soft)]" : "border-transparent bg-[var(--c-bg)]"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 px-1.5 pt-1 text-[13px] font-semibold text-[var(--c-navy)]">
-                            <span className="h-2 w-2 rounded-full" style={{ background: c.dot }} />
-                            {STAGE_LABEL[stage]}
-                            <span className="ml-auto text-xs font-normal text-[var(--c-muted)] tabular-nums">{col.length}</span>
-                          </div>
-                          <div className="flex max-h-[62vh] flex-col gap-2 overflow-y-auto">
-                            {col.map((r) => (
-                              <div
-                                key={r.id}
-                                draggable={!readOnly}
-                                onDragStart={() => setDragId(r.id)}
-                                onDragEnd={() => {
-                                  setDragId(null);
-                                  setDropStage(null);
-                                }}
-                                onClick={() => open(r.id)}
-                                className={`cursor-grab rounded-[10px] border bg-white px-3 py-2.5 transition-shadow hover:shadow-[0_2px_8px_rgba(12,52,80,0.08)] active:cursor-grabbing ${
-                                  selectedId === r.id ? "border-[var(--c-brand)]" : "border-[var(--c-border)]"
-                                } ${dragId === r.id ? "opacity-50" : ""}`}
-                              >
-                                <div className="flex items-start gap-2">
-                                  <span className="min-w-0 flex-grow text-[13px] font-semibold leading-snug text-[var(--c-navy)]">{r.title}</span>
-                                  <OwnerAvatar name={r.ownerName} />
-                                </div>
-                                <div className="mt-1.5 flex flex-wrap gap-1">
-                                  {r.clientStatus && RETURNING.has(r.clientStatus) && (
-                                    <span className="rounded-md bg-[var(--c-green-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-green-deep)]">Stała</span>
-                                  )}
-                                  <DevicePill devices={r.devices} from={r.rentalStartsAt ?? r.requestedFrom} days={r.rentalStartsAt ? null : r.requestedDays} />
-                                  <TypeTag type={r.type} />
-                                </div>
-                                <div className="mt-1.5 flex items-center gap-2 text-[11px] text-[var(--c-muted)]">
-                                  <span>{daysIn(r.stageChangedAt, now) === 0
-                                      ? "dziś w etapie"
-                                      : `od ${daysIn(r.stageChangedAt, now)} ${daysIn(r.stageChangedAt, now) === 1 ? "dnia" : "dni"} w etapie`}</span>
-                                  {r.nextActionAt && <span className="ml-auto font-semibold text-[var(--c-brand-deep)]">krok: {fmtDate(r.nextActionAt).slice(0, 5)}</span>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex flex-wrap items-stretch gap-3">
-                    <div
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDropStage("LOST");
-                      }}
-                      onDragLeave={() => setDropStage((s) => (s === "LOST" ? null : s))}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        setDropStage(null);
-                        if (dragId && !readOnly) setLostIds([dragId]);
-                      }}
-                      className={`flex min-w-[240px] flex-grow items-center justify-center rounded-xl border-2 border-dashed px-4 py-3 text-[13px] transition-colors ${
-                        dropStage === "LOST" ? "border-[var(--c-red)] bg-[var(--c-red-soft)] text-[var(--c-red)]" : "border-[var(--c-border)] text-[var(--c-muted)]"
-                      }`}
-                    >
-                      Upuść tutaj, żeby oznaczyć jako przegraną
-                    </div>
-                    <button type="button" onClick={() => (setFStage("WYGRANA"), setView("list"))} className="rounded-xl border border-[var(--c-border)] bg-white px-4 py-3 text-left text-[13px] hover:border-[var(--c-green)]">
-                      <span className="text-[var(--c-muted)]">Wygrane · 30 dni</span>
-                      <span className="block text-lg font-semibold text-[var(--c-green-deep)] tabular-nums">{won30}</span>
-                    </button>
-                    <button type="button" onClick={() => (setFStage("PRZEGRANA"), setView("list"))} className="rounded-xl border border-[var(--c-border)] bg-white px-4 py-3 text-left text-[13px] hover:border-[var(--c-red)]">
-                      <span className="text-[var(--c-muted)]">Przegrane · 30 dni</span>
-                      <span className="block text-lg font-semibold text-[var(--c-red)] tabular-nums">{lost30}</span>
-                    </button>
-                  </div>
-                </section>
+                <BoardView
+                  rows={list}
+                  archived={archivedRows}
+                  users={users}
+                  now={now}
+                  selectedId={selectedId}
+                  readOnly={readOnly}
+                  onOpen={(id) => open(id)}
+                  onMove={(id, stage) => void moveTo(id, stage)}
+                  onLost={(id) => setLostIds([id])}
+                />
               )}
 
               {view === "calls" && (

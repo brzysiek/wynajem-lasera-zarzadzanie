@@ -6,7 +6,8 @@ import { hubspotDealUrl } from "@/lib/integrations/hubspot-deals";
 import { loadQualifiedMap } from "@/lib/clients/qualify";
 import type { LeadStageKey, LeadTypeKey } from "@/lib/leads/parse-deal";
 import type { ActivityTypeKey, LostReasonKey } from "@/lib/leads/labels";
-import { FUNNEL_FROM, buildNaDzis } from "@/lib/leads/funnel";
+import { ARCHIVE_2025, FUNNEL_FROM, buildNaDzis, maxStageReached } from "@/lib/leads/funnel";
+import { STAGE_LABEL } from "@/lib/leads/labels";
 
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
@@ -100,6 +101,8 @@ export type LeadRow = {
   talked: boolean;
   // Klient zakwalifikowany (jest na liście /klienci); false = „kontakt z zapytania”.
   clientQualified: boolean;
+  // Najwyższy etap osiągnięty kiedykolwiek (tablica: konwersja; raport lejka).
+  maxStage: LeadStageKey;
   search: string;
 };
 
@@ -109,7 +112,7 @@ function queryRows(where: Parameters<typeof prisma.lead.findMany>[0] extends inf
   return prisma.lead.findMany({ where, orderBy: { createdAt: "desc" }, select: ROW_SELECT });
 }
 
-type Extra = { statuses: Map<string, ClientStatus>; qualified: Map<string, boolean>; talked: Set<string> };
+type Extra = { statuses: Map<string, ClientStatus>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]> };
 
 function toRow(l: RowSource, x: Extra): LeadRow {
   const statuses = x.statuses;
@@ -155,23 +158,34 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     callList: l.callList,
     talked: x.talked.has(l.id),
     clientQualified: l.clientId ? (x.qualified.get(l.clientId) ?? false) : false,
+    maxStage: maxStageReached(l.stage, x.stageBodies.get(l.id) ?? [], STAGE_LABEL, Boolean(l.rentalId)),
     search: [l.title, l.client?.name, person, email, phone, l.location ?? l.client?.city, l.message].filter(Boolean).join(" ").toLowerCase(),
   };
 }
 
 async function loadExtra(leads: { id: string; clientId: string | null }[]): Promise<Extra> {
   const clientIds = [...new Set(leads.map((l) => l.clientId).filter((x): x is string => Boolean(x)))];
-  const [statuses, qualified, talkedRows] = await Promise.all([
+  const [statuses, qualified, talkedRows, stageRows] = await Promise.all([
     loadClientStatuses(clientIds),
     loadQualifiedMap(clientIds),
     prisma.leadActivity.groupBy({ by: ["leadId"], where: { leadId: { in: leads.map((l) => l.id) }, type: { in: ["CALL", "EMAIL"] } } }),
+    prisma.leadActivity.findMany({ where: { leadId: { in: leads.map((l) => l.id) }, type: "STAGE_CHANGE" }, select: { leadId: true, body: true } }),
   ]);
-  return { statuses, qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)) };
+  const stageBodies = new Map<string, (string | null)[]>();
+  for (const a of stageRows) stageBodies.set(a.leadId!, [...(stageBodies.get(a.leadId!) ?? []), a.body]);
+  return { statuses, qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies };
 }
 
 export async function loadLeadRows(): Promise<LeadRow[]> {
   // Zarchiwizowane sygnały (Porządki → Archiwum) znikają z list i „Do obdzwonienia”.
   const leads = await queryRows({ archivedAt: null });
+  const extra = await loadExtra(leads);
+  return leads.map((l) => toRow(l, extra));
+}
+
+// Tablica → „Archiwum 2025”: sygnały sprzed 2026 bez kontaktu (do kampanii).
+export async function loadArchived2025Rows(): Promise<LeadRow[]> {
+  const leads = await queryRows({ archivedAt: { not: null }, archiveReason: ARCHIVE_2025 });
   const extra = await loadExtra(leads);
   return leads.map((l) => toRow(l, extra));
 }
