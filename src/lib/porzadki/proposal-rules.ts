@@ -11,6 +11,7 @@ export const PROPOSAL_KIND_LABEL = {
   ARCHIVE: "archiwizacja",
   MERGE: "scalenie duplikatu",
   SPLIT: "wydzielenie do nowego klienta",
+  PAYMENT_MATCH: "dopasowanie przelewu do faktury",
 } as const;
 export type ProposalKind = keyof typeof PROPOSAL_KIND_LABEL;
 
@@ -30,6 +31,8 @@ const KIND_ALIASES: Record<string, ProposalKind> = {
   merge: "MERGE",
   wydzielenie: "SPLIT",
   split: "SPLIT",
+  dopasowanie_platnosci: "PAYMENT_MATCH",
+  payment_match: "PAYMENT_MATCH",
 };
 
 export type ParsedProposal = {
@@ -38,7 +41,7 @@ export type ParsedProposal = {
   contactId: string | null;
   leadId: string | null;
   field: string | null;
-  proposed: unknown; // FIELD/CONTACT_FIELD: wartość; ARCHIVE: ArchiveInput; MERGE: { duplicateId }
+  proposed: unknown; // FIELD/CONTACT_FIELD: wartość; ARCHIVE: ArchiveInput; MERGE: { duplicateId }; PAYMENT_MATCH: { transferId, fakturowniaInvoiceId }
   provenance: Provenance;
   changeClass: string | null;
 };
@@ -62,7 +65,7 @@ export function normalizeClass(v: unknown): string | null {
 export function parseProposalItem(item: Record<string, unknown>): { ok: true; value: ParsedProposal } | { ok: false; message: string } {
   const rawKind = str(item.rodzaj ?? item.kind, 32)?.toLowerCase();
   const kind = rawKind ? KIND_ALIASES[rawKind] : undefined;
-  if (!kind) return { ok: false, message: "rodzaj: pole, osoba, archiwizacja, scalenie albo wydzielenie." };
+  if (!kind) return { ok: false, message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie albo dopasowanie_platnosci." };
   const provenance = parseProvenance(item, { required: true });
   if (!provenance.ok) return provenance;
   if (!provenance.value.batch) return { ok: false, message: "Podaj paczkę (paczka)." };
@@ -93,6 +96,14 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
     const split = parseSplitInput(item);
     if (!split.ok) return split;
     return { ok: true, value: { ...base, kind, proposed: split.value } };
+  }
+  if (kind === "PAYMENT_MATCH") {
+    const transferId = str(item.przelew_id ?? item.transferId, 64);
+    const invoiceRaw = item.faktura_id ?? item.fakturowniaInvoiceId;
+    const fakturowniaInvoiceId = typeof invoiceRaw === "number" ? invoiceRaw : typeof invoiceRaw === "string" && /^\d+$/.test(invoiceRaw.trim()) ? Number(invoiceRaw) : NaN;
+    if (!transferId) return { ok: false, message: "Podaj przelew_id (z narzędzia platnosci)." };
+    if (!Number.isInteger(fakturowniaInvoiceId) || fakturowniaInvoiceId <= 0) return { ok: false, message: "Podaj faktura_id (liczbowe ID faktury z narzędzia platnosci)." };
+    return { ok: true, value: { ...base, kind, proposed: { transferId, fakturowniaInvoiceId } } };
   }
   // MERGE
   const duplicateId = str(item.duplikat_id ?? item.duplicateId, 64);

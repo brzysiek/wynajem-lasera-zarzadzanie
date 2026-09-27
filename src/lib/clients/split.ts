@@ -74,7 +74,9 @@ export async function splitClient(
         zip: input.zip,
         city: input.city,
         country: "Polska",
-        source: source.source,
+        // Bez source / legacyHubspotTag ze zlepka — to cechy rekordu
+        // źródłowego (np. FORMULARZ_WWW „Joanny Bakalarz”), nie nowego klienta.
+        source: null,
         // Wydzielany z klienta — jest klientem, nie kontaktem z zapytania.
         ...(source.qualifiedAt ? { qualifiedAt: new Date(), qualifiedReason: "MANUAL" } : {}),
       },
@@ -105,10 +107,15 @@ export async function splitClient(
     }
     moved.emaile = (await tx.emailMessage.updateMany({ where: { clientId: sourceId, clientContactId: { in: ids } }, data: to })).count;
     if (phones.length) moved.sms = (await tx.message.updateMany({ where: { clientId: sourceId, recipient: { in: phones } }, data: to })).count;
+    // Faktury z NIP-em nabywcy nowego klienta: ze zlepka oraz jeszcze
+    // nieprzypisane / podpowiedziane (decyzji biura u innych klientów nie ruszamy).
     if (input.invoiceNip) {
       moved.faktury = (
         await tx.clientInvoice.updateMany({
-          where: { clientId: sourceId, buyerTaxNo: input.invoiceNip },
+          where: {
+            buyerTaxNo: input.invoiceNip,
+            OR: [{ clientId: sourceId }, { matchedByUserId: null, matchState: { in: ["UNMATCHED", "SUGGESTED"] } }],
+          },
           data: { ...to, matchState: "CONFIRMED", matchMethod: "MANUAL", matchScore: 1, matchedByUserId: actor.userId },
         })
       ).count;

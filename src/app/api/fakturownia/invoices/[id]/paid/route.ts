@@ -31,6 +31,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   } else {
     await prisma.fakturowniaPayment.deleteMany({ where: { fakturowniaInvoiceId: invoiceId } });
+    // Przelew, który ją opłacał, wraca do niedopasowanych (agent: `platnosci`).
+    await prisma.bankTransfer.updateMany({
+      where: { fakturowniaInvoiceId: invoiceId },
+      data: { fakturowniaInvoiceId: null, matchState: "NONE", matchedByUserId: null, matchedAt: null },
+    });
   }
 
   logInfo("fakturownia_paid_toggled", { userId: session.user.id, invoiceId, paid: body.paid });

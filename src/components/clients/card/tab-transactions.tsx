@@ -88,7 +88,13 @@ export function TabTransactions({ d, isAdmin }: { d: ClientDetail; isAdmin: bool
           label="Po terminie"
           value={fmtMoney(t.overdueNet)}
           tone={t.overdueCount > 0 ? "red" : "default"}
-          sub={t.oldestOverdue ? `${t.oldestOverdue.number} · ${t.oldestOverdue.days} dni` : "brak zaległości"}
+          sub={[
+            t.oldestOverdue ? `${t.oldestOverdue.number} · ${t.oldestOverdue.days} dni` : "brak zaległości",
+            t.uncheckedCount ? `${t.uncheckedCount} nie sprawdzono` : null,
+            t.paymentsAsOf ? `wpłaty aktualne na ${fmtDate(t.paymentsAsOf).slice(0, 5)}` : "brak wgranych wyciągów",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         />
         <Tile
           label="Wynajmy bez faktury"

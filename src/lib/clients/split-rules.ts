@@ -11,15 +11,17 @@ export type SplitInput = {
   street: string | null;
   zip: string | null;
   city: string | null;
-  invoiceNip: string | null; // faktury klienta z tym NIP-em nabywcy przechodzą do nowego
+  invoiceNip: string | null; // faktury z tym NIP-em nabywcy przechodzą do nowego (domyślnie NIP nowego klienta)
   historyKeys: string[]; // grupy z kalendarzy (klucze z dopasowań) — przypisz nowemu
 };
 
 const text = (v: unknown, max = 191) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
 const list = (v: unknown) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && x.trim().length > 0))] : []);
 
-// Klucze polskie (API agenta: osoby_ids, nazwa, nip, ulica, kod, miasto,
-// faktury_nip, klucze_dopasowan) albo angielskie (panel).
+// Jedna konwencja kluczy (wniosek 3): osoby_ids, nazwa, nip, ulica, kod,
+// miasto, invoiceNip, historyKeys. Dla zgodności przyjmujemy też nazwy
+// panelu (contactIds, name, street, zip, city) i dawne faktury_nip /
+// klucze_dopasowan. Bez invoiceNip faktury idą po NIP-ie nowego klienta.
 export function parseSplitInput(b: Record<string, unknown>): { ok: true; value: SplitInput } | { ok: false; message: string } {
   const contactIds = list(b.contactIds ?? b.osoby_ids);
   if (!contactIds.length) return { ok: false, message: "Wybierz osoby do wydzielenia." };
@@ -42,7 +44,7 @@ export function parseSplitInput(b: Record<string, unknown>): { ok: true; value: 
       street: text(b.street ?? b.ulica),
       zip: text(b.zip ?? b.kod, 16),
       city: text(b.city ?? b.miasto),
-      invoiceNip: invoiceNip.nip ?? null,
+      invoiceNip: invoiceNip.nip ?? nip.nip ?? null,
       historyKeys,
     },
   };

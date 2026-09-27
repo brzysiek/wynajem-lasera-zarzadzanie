@@ -7,6 +7,8 @@ import { interestsFromText } from "@/lib/history/invoices";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { buildTransactions, rentalRhythmDays, transactionTotals, typicalPayment, type TxRental, type TxTotals } from "@/lib/clients/transactions";
 import { paymentLabel, type PaymentStatus } from "@/lib/clients/payment-status";
+import { computeRhythm, headsFromText, monthsLabel, type ClientRhythm, type RhythmRental } from "@/lib/clients/rhythm";
+import { loadPaymentCoverage } from "@/lib/invoicing/bank-transfers";
 import { gmailSummary } from "@/lib/gmail/sync";
 import { isQualified } from "@/lib/clients/qualification";
 import { isQualificationActive } from "@/lib/clients/qualify";
@@ -337,6 +339,14 @@ export type ClientDetail = {
     status: { kind: PaymentStatus["kind"]; label: string; days: number | null; paidAt: string | null };
   }[];
   txTotals: TxTotals;
+  // Pola liczone (karta klienta, sekcja 4): rytm, dzień tygodnia, urządzenie,
+  // przerwa sezonowa, prognoza, ryzyko odejścia, siatka lata × miesiące.
+  rhythm: Omit<ClientRhythm, "forecast" | "churnRisk"> & {
+    seasonalBreakLabel: string;
+    forecast: string[];
+    churnRisk: { level: "niskie" | "średnie" | "wysokie"; ratio: number; lastAt: string } | null;
+    lastPlannedAt: string | null;
+  };
   // Przegląd: kafelki i „W skrócie”.
   overview: {
     revenue12m: number;
@@ -394,12 +404,21 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       history: {
         where: HISTORY_FACT_WHERE,
         orderBy: { startsAt: "desc" },
-        select: { ...HISTORY_FACT_SELECT, id: true, title: true, device: { select: { name: true, pricingCategory: true } } },
+        select: { ...HISTORY_FACT_SELECT, id: true, title: true, description: true, device: { select: { name: true, pricingCategory: true } } },
       },
       invoices: {
         where: INVOICE_FACT_WHERE,
         orderBy: { sellDate: "desc" },
-        select: { ...INVOICE_FACT_SELECT, id: true, number: true, fakturowniaInvoiceId: true, issueDate: true, paymentTo: true, paymentType: true },
+        select: {
+          ...INVOICE_FACT_SELECT,
+          id: true,
+          number: true,
+          fakturowniaInvoiceId: true,
+          issueDate: true,
+          paymentTo: true,
+          paymentType: true,
+          totalGross: true,
+        },
       },
       leads: { orderBy: { createdAt: "desc" }, take: 20, select: { id: true, title: true, stage: true, createdAt: true, nextActionAt: true } },
       aliases: { orderBy: { alias: "asc" }, select: { alias: true } },
@@ -549,9 +568,14 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
   // --- Wynajmy i faktury ---
   const payments = await prisma.fakturowniaPayment.findMany({
     where: { fakturowniaInvoiceId: { in: c.invoices.map((i) => i.fakturowniaInvoiceId) } },
-    select: { fakturowniaInvoiceId: true, paidAt: true },
+    select: { fakturowniaInvoiceId: true, paidAt: true, bankTransferId: true },
   });
   const paidAt = new Map(payments.map((p) => [p.fakturowniaInvoiceId, p.paidAt]));
+  const transferIds = payments.map((p) => p.bankTransferId).filter((x): x is string => !!x);
+  const transfers = transferIds.length ? await prisma.bankTransfer.findMany({ where: { id: { in: transferIds } }, select: { id: true, amount: true } }) : [];
+  const transferAmount = new Map(transfers.map((t) => [t.id, Number(t.amount.toString())]));
+  const paidAmount = new Map(payments.map((p) => [p.fakturowniaInvoiceId, p.bankTransferId ? (transferAmount.get(p.bankTransferId) ?? null) : null]));
+  const coverage = await loadPaymentCoverage();
   const txRentals: TxRental[] = [
     ...c.rentals
       .filter((r) => !r.deletedInGoogle && r.eventType === "WYNAJEM")
@@ -600,11 +624,14 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       totalNet: Number(i.totalNet.toString()),
       paymentTo: i.paymentTo,
       paymentType: i.paymentType,
+      totalGross: Number(i.totalGross.toString()),
       paidAt: paidAt.get(i.fakturowniaInvoiceId) ?? null,
+      paidAmount: paidAmount.get(i.fakturowniaInvoiceId) ?? null,
       rentalId: i.rentalId,
       positions: i.positionsSummary,
     })),
     today,
+    coverage,
   );
 
   // --- Przegląd ---
@@ -617,6 +644,17 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     .filter((r) => !r.deletedInGoogle && r.eventType === "WYNAJEM" && r.startsAt > today)
     .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())[0];
   const realizedDates = txRentals.filter((r) => r.startsAt <= today).map((r) => r.startsAt);
+  const rhythmRentals: RhythmRental[] = [
+    ...c.rentals
+      .filter((r) => !r.deletedInGoogle && r.eventType === "WYNAJEM")
+      .map((r) => ({
+        at: r.startsAt,
+        device: r.device.name,
+        heads: r.finance?.deviceVariant === "double" ? 2 : r.finance?.deviceVariant?.startsWith("single") ? 1 : headsFromText(r.title),
+      })),
+    ...c.history.filter((h) => h.kind === "WYNAJEM").map((h) => ({ at: h.startsAt, device: h.device.name, heads: headsFromText(`${h.title} ${h.description ?? ""}`) })),
+  ];
+  const rhythm = computeRhythm({ realized: rhythmRentals.filter((x) => x.at <= today), planned: rhythmRentals.filter((x) => x.at > today), today });
   const deviceCounts = new Map<string, number>();
   for (const r of txRentals) if (r.startsAt <= today) deviceCounts.set(r.deviceName, (deviceCounts.get(r.deviceName) ?? 0) + 1);
   const fav = [...deviceCounts.entries()].sort((a, b) => b[1] - a[1])[0];
@@ -705,7 +743,18 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
         paidAt: r.status.kind === "ZAPLACONA" ? r.status.paidAt.toISOString() : null,
       },
     })),
-    txTotals: transactionTotals(txRows, today),
+    txTotals: transactionTotals(txRows, today, coverage),
+    rhythm: (() => {
+      const r = rhythm;
+      const plannedDates = rhythmRentals.filter((x) => x.at > today).map((x) => x.at.getTime());
+      return {
+        ...r,
+        seasonalBreakLabel: monthsLabel(r.seasonalBreak),
+        forecast: r.forecast.map((d) => d.toISOString()),
+        churnRisk: r.churnRisk ? { ...r.churnRisk, lastAt: r.churnRisk.lastAt.toISOString() } : null,
+        lastPlannedAt: plannedDates.length ? new Date(Math.max(...plannedDates)).toISOString() : null,
+      };
+    })(),
     overview: {
       revenue12m,
       avg12m: finished12.length ? Math.round((revenue12m / finished12.length) * 100) / 100 : null,
@@ -713,7 +762,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       favoriteDeviceName: fav?.[0] ?? null,
       favoriteDeviceCount: fav?.[1] ?? 0,
       realizedCount: realizedDates.length,
-      rhythmDays: rentalRhythmDays(realizedDates),
+      rhythmDays: rhythm.rhythmDays ?? rentalRhythmDays(realizedDates),
       lastContact: lastComm ? { at: lastComm.at, label: commLabel(lastComm) } : null,
       typicalPayment: typicalPayment(txRows),
       nextStep: step

@@ -54,6 +54,7 @@ const PAYMENT_TONE: Record<PaymentKind, { bg: string; fg: string }> = {
   GOTOWKA: { bg: "var(--c-brand-soft)", fg: "var(--c-brand-deep)" },
   PO_TERMINIE: { bg: "var(--c-red-soft)", fg: "var(--c-red)" },
   OCZEKUJE: { bg: "var(--c-gold-soft)", fg: "var(--c-gold-deep)" },
+  NIE_SPRAWDZONO: { bg: "var(--c-bg)", fg: "var(--c-sidebar-text)" },
   ZAPLANOWANY: { bg: "var(--c-purple-soft)", fg: "var(--c-purple-deep)" },
   BEZ_FAKTURY: { bg: "var(--c-bg)", fg: "var(--c-sidebar-text)" },
 };

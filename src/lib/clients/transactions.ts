@@ -1,7 +1,7 @@
 // Zakładka „Wynajmy i faktury” (prompt 3B-karta, 2.2): jeden wiersz na
 // wynajem z dołączoną fakturą; faktura bez wynajmu = osobny wiersz. Plus
 // wskaźniki „W skrócie” na Przeglądzie. Czyste funkcje bez zależności.
-import { invoicePaymentStatus, isUnpaid, rentalWithoutInvoiceStatus, type PaymentStatus } from "./payment-status";
+import { invoicePaymentStatus, isUnpaid, rentalWithoutInvoiceStatus, type PaymentCoverage, type PaymentStatus } from "./payment-status";
 
 export type TxRental = {
   id: string; // Rental.id albo RentalHistory.id
@@ -21,9 +21,11 @@ export type TxInvoice = {
   sellDate: Date;
   issueDate: Date;
   totalNet: number;
+  totalGross?: number | null;
   paymentTo: Date | null;
   paymentType: string | null;
-  paidAt: Date | null; // FakturowniaPayment.paidAt
+  paidAt: Date | null; // FakturowniaPayment.paidAt (przelew z wyciągu / ręcznie)
+  paidAmount?: number | null; // kwota dopasowanego przelewu
   rentalId: string | null; // ClientInvoice.rentalId (faktura wynajmu z panelu)
   positions: string | null;
 };
@@ -43,7 +45,7 @@ export type TxRow = {
 const DAY = 86_400_000;
 const WINDOW = 7 * DAY;
 
-export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], today: Date): TxRow[] {
+export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], today: Date, coverage: PaymentCoverage = null): TxRow[] {
   const invByFakt = new Map(invoices.map((i) => [i.fakturowniaInvoiceId, i]));
   const used = new Set<string>();
   const attached = new Map<string, TxInvoice>(); // rental.id → faktura
@@ -73,7 +75,19 @@ export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], to
   }
 
   const invStatus = (inv: TxInvoice, cash: boolean) =>
-    invoicePaymentStatus({ paidAt: inv.paidAt, paymentType: inv.paymentType, paymentTo: inv.paymentTo, cashConfirmed: cash }, today);
+    invoicePaymentStatus(
+      {
+        paidAt: inv.paidAt,
+        paidAmount: inv.paidAmount ?? null,
+        totalGross: inv.totalGross ?? null,
+        paymentType: inv.paymentType,
+        paymentTo: inv.paymentTo,
+        issueDate: inv.issueDate,
+        cashConfirmed: cash,
+      },
+      today,
+      coverage,
+    );
 
   const rows: TxRow[] = rentals.map((r) => {
     const inv = attached.get(r.id) ?? null;
@@ -117,13 +131,16 @@ export type TxTotals = {
   oldestOverdue: { number: string; days: number } | null;
   dueNet: number; // oczekuje + po terminie
   dueCount: number;
+  uncheckedNet: number; // po terminie, ale poza okresem wgranych wyciągów
+  uncheckedCount: number;
+  paymentsAsOf: string | null; // ISO — „wpłaty aktualne na”: ostatni dzień wgranych wyciągów
   withoutInvoice: number;
   withoutInvoiceAllCalendar: boolean;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-export function transactionTotals(rows: TxRow[], today: Date): TxTotals {
+export function transactionTotals(rows: TxRow[], today: Date, coverage: PaymentCoverage = null): TxTotals {
   const year = today.getFullYear();
   const withInv = rows.filter((r) => r.invoice);
   const thisYear = withInv.filter((r) => r.invoice!.issueDate.getFullYear() === year);
@@ -131,6 +148,7 @@ export function transactionTotals(rows: TxRow[], today: Date): TxTotals {
   const overdue = withInv.filter((r) => r.status.kind === "PO_TERMINIE");
   const due = withInv.filter((r) => isUnpaid(r.status));
   const oldest = [...overdue].sort((a, b) => (b.status.kind === "PO_TERMINIE" ? b.status.days : 0) - (a.status.kind === "PO_TERMINIE" ? a.status.days : 0))[0];
+  const unchecked = withInv.filter((r) => r.status.kind === "NIE_SPRAWDZONO");
   const noInvoice = rows.filter((r) => r.status.kind === "BEZ_FAKTURY");
   return {
     year,
@@ -143,6 +161,9 @@ export function transactionTotals(rows: TxRow[], today: Date): TxTotals {
     oldestOverdue: oldest && oldest.status.kind === "PO_TERMINIE" ? { number: oldest.invoice!.number, days: oldest.status.days } : null,
     dueNet: round2(due.reduce((s, r) => s + (r.net ?? 0), 0)),
     dueCount: due.length,
+    uncheckedNet: round2(unchecked.reduce((s, r) => s + (r.net ?? 0), 0)),
+    uncheckedCount: unchecked.length,
+    paymentsAsOf: coverage?.to.toISOString() ?? null,
     withoutInvoice: noInvoice.length,
     withoutInvoiceAllCalendar: noInvoice.length > 0 && noInvoice.every((r) => r.source === "kalendarz"),
   };
@@ -165,6 +186,7 @@ export function rhythmLabel(days: number): string {
 }
 
 // Typowa forma płatności: z faktur (przelew / gotówka) + czy zwykle w terminie.
+// „Zaległości” / „po terminie” liczone tylko z faktur sprawdzonych wyciągiem.
 export function typicalPayment(rows: TxRow[]): string | null {
   const inv = rows.filter((r) => r.invoice || r.status.kind === "GOTOWKA");
   if (inv.length === 0) return null;

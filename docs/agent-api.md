@@ -233,15 +233,18 @@ Większe porządki zgłaszaj jako **paczkę propozycji**, nie bezpośrednimi zmi
   - `osoby_ids`: osoby, które przechodzą do nowego klienta;
   - `nazwa`;
   - opcjonalnie `nip`, `ulica`, `kod`, `miasto`;
-  - opcjonalnie `faktury_nip`: faktury klienta z tym NIP-em nabywcy przechodzą razem z osobami;
-  - opcjonalnie `klucze_dopasowan`: grupy z kalendarzy do przypisania nowemu klientowi.
+  - opcjonalnie `invoiceNip`: faktury z tym NIP-em nabywcy przechodzą razem z osobami. Bez tego pola przechodzą faktury z NIP-em nowego klienta (`nip`);
+  - opcjonalnie `historyKeys`: klucze grup z kalendarzy (z narzędzia `dopasowania`) do przypisania nowemu klientowi.
+
+  Nazwy pól są jednolite: `osoby_ids`, `nazwa`, `nip`, `ulica`, `kod`, `miasto`, `invoiceNip`, `historyKeys`. Dawne `faktury_nip` i `klucze_dopasowan` nadal działają. Nowy klient nie dziedziczy źródła (`source`) ani tagu HubSpot zlepka.
+- **`dopasowanie_platnosci`**: przelew z wyciągu → faktura. Pola `przelew_id` i `faktura_id`, oba z narzędzia `platnosci`. Po akceptacji faktura jest zapłacona z datą przelewu, a przelew ma stan `MANUAL`. Serwer odrzuca przelew już dopasowany i fakturę już zapłaconą.
 
   Razem z osobami przechodzą ich wynajmy, sygnały (z osią czasu i zadaniami), e-maile i SMS-y. Przy kliencie musi zostać co najmniej jedna osoba. Przykład:
 
   ```json
   { "rodzaj": "wydzielenie", "klient_id": "cmuhfoc0o00dwbhipcwdoo8t9", "osoby_ids": ["cmuhfoc1500e6bhipcqfsgjb8"],
     "nazwa": "Studio Urody „MiWiNi” Barbara Trzaska", "nip": "9441828201", "ulica": "Rudawska 4", "kod": "32-064", "miasto": "Rudawa",
-    "faktury_nip": "9441828201", "klucze_dopasowan": ["miwini", "mi wi ni"],
+    "invoiceNip": "9441828201", "historyKeys": ["miwini", "mi wi ni"],
     "zrodlo": "HubSpot + faktury 2026", "pewnosc": "wysoka", "paczka": "P-2026-09-27-01" }
   ```
 
@@ -333,7 +336,35 @@ Zwraca:
 | `bez_klienta=1` | faktury bez przypisanego klienta |
 | `bez_wynajmu=1` | faktury bez powiązanego wynajmu |
 
-Lista ma paginację.
+Lista ma paginację. Każda faktura ma `payment`: `status` i `label` wpłaty (zapłacona dd.mm / częściowo zapłacona / po terminie / nie sprawdzono / oczekuje), `paidAt` i `byBankTransfer`. Odpowiedź ma też `paymentsAsOf`.
+
+## Wpłaty (wyciągi bankowe)
+
+Wpłaty sprawdza się w module Finanse na podstawie pliku CSV z banku, wgrywanego co jakiś czas. Fakturownia nie jest źródłem wpłat. Import dopasowuje przelewy przychodzące do faktur wystawionych od 01.09.2026 (wcześniej wpłat nie śledzono).
+
+`GET /api/agent/platnosci` (MCP: `platnosci`) działa tylko do odczytu i zwraca:
+
+- `ostatni_import`: kiedy wgrano plik, jego nazwę i okres operacji w pliku;
+- `wplaty_aktualne_na`: ostatni dzień objęty wyciągami;
+- `przelewy[]`: data, kwota, opis przelewu i jego stan:
+  - `AUTO`: dopasowany automatycznie;
+  - `MANUAL`: dopasowany ręcznie;
+  - `AMBIGUOUS`: kilka możliwych faktur, lista w `kandydaci`;
+  - `NONE`: niedopasowany;
+
+  Dopasowany przelew ma też `faktura`: numer, nabywcę, NIP, kwotę brutto i klienta.
+- `nieoplacone_faktury[]`: faktury bez wpłaty ze statusem:
+  - `PO_TERMINIE`: termin minął, a wyciąg obejmuje ten dzień;
+  - `NIE_SPRAWDZONO`: termin mija po ostatnim dniu wyciągu albo faktura sprzed śledzenia wpłat;
+  - `OCZEKUJE`: termin jeszcze nie minął.
+
+| Parametr | Znaczenie |
+|----------|-----------|
+| `od=`, `do=` | zakres daty przelewu |
+| `stan=` | `niedopasowane` (NONE i AMBIGUOUS), `dopasowane` (AUTO i MANUAL) albo jeden stan |
+| `klient=` | przelewy dopasowane do faktur klienta i jego nieopłacone faktury |
+
+Niedopasowany przelew (np. dopasowany przez Ciebie po NIP-ie, nazwie nadawcy i kwocie) zgłoś propozycją `dopasowanie_platnosci` w paczce.
 
 `GET /api/agent/fv-bez-faktury` zwraca zakończone wynajmy ze znacznikiem FV (VAT doliczony), które nie mają faktury. Przy każdym wynajmie jest `suggestions[]`: prawdopodobne faktury (ten sam klient albo NIP, data sprzedaży ±7 dni, urządzenie w pozycjach). Powiązanie faktury z wynajmem zatwierdza administrator w panelu, w **Finanse → Faktury VAT → FV bez faktury → Powiąż**.
 

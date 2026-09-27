@@ -5,18 +5,20 @@ import { listInvoices } from "@/lib/integrations/fakturownia";
 import { parseBankStatementCsv } from "@/lib/invoicing/bank-statement-parse";
 import { matchTransactionsToInvoices } from "@/lib/invoicing/bank-match";
 import { logInfo, logWarn } from "@/lib/logger";
+import { BANK_STATEMENT_SINCE } from "@/lib/invoicing/bank-since";
+import { markTransfersMatched, statementPeriod, storeIncomingTransfers } from "@/lib/invoicing/bank-transfers";
 
 function bad(message: string, status = 400) {
   return NextResponse.json({ message }, { status });
 }
 
-// Stały próg dolny (ustalony z użytkownikiem) — faktury sprzed września nie
-// interesują dopasowywania wyciągów, więc go NIE cofamy w historię. Inaczej
-// niż REPORT_ALERT_SINCE/INVOICE_ALERT_SINCE (powiadomienia) to nie jest
-// "świeży tydzień zaległości od wdrożenia", tylko świadomie wybrana data
-// początku śledzenia płatności — dopasowywanie ma iść tylko naprzód od tej
-// pory, nigdy wstecz.
-const BANK_STATEMENT_SINCE = "2026-09-01";
+// Stały próg dolny BANK_STATEMENT_SINCE (ustalony z użytkownikiem, w
+// src/lib/invoicing/bank-since.ts) — faktury sprzed września nie interesują
+// dopasowywania wyciągów, więc go NIE cofamy w historię. Inaczej niż
+// REPORT_ALERT_SINCE/INVOICE_ALERT_SINCE (powiadomienia) to nie jest "świeży
+// tydzień zaległości od wdrożenia", tylko świadomie wybrana data początku
+// śledzenia płatności — dopasowywanie ma iść tylko naprzód od tej pory,
+// nigdy wstecz.
 
 function todayIso(): string {
   const d = new Date();
@@ -73,18 +75,30 @@ export async function POST(req: NextRequest) {
   const confident = matches.filter((m) => m.candidates.length === 1);
   const ambiguous = matches.filter((m) => m.candidates.length > 1);
 
+  // Przelewy przychodzące zostają w panelu (karta klienta, agent: `platnosci`).
+  const stored = await storeIncomingTransfers(transactions, matches);
+
   // Faktyczna liczba zapisanych wierszy — NIE ufamy `confident.length`
   // bezkrytycznie (createMany zwraca prawdziwy count; skipDuplicates na
   // wypadek gdyby ta sama faktura pojawiła się dwa razy w matchach, co się
   // nie powinno zdarzyć, ale nie ufamy temu bezkrytycznie).
   let matchedCount = 0;
   if (confident.length > 0) {
-    const now = new Date();
+    // Data zapłaty = data przelewu z wyciągu (nie chwila wgrania pliku).
     const result = await prisma.fakturowniaPayment.createMany({
-      data: confident.map((m) => ({ fakturowniaInvoiceId: m.invoiceId, paidAt: now })),
+      data: confident.map((m) => ({
+        fakturowniaInvoiceId: m.invoiceId,
+        paidAt: new Date(`${m.candidates[0].date}T12:00:00.000Z`),
+        bankTransferId: stored.transferId(m.candidates[0]),
+      })),
       skipDuplicates: true,
     });
     matchedCount = result.count;
+    await markTransfersMatched(
+      confident
+        .map((m) => ({ transferId: stored.transferId(m.candidates[0]), fakturowniaInvoiceId: m.invoiceId }))
+        .filter((p): p is { transferId: string; fakturowniaInvoiceId: number } => !!p.transferId),
+    );
     if (matchedCount !== confident.length) {
       logWarn("fakturownia_bank_statement_count_mismatch", { expected: confident.length, actual: matchedCount });
     }
@@ -131,8 +145,10 @@ export async function POST(req: NextRequest) {
       autoMatched: matchedCount,
       ambiguous: ambiguous.length,
       noMatch,
+      ...statementPeriod(transactions),
     },
   });
+  await prisma.bankTransfer.updateMany({ where: { hash: { in: [...stored.hashes.values()] }, uploadId: null }, data: { uploadId: upload.id } });
 
   return NextResponse.json({
     transactionsParsed: transactions.length,

@@ -118,7 +118,7 @@ export function SplitDialog({ source, onClose, onDone }: { source: ClientDetail;
                   // Puste pola podpowiadamy z faktury (NIP i nazwa nabywcy).
                   setF((p) => ({ ...p, invoiceNip: v, nip: p.nip || v, name: p.name || buyer }));
                 }}>
-                <option value="">— żadne —</option>
+                <option value="">{f.nip.replace(/\D/g, "").length === 10 ? "— z NIP-em nowego klienta —" : "— żadne —"}</option>
                 {preview.invoicesByNip.map((i) => (
                   <option key={`${i.nip}-${i.buyerName}`} value={i.nip}>
                     {i.nip} · {i.buyerName} ({i.count})

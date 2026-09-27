@@ -494,7 +494,10 @@ model RentalFinance {
 // wgranego wyciągu bankowego (dashboard /finanse/faktury).
 model FakturowniaPayment {
   fakturowniaInvoiceId Int      @id
-  paidAt               DateTime
+  paidAt               DateTime // z wyciągu: data przelewu; ręcznie: chwila oznaczenia
+  // Przelew z wyciągu, który opłacił fakturę (null = oznaczenie ręczne /
+  // wgranie sprzed zapisywania przelewów).
+  bankTransferId       String?
   updatedAt            DateTime @updatedAt
 
   @@map("fakturownia_payments")
@@ -513,8 +516,35 @@ model BankStatementUpload {
   autoMatched        Int
   ambiguous          Int
   noMatch            Int
+  // Okres operacji w pliku (pierwsza / ostatnia data) — „wpłaty aktualne na”.
+  periodFrom         DateTime?
+  periodTo           DateTime?
 
   @@map("bank_statement_uploads")
+}
+
+// Przelewy PRZYCHODZĄCE z wgranych wyciągów (wniosek 6) — żeby karta
+// klienta i agent widzieli, czym opłacono fakturę, a co zostało
+// niedopasowane. Wydatki nie są zapisywane. Ten sam przelew z kolejnego,
+// nakładającego się wyciągu nie dubluje się (hash).
+model BankTransfer {
+  id                   String    @id @default(cuid())
+  uploadId             String?
+  bookedAt             DateTime // data operacji (dzień, 12:00 UTC)
+  amount               Decimal   @db.Decimal(12, 2)
+  description          String    @db.Text
+  hash                 String    @unique @db.VarChar(64)
+  fakturowniaInvoiceId Int? // dopasowana faktura
+  matchState           String    @default("NONE") @db.VarChar(12) // AUTO | MANUAL | AMBIGUOUS | NONE
+  candidates           Json? // AMBIGUOUS: [fakturowniaInvoiceId]
+  matchedByUserId      String?
+  matchedAt            DateTime?
+  createdAt            DateTime  @default(now())
+
+  @@index([bookedAt])
+  @@index([fakturowniaInvoiceId])
+  @@index([matchState])
+  @@map("bank_transfers")
 }
 
 model PriceRule {

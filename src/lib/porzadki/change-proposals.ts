@@ -10,6 +10,7 @@ import { sameLogValue } from "@/lib/changelog/undo-rules";
 import { archiveRecords } from "@/lib/porzadki/archive";
 import type { ArchiveInput } from "@/lib/porzadki/archive-rules";
 import { PorzadkiError, type Actor } from "@/lib/porzadki/proposals";
+import { applyPaymentMatch, describePaymentMatch, type PaymentMatchInput } from "@/lib/invoicing/bank-transfers";
 import { parseProposalItem, type ChangeProposalStatus, type ParsedProposal, type ProposalKind } from "@/lib/porzadki/proposal-rules";
 
 // Kolejka propozycji zmian (Porządki, etap D). Agent zgłasza (hurtem),
@@ -68,6 +69,23 @@ async function currentFor(p: { kind: string; clientId: string | null; contactId:
 // Proponowana wartość po normalizacji panelu (NIP same cyfry, telefon +48…),
 // żeby ADMIN widział to, co faktycznie się zapisze.
 async function normalizeProposedAsync(p: ParsedProposal): Promise<unknown> {
+  if (p.kind === "PAYMENT_MATCH") {
+    // Przelew → faktura: oba muszą istnieć; opis do podglądu w kolejce.
+    const input = p.proposed as PaymentMatchInput;
+    const { transfer, invoice } = await describePaymentMatch(input);
+    if (!transfer) throw new PorzadkiError("Przelew nie istnieje (przelew_id z narzędzia platnosci).", 404);
+    if (!invoice) throw new PorzadkiError("Faktura nie istnieje w panelu (faktura_id z narzędzia platnosci).", 404);
+    if (transfer.matchState === "AUTO" || transfer.matchState === "MANUAL") throw new PorzadkiError("Ten przelew jest już dopasowany.");
+    if (await prisma.fakturowniaPayment.findUnique({ where: { fakturowniaInvoiceId: input.fakturowniaInvoiceId } })) throw new PorzadkiError("Faktura jest już oznaczona jako zapłacona.");
+    if (!p.clientId && invoice.clientId) p.clientId = invoice.clientId;
+    return {
+      ...input,
+      invoiceNumber: invoice.number,
+      invoiceGross: invoice.totalGross.toString(),
+      buyerName: invoice.buyerName,
+      transfer: { date: transfer.bookedAt.toISOString().slice(0, 10), amount: transfer.amount.toString(), description: transfer.description.slice(0, 160) },
+    };
+  }
   if (p.kind !== "SPLIT") return normalizeProposed(p);
   // Wydzielenie: osoby muszą należeć do klienta; imiona do podglądu w kolejce.
   const input = p.proposed as SplitInput;
@@ -179,6 +197,10 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
   if (p.kind === "SPLIT") {
     const input = value as SplitInput;
     const r = await splitClient(p.clientId!, { ...input, historyKeys: input.historyKeys ?? [] }, provenance, actor, { approvedById });
+    return r.ok ? { ok: true } : { ok: false, message: r.message };
+  }
+  if (p.kind === "PAYMENT_MATCH") {
+    const r = await applyPaymentMatch(value as PaymentMatchInput, { userId: actor.userId, provenance: { source: p.source, confidence: p.confidence as "HIGH" | "MEDIUM" | "LOW", batch: p.batch }, approvedById });
     return r.ok ? { ok: true } : { ok: false, message: r.message };
   }
   if (p.kind === "MERGE") {

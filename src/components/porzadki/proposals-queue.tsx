@@ -33,6 +33,16 @@ function describe(p: ChangeProposalRow): { what: string; from: string | null; to
     const extras = [v?.invoiceNip ? `faktury z NIP ${v.invoiceNip}` : null, v?.historyKeys?.length ? `${v.historyKeys.length} grup z dopasowań` : null].filter(Boolean).join(", ");
     return { what: `wydziel: ${v?.contactNames?.join(", ") ?? "osoby"}`, from: null, to: `nowy klient „${v?.name ?? "?"}”${extras ? ` (+ ${extras})` : ""}` };
   }
+  if (p.kind === "PAYMENT_MATCH") {
+    const v = p.proposedValue
+      ? (JSON.parse(p.proposedValue) as { invoiceNumber?: string; invoiceGross?: string; buyerName?: string; transfer?: { date: string; amount: string; description: string } })
+      : null;
+    return {
+      what: `przelew → faktura ${v?.invoiceNumber ?? ""}`,
+      from: null,
+      to: `${v?.transfer ? `${v.transfer.date} · ${v.transfer.amount} zł · ${v.transfer.description}` : "przelew"} → FV ${v?.invoiceNumber ?? "?"} (${v?.buyerName ?? ""}, ${v?.invoiceGross ?? "?"} zł brutto)`,
+    };
+  }
   if (p.kind === "MERGE") {
     const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { duplicateId: string }) : null;
     return { what: "scal duplikat w tego klienta", from: null, to: p.duplicateName ? `${p.duplicateName} (${v?.duplicateId})` : (v?.duplicateId ?? "—") };

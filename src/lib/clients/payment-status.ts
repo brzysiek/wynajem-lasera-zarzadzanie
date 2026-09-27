@@ -1,35 +1,68 @@
 // Status płatności faktury / wynajmu na karcie klienta (prompt 3B-karta,
-// sekcja 1). Liczony przy odczycie z tego, co panel już zna — bez drugiej
-// logiki płatności: zapłatę oznacza istniejąca tabela FakturowniaPayment
-// (wyciąg bankowy / ręczne oznaczenie na /finanse/faktury). Czyste funkcje
-// bez zależności (vitest bez aliasu "@/").
+// sekcja 1; wniosek 6). Wpłaty pochodzą z importu CSV z banku w Finansach
+// (FakturowniaPayment — dopasowanie przelewu albo ręczne oznaczenie), nie
+// z Fakturowni. „Po terminie” tylko dla faktur, które import sprawdził:
+// wystawionych od początku śledzenia wpłat i z terminem nie późniejszym niż
+// ostatni dzień wgranego wyciągu. Pozostałe nieopłacone = „nie sprawdzono”.
+// Czyste funkcje bez zależności (vitest bez aliasu "@/").
+import { BANK_STATEMENT_SINCE } from "../invoicing/bank-since";
 
 export type PaymentStatus =
-  | { kind: "ZAPLACONA"; paidAt: Date }
+  | { kind: "ZAPLACONA"; paidAt: Date; partial: boolean }
   | { kind: "GOTOWKA" }
   | { kind: "PO_TERMINIE"; days: number }
   | { kind: "OCZEKUJE"; dueInDays: number | null }
+  | { kind: "NIE_SPRAWDZONO"; days: number | null } // days = ile po terminie (informacyjnie)
   | { kind: "ZAPLANOWANY" }
   | { kind: "BEZ_FAKTURY" };
 
 export type PaymentKind = PaymentStatus["kind"];
 
+// Okres, który sprawdzają importy wyciągów: od początku śledzenia wpłat
+// do ostatniego dnia w wgranych plikach. null = nic jeszcze nie wgrano.
+export type PaymentCoverage = { from: Date; to: Date } | null;
+
+// Zakres sprawdzony przez wgrane wyciągi: od początku śledzenia (albo od
+// pierwszego dnia w plikach, jeśli późniejszy) do ostatniego dnia w plikach.
+// Wgrania sprzed zapisywania okresu liczą się do dnia wgrania.
+export function paymentCoverage(uploads: { periodFrom: Date | null; periodTo: Date | null; uploadedAt: Date }[]): PaymentCoverage {
+  if (!uploads.length) return null;
+  const since = new Date(`${BANK_STATEMENT_SINCE}T12:00:00.000Z`);
+  const firsts = uploads.map((u) => u.periodFrom ?? since);
+  const from = new Date(Math.max(since.getTime(), Math.min(...firsts.map((d) => d.getTime()))));
+  const to = new Date(Math.max(...uploads.map((u) => (u.periodTo ?? u.uploadedAt).getTime())));
+  return { from, to };
+}
+
 function dayIndex(d: Date): number {
   return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000;
 }
 
-export function invoicePaymentStatus(
-  inv: { paidAt: Date | null; paymentType: string | null; paymentTo: Date | null; cashConfirmed: boolean },
-  today: Date,
-): PaymentStatus {
-  if (inv.paidAt) return { kind: "ZAPLACONA", paidAt: inv.paidAt };
-  if (inv.paymentType === "cash" || inv.cashConfirmed) return { kind: "GOTOWKA" };
-  if (inv.paymentTo) {
-    const diff = dayIndex(today) - dayIndex(inv.paymentTo);
-    if (diff > 0) return { kind: "PO_TERMINIE", days: diff };
-    return { kind: "OCZEKUJE", dueInDays: -diff };
+export type InvoicePaymentInput = {
+  paidAt: Date | null; // FakturowniaPayment.paidAt
+  paidAmount?: number | null; // kwota przelewu, gdy opłacona przelewem z wyciągu
+  totalGross?: number | null;
+  paymentType: string | null;
+  paymentTo: Date | null;
+  issueDate?: Date | null;
+  cashConfirmed: boolean;
+};
+
+export function invoicePaymentStatus(inv: InvoicePaymentInput, today: Date, coverage: PaymentCoverage = null): PaymentStatus {
+  if (inv.paidAt) {
+    const partial = inv.paidAmount != null && inv.totalGross != null && inv.paidAmount < inv.totalGross - 0.01;
+    return { kind: "ZAPLACONA", paidAt: inv.paidAt, partial };
   }
-  return { kind: "OCZEKUJE", dueInDays: null };
+  if (inv.paymentType === "cash" || inv.cashConfirmed) return { kind: "GOTOWKA" };
+  const due = inv.paymentTo ?? inv.issueDate ?? null;
+  if (!due) return { kind: "OCZEKUJE", dueInDays: null };
+  const diff = dayIndex(today) - dayIndex(due);
+  if (diff <= 0) return { kind: "OCZEKUJE", dueInDays: -diff };
+  const checked =
+    coverage != null &&
+    (!inv.issueDate || dayIndex(inv.issueDate) >= dayIndex(coverage.from)) &&
+    dayIndex(due) <= dayIndex(coverage.to);
+  return checked ? { kind: "PO_TERMINIE", days: diff } : { kind: "NIE_SPRAWDZONO", days: diff };
 }
 
 // Wiersz bez faktury: przyszły wynajem = zaplanowany; odebrana gotówka
@@ -45,13 +78,15 @@ const dm = (d: Date) => `${String(d.getDate()).padStart(2, "0")}.${String(d.getM
 export function paymentLabel(s: PaymentStatus): string {
   switch (s.kind) {
     case "ZAPLACONA":
-      return `Zapłacona ${dm(s.paidAt)}`;
+      return `${s.partial ? "Częściowo zapłacona" : "Zapłacona"} ${dm(s.paidAt)}`;
     case "GOTOWKA":
       return "Gotówka";
     case "PO_TERMINIE":
       return `Po terminie ${s.days} ${s.days === 1 ? "dzień" : "dni"}`;
     case "OCZEKUJE":
       return s.dueInDays == null ? "Oczekuje" : s.dueInDays === 0 ? "Termin dziś" : `Oczekuje · ${s.dueInDays} ${s.dueInDays === 1 ? "dzień" : "dni"}`;
+    case "NIE_SPRAWDZONO":
+      return "Nie sprawdzono";
     case "ZAPLANOWANY":
       return "Zaplanowany";
     case "BEZ_FAKTURY":

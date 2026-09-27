@@ -63,7 +63,7 @@ const AGENT_WRITES = [
 
 // Narzędzia MCP — dokładna lista; nowe narzędzie trzeba świadomie dopisać.
 const MCP_TOOLS = [
-  "reguly_porzadkow", "klienci_lista", "klient", "sygnaly_lista", "sygnal", "kalendarz_wynajmy", "dopasowania", "faktury",
+  "reguly_porzadkow", "klienci_lista", "klient", "sygnaly_lista", "sygnal", "kalendarz_wynajmy", "dopasowania", "faktury", "platnosci",
   "fv_bez_faktury", "archiwum", "dziennik", "wnioski_lista", "wniosek", "uwagi_lista", "zadania_lista", "osoby_biura",
   "klient_zmien", "osoba_zmien", "osoba_dodaj", "klienci_scal", "przenies_do_klientow", "notatka_klient", "notatka_sygnal",
   "zadanie_utworz", "zadanie_zmien", "zadanie_komentarz", "wniosek_utworz", "wniosek_zmien", "wniosek_komentarz",

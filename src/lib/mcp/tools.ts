@@ -29,6 +29,8 @@ import { agentAssignees } from "@/lib/agent-api/assignees";
 import { agentMatchDecision } from "@/lib/agent-api/match-decision";
 import { listSuspectedBlobs } from "@/lib/clients/blob-load";
 import { listAutoClasses, listChangeProposals, submitProposals } from "@/lib/porzadki/change-proposals";
+import { listPaymentsForAgent, loadPaymentCoverage } from "@/lib/invoicing/bank-transfers";
+import { invoicePaymentStatus, paymentLabel } from "@/lib/clients/payment-status";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
 // co panel i API agenta (src/lib/permissions.ts): odczyt + zapisy agenta,
@@ -273,7 +275,9 @@ export const TOOLS: McpTool[] = [
   {
     name: "faktury",
     title: "Faktury z Fakturowni",
-    description: "Faktury (kopia w panelu) z paginacją. Filtry: data sprzedaży od/do, klient, NIP, bez klienta, bez wynajmu.",
+    description:
+      "Faktury (kopia w panelu) z paginacją i statusem wpłaty z wyciągów bankowych (Finanse, import CSV): zapłacona dd.mm / częściowo / po terminie / nie sprawdzono. " +
+      "Filtry: data sprzedaży od/do, klient, NIP, bez klienta, bez wynajmu. faktura_id = ID faktury w Fakturowni (do narzędzia platnosci i propozycji dopasowanie_platnosci).",
     inputSchema: obj({
       od: s("Data sprzedaży od RRRR-MM-DD."),
       do: s("Data sprzedaży do RRRR-MM-DD."),
@@ -295,28 +299,74 @@ export const TOOLS: McpTool[] = [
         ...(a.bez_wynajmu === true ? { rentalId: null } : {}),
       };
       const p = page(a);
-      const [total, rows] = await Promise.all([
+      const [total, rows, coverage] = await Promise.all([
         prisma.clientInvoice.count({ where }),
         prisma.clientInvoice.findMany({ where, orderBy: { sellDate: "desc" }, skip: p.skip, take: p.perPage, include: { client: { select: { name: true } } } }),
+        loadPaymentCoverage(),
       ]);
+      const payments = await prisma.fakturowniaPayment.findMany({ where: { fakturowniaInvoiceId: { in: rows.map((r) => r.fakturowniaInvoiceId) } } });
+      const transfers = await prisma.bankTransfer.findMany({ where: { id: { in: payments.map((x) => x.bankTransferId).filter((x): x is string => !!x) } }, select: { id: true, amount: true } });
+      const paid = new Map(payments.map((x) => [x.fakturowniaInvoiceId, x]));
+      const amount = new Map(transfers.map((t) => [t.id, Number(t.amount.toString())]));
+      const today = new Date();
       return {
-        items: rows.map((r) => ({
-          id: r.id,
-          number: r.number,
-          sellDate: r.sellDate.toISOString().slice(0, 10),
-          buyerName: r.buyerName,
-          buyerTaxNo: r.buyerTaxNo,
-          totalGross: r.totalGross.toString(),
-          positions: r.positionsSummary,
-          clientId: r.clientId,
-          clientName: r.client?.name ?? null,
-          rentalId: r.rentalId,
-          matchState: r.matchState,
-        })),
+        paymentsAsOf: coverage ? coverage.to.toISOString().slice(0, 10) : null,
+        items: rows.map((r) => {
+          const pay = paid.get(r.fakturowniaInvoiceId);
+          const status = invoicePaymentStatus(
+            {
+              paidAt: pay?.paidAt ?? null,
+              paidAmount: pay?.bankTransferId ? (amount.get(pay.bankTransferId) ?? null) : null,
+              totalGross: Number(r.totalGross.toString()),
+              paymentType: r.paymentType,
+              paymentTo: r.paymentTo,
+              issueDate: r.issueDate,
+              cashConfirmed: false,
+            },
+            today,
+            coverage,
+          );
+          return {
+            id: r.id,
+            fakturowniaId: r.fakturowniaInvoiceId,
+            number: r.number,
+            sellDate: r.sellDate.toISOString().slice(0, 10),
+            buyerName: r.buyerName,
+            buyerTaxNo: r.buyerTaxNo,
+            totalGross: r.totalGross.toString(),
+            positions: r.positionsSummary,
+            clientId: r.clientId,
+            clientName: r.client?.name ?? null,
+            rentalId: r.rentalId,
+            matchState: r.matchState,
+            paymentTo: r.paymentTo?.toISOString().slice(0, 10) ?? null,
+            payment: { status: status.kind, label: paymentLabel(status), paidAt: pay?.paidAt.toISOString().slice(0, 10) ?? null, byBankTransfer: !!pay?.bankTransferId },
+          };
+        }),
         page: p.page,
         perPage: p.perPage,
         total,
       };
+    },
+  },
+  {
+    name: "platnosci",
+    title: "Wpłaty z wyciągów bankowych",
+    description:
+      "Tylko odczyt. Przelewy przychodzące z wgranych wyciągów CSV (Finanse) z dopasowaniem do faktur: stan AUTO / MANUAL / AMBIGUOUS (kandydaci) / NONE; " +
+      "lista nieopłaconych faktur w zakresie śledzenia wpłat (status po terminie / nie sprawdzono / oczekuje); data ostatniego importu i „wpłaty aktualne na”. " +
+      "Niedopasowany przelew zgłoś propozycją rodzaju dopasowanie_platnosci (przelew_id, faktura_id) w propozycje_dodaj.",
+    inputSchema: obj({
+      od: s("Data przelewu od RRRR-MM-DD."),
+      do: s("Data przelewu do RRRR-MM-DD."),
+      stan: s("Stan przelewów.", { enum: ["niedopasowane", "dopasowane", "AUTO", "MANUAL", "AMBIGUOUS", "NONE"] }),
+      klient_id: s("ID klienta — przelewy dopasowane do jego faktur i jego nieopłacone faktury."),
+      ...PAGE,
+    }),
+    readOnly: true,
+    run: async (a) => {
+      const p = page(a);
+      return { ...(await listPaymentsForAgent({ from: day(a, "od"), to: day(a, "do"), state: str(a, "stan"), clientId: str(a, "klient_id"), skip: p.skip, take: p.perPage })), page: p.page, perPage: p.perPage };
     },
   },
   {
@@ -772,9 +822,12 @@ export const TOOLS: McpTool[] = [
     name: "propozycje_dodaj",
     title: "Zgłoś propozycje zmian",
     description:
-      "Zgłasza hurtem propozycje do akceptacji administratora (Porządki → Propozycje). Każda: rodzaj (pole | osoba | archiwizacja | scalenie | wydzielenie), klient_id, " +
+      "Zgłasza hurtem propozycje do akceptacji administratora (Porządki → Propozycje). Każda: rodzaj (pole | osoba | archiwizacja | scalenie | wydzielenie | dopasowanie_platnosci), klient_id, " +
       "dla pola: pole + proponowane; dla osoby: osoba_id + pole + proponowane; dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id; " +
-      "dla wydzielenia (klient-zlepek → nowy klient): osoby_ids, nazwa, opcjonalnie nip, ulica, kod, miasto, faktury_nip (faktury nabywcy przechodzą), klucze_dopasowan (grupy z kalendarzy). " +
+      "dla wydzielenia (rodzaj: wydzielenie; klient-zlepek → nowy klient): osoby_ids, nazwa, opcjonalnie nip, ulica, kod, miasto, " +
+      "invoiceNip (faktury z tym NIP-em nabywcy przechodzą; bez niego — faktury z NIP-em nowego klienta), historyKeys (klucze grup z kalendarzy z narzędzia dopasowania). " +
+      "Nowy klient nie dziedziczy źródła ani tagu HubSpot zlepka. " +
+      "Dla dopasowania_platnosci (przelew z wyciągu → faktura): przelew_id i faktura_id z narzędzia platnosci; po akceptacji faktura jest zapłacona z datą przelewu. " +
       "Zawsze zrodlo, pewnosc, paczka; opcjonalnie klasa (np. miasto_slownik) — klasy zatwierdzone na stałe wykonują się od razu. " +
       "Odrzucone wcześniej zmiany są blokowane (dostaniesz komentarz odrzucenia).",
     inputSchema: obj({ propozycje: { type: "array", items: { type: "object" }, description: "Lista propozycji (maks. 500)." } }, ["propozycje"]),

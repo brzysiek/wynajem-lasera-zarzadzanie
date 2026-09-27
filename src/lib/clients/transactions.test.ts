@@ -1,18 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { invoicePaymentStatus, paymentLabel, rentalWithoutInvoiceStatus } from "./payment-status";
+import { invoicePaymentStatus, paymentCoverage, paymentLabel, rentalWithoutInvoiceStatus } from "./payment-status";
 import { buildTransactions, rentalRhythmDays, rhythmLabel, transactionTotals, typicalPayment, type TxInvoice, type TxRental } from "./transactions";
 
 const today = new Date(2026, 8, 26, 12);
 const d = (m: number, day: number, y = 2026) => new Date(y, m - 1, day, 10);
 
 describe("invoicePaymentStatus", () => {
-  it("zapłacona / gotówka / po terminie / oczekuje", () => {
+  it("wpłaty z wyciągów: po terminie tylko w sprawdzonym okresie, inaczej „nie sprawdzono”", () => {
+    const cov = { from: d(9, 1), to: d(9, 24) };
+    const base = { paidAt: null, paymentType: "transfer", cashConfirmed: false };
+    // FV 03/04/2026 — sprzed początku śledzenia wpłat.
+    expect(invoicePaymentStatus({ ...base, issueDate: d(4, 21), paymentTo: d(4, 28) }, today, cov)).toEqual({ kind: "NIE_SPRAWDZONO", days: 151 });
+    // Termin po ostatnim dniu wyciągu.
+    expect(invoicePaymentStatus({ ...base, issueDate: d(9, 18), paymentTo: d(9, 25) }, today, cov)).toEqual({ kind: "NIE_SPRAWDZONO", days: 1 });
+    // Sprawdzona i nieopłacona.
+    expect(invoicePaymentStatus({ ...base, issueDate: d(9, 2), paymentTo: d(9, 9) }, today, cov)).toEqual({ kind: "PO_TERMINIE", days: 17 });
+    // Bez żadnego wyciągu.
+    expect(invoicePaymentStatus({ ...base, issueDate: d(9, 2), paymentTo: d(9, 9) }, today, null).kind).toBe("NIE_SPRAWDZONO");
+    // Częściowa wpłata przelewem.
+    expect(invoicePaymentStatus({ ...base, paidAt: d(9, 10), paidAmount: 500, totalGross: 1451.4, issueDate: d(9, 2), paymentTo: d(9, 9) }, today, cov)).toEqual({ kind: "ZAPLACONA", paidAt: d(9, 10), partial: true });
+    expect(paymentLabel({ kind: "NIE_SPRAWDZONO", days: 152 })).toBe("Nie sprawdzono");
+    expect(paymentLabel({ kind: "ZAPLACONA", paidAt: d(9, 10), partial: true })).toBe("Częściowo zapłacona 10.09");
+  });
+  it("okres sprawdzony przez wyciągi", () => {
+    expect(paymentCoverage([])).toBeNull();
+    const since = new Date("2026-09-01T12:00:00.000Z");
+    const c = paymentCoverage([
+      { periodFrom: new Date("2026-08-01T12:00:00Z"), periodTo: new Date("2026-09-15T12:00:00Z"), uploadedAt: new Date("2026-09-16T08:00:00Z") },
+      { periodFrom: null, periodTo: null, uploadedAt: new Date("2026-09-10T08:00:00Z") },
+    ]);
+    expect(c).toEqual({ from: since, to: new Date("2026-09-15T12:00:00Z") });
+  });
+  it("zapłacona / gotówka / po terminie / oczekuje (sprawdzone wyciągiem)", () => {
+    const track = { from: d(1, 1), to: d(9, 25) };
     expect(invoicePaymentStatus({ paidAt: d(9, 20), paymentType: "transfer", paymentTo: d(9, 21), cashConfirmed: false }, today)).toEqual({
       kind: "ZAPLACONA",
       paidAt: d(9, 20),
+      partial: false,
     });
     expect(invoicePaymentStatus({ paidAt: null, paymentType: "cash", paymentTo: d(9, 1), cashConfirmed: false }, today).kind).toBe("GOTOWKA");
-    expect(invoicePaymentStatus({ paidAt: null, paymentType: "transfer", paymentTo: d(9, 21), cashConfirmed: false }, today)).toEqual({
+    expect(invoicePaymentStatus({ paidAt: null, paymentType: "transfer", paymentTo: d(9, 21), cashConfirmed: false }, today, track)).toEqual({
       kind: "PO_TERMINIE",
       days: 5,
     });
@@ -26,7 +53,7 @@ describe("invoicePaymentStatus", () => {
     expect(rentalWithoutInvoiceStatus({ startsAt: d(7, 24), cashConfirmed: true }, today).kind).toBe("GOTOWKA");
     expect(rentalWithoutInvoiceStatus({ startsAt: d(12, 3, 2025), cashConfirmed: false }, today).kind).toBe("BEZ_FAKTURY");
     expect(paymentLabel({ kind: "PO_TERMINIE", days: 5 })).toBe("Po terminie 5 dni");
-    expect(paymentLabel({ kind: "ZAPLACONA", paidAt: d(8, 28) })).toBe("Zapłacona 28.08");
+    expect(paymentLabel({ kind: "ZAPLACONA", paidAt: d(8, 28), partial: false })).toBe("Zapłacona 28.08");
   });
 });
 
@@ -66,6 +93,7 @@ describe("buildTransactions", () => {
       invoice({ id: "c", fakturowniaInvoiceId: 5, sellDate: d(3, 1), paidAt: d(3, 5) }),
     ],
     today,
+    { from: d(1, 1), to: d(9, 25) },
   );
 
   it("faktura z panelu raz, faktura w ±7 dniach dołączona, reszta osobno", () => {
@@ -91,6 +119,15 @@ describe("buildTransactions", () => {
       withoutInvoiceAllCalendar: true,
     });
     expect(typicalPayment(rows)).toBe("przelew, bywa po terminie");
+  });
+
+  it("MiWiNi bez wyciągu obejmującego FV: nigdzie „po terminie”, należność „nie sprawdzono”", () => {
+    const cov = { from: d(9, 1), to: d(9, 24) };
+    const rows2 = buildTransactions([rental({ id: "r1", startsAt: d(4, 24), fakturowniaInvoiceId: 9 })], [invoice({ id: "a", fakturowniaInvoiceId: 9, sellDate: d(4, 24) })], today, cov);
+    expect(rows2[0].status).toEqual({ kind: "NIE_SPRAWDZONO", days: 148 });
+    const t = transactionTotals(rows2, today, cov);
+    expect(t).toMatchObject({ overdueCount: 0, oldestOverdue: null, dueCount: 0, uncheckedCount: 1, uncheckedNet: 1190, paymentsAsOf: d(9, 24).toISOString() });
+    expect(typicalPayment(rows2)).toBe("przelew");
   });
 });
 

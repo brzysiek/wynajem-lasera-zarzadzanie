@@ -35,13 +35,18 @@ export function OverviewTiles({ d, cols = 4 }: { d: ClientDetail; cols?: 2 | 4 }
         tone={t.overdueCount > 0 ? "red" : "default"}
         sub={
           t.dueCount === 0
-            ? "wszystko rozliczone"
+            ? t.uncheckedCount > 0
+              ? `${t.uncheckedCount} nie sprawdzono${asOf(t.paymentsAsOf)}`
+              : `wszystko rozliczone${asOf(t.paymentsAsOf)}`
             : `${t.dueCount} ${t.dueCount === 1 ? "faktura" : "faktury"}${t.oldestOverdue ? `, ${t.oldestOverdue.days} dni po terminie` : ""}`
         }
       />
     </div>
   );
 }
+
+// „wpłaty aktualne na dd.mm” — ostatni dzień wgranych wyciągów z banku.
+export const asOf = (iso: string | null) => (iso ? ` · wpłaty na ${fmtDate(iso).slice(0, 5)}` : " · brak wyciągów");
 
 export function NextStep({ d }: { d: ClientDetail }) {
   const n = d.overview.nextStep;

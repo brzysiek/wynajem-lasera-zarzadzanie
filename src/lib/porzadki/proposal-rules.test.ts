@@ -43,6 +43,14 @@ describe("parseProposalItem", () => {
     });
     expect(parseProposalItem({ rodzaj: "wydzielenie", klient_id: "c1", nazwa: "X", ...prov }).ok).toBe(false);
   });
+  it("dopasowanie płatności: przelew → faktura", () => {
+    expect(parseProposalItem({ rodzaj: "dopasowanie_platnosci", przelew_id: "t1", faktura_id: "412345", ...prov })).toMatchObject({
+      ok: true,
+      value: { kind: "PAYMENT_MATCH", clientId: null, proposed: { transferId: "t1", fakturowniaInvoiceId: 412345 } },
+    });
+    expect(parseProposalItem({ rodzaj: "dopasowanie_platnosci", faktura_id: 1, ...prov }).ok).toBe(false);
+    expect(parseProposalItem({ rodzaj: "dopasowanie_platnosci", przelew_id: "t1", faktura_id: "FV 1", ...prov }).ok).toBe(false);
+  });
   it("nieznany rodzaj", () => {
     expect(parseProposalItem({ rodzaj: "usuniecie", klient_id: "c1", ...prov }).ok).toBe(false);
   });

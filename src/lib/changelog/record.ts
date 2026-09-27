@@ -22,7 +22,8 @@ export type ChangeOperation =
   | "SPLIT"
   | "ARCHIVE"
   | "RESTORE"
-  | "DELETE";
+  | "DELETE"
+  | "PAYMENT_MATCH";
 
 export type ChangeEntry = {
   entity: ChangeEntity;
