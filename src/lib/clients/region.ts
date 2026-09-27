@@ -63,7 +63,7 @@ const CITY_REGION: [string, RegionKey][] = [
   ),
   ...[
     "katowice", "gliwice", "bielsko biala", "czestochowa", "sosnowiec", "tychy", "rybnik", "zabrze", "bytom", "chorzow", "dabrowa gornicza", "jaworzno", "zywiec", "cieszyn",
-    "myslowice", "ruda slaska", "jastrzebie zdroj", "pszczola", "pszczyna", "zawiercie", "wodzislaw", "raciborz", "mikolow", "siemianowice", "piekary", "bedzin", "ustron", "wisla",
+    "myslowice", "ruda slaska", "jastrzebie zdroj", "pszczola", "pszczyna", "zawiercie", "wodzislaw", "raciborz", "mikolow", "siemianowice", "piekary", "bedzin", "ustron", "wisla", "tarnowskie gory", "zory", "knurow", "czeladz", "lubliniec", "radzionkow", "wojkowice", "orzesze", "laziska", "swietochlowice", "skoczow", "zabkowice",
   ].map((c): [string, RegionKey] => [c, "SLASK"]),
   ...["kielce", "busko zdroj", "sandomierz", "ostrowiec swietokrzyski", "starachowice", "skarzysko kamienna", "jedrzejow", "staszow", "pinczow", "konskie", "wloszczowa", "kazimierza wielka"].map(
     (c): [string, RegionKey] => [c, "SWIETOKRZYSKIE"],

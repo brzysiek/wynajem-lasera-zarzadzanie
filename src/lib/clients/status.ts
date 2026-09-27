@@ -43,17 +43,16 @@ export function daysAgo(date: Date, today: Date): number {
   return Math.max(0, dayIndex(today) - dayIndex(date));
 }
 
-// Reguły w tej kolejności (wniosek nr 12, lista klientów 27.09.2026):
+// Reguły (wniosek nr 12, poprawka Tomka 27.09.2026 14:20):
 // 1. blokada → NIE_KONTAKTOWAC
-// 2. ≥ 2 wynajmy w ostatnich 365 dniach → STALY
-// 3. 1 wynajem w ostatnich 180 dniach → NOWY
-// 4. rezerwacja w przyszłości → co najmniej NOWY (zdejmuje Uśpiony/Były/Potencjalny)
-// 5. brak zrealizowanych wynajmów → POTENCJALNY
-// 6. ostatni wynajem 181–365 dni temu → USPIONY, > 365 dni → BYLY
-// Wcześniej „Uśpiony” szedł przed liczeniem wynajmów — Be Beauty z 10
-// wynajmami w roku i rezerwacjami na X wychodziła jako uśpiona. Pkt 3
-// świadomie węższy niż „1 wynajem w 12 mies.” z wniosku: inaczej Uśpiony
-// nie mógłby wystąpić nigdy (jedyny wynajem 8 mies. temu to uśpiona, nie nowa).
+// 2. brak zrealizowanych wynajmów i rezerwacji → POTENCJALNY
+// 3. rezerwacja w przyszłości → NOWY, gdy nie ma zrealizowanych wynajmów albo
+//    pierwszy był ≤ 12 mies. temu; inaczej STALY
+// 4. bez rezerwacji — wg ostatniego zrealizowanego wynajmu:
+//    > 12 mies. → BYLY; 6–12 mies. → USPIONY;
+//    < 6 mies. i ≥ 2 wynajmy w 12 mies. → STALY;
+//    < 6 mies. i 1 wynajem w 12 mies.: pierwszy w historii → NOWY,
+//    klientka powracająca (wcześniejsze wynajmy) → USPIONY.
 // `realizedRentalDates` = daty rozpoczęcia wynajmów spełniających
 // isRealizedRental — filtrowanie robi wywołujący.
 export function computeClientStatus(input: {
@@ -64,10 +63,13 @@ export function computeClientStatus(input: {
 }): ClientStatus {
   if (input.statusOverride === "NIE_KONTAKTOWAC") return "NIE_KONTAKTOWAC";
   const ages = input.realizedRentalDates.map((d) => daysAgo(d, input.today));
+  if (ages.length === 0) return input.hasFutureReservation ? "NOWY" : "POTENCJALNY";
+  const firstAge = Math.max(...ages);
+  if (input.hasFutureReservation) return firstAge <= 365 ? "NOWY" : "STALY";
+  const lastAge = Math.min(...ages);
+  if (lastAge > 365) return "BYLY";
+  if (lastAge > 180) return "USPIONY";
   const inLastYear = ages.filter((a) => a <= 365).length;
   if (inLastYear >= 2) return "STALY";
-  if (inLastYear === 1 && Math.min(...ages) <= 180) return "NOWY";
-  if (input.hasFutureReservation) return "NOWY";
-  if (ages.length === 0) return "POTENCJALNY";
-  return Math.min(...ages) > 365 ? "BYLY" : "USPIONY";
+  return ages.length === 1 ? "NOWY" : "USPIONY";
 }

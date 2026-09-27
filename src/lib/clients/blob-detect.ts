@@ -57,9 +57,23 @@ export function blobScore(c: BlobInput): { score: number; reasons: string[] } {
   }
   const domains = c.contacts.map((p) => p.email?.split("@")[1]?.toLowerCase()).filter((x): x is string => !!x);
   const freeShared = [...new Set(domains)].filter((dom) => FREE_EMAIL_DOMAINS.has(dom) && domains.filter((x) => x === dom).length >= 2);
+  // Wniosek 3 (poprawka 27.09): osoby łączy WYŁĄCZNIE darmowa domena — żadna
+  // firmowa domena ani wspólny telefon — i mają różne nazwiska. To sam w
+  // sobie zlepek HubSpota (firma założona z domeny interia.eu / gmail.com).
+  const ownDomains = new Set(domains.filter((d) => !FREE_EMAIL_DOMAINS.has(d) && !isPlaceholderEmail(`x@${d}`)));
+  const phones = c.contacts.map((p) => p.phone?.replace(/\D/g, "")).filter((x): x is string => !!x);
+  const sharedPhone = phones.some((ph, i) => phones.indexOf(ph) !== i);
   if (c.hubspotCompanyId && freeShared.length && surnames.size >= 2) {
-    score += 1.5;
-    reasons.push(`firma HubSpot łączy osoby przez darmową domenę (${freeShared.join(", ")})`);
+    const onlyFree = ownDomains.size === 0 && !sharedPhone;
+    score += onlyFree ? 3 : 1.5;
+    reasons.push(`firma HubSpot łączy osoby${onlyFree ? " wyłącznie" : ""} przez darmową domenę (${freeShared.join(", ")})`);
+  }
+  // Firma HubSpot bez nazwy albo nazwana domeną („brak.pl”, „interia.eu”).
+  const nameLower = c.name.trim().toLowerCase();
+  const domainName = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(nameLower);
+  if (c.hubspotCompanyId && n >= 2 && (domainName || /^klient \d+$/.test(nameLower) || nameLower === "")) {
+    score += 3;
+    reasons.push(domainName ? `firma HubSpot nazwana domeną „${c.name.trim()}”` : "firma HubSpot bez nazwy");
   }
   const country = c.country?.trim().toLowerCase();
   const polishPhones = c.contacts.filter((p) => p.phone?.startsWith("+48")).length;

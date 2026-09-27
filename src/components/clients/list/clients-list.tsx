@@ -598,7 +598,7 @@ export function ClientsList({
                 label="Rezerwacje bez klienta"
                 n={unassigned.count}
                 sub={unassigned.months}
-                text={unassigned.examples.length ? `np. ${unassigned.examples.map((e) => `${e.name} ${dm(e.at)}`).join(", ")} – przypisać z aliasów` : unassigned.count ? "bez propozycji — wskaż klienta" : "wszystkie przypisane"}
+                text={unassigned.examples.length ? `np. ${unassigned.examples.map((e) => `${e.name} ${dm(e.at)}`).join(", ")} – przypisać z aliasów` : unassigned.count ? "brak klienta w bazie — dodaj klienta" : "wszystkie przypisane"}
                 action={unassigned.count ? { label: "Przypisz →", href: "/klienci/dopasowania#rezerwacje" } : null}
               />
               <TodayCol

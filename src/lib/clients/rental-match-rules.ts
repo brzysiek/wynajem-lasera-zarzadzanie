@@ -9,6 +9,7 @@
 // 4. seria: ten sam klucz tytułu ma już przypisaną rezerwację (albo wpis
 //    historii) — i to u jednego klienta.
 // Reszta (samo podobieństwo nazwy) czeka na potwierdzenie w dopasowaniach.
+import { tokensMatch, tokensMatchStrong } from "../history/match";
 
 export type RentalMatchMethod = "HUBSPOT" | "ALIAS" | "SIGNAL" | "SERIES";
 
@@ -65,4 +66,31 @@ export function decideRentalClient(input: {
   // Dopasowanie po samej nazwie (także „AUTO” z historii) — tylko propozycja.
   const candidates = c.clientId && !c.candidates.some((x) => x.clientId === c.clientId) ? [{ clientId: c.clientId, score: 1 }, ...c.candidates] : c.candidates;
   return { type: "pending", candidates };
+}
+
+export type CandidateNames = {
+  nameTokens: string[]; // nazwa firmy
+  persons: { first: string[]; last: string[] }[];
+  aliasTokens: string[][]; // tytuły potwierdzone przez biuro
+  cityTokens: string[];
+};
+
+// Czy propozycja klienta ma sens dla tytułu rezerwacji (wniosek 13):
+// „Aleksandra Kucewicz - W-wa” nie może podpowiadać „Katarzyny Von” — inne
+// imię i nazwisko. Wymagane: wspólne słowo z aliasu albo nazwy firmy, albo
+// nazwisko osoby; nazwisko z literówką („Gralewicz” ~ „Grylewicz”) tylko,
+// gdy zgadza się też imię (także zdrobnienie: Małgosia = Małgorzata).
+export function plausibleCandidate(titleTokens: string[], c: CandidateNames): boolean {
+  const title = titleTokens.filter((t) => t.length >= 3 && !c.cityTokens.some((x) => tokensMatchStrong(t, x)));
+  const strong = (list: string[]) => title.some((t) => t.length >= 4 && list.some((x) => tokensMatchStrong(t, x)));
+  const weak = (list: string[]) => title.some((t) => list.some((x) => tokensMatch(t, x)));
+  if (c.aliasTokens.some((a) => strong(a))) return true;
+  // Imię w nazwie firmy („Anna Nowak Gabinet”) to jeszcze nie ta sama osoba.
+  const firstNames = c.persons.flatMap((p) => p.first);
+  if (strong(c.nameTokens.filter((t) => t.length >= 4 && !firstNames.some((f) => tokensMatchStrong(t, f))))) return true;
+  return c.persons.some((p) => {
+    if (p.last.length === 0) return false;
+    if (strong(p.last)) return true;
+    return weak(p.last) && title.some((t) => p.first.some((x) => tokensMatchStrong(t, x)));
+  });
 }

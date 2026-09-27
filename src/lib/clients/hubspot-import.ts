@@ -14,6 +14,7 @@
 // podejrzane zbieżności nazw trafiają do raportu jako możliwe duplikaty.
 
 import { isPlaceholderCompany, isPlaceholderEmail } from "./placeholder";
+import { normalizeAddress } from "./address";
 
 export type HsContact = {
   id: string;
@@ -307,15 +308,22 @@ export function planHubspotImport(
       clean(primary.email)?.toLowerCase() ??
       `Klient ${primary.id}`;
 
+    // Wniosek 11: „51 Urzędnicza”, kod w polu ulica, „Poland”, „Krakow”.
+    const address = normalizeAddress({
+      street: clean(company?.address) ?? clean(primary.address),
+      zip: clean(company?.zip) ?? clean(primary.zip),
+      city: clean(company?.city) ?? clean(primary.city),
+      country: clean(company?.country) ?? clean(primary.country) ?? "Polska",
+    });
     clients.push({
       key,
       hubspotCompanyId: company?.id ?? null,
       name,
       nip: sorted.map((c) => nipOf.get(c.id)).find(Boolean) ?? null,
-      street: clean(company?.address) ?? clean(primary.address),
-      zip: clean(company?.zip) ?? clean(primary.zip),
-      city: clean(company?.city) ?? clean(primary.city),
-      country: clean(company?.country) ?? clean(primary.country) ?? "Polska",
+      street: address.street,
+      zip: address.zip,
+      city: address.city,
+      country: address.country ?? "Polska",
       transportPriceNet,
       distanceKm,
       deviceInterests: [...devices],

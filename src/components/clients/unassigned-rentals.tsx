@@ -6,7 +6,7 @@ import type { ReviewClient } from "@/lib/history/review-load";
 import type { UnassignedRental } from "@/lib/clients/rental-match";
 import { APP_CSS_VARS } from "@/components/shell-tokens";
 import { ClientPicker } from "./history-review";
-import { api } from "./client-forms";
+import { NewClientDialog, api } from "./client-forms";
 
 // Rezerwacje z kalendarza bez klienta (wniosek 13) — na górze
 // /klienci/dopasowania. Pewne dopasowania (alias, seria, HubSpot) przypisują
@@ -25,6 +25,8 @@ export function UnassignedRentals({ rentals, clients }: { rentals: UnassignedRen
   const [busy, setBusy] = useState<string | null>(null);
   const [picker, setPicker] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
+  // „Dodaj klienta” — nowy klient od razu dostaje rezerwacje z tej grupy.
+  const [adding, setAdding] = useState<Group | null>(null);
 
   const groups = useMemo(() => {
     const m = new Map<string, Group>();
@@ -46,7 +48,7 @@ export function UnassignedRentals({ rentals, clients }: { rentals: UnassignedRen
       setMsg({ text: data.message ?? "Nie udało się przypisać.", error: true });
       return;
     }
-    const name = clients.find((c) => c.id === clientId)?.name ?? "klienta";
+    const name = clients.find((c) => c.id === clientId)?.name ?? "nowego klienta";
     setMsg({ text: `Przypisano ${data.assigned} do: ${name}${data.autoAssigned ? ` · i ${data.autoAssigned} kolejnych przypisało się samo` : ""}.` });
     router.refresh();
   }
@@ -90,7 +92,17 @@ export function UnassignedRentals({ rentals, clients }: { rentals: UnassignedRen
                     {top.city ? ` (${top.city})` : ""}
                   </button>
                 ) : (
-                  <span className="text-xs text-[var(--c-muted)]">brak propozycji</span>
+                  <span className="flex items-center gap-2 text-xs text-[#B8612F]">
+                    brak klienta w bazie
+                    <button
+                      type="button"
+                      disabled={busy === g.key}
+                      onClick={() => setAdding(g)}
+                      className="h-8 whitespace-nowrap rounded-lg bg-[var(--c-brand)] px-3 text-[13px] font-semibold text-white hover:bg-[var(--c-brand-deep)] disabled:opacity-40"
+                    >
+                      Dodaj klienta
+                    </button>
+                  </span>
                 )}
                 <div className="relative">
                   <button
@@ -108,6 +120,18 @@ export function UnassignedRentals({ rentals, clients }: { rentals: UnassignedRen
           );
         })}
       </ul>
+      {adding && (
+        <NewClientDialog
+          initialName={adding.title.replace(/^\d{1,2}[:.]\d{2}\s*/, "")}
+          hint={`Rezerwacje ${adding.rentals.map((r) => dm(r.startsAt)).join(", ")} zostaną przypisane do nowego klienta.`}
+          onClose={() => setAdding(null)}
+          onCreated={(id) => {
+            const g = adding;
+            setAdding(null);
+            void assign(g, id);
+          }}
+        />
+      )}
     </section>
   );
 }

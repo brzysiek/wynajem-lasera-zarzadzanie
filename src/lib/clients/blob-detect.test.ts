@@ -68,4 +68,47 @@ describe("wykrywanie zlepków", () => {
   it("faktury na dwa NIP-y wystarczą", () => {
     expect(blobScore({ name: "X", nip: null, hubspotCompanyId: null, contacts: [p("A", "a@x.pl")], invoiceNips: ["111", "222"] }).score).toBeGreaterThanOrEqual(SUSPECT_SCORE);
   });
+  it("dwie osoby z różnymi nazwiskami łączy tylko gmail — zlepek (wniosek 3)", () => {
+    const r = blobScore({
+      name: "Salon X",
+      nip: null,
+      hubspotCompanyId: "501",
+      country: "Polska",
+      contacts: [
+        { firstName: "Anna", lastName: "Górska", email: "anna.gorska@gmail.com", phone: "+48600100200" },
+        { firstName: "Monika", lastName: "Nowak", email: "monika.n@gmail.com", phone: "+48600100201" },
+      ],
+      invoiceNips: [],
+    });
+    expect(r.score).toBeGreaterThanOrEqual(SUSPECT_SCORE);
+    expect(r.reasons.join(" | ")).toContain("wyłącznie przez darmową domenę (gmail.com)");
+  });
+  it("firma HubSpot nazwana domeną brak.pl — zlepek", () => {
+    const r = blobScore({
+      name: "brak.pl",
+      nip: null,
+      hubspotCompanyId: "502",
+      contacts: [
+        { firstName: "Anna", lastName: null, email: "anna@wp.pl" },
+        { firstName: "Ola", lastName: null, email: "ola@o2.pl" },
+      ],
+      invoiceNips: [],
+    });
+    expect(r.score).toBeGreaterThanOrEqual(SUSPECT_SCORE);
+    expect(r.reasons.join(" | ")).toContain("nazwana domeną „brak.pl”");
+  });
+  it("wspólna domena firmowa obok gmaila — nie tylko darmowa domena", () => {
+    const r = blobScore({
+      name: "Gabinet Y",
+      nip: null,
+      hubspotCompanyId: "503",
+      contacts: [
+        { firstName: "Anna", lastName: "Górska", email: "anna@gmail.com" },
+        { firstName: "Ewa", lastName: "Nowak", email: "ewa@gmail.com" },
+        { firstName: "Iza", lastName: "Lis", email: "iza@gabinety.pl" },
+      ],
+      invoiceNips: [],
+    });
+    expect(r.reasons.join(" | ")).not.toContain("wyłącznie");
+  });
 });

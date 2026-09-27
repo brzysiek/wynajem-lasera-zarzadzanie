@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideRentalClient, seriesIndex, type RentalClassification } from "./rental-match-rules";
+import { decideRentalClient, plausibleCandidate, seriesIndex, type RentalClassification } from "./rental-match-rules";
 
 const base: RentalClassification = { kind: "WYNAJEM", titleKey: "", clientId: null, matchMethod: null, matchState: "UNMATCHED", candidates: [] };
 const series = seriesIndex([
@@ -38,5 +38,25 @@ describe("przypisanie klienta do rezerwacji (wniosek 13)", () => {
   it("serwis / blokada / tytuł pominięty przez biuro — nie jest rezerwacją bez klienta", () => {
     expect(decideRentalClient({ classification: { ...base, kind: "INNE" }, hubspotContact: null, series })).toEqual({ type: "skip" });
     expect(decideRentalClient({ classification: { ...base, matchState: "IGNORED" }, hubspotContact: null, series })).toEqual({ type: "skip" });
+  });
+});
+
+describe("sensowność propozycji (wniosek 13)", () => {
+  const von = { nameTokens: ["katarzyna", "von"], persons: [{ first: ["katarzyna"], last: ["von"] }], aliasTokens: [], cityTokens: ["warszawa"] };
+  const grylewicz = { nameTokens: ["studio", "urody"], persons: [{ first: ["malgorzata"], last: ["grylewicz"] }], aliasTokens: [], cityTokens: [] };
+  it("inne imię i nazwisko → bez podpowiedzi", () => {
+    expect(plausibleCandidate(["aleksandra", "kucewicz", "wa"], von)).toBe(false);
+  });
+  it("literówka w nazwisku tylko razem z imieniem (także zdrobnieniem)", () => {
+    expect(plausibleCandidate(["gralewicz", "malgosia"], grylewicz)).toBe(true);
+    expect(plausibleCandidate(["gralewicz", "anna"], grylewicz)).toBe(false);
+    expect(plausibleCandidate(["grylewicz"], grylewicz)).toBe(true);
+  });
+  it("samo imię w nazwie firmy nie wystarczy", () => {
+    expect(plausibleCandidate(["anna", "kowal"], { nameTokens: ["anna", "nowak", "gabinet"], persons: [{ first: ["anna"], last: ["nowak"] }], aliasTokens: [], cityTokens: [] })).toBe(false);
+  });
+  it("alias albo nazwa firmy wystarczy", () => {
+    expect(plausibleCandidate(["miwini"], { nameTokens: ["studio", "urody", "miwini"], persons: [], aliasTokens: [], cityTokens: [] })).toBe(true);
+    expect(plausibleCandidate(["sha", "twardowsksa"], { nameTokens: ["dominika"], persons: [], aliasTokens: [["sha", "twardowsksa"]], cityTokens: [] })).toBe(true);
   });
 });

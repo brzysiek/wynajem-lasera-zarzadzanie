@@ -83,9 +83,32 @@ function levenshteinAtMostOne(a: string, b: string): boolean {
   return edits + (a.length - i) + (b.length - j) <= 1;
 }
 
-// Odmiana i literówki: „lucyny” ~ „lucyna”, „krakow” ~ „krakowa”, „bottega” ~ „botega”.
+// Zdrobnienia imion z kalendarzy (tytuły bez polskich znaków) → forma pełna:
+// „Gralewicz Małgosia” to „Małgorzata Grylewicz” (wniosek 13).
+const DIMINUTIVES: Record<string, string> = {
+  malgosia: "malgorzata", gosia: "malgorzata", gosi: "malgorzata", malgosi: "malgorzata",
+  kasia: "katarzyna", kasi: "katarzyna", basia: "barbara", basi: "barbara", ania: "anna", ani: "anna", hania: "hanna",
+  asia: "joanna", asi: "joanna", ola: "aleksandra", oli: "aleksandra", magda: "magdalena", magdy: "magdalena",
+  ula: "urszula", uli: "urszula", iza: "izabela", izy: "izabela", ela: "elzbieta", eli: "elzbieta", jola: "jolanta", joli: "jolanta",
+  zuzia: "zuzanna", zuzi: "zuzanna", krysia: "krystyna", krysi: "krystyna", danka: "danuta", renia: "renata", reni: "renata",
+  gabrysia: "gabriela", gabrysi: "gabriela", julka: "julia", julki: "julia", emilka: "emilia", wika: "wiktoria", dominika: "dominika",
+  agnieszka: "agnieszka", aga: "agnieszka", agi: "agnieszka", beti: "beata", ewcia: "ewa", monia: "monika", moni: "monika",
+};
+const canonName = (t: string) => DIMINUTIVES[t] ?? t;
+
+// Pewne dopasowanie słowa: równe, wspólny początek (odmiana) albo zdrobnienie —
+// bez tolerancji literówki (wniosek 13: literówka w nazwisku tylko razem z imieniem).
+export function tokensMatchStrong(a: string, b: string): boolean {
+  if (a === b) return true;
+  if ((a in DIMINUTIVES || b in DIMINUTIVES) && canonName(a) === canonName(b)) return true;
+  return a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a));
+}
+
+// Odmiana i literówki: „lucyny” ~ „lucyna”, „krakow” ~ „krakowa”, „bottega” ~ „botega”;
+// zdrobnienia imion: „malgosia” ~ „malgorzata”.
 export function tokensMatch(a: string, b: string): boolean {
   if (a === b) return true;
+  if ((a in DIMINUTIVES || b in DIMINUTIVES) && canonName(a) === canonName(b)) return true;
   if (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a))) return true;
   return a.length >= 5 && b.length >= 5 && levenshteinAtMostOne(a, b);
 }

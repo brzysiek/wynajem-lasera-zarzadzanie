@@ -4,6 +4,7 @@ import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { normalizePolishPhone } from "@/lib/reminders";
 import { parseClientPatch, parseContactInput } from "@/lib/clients/validate";
+import { normalizeAddressPatch } from "@/lib/clients/address";
 import { logInfo } from "@/lib/logger";
 
 // Nowy klient z panelu (spec 3.2 „+ Nowy klient”) — od razu z osobą
@@ -20,7 +21,9 @@ export async function POST(req: NextRequest) {
   const contact = parseContactInput(body.contact ?? {}, { normalizePhone: normalizePolishPhone }, { requireName: true });
   if (!contact.ok) return NextResponse.json({ message: contact.message }, { status: 400 });
 
-  const { deviceInterests, ...clientData } = client.data;
+  const addr = normalizeAddressPatch(client.data, { street: null, zip: null, city: null, country: null });
+  if (!addr.ok) return NextResponse.json({ message: addr.message }, { status: 400 });
+  const { deviceInterests, ...clientData } = addr.patch;
   const created = await prisma.client.create({
     data: {
       ...dropNullJson(clientData, CLIENT_JSON_FIELDS),

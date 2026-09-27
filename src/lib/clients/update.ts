@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizePolishPhone } from "@/lib/reminders";
 import { parseClientPatch, parseContactInput } from "@/lib/clients/validate";
 import { CLIENT_CACHE_KEYS, CONTACT_CACHE_KEYS, refreshFutureRentalCaches } from "@/lib/clients/refresh";
+import { normalizeAddressPatch } from "@/lib/clients/address";
 import { AGENT_CLIENT_FIELDS, AGENT_PROPOSAL_CLIENT_FIELDS } from "@/lib/permissions";
 import { changedFields } from "@/lib/changelog/diff";
 import { parseProvenance } from "@/lib/changelog/provenance";
@@ -64,6 +65,11 @@ export async function patchClient(
 
   const current = await prisma.client.findUnique({ where: { id } });
   if (!current) return { ok: false, status: 404, message: "Nie znaleziono klienta." };
+  // Wniosek 11: kod i miasto z pola „ulica”, „51 Urzędnicza”, „Krakow”…
+  const addr = normalizeAddressPatch(rest, { street: current.street, zip: current.zip, city: current.city, country: current.country });
+  if (!addr.ok) return { ok: false, status: 400, message: addr.message };
+  Object.assign(rest, addr.patch);
+  Object.assign(parsed.data, addr.patch);
   const changes = changedFields(current as unknown as Record<string, unknown>, parsed.data);
 
   const fieldMeta = stamp(current.fieldMeta, changes.map((c) => c.field), actor, provenance.value);
@@ -79,7 +85,9 @@ export async function patchClient(
     await recordChanges(tx, { userId: actor.userId, provenance: provenance.value, approvedById: opts.approvedById }, fieldEntries("CLIENT", id, id, changes));
   });
 
-  const touchesRentals = CLIENT_CACHE_KEYS.some((k) => k in parsed.data);
+  // Tylko faktyczna zmiana pól z wynajmu odświeża PRZYSZŁE wynajmy (zakończone
+  // zostają z danymi z tamtego dnia — refresh.ts).
+  const touchesRentals = changes.some((c) => (CLIENT_CACHE_KEYS as readonly string[]).includes(c.field));
   const refreshedRentals = touchesRentals ? await refreshFutureRentalCaches({ clientId: id, clientFields: true }) : 0;
   // Nowy / zmieniony NIP → uzupełnienie z Białej listy i CEIDG w tle
   // (błąd rejestru nie wpływa na zapis).

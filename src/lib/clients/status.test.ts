@@ -8,56 +8,40 @@ function status(dates: Date[], statusOverride: "NIE_KONTAKTOWAC" | null = null, 
   return computeClientStatus({ statusOverride, realizedRentalDates: dates, today, hasFutureReservation });
 }
 
-describe("computeClientStatus", () => {
+describe("computeClientStatus (wniosek 12, poprawka 27.09 14:20)", () => {
   it("blokada wygrywa ze wszystkim", () => {
     expect(status([ago(1), ago(30)], "NIE_KONTAKTOWAC")).toBe("NIE_KONTAKTOWAC");
+    expect(status([ago(400)], "NIE_KONTAKTOWAC", true)).toBe("NIE_KONTAKTOWAC");
   });
 
-  it("bez zrealizowanych wynajmów → POTENCJALNY", () => {
+  it("bez wynajmów i rezerwacji → POTENCJALNY", () => {
     expect(status([])).toBe("POTENCJALNY");
   });
 
-  it("jeden świeży wynajem → NOWY", () => {
-    expect(status([ago(10)])).toBe("NOWY");
-  });
-
-  it("dwa wynajmy w ostatnim roku → STALY", () => {
-    expect(status([ago(10), ago(200)])).toBe("STALY");
-  });
-
-  it("drugi wynajem dokładnie 365 dni temu wciąż się liczy → STALY", () => {
-    expect(status([ago(10), ago(365)])).toBe("STALY");
-  });
-
-  it("drugi wynajem 366 dni temu już nie → NOWY", () => {
-    expect(status([ago(10), ago(366)])).toBe("NOWY");
-  });
-
-  it("ostatni wynajem 180 dni temu → jeszcze nie uśpiony", () => {
-    expect(status([ago(180)])).toBe("NOWY");
-  });
-
-  it("jedyny wynajem w roku 181–365 dni temu → USPIONY", () => {
-    expect(status([ago(181)])).toBe("USPIONY");
-    expect(status([ago(365), ago(900)])).toBe("USPIONY");
-  });
-
-  it("rezerwacja w przyszłości zdejmuje Uśpiony", () => {
-    expect(status([ago(200)], null, true)).toBe("NOWY");
-  });
-
-  it("ostatni wynajem 366 dni temu → BYLY", () => {
-    expect(status([ago(366), ago(500)])).toBe("BYLY");
-  });
-
-  it("kilka wynajmów w roku → STALY, nawet gdy ostatni > 180 dni (wniosek 12, Be Beauty)", () => {
-    expect(status([ago(200), ago(300)])).toBe("STALY");
-  });
-
-  it("rezerwacja w przyszłości zdejmuje Były i Potencjalny", () => {
-    expect(status([ago(400), ago(500)], null, true)).toBe("NOWY");
+  it("rezerwacja: bez historii albo pierwszy wynajem ≤ 12 mies. → NOWY, inaczej STALY", () => {
     expect(status([], null, true)).toBe("NOWY");
-    expect(status([ago(400)], "NIE_KONTAKTOWAC", true)).toBe("NIE_KONTAKTOWAC");
+    expect(status([ago(200)], null, true)).toBe("NOWY");
+    expect(status([ago(10), ago(365)], null, true)).toBe("NOWY");
+    expect(status([ago(184), ago(400)], null, true)).toBe("STALY"); // Be Beauty
+    expect(status([ago(800)], null, true)).toBe("STALY");
+  });
+
+  it("bez rezerwacji: > 12 mies. → BYLY, 6–12 mies. → USPIONY", () => {
+    expect(status([ago(366), ago(500)])).toBe("BYLY");
+    expect(status([ago(181)])).toBe("USPIONY");
+    expect(status([ago(200), ago(300)])).toBe("USPIONY");
+    expect(status([ago(365)])).toBe("USPIONY");
+  });
+
+  it("bez rezerwacji, < 6 mies.: 2+ w 12 mies. → STALY", () => {
+    expect(status([ago(10), ago(200)])).toBe("STALY");
+    expect(status([ago(180), ago(365)])).toBe("STALY");
+  });
+
+  it("bez rezerwacji, < 6 mies., 1 w 12 mies.: pierwszy w historii → NOWY, powracająca → USPIONY", () => {
+    expect(status([ago(10)])).toBe("NOWY");
+    expect(status([ago(180)])).toBe("NOWY");
+    expect(status([ago(10), ago(366)])).toBe("USPIONY");
   });
 });
 

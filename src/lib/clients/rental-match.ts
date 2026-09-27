@@ -4,7 +4,7 @@ import { normalizeTitle } from "@/lib/history/normalize-title";
 import { recordChanges, type ChangeEntry } from "@/lib/changelog/record";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { logError, logInfo } from "@/lib/logger";
-import { decideRentalClient, seriesIndex, RENTAL_MATCH_LABEL, type RentalMatchMethod } from "@/lib/clients/rental-match-rules";
+import { decideRentalClient, plausibleCandidate, seriesIndex, RENTAL_MATCH_LABEL, type CandidateNames, type RentalMatchMethod } from "@/lib/clients/rental-match-rules";
 
 // Rezerwacje bez klienta (wniosek nr 13). Wynajem z kalendarza dostawał
 // klienta tylko przez kontakt HubSpot — rezerwacje wpisane w kalendarzu
@@ -121,7 +121,7 @@ export async function loadUnassignedRentals(opts: { now?: Date } = {}): Promise<
   if (rows.length === 0) return [];
   const ctx = await loadContext();
   const hs = await hubspotContacts(rows);
-  const out: (UnassignedRental & { rawCandidates: { clientId: string; score: number }[] })[] = [];
+  const out: (UnassignedRental & { rawCandidates: { clientId: string; score: number }[]; sure: boolean })[] = [];
   for (const r of rows) {
     const { classification, decision } = decide(ctx, r, hs);
     if (decision.type === "skip") continue;
@@ -137,16 +137,38 @@ export async function loadUnassignedRentals(opts: { now?: Date } = {}): Promise<
       eventType: r.eventType,
       candidates: [],
       rawCandidates: raw,
+      sure: decision.type === "assign",
     });
   }
   const ids = [...new Set(out.flatMap((o) => o.rawCandidates.map((c) => c.clientId)))];
-  const clients = ids.length ? await prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, shortName: true, city: true } }) : [];
+  const clients = ids.length
+    ? await prisma.client.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, name: true, shortName: true, city: true, contacts: { select: { firstName: true, lastName: true } }, aliases: { select: { alias: true } } },
+      })
+    : [];
   const byId = new Map(clients.map((c) => [c.id, c]));
-  return out.map(({ rawCandidates, ...o }) => ({
+  const tokens = (s: string | null | undefined) => (s ? normalizeTitle(s).tokens : []);
+  const names = new Map<string, CandidateNames>(
+    clients.map((c) => [
+      c.id,
+      {
+        nameTokens: [...tokens(c.name), ...tokens(c.shortName)],
+        persons: c.contacts.map((p) => ({ first: tokens(p.firstName), last: tokens(p.lastName) })),
+        aliasTokens: c.aliases.map((a) => a.alias.split(" ").filter(Boolean)),
+        cityTokens: tokens(c.city),
+      },
+    ]),
+  );
+  return out.map(({ rawCandidates, sure, ...o }) => ({
     ...o,
     candidates: rawCandidates.flatMap((c) => {
       const cl = byId.get(c.clientId);
-      return cl ? [{ clientId: cl.id, name: cl.name, shortName: cl.shortName, city: cl.city, score: c.score }] : [];
+      if (!cl) return [];
+      // Pewne przypisanie (alias, seria, HubSpot, telefon) zostaje; propozycje po nazwie
+      // tylko, gdy zgadza się nazwisko / nazwa / alias (wniosek 13).
+      if (!sure && !plausibleCandidate(tokens(o.title), names.get(cl.id)!)) return [];
+      return [{ clientId: cl.id, name: cl.name, shortName: cl.shortName, city: cl.city, score: c.score }];
     }),
   }));
 }
