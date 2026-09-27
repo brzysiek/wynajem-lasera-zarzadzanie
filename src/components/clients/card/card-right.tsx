@@ -5,11 +5,12 @@ import type { ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { cardQuality } from "@/lib/clients/card-quality";
 import { AgentModeContext, INPUT, api } from "../client-forms";
 import { BTN_OUTLINE, BTN_PRIMARY, FilterLink, LABEL, LINK, Missing, Quote, Section, dm, dmy, money, num } from "./kit";
-import { TermsSection, agreedTotal } from "./card-terms";
+import { agreedTotal } from "./card-terms";
 
 // Prawa kolumna karty wg projektu Main.dc.html: Następny krok (blok na górze),
-// Rytm współpracy, Szanse sprzedaży (kafle), Oś zdarzeń, Warunki handlowe,
-// Faktury i płatności (sekcja kremowa), Jakość danych.
+// Rytm współpracy, Szanse sprzedaży (kafle), Oś zdarzeń. Pod spodem, w
+// osobnym rzędzie karty: Faktury i płatności (sekcja kremowa, na równi z
+// Warunkami handlowymi po lewej) i Jakość danych.
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 const GRID = { gridTemplateColumns: "56px repeat(12, minmax(0, 1fr))" };
@@ -521,12 +522,14 @@ function CashForm({ fakturowniaId, onDone, onCancel, notify }: { fakturowniaId: 
   );
 }
 
-function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail; onShowAll: () => void; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
+export function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail; onShowAll: () => void; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
   const agent = useContext(AgentModeContext);
   const [cashFor, setCashFor] = useState<number | null>(null);
   const rows = d.transactions.filter((t) => t.invoice).slice(0, 6);
   const t = d.txTotals;
-  const cols = { gridTemplateColumns: "120px 110px minmax(0, 1fr) 190px 70px" };
+  // Stałe szerokości kolumn z kwotą i datą (kwota „1 480,00 / 1 820,40 zł”
+  // nie może wchodzić na „Wpłatę”); status zawija się w swojej kolumnie.
+  const cols = { gridTemplateColumns: "96px 84px 172px minmax(0, 1fr) 64px" };
 
   async function undoCash(fakturowniaId: number) {
     if (!window.confirm("Cofnąć oznaczenie „opłacona gotówką”?")) return;
@@ -558,11 +561,11 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
         <p className="text-[13px] text-[#5C6166]">Brak faktur w panelu.</p>
       ) : (
         <div className="overflow-x-auto">
-          <div className="min-w-[620px]">
+          <div className="min-w-[560px]">
             <div className={`grid gap-3 border-b border-[#E6D5C6] pb-2 ${LABEL}`} style={cols}>
               <span>Numer</span>
               <span>Sprzedaż</span>
-              <span>Netto / brutto</span>
+              <span className="whitespace-nowrap">Netto / brutto</span>
               <span>Wpłata</span>
               <span />
             </div>
@@ -578,7 +581,7 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
                       {r.net != null ? num(r.net, 2) : "—"}
                       {r.invoice!.totalGross != null ? ` / ${num(r.invoice!.totalGross, 2)}` : ""} zł
                     </span>
-                    <span className={`text-[12.5px] ${statusColor(r.status.kind)}`} title={r.status.label}>
+                    <span className={`min-w-0 text-[12.5px] ${statusColor(r.status.kind)}`} title={r.status.label}>
                       {r.status.kind === "NIE_SPRAWDZONO" && !t.paymentsAsOf ? "brak danych z banku" : r.status.label.charAt(0).toLowerCase() + r.status.label.slice(1)}
                     </span>
                     <span className="text-right text-[12.5px]">
@@ -620,7 +623,7 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
 
 // ------------------------------------------------------------------ Jakość danych
 
-function QualitySection({ d, onShowData }: { d: ClientDetail; onShowData: () => void }) {
+export function QualitySection({ d, onShowData }: { d: ClientDetail; onShowData: () => void }) {
   const q = cardQuality({
     status: d.summary.status,
     name: d.name,
@@ -683,7 +686,7 @@ export function CardRight({
   onChanged: (n: ClientDetail) => void;
   notify: (t: string, e?: boolean) => void;
   onOpenItem: (h: ClientHistoryItem) => void;
-  onTab: (t: "transakcje" | "komunikacja" | "dane") => void;
+  onTab: (t: "komunikacja") => void;
   top?: ReactNode; // blok „Następny krok”
 }) {
   return (
@@ -692,9 +695,6 @@ export function CardRight({
       <RhythmSection d={d} />
       <OpportunitiesSection d={d} onChanged={onChanged} notify={notify} />
       <TimelineSection d={d} onChanged={onChanged} notify={notify} onOpenItem={onOpenItem} onShowAll={() => onTab("komunikacja")} />
-      <TermsSection d={d} onChanged={onChanged} notify={notify} />
-      <InvoicesSection d={d} onShowAll={() => onTab("transakcje")} onChanged={onChanged} notify={notify} />
-      <QualitySection d={d} onShowData={() => onTab("dane")} />
     </div>
   );
 }

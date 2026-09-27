@@ -584,7 +584,7 @@ function LinksSection({
   );
 }
 
-function Tile({ children }: { children: ReactNode }) {
+export function Tile({ children }: { children: ReactNode }) {
   return <div className="border border-[#CFE3DA] bg-white px-4 py-3.5 empty:hidden">{children}</div>;
 }
 

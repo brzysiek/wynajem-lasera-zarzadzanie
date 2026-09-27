@@ -19,8 +19,9 @@ import { ArchiveDialog } from "@/components/porzadki/archive-dialog";
 import { ARCHIVE_REASON_LABEL, type ArchiveReasonKey } from "@/lib/porzadki/labels";
 import type { ReviewClient } from "@/lib/history/review-load";
 import { CardHeader, Indicators, NextStepBanner, TaskDialog } from "./card-header";
-import { CardLeft } from "./card-left";
-import { CardRight } from "./card-right";
+import { CardLeft, Tile } from "./card-left";
+import { CardRight, InvoicesSection, QualitySection } from "./card-right";
+import { TermsSection } from "./card-terms";
 
 // Pełna karta klienta /klienci/[id] z zakładkami (docs/crm/prompt-claude-code-crm-3b-karta-klienta.md,
 // wygląd: docs/crm/zrzuty/karta-*.png). Nagłówek wspólny dla zakładek,
@@ -242,7 +243,9 @@ export function ClientFullCard({
           </div>
         )}
         <Indicators d={d} />
-        <div className="flex flex-col gap-7 px-4 pb-10 pt-5 md:px-7 xl:flex-row xl:items-start">
+        {/* Dwie kolumny; drugi rząd: Warunki handlowe (lewa) na równi z
+            Fakturami i płatnościami (prawa), pod nimi Jakość danych. */}
+        <div className="flex flex-col gap-7 px-4 pb-10 pt-5 md:px-7 xl:grid xl:grid-cols-[470px_minmax(0,1fr)] xl:items-start xl:gap-x-7 xl:gap-y-6">
           <CardLeft d={d} onChanged={setD} notify={notify} isAdmin={isAdmin} isAgent={isAgent} pendingProposals={pendingProposals} onDialog={setDialog} />
           <CardRight
             d={d}
@@ -252,6 +255,17 @@ export function ClientFullCard({
             onTab={switchTab}
             top={<NextStepBanner d={d} onChanged={setD} notify={notify} onTask={(title, due) => setTask({ title, due })} />}
           />
+          <div className="flex xl:self-stretch [&>*]:w-full">
+            <Tile>
+              <TermsSection d={d} onChanged={setD} notify={notify} />
+            </Tile>
+          </div>
+          <div className="flex min-w-0 xl:self-stretch [&>*]:w-full">
+            <InvoicesSection d={d} onShowAll={() => switchTab("transakcje")} onChanged={setD} notify={notify} />
+          </div>
+          <div className="min-w-0 xl:col-start-2">
+            <QualitySection d={d} onShowData={() => switchTab("dane")} />
+          </div>
         </div>
         {dialogs}
       </div>
