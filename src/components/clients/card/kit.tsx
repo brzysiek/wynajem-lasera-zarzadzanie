@@ -70,13 +70,33 @@ export function Row({ label, children, src, labelWidth = 150, valueClass = "text
     <div className="grid items-baseline gap-3 border-b border-[#E4E7EA] py-3" style={{ gridTemplateColumns: `${labelWidth}px minmax(0, 1fr)` }}>
       <div className={LABEL}>{label}</div>
       {src ? (
-        <div className="flex min-w-0 items-baseline justify-between gap-2.5">
-          <span className={`min-w-0 break-words text-[16px] ${valueClass}`}>{children}</span>
-          {src.length > 0 && <span className="whitespace-nowrap text-[12px] text-[#767C82]">{src.map(sourceLabel).join(" · ")}</span>}
-        </div>
+        <SourcedValue src={src.map(sourceLabel).join(" · ")} valueClass={valueClass}>
+          {children}
+        </SourcedValue>
       ) : (
         <div className={`min-w-0 break-words text-[16px] ${valueClass}`}>{children}</div>
       )}
+    </div>
+  );
+}
+
+// Krótkie źródło (np. „CEIDG”) — po prawej w tej samej linii; długie (opis od
+// agenta) — pod wartością, zawijane, żeby nie ściskało wartości do zera.
+function SourcedValue({ src, valueClass, children }: { src: string; valueClass: string; children: ReactNode }) {
+  if (!src) return <div className={`min-w-0 break-words text-[16px] ${valueClass}`}>{children}</div>;
+  if (src.length <= 22)
+    return (
+      <div className="flex min-w-0 items-baseline justify-between gap-2.5">
+        <span className={`min-w-0 break-words text-[16px] ${valueClass}`}>{children}</span>
+        <span className="shrink-0 whitespace-nowrap text-[12px] text-[#767C82]">{src}</span>
+      </div>
+    );
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className={`break-words text-[16px] ${valueClass}`}>{children}</span>
+      <span className="break-words text-[12px] text-[#767C82]" title={src}>
+        {src.length > 90 ? `${src.slice(0, 90)}…` : src}
+      </span>
     </div>
   );
 }

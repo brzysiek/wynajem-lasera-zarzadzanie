@@ -81,10 +81,17 @@ export function deviceConfig(rentals: RhythmRental[]): DeviceConfig | null {
     const f = splitDevice(r.device).family;
     byFamily.set(f, [...(byFamily.get(f) ?? []), r]);
   }
-  const [family, list] = [...byFamily.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+  const [, list] = [...byFamily.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+  // Rodzina = wspólny początek nazw („LightSheer Desire” + „LightSheer Quattro”
+  // → „LightSheer”); jedno urządzenie („Alma Harmony XL”) = cała nazwa.
+  const names = [...new Set(list.map((r) => r.device!.trim()))];
+  const words = names.map((n) => n.split(/\s+/));
+  let common = 0;
+  while (words.every((w) => w[common] !== undefined && w[common] === words[0][common])) common++;
+  const family = names.length === 1 ? names[0] : words[0].slice(0, Math.max(1, common)).join(" ");
   const models = new Map<string, number>();
   for (const r of list) {
-    const m = splitDevice(r.device!).model;
+    const m = names.length === 1 ? r.device!.trim() : r.device!.trim().split(/\s+/).slice(Math.max(1, common)).join(" ") || r.device!.trim();
     models.set(m, (models.get(m) ?? 0) + 1);
   }
   const heads = list.map((r) => r.heads).filter((h): h is number => h != null);

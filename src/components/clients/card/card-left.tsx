@@ -43,7 +43,19 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
   const [edit, setEdit] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const p = d.profile;
-  const src = (f: string) => fieldSources(d, f);
+  // Źródło tylko przy wypełnionym polu (puste = „[uzupełnij]” bez źródła).
+  const filled: Record<string, boolean> = {
+    name: !!d.name,
+    shortName: !!p.shortName,
+    legalForm: !!p.legalForm,
+    businessStartDate: !!p.businessStartDate,
+    nip: !!d.nip,
+    regon: !!p.regon,
+    pkd: p.pkd.length > 0,
+    street: !!(d.street || d.city),
+    vatStatus: !!p.vatStatus,
+  };
+  const src = (f: string) => (filled[f] === false ? [] : fieldSources(d, f));
   const verified = [...["name", "nip", "regon", "legalForm", "pkd", "street", "vatStatus"].map((f) => d.fieldMeta[f]?.verifiedAt ?? null), p.enrichedAt]
     .filter((x): x is string => !!x)
     .sort()
@@ -134,7 +146,7 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
           <Row label="Adres" labelWidth={124} src={src("street")}>
             {d.street || d.city ? [d.street, [d.zip, d.city].filter(Boolean).join(" ")].filter(Boolean).join(", ") : <Missing>brak adresu</Missing>}
           </Row>
-          <Row label="Status VAT" labelWidth={124} src={p.vatStatus ? src("vatStatus") : ["bialalista"]}>
+          <Row label="Status VAT" labelWidth={124} src={src("vatStatus")}>
             {p.vatStatus ? `${p.vatStatus}${p.bankAccounts.length ? ` · ${p.bankAccounts.length} rach.` : ""}` : <Missing>do sprawdzenia</Missing>}
           </Row>
           <div className="flex flex-wrap gap-x-5 pt-3 text-[14px] text-[#767C82]">

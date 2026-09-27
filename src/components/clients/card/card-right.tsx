@@ -22,8 +22,9 @@ function RhythmSection({ d }: { d: ClientDetail }) {
   const risk = r.churnRisk;
   const price = agreedTotal(d).total;
   const year = new Date().getFullYear();
-  const invoicedThisYear = d.transactions.filter((t) => t.invoice && new Date(t.date).getFullYear() === year && t.net);
-  const avgInvoice = invoicedThisYear.length ? invoicedThisYear.reduce((s, t) => s + (t.net ?? 0), 0) / invoicedThisYear.length : null;
+  // Bez ceny ustalonej: średnia z tegorocznych wynajmów i faktur z kwotą.
+  const withAmount = d.transactions.filter((t) => new Date(t.date).getFullYear() === year && t.net);
+  const avgInvoice = withAmount.length ? withAmount.reduce((s, t) => s + (t.net ?? 0), 0) / withAmount.length : null;
   return (
     <Section title="Rytm współpracy" gap="gap-4" action={<Legend />}>
       {r.grid.length === 0 ? (
@@ -65,12 +66,16 @@ function RhythmSection({ d }: { d: ClientDetail }) {
         </div>
       )}
       <div className="grid grid-cols-2 gap-4 border-t border-[#E4E7EA] pt-4 md:grid-cols-4">
-        <Stat label="Urządzenie" value={dc ? `${dc.family}${dc.heads ? ` · ${dc.heads} ${dc.heads === 1 ? "głowica" : "głowice"}` : ""}` : "—"} sub={dc?.models.map((m) => `${m.name} ${m.count}×`).join(" · ")} />
+        <Stat
+          label="Urządzenie"
+          value={dc ? `${dc.family}${dc.heads ? ` · ${dc.heads} ${dc.heads === 1 ? "głowica" : "głowice"}` : ""}` : "—"}
+          sub={dc ? (dc.models.length > 1 ? dc.models.map((m) => `${m.name} ${m.count}×`).join(" · ") : `${dc.models[0]?.count ?? 0}× wynajem`) : null}
+        />
         <Stat label="Czas" value={d.cardFacts.typicalDays ? `${d.cardFacts.typicalDays} ${d.cardFacts.typicalDays === 1 ? "dzień" : "dni"}` : "—"} sub="wg rezerwacji w panelu" />
         <Stat
           label={price ? "Cena ustalona" : `Cena (${year})`}
           value={price ? `${money(price)} netto` : avgInvoice ? `≈ ${money(Math.round(avgInvoice))} netto` : "—"}
-          sub={price ? (d.transportPriceNet ? "wynajem + transport" : "wynajem (bez transportu)") : avgInvoice ? "średnia z faktur" : "brak faktur w tym roku"}
+          sub={price ? (d.transportPriceNet ? "wynajem + transport" : "wynajem (bez transportu)") : avgInvoice ? "średnia z wynajmów i faktur" : "brak kwot w tym roku"}
         />
         <Stat
           label="Ryzyko odejścia"

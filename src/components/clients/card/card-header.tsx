@@ -158,7 +158,7 @@ export function Indicators({ d }: { d: ClientDetail }) {
     <div className="grid grid-cols-2 gap-6 bg-[#EAF4FB] px-4 py-[26px] md:grid-cols-3 md:px-12 xl:grid-cols-5">
       <Indicator
         label="Następny wynajem"
-        value={n ? `${weekdayShort(n.startsAt)} ${dm(n.startsAt)} · ${n.time ?? "godz. ?"}` : r.forecast[0] ? `≈ ${dm(r.forecast[0])}` : "—"}
+        value={n ? `${weekdayShort(n.startsAt)} ${dm(n.startsAt)}${n.time ? ` · ${n.time}` : ""}` : r.forecast[0] ? `≈ ${dm(r.forecast[0])}` : "—"}
         sub={
           n ? (
             <>
@@ -237,7 +237,7 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
   const [title, ...rest] = (step?.text ?? "").split("\n");
   const derived = d.overview.nextStep;
   const r = d.rhythm;
-  const footer = [r.forecast.length ? `prognoza: ${r.forecast.map((x) => dm(x)).join(", ")}` : null, r.rhythmDays ? `rytm co ${r.rhythmDays} dni` : null, r.churnRisk ? `ryzyko odejścia: ${r.churnRisk.level}` : null]
+  const footer = [r.forecast.length ? `prognoza: ${r.forecast.slice(0, 3).map((x) => dm(x)).join(", ")}` : null, r.rhythmDays ? `rytm co ${r.rhythmDays} dni` : null, r.churnRisk ? `ryzyko odejścia: ${r.churnRisk.level}` : null]
     .filter(Boolean)
     .join(" · ");
   const overdue = step?.dueAt && new Date(step.dueAt).getTime() < new Date().setHours(0, 0, 0, 0);

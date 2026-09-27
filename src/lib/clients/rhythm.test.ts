@@ -75,6 +75,9 @@ describe("pola liczone — przypadki brzegowe", () => {
     expect(headsFromText("jedna głowica")).toBe(1);
     expect(headsFromText("MiWiNi")).toBeNull();
     expect(deviceConfig([])).toBeNull();
+    // Jedno urządzenie — cała nazwa, nie pierwsze słowo („Alma”).
+    const alma = deviceConfig(Array.from({ length: 8 }, () => ({ at: at(2026, 5, 1), device: "Alma Harmony XL", heads: null })));
+    expect(alma).toMatchObject({ family: "Alma Harmony XL", models: [{ name: "Alma Harmony XL", count: 8 }] });
   });
   it("święta", () => {
     expect(isHoliday(noon(2026, 12, 25))).toBe(true);
