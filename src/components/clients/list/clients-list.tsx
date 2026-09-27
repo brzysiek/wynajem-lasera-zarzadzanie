@@ -775,7 +775,7 @@ export function ClientsList({
       </div>
 
       {tab === "KLIENCI" && mode === "mapa" ? (
-        <MapView rows={visible} canEdit={!agent} />
+        <MapView rows={visible} canEdit={!agent} todayIso={todayIso} />
       ) : tab === "KLIENCI" && mode === "rytm" ? (
         <RhythmView rows={visible} monthLabels={monthLabels} currentMonth={11} />
       ) : tab === "POTENCJALNI" ? (
