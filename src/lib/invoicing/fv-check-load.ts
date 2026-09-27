@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { daysSince, suggestInvoices, FV_MATCH_WINDOW_DAYS, type FvSuggestion } from "@/lib/invoicing/fv-check";
+import { invoiceNetOf } from "@/lib/clients/terms-rules";
 
 // Lista „FV bez faktury” (Finanse → Faktury VAT, GET /api/rentals/fv-bez-faktury).
 // Reguła — patrz src/lib/invoicing/fv-check.ts. Bez dolnego progu daty
@@ -17,6 +18,8 @@ export type FvWithoutInvoiceRow = {
   nip: string | null;
   deviceName: string;
   totalGross: string;
+  // Netto na fakturę (część z warunków klienta albo całość).
+  invoiceNet: string;
   paymentMethod: "CASH" | "TRANSFER";
   suggestions: FvSuggestion[];
 };
@@ -42,7 +45,7 @@ export async function loadFvWithoutInvoice(now = new Date()): Promise<FvWithoutI
       contactNameCache: true,
       client: { select: { name: true, nip: true } },
       device: { select: { name: true } },
-      finance: { select: { totalGross: true, paymentMethod: true } },
+      finance: { select: { totalGross: true, totalNet: true, invoiceNet: true, vatApplicable: true, paymentMethod: true } },
     },
   });
   if (rentals.length === 0) return [];
@@ -65,12 +68,14 @@ export async function loadFvWithoutInvoice(now = new Date()): Promise<FvWithoutI
       sellDate: { gte: new Date(minStart), lte: new Date(maxEnd) },
       OR: [...(clientIds.length ? [{ clientId: { in: clientIds } }] : []), ...(nips.length ? [{ buyerTaxNo: { in: nips } }] : [])],
     },
-    select: { id: true, number: true, sellDate: true, buyerName: true, buyerTaxNo: true, clientId: true, totalGross: true, positionsSummary: true },
+    select: { id: true, number: true, sellDate: true, buyerName: true, buyerTaxNo: true, clientId: true, totalGross: true, totalNet: true, positionsSummary: true },
   });
-  const candidates = invoices.map((i) => ({ ...i, totalGross: i.totalGross.toString() }));
+  const candidates = invoices.map((i) => ({ ...i, totalGross: i.totalGross.toString(), totalNet: i.totalNet.toString() }));
 
   return open.map((r) => {
     const nip = r.client?.nip ?? r.contactNipCache ?? null;
+    const f = r.finance;
+    const onInvoice = f ? invoiceNetOf({ vatApplicable: f.vatApplicable, invoiceNet: f.invoiceNet != null ? Number(f.invoiceNet) : null, totalNet: Number(f.totalNet) }) : 0;
     return {
       rentalId: r.id,
       title: r.title,
@@ -82,9 +87,10 @@ export async function loadFvWithoutInvoice(now = new Date()): Promise<FvWithoutI
       nip,
       deviceName: r.device.name,
       totalGross: r.finance?.totalGross.toString() ?? "0",
+      invoiceNet: onInvoice.toFixed(2),
       paymentMethod: r.finance?.paymentMethod ?? "TRANSFER",
       suggestions: candidates.length
-        ? suggestInvoices({ startsAt: r.startsAt, endsAt: r.endsAt, clientId: r.clientId, nip, deviceName: r.device.name }, candidates)
+        ? suggestInvoices({ startsAt: r.startsAt, endsAt: r.endsAt, clientId: r.clientId, nip, deviceName: r.device.name, invoiceNet: onInvoice }, candidates)
         : [],
     };
   });

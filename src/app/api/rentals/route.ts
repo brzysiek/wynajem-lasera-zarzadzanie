@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { resolveDeliveryAddressId } from "@/lib/clients/delivery";
+import { termsWarnings } from "@/lib/clients/terms";
 import { insertCalendarEvent } from "@/lib/integrations/google-calendar";
 import { getHubspotContact, formatHubspotAddress } from "@/lib/integrations/hubspot";
 import { logInfo, logWarn, logError } from "@/lib/logger";
@@ -53,6 +54,11 @@ export async function GET(req: NextRequest) {
     orderBy: { startsAt: "asc" },
   });
 
+  // Cena ≠ warunki klienta (> 10%) — ostrzeżenie na kafelku (tylko biuro).
+  if (session.user.role === "ADMIN" || session.user.role === "STAFF") {
+    const warnings = await termsWarnings(rentals);
+    return NextResponse.json({ rentals: rentals.map((r) => (warnings.has(r.id) ? { ...r, termsWarning: warnings.get(r.id) } : r)) });
+  }
   return NextResponse.json({ rentals });
 }
 
@@ -210,11 +216,12 @@ export async function POST(req: NextRequest) {
     if (body?.finance && typeof body.finance === "object") {
       const current = await prisma.rental.findUniqueOrThrow({
         where: { id: rental.id },
-        select: { transportPrice: true },
+        select: { transportPrice: true, clientId: true },
       });
       const result = await saveRentalFinance(
         {
           id: rental.id,
+          clientId: current.clientId,
           eventType,
           startsAt,
           endsAt,

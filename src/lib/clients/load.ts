@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { loadClientAddresses, loadDeliverySettings, type DeliveryAddressDto } from "@/lib/clients/delivery";
 import type { TransportZone } from "@/lib/clients/delivery-rules";
+import { loadClientPrices, type ClientPriceDto } from "@/lib/clients/terms";
+import { deviceCodeFor, invoiceNetOf, positionsSummary, type ClientPriceRow } from "@/lib/clients/terms-rules";
 import { getHubspotContactUrl } from "@/lib/integrations/hubspot";
 import type { ClinicTypeKey, DeviceInterestKey, SourceKey } from "@/lib/clients/labels";
 import { summarizeClient } from "@/lib/clients/summary";
@@ -132,6 +134,8 @@ export type ClientDetail = {
   profile: ClientProfileDto;
   // Paszport dostawy (etap B): adresy z trasą od bazy i uwagami kierowców.
   delivery: { addresses: DeliveryAddressDto[]; zones: TransportZone[]; baseAddress: string };
+  // Warunki handlowe (etap C): ceny klienta i cennik ogólny w kodach tabeli cen.
+  terms: { prices: ClientPriceDto[]; priceList: ClientPriceRow[] };
   fieldMeta: FieldMetaDto;
   opportunities: OpportunityDto[];
   lineage: LineageDto;
@@ -176,6 +180,9 @@ export type ClientDetail = {
     title: string;
     details: string | null;
     net: number | null;
+    positions: string | null;
+    rentalNet: number | null;
+    onInvoiceNet: number | null;
     invoice: { id: string; fakturowniaInvoiceId: number; number: string; issueDate: string; totalGross: number | null } | null;
     status: { kind: PaymentStatus["kind"]; label: string; days: number | null; paidAt: string | null; method: string | null };
   }[];
@@ -239,6 +246,18 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
               transportPriceNet: true,
               paymentMethod: true,
               fakturowniaInvoiceId: true,
+              baseRentalPriceNet: true,
+              pulseSurchargeNet: true,
+              pulseCalculationStatus: true,
+              capUsedHS: true,
+              capCountHS: true,
+              capFeeNet: true,
+              membraneUsed: true,
+              membraneCount: true,
+              membraneFeeNet: true,
+              vatApplicable: true,
+              invoiceNet: true,
+              transportPaidSeparately: true,
             },
           },
         },
@@ -445,6 +464,18 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
           totalNet: f ? Number(f.totalNet.toString()) : null,
           fakturowniaInvoiceId: f?.fakturowniaInvoiceId ?? null,
           cashConfirmed: f?.paymentMethod === "CASH" && f.confirmedAt != null,
+          positions: f
+            ? positionsSummary({
+                eventType: r.eventType,
+                baseNet: Number(f.baseRentalPriceNet),
+                transportNet: f.transportPriceNet != null ? Number(f.transportPriceNet) : null,
+                pulseSurchargeNet: f.pulseSurchargeNet != null ? Number(f.pulseSurchargeNet) : null,
+                pulsesPending: f.pulseCalculationStatus === "PENDING",
+                capNet: f.capUsedHS && f.capFeeNet ? Number(f.capFeeNet) * Math.max(1, f.capCountHS) : null,
+                membraneNet: f.membraneUsed && f.membraneFeeNet ? Number(f.membraneFeeNet) * Math.max(1, f.membraneCount) : null,
+              })
+            : null,
+          onInvoiceNet: f ? invoiceNetOf({ vatApplicable: f.vatApplicable, invoiceNet: f.invoiceNet != null ? Number(f.invoiceNet) : null, totalNet: Number(f.totalNet) }) : null,
         };
       }),
     ...c.history
@@ -523,10 +554,12 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     .flatMap((r) => r.messages)
     .filter((m) => m.channel === "SMS" && m.status === "SENT" && m.sentAt)
     .map((m) => m.sentAt!.getTime());
-  const [extras, deliveryAddresses, deliverySettings] = await Promise.all([
+  const [extras, deliveryAddresses, deliverySettings, clientPrices, priceRules] = await Promise.all([
     loadCardExtras(c.id, [c.fieldMeta, ...c.contacts.map((p) => p.fieldMeta)]),
     loadClientAddresses(c.id),
     loadDeliverySettings(),
+    loadClientPrices(c.id),
+    prisma.priceRule.findMany({ select: { pricingCategory: true, variant: true, durationDays: true, priceNet: true } }),
   ]);
   const rhythm = computeRhythm({ realized: rhythmRentals.filter((x) => x.at <= today), planned: rhythmRentals.filter((x) => x.at > today), today });
   const deviceCounts = new Map<string, number>();
@@ -585,6 +618,13 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     })(),
     profile: profileDto(c),
     delivery: { addresses: deliveryAddresses, zones: deliverySettings.zones, baseAddress: deliverySettings.base.address },
+    terms: {
+      prices: clientPrices,
+      priceList: priceRules.flatMap((r) => {
+        const code = deviceCodeFor("WYNAJEM", r.pricingCategory, r.variant);
+        return code ? [{ device: code, days: r.durationDays, priceNet: Number(r.priceNet) }] : [];
+      }),
+    },
     fieldMeta: extras.withNames(c.fieldMeta),
     opportunities: extras.opportunities,
     lineage: extras.lineage,
@@ -649,6 +689,9 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       title: r.title,
       details: r.details,
       net: r.net,
+      positions: r.positions,
+      rentalNet: r.rentalNet,
+      onInvoiceNet: r.onInvoiceNet,
       invoice: r.invoice ? { ...r.invoice, issueDate: r.invoice.issueDate.toISOString() } : null,
       status: {
         kind: r.status.kind,

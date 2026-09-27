@@ -16,6 +16,7 @@ export type FvInvoiceCandidate = {
   buyerTaxNo: string | null;
   clientId: string | null;
   totalGross: string;
+  totalNet?: string;
   positionsSummary: string | null;
 };
 
@@ -25,6 +26,9 @@ export type FvRentalInput = {
   clientId: string | null;
   nip: string | null;
   deviceName: string;
+  // Kwota netto, która ma być na fakturze (RentalFinance.invoiceNet albo
+  // całość) — kontrola porównuje z nią, nie z całą sumą wynajmu (etap C).
+  invoiceNet?: number | null;
 };
 
 export type FvSuggestion = {
@@ -83,6 +87,13 @@ export function suggestInvoices(rental: FvRentalInput, invoices: FvInvoiceCandid
     if (words.length && words.some((w) => positions.includes(w))) {
       reasons.push("urządzenie w pozycjach");
       score += 1;
+    }
+    if (rental.invoiceNet != null && inv.totalNet != null) {
+      const diff = Math.abs(Number(inv.totalNet) - rental.invoiceNet);
+      if (diff < 1) {
+        reasons.push("kwota zgodna z „Na FV”");
+        score += 1;
+      } else reasons.push(`kwota ≠ „Na FV” (${Math.round(rental.invoiceNet)} zł netto)`);
     }
     const gap = t < rental.startsAt.getTime() ? rental.startsAt.getTime() - t : t > rental.endsAt.getTime() ? t - rental.endsAt.getTime() : 0;
     const gapDays = Math.round(gap / DAY);

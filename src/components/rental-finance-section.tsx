@@ -13,6 +13,8 @@ import {
   type PreviewPriceRule,
   type PreviewPulseTier,
 } from "@/lib/pricing/preview";
+import type { ClientTermsDto } from "@/lib/clients/terms";
+import { clientPriceFor, deviceCodeFor, invoiceDefaults, termsDeviation } from "@/lib/clients/terms-rules";
 
 export type FinancePayload = {
   deviceVariant: string | null;
@@ -26,6 +28,8 @@ export type FinancePayload = {
   transportPaidSeparately: boolean;
   transportVatApplicable: boolean;
   transportPaymentMethod: PaymentMethod;
+  // Część netto na FV („” = całość); pominięte = domyślna z warunków klienta.
+  invoiceNet?: string;
 };
 
 function fmt(n: number): string {
@@ -275,6 +279,7 @@ export function RentalFinanceSection({
   initialFinance,
   endsAt,
   onChange,
+  clientTerms = null,
 }: {
   // null dla nowego (jeszcze niezapisanego) wynajmu — DriverSummaryCard i tak
   // się wtedy nie renderuje (initialFinance jest null), więc przycisk
@@ -299,6 +304,9 @@ export function RentalFinanceSection({
   // danych kierowcy (patrz komentarz przy DriverSummaryCard).
   endsAt: string;
   onChange: (payload: FinancePayload) => void;
+  // Warunki handlowe klienta (karta klienta, etap C) — mają pierwszeństwo
+  // przed cennikiem ogólnym i podpowiedzią transportu z HubSpot.
+  clientTerms?: ClientTermsDto | null;
 }) {
   const isSzkolenie = eventType === "SZKOLENIE";
 
@@ -310,9 +318,14 @@ export function RentalFinanceSection({
   const [overrideNote, setOverrideNote] = useState<string>(initialFinance?.baseRentalPriceOverrideNote ?? "");
   const [vatApplicable, setVatApplicable] = useState<boolean>(initialFinance?.vatApplicable ?? false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialFinance?.paymentMethod ?? "CASH");
+  const [invoicePart, setInvoicePart] = useState<string>(initialFinance?.invoiceNet ?? "");
 
   // --- transport ---
-  const hintAmount = parseAmount(transportPriceHint);
+  // Podpowiedź: warunki klienta (a gdy inna jego rezerwacja tego dnia już ma
+  // transport — 0, „2 urządzenia jednego dnia = 1 kurs”), inaczej HubSpot.
+  const termsTransport = clientTerms && !isSzkolenie ? (clientTerms.transportTakenBy ? 0 : clientTerms.transportNet) : null;
+  const hintSource: "terms" | "sameDay" | "hubspot" = termsTransport == null ? "hubspot" : clientTerms?.transportTakenBy ? "sameDay" : "terms";
+  const hintAmount = termsTransport ?? parseAmount(transportPriceHint);
   // Tryb ręczny transportu: gdy nie ma czego podpowiedzieć, albo zapisana
   // wcześniej kwota różni się od aktualnej podpowiedzi z HubSpot.
   const [transportManual, setTransportManual] = useState<boolean>(() => {
@@ -326,6 +339,28 @@ export function RentalFinanceSection({
   const [transportPayment, setTransportPayment] = useState<PaymentMethod>(
     initialFinance?.transportPaymentMethod ?? "CASH",
   );
+
+  // Warunki klienta doszły (albo zmienił się klient / dzień) — podstaw je raz.
+  // Nowe rozliczenie: VAT, część na FV i forma płatności wg warunków; zapisane
+  // rozliczenie zostaje, tylko transport wraca do podpowiedzi, gdy jej równy.
+  const termsKey = clientTerms ? `${clientTerms.clientId}|${clientTerms.transportTakenBy ?? ""}` : null;
+  const [appliedTermsKey, setAppliedTermsKey] = useState<string | null>(null);
+  if (termsKey !== appliedTermsKey) {
+    setAppliedTermsKey(termsKey);
+    if (clientTerms) {
+      const cur = parseAmount(transportPrice);
+      setTransportManual(hintAmount == null ? true : initialFinance ? cur != null && cur !== hintAmount : false);
+      if (!initialFinance) {
+        const inv = invoiceDefaults(clientTerms.invoiceMode, clientTerms.invoicePartDefault);
+        if (inv) {
+          setVatApplicable(inv.vatApplicable);
+          setInvoicePart(inv.invoiceNet != null ? String(inv.invoiceNet) : "");
+        }
+        if (clientTerms.paymentForm === "GOTOWKA") setPaymentMethod("CASH");
+        if (clientTerms.paymentForm === "PRZELEW") setPaymentMethod("TRANSFER");
+      }
+    }
+  }
 
   const showFilledTransport = !transportManual && hintAmount != null;
   const effTransportPrice = showFilledTransport ? String(hintAmount) : transportPrice;
@@ -352,43 +387,46 @@ export function RentalFinanceSection({
     () => previewBasePrice(ctx, isSzkolenie ? null : pricingCategory, effVariant, durationDays),
     [ctx, isSzkolenie, pricingCategory, effVariant, durationDays],
   );
+  // Cena z warunków klienta (ClientPrice) — przed cennikiem ogólnym.
+  const clientBase = !isFlex && clientTerms ? clientPriceFor(clientTerms.prices, deviceCodeFor(eventType, pricingCategory, effVariant), durationDays) : null;
+  const autoPrice = isFlex ? base.priceNet : clientBase ?? (isSzkolenie ? null : base.priceNet);
 
-  // Czy pole ceny jest ręczne: szkolenie zawsze, brak reguły w cenniku, albo
-  // świadome nadpisanie. Flex nigdy (placeholder do przeliczenia z liczników).
-  const priceIsManual = !isFlex && (isSzkolenie || base.priceNet == null || manualMode);
+  // Czy pole ceny jest ręczne: brak ceny z warunków i z cennika (szkolenie bez
+  // warunków zawsze), albo świadome nadpisanie. Flex nigdy (placeholder do
+  // przeliczenia z liczników).
+  const priceIsManual = !isFlex && (autoPrice == null || manualMode);
   const effectiveBaseNet = isFlex
     ? base.priceNet ?? 0
     : priceIsManual
       ? parseAmount(manualPrice) ?? 0
-      : base.priceNet ?? 0;
+      : autoPrice ?? 0;
+  const deviation = priceIsManual ? termsDeviation(parseAmount(manualPrice) ?? 0, clientBase) : null;
 
   const transportSeparateEff = !isSzkolenie && transportSeparate;
 
-  const totals = useMemo(
-    () =>
-      previewTotals({
-        baseNet: effectiveBaseNet,
-        pulseSurchargeNet: null, // dopłata Alma i nakładka HS — po stronie kierowcy
-        transportNet: parseAmount(effTransportPrice),
-        transportPaidSeparately: transportSeparateEff,
-        transportVatApplicable: transportVat,
-        capFeeNet: null,
-        capUsed: false,
-        membraneFeeNet: null, // membrany Cooltech — też po stronie kierowcy
-        membraneUsed: false,
-        vatApplicable,
-        vatRate,
-        isSzkolenie,
-      }),
-    [effectiveBaseNet, effTransportPrice, transportSeparateEff, transportVat, vatApplicable, vatRate, isSzkolenie],
-  );
+  // Podgląd sumy (tani — bez useMemo).
+  const totals = previewTotals({
+    baseNet: effectiveBaseNet,
+    pulseSurchargeNet: null, // dopłata Alma i nakładka HS — po stronie kierowcy
+    transportNet: parseAmount(effTransportPrice),
+    transportPaidSeparately: transportSeparateEff,
+    transportVatApplicable: transportVat,
+    capFeeNet: null,
+    capUsed: false,
+    membraneFeeNet: null, // membrany Cooltech — też po stronie kierowcy
+    membraneUsed: false,
+    vatApplicable,
+    vatRate,
+    isSzkolenie,
+    invoicePartNet: vatApplicable ? parseAmount(invoicePart) : null,
+  });
 
   // Raportuj payload do formularza przy każdej zmianie.
   useEffect(() => {
     onChange({
       deviceVariant: effVariant,
       baseRentalPriceNet: isFlex ? undefined : priceIsManual ? manualPrice : undefined,
-      baseRentalPriceOverrideNote: manualMode && !isSzkolenie && base.priceNet != null ? overrideNote || undefined : undefined,
+      baseRentalPriceOverrideNote: manualMode && autoPrice != null ? overrideNote || undefined : undefined,
       vatApplicable,
       vatRate,
       paymentMethod,
@@ -396,20 +434,25 @@ export function RentalFinanceSection({
       transportPaidSeparately: transportSeparateEff,
       transportVatApplicable: transportSeparateEff && transportVat,
       transportPaymentMethod: transportPayment,
+      // Puste przy nowym rozliczeniu = niech serwer podstawi część z warunków.
+      invoiceNet: !vatApplicable ? "" : invoicePart.trim() || (initialFinance || clientTerms ? "" : undefined),
     });
     // onChange celowo pomijamy w deps — rodzic przekazuje stabilną referencję.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     effVariant, isFlex, priceIsManual, manualPrice, manualMode, isSzkolenie, base.priceNet, overrideNote,
     vatApplicable, vatRate, paymentMethod,
-    effTransportPrice, transportSeparateEff, transportVat, transportPayment,
+    effTransportPrice, transportSeparateEff, transportVat, transportPayment, invoicePart, clientTerms,
   ]);
 
   const badge = isFlex
     ? { text: "⏳ tymczasowo", cls: "bg-gray-100 text-gray-600" }
     : priceIsManual
       ? { text: "✎ ręcznie", cls: "bg-amber-100 text-amber-800" }
-      : { text: "🏷 z cennika", cls: "bg-[#EAF4FB] text-[#1B6FA8]" };
+      : clientBase != null
+        ? { text: "🤝 z warunków klienta", cls: "bg-[#EEF6F2] text-[#2F7A68]" }
+        : { text: "🏷 z cennika", cls: "bg-[#EAF4FB] text-[#1B6FA8]" };
+  const autoLabel = clientBase != null ? "z warunków klienta" : "z cennika";
 
   const FILLED = "flex items-center justify-between rounded-md border border-gray-200 bg-gray-50";
   const CHANGE_LINK = "text-xs font-medium text-[#1B6FA8] hover:underline";
@@ -473,15 +516,20 @@ export function RentalFinanceSection({
               placeholder="np. 1500"
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
             />
-            {!isSzkolenie && base.priceNet == null && (
+            {!isSzkolenie && autoPrice == null && (
               <p className="mt-1 text-xs text-amber-700">Brak reguły w cenniku dla tego wariantu / okresu — wpisz cenę ręcznie.</p>
             )}
-            {manualMode && !isSzkolenie && base.priceNet != null && (
+            {deviation && (
+              <p className="mt-1 text-xs font-medium text-[#B8612F]">
+                Różni się o {Math.round(deviation.pct * 100)}% od warunków klienta ({fmt(deviation.expected)} zł) — w kalendarzu pojawi się ostrzeżenie.
+              </p>
+            )}
+            {manualMode && autoPrice != null && (
               <>
                 <input
                   value={overrideNote}
                   onChange={(e) => setOverrideNote(e.target.value)}
-                  placeholder="Powód odstępstwa od cennika (opcjonalnie, ale zachęcamy)"
+                  placeholder={`Powód odstępstwa ${clientBase != null ? "od warunków klienta" : "od cennika"} (opcjonalnie, ale zachęcamy)`}
                   className="mt-2 w-full rounded-md border border-gray-300 px-3 py-2 text-xs text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
                 />
                 <button
@@ -493,20 +541,20 @@ export function RentalFinanceSection({
                   }}
                   className={`mt-1 ${CHANGE_LINK}`}
                 >
-                  wróć do ceny z cennika
+                  wróć do ceny {autoLabel}
                 </button>
               </>
             )}
           </>
         ) : (
           <div className={`${FILLED} px-3 py-2`}>
-            <span className="text-lg font-semibold text-gray-900">{fmt(base.priceNet ?? 0)} zł</span>
+            <span className="text-lg font-semibold text-gray-900">{fmt(autoPrice ?? 0)} zł</span>
             {!isFlex && (
               <button
                 type="button"
                 onClick={() => {
                   setManualMode(true);
-                  setManualPrice(String(base.priceNet ?? ""));
+                  setManualPrice(String(autoPrice ?? ""));
                 }}
                 className={CHANGE_LINK}
               >
@@ -529,18 +577,27 @@ export function RentalFinanceSection({
             <span>Cena transportu (netto)</span>
             {transportManual ? (
               <Badge text="✎ ręcznie" cls="bg-amber-100 text-amber-800" />
-            ) : (
+            ) : hintSource === "hubspot" ? (
               <Badge text="🏢 z HubSpot" cls="bg-orange-100 text-orange-700" />
+            ) : (
+              <Badge text={hintSource === "sameDay" ? "🚚 jeden kurs" : "🤝 z warunków klienta"} cls="bg-[#EEF6F2] text-[#2F7A68]" />
             )}
           </div>
 
           {showFilledTransport ? (
-            <div className={`${FILLED} px-3 py-1.5`}>
-              <span className="text-base font-semibold text-gray-900">{fmt(hintAmount ?? 0)} zł</span>
-              <button type="button" onClick={() => setTransportManual(true)} className={CHANGE_LINK}>
-                Zmień ręcznie →
-              </button>
-            </div>
+            <>
+              <div className={`${FILLED} px-3 py-1.5`}>
+                <span className="text-base font-semibold text-gray-900">{fmt(hintAmount ?? 0)} zł</span>
+                <button type="button" onClick={() => setTransportManual(true)} className={CHANGE_LINK}>
+                  Zmień ręcznie →
+                </button>
+              </div>
+              {hintSource === "sameDay" && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Transport tego dnia jest już w rezerwacji „{clientTerms?.transportTakenBy}” — 2 urządzenia jednego dnia = 1 kurs.
+                </p>
+              )}
+            </>
           ) : (
             <>
               <input
@@ -559,7 +616,7 @@ export function RentalFinanceSection({
                   }}
                   className={`mt-1 ${CHANGE_LINK}`}
                 >
-                  wróć do wartości z HubSpot ({fmt(hintAmount)} zł)
+                  wróć do wartości {hintSource === "hubspot" ? "z HubSpot" : "z warunków klienta"} ({fmt(hintAmount)} zł)
                 </button>
               ) : (
                 transportPriceHint &&
@@ -584,8 +641,24 @@ export function RentalFinanceSection({
         <div className="flex flex-col gap-3">
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input type="checkbox" checked={vatApplicable} onChange={(e) => setVatApplicable(e.target.checked)} />
-            Doliczyć VAT ({vatRate}%)
+            Faktura — doliczyć VAT ({vatRate}%)
           </label>
+          {vatApplicable && (
+            <label className="-mt-1 flex flex-col gap-1 pl-6 text-sm text-gray-700">
+              Na FV (netto)
+              <input
+                value={invoicePart}
+                onChange={(e) => setInvoicePart(e.target.value)}
+                inputMode="decimal"
+                placeholder={`całość (${fmt(totals.net)} zł)`}
+                className="w-40 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+              />
+              <span className="text-xs text-gray-400">
+                Puste = całość na fakturze. Kwota = tylko ta część na FV (VAT od niej), reszta bez faktury
+                {clientTerms?.invoiceMode === "PARTIAL" ? " — wg warunków klienta: część" : ""}.
+              </span>
+            </label>
+          )}
           <div className="flex flex-col gap-1 text-sm text-gray-700">
             Forma płatności
             <PayToggle value={paymentMethod} onChange={setPaymentMethod} />
@@ -629,6 +702,12 @@ export function RentalFinanceSection({
           <span className="text-gray-500">Brutto</span>
           <span className="font-semibold text-gray-900">
             {fmt(totals.gross)} zł {!vatApplicable && <span className="text-xs font-normal text-gray-400">(VAT wyłączony)</span>}
+          </span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500">Na FV (netto)</span>
+          <span className="font-semibold text-gray-900">
+            {fmt(!vatApplicable ? 0 : Math.min(parseAmount(invoicePart) ?? totals.net, totals.net))} zł
           </span>
         </div>
 

@@ -112,4 +112,13 @@ describe("buildInvoicePositions", () => {
     });
     expect(positions).toHaveLength(1);
   });
+
+  it("faktura na część (warunki klienta): jedna pozycja na część netto", () => {
+    const positions = buildInvoicePositions({
+      ...BASE,
+      finance: { ...BASE.finance, transportPriceNet: D(150), vatApplicable: true, vatRate: D(23), invoiceNet: D(500), totalNet: D(1650) },
+    });
+    expect(positions).toHaveLength(1);
+    expect(positions[0].totalPriceGross.toNumber()).toBe(615);
+  });
 });

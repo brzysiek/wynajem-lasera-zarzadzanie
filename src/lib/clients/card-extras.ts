@@ -23,6 +23,11 @@ export type ClientProfileDto = {
   agreedPrice: string | null;
   paymentTerms: string | null;
   paymentForm: "GOTOWKA" | "PRZELEW" | "OBA" | null;
+  paymentTermDays: number | null;
+  invoiceMode: "FULL" | "PARTIAL" | "NONE" | null;
+  invoicePartDefault: string | null;
+  pulsesCharged: boolean | null;
+  pulseRateNet: string | null;
   invoiceEmail: string | null;
   invoiceBuyerName: string | null;
   invoiceBuyerNip: string | null;
@@ -56,6 +61,11 @@ export function profileDto(c: Client): ClientProfileDto {
     agreedPrice: c.agreedPrice?.toString() ?? null,
     paymentTerms: c.paymentTerms,
     paymentForm: (c.paymentForm as ClientProfileDto["paymentForm"]) ?? null,
+    paymentTermDays: c.paymentTermDays,
+    invoiceMode: (c.invoiceMode as ClientProfileDto["invoiceMode"]) ?? null,
+    invoicePartDefault: c.invoicePartDefault?.toString() ?? null,
+    pulsesCharged: c.pulsesCharged,
+    pulseRateNet: c.pulseRateNet?.toString() ?? null,
     invoiceEmail: c.invoiceEmail,
     invoiceBuyerName: c.invoiceBuyerName,
     invoiceBuyerNip: c.invoiceBuyerNip,

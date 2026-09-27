@@ -12,7 +12,8 @@ import { useNotifications } from "@/components/notifications-context";
 import { useCalendarDeviceFilter } from "@/components/calendar-device-filter-context";
 import { ClipboardIcon, InvoiceIcon } from "@/components/status-icons";
 
-type RawRental = Rental & { device: Device };
+// termsWarning — cena wynajmu różni się o > 10% od warunków klienta (etap C, tylko biuro).
+type RawRental = Rental & { device: Device; termsWarning?: string };
 
 const WEEKDAY_LABELS = ["Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Nd"];
 const MONTH_LABELS = [
@@ -274,6 +275,14 @@ function CalendarWeekRow({
                 </span>
               );
             })()}
+            {s.rental.termsWarning && (
+              <span
+                className="flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full bg-[#B8612F] text-[10px] font-bold leading-none text-white"
+                title={s.rental.termsWarning}
+              >
+                ≠
+              </span>
+            )}
             {needsClient(s.rental) && (
               <span
                 className="flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full bg-[#E08A5C] text-[10px] font-bold leading-none text-white"

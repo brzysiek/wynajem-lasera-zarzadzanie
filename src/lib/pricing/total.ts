@@ -20,6 +20,9 @@ export type TotalsInput = {
   membraneFeeNet: Prisma.Decimal | null;
   vatApplicable: boolean;
   vatRate: Prisma.Decimal; // w procentach, np. 23
+  // Część netto na fakturze (warunki klienta „część”, etap C). VAT tylko od
+  // tej części; null / ≥ sumy = VAT od całości (jak dotąd).
+  invoicePartNet?: Prisma.Decimal | null;
 };
 
 export type TotalsResult = {
@@ -54,9 +57,12 @@ export function computeTotals(input: TotalsInput): TotalsResult {
   }
 
   const totalNet = round2(net);
-  const totalGross = input.vatApplicable
-    ? round2(totalNet.times(input.vatRate.div(100).plus(1)))
-    : totalNet;
+  const part = input.invoicePartNet != null && input.invoicePartNet.lessThan(totalNet) ? input.invoicePartNet : null;
+  const totalGross = !input.vatApplicable
+    ? totalNet
+    : part
+      ? round2(totalNet.plus(part.times(input.vatRate.div(100))))
+      : round2(totalNet.times(input.vatRate.div(100).plus(1)));
 
   let transportTotalNet: Prisma.Decimal | null = null;
   let transportTotalGross: Prisma.Decimal | null = null;

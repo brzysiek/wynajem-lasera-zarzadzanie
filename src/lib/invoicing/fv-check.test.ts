@@ -32,6 +32,13 @@ describe("suggestInvoices", () => {
     const [s] = suggestInvoices(rental, [inv({ clientId: null, buyerTaxNo: "6790001122", positionsSummary: null, sellDate: new Date("2026-09-15T00:00:00Z") })]);
     expect(s.reasons).toEqual(["ten sam NIP", "data ±3 dni"]);
   });
+  it("kontrola kwoty względem „Na FV” (część z warunków klienta)", () => {
+    const [ok] = suggestInvoices({ ...rental, invoiceNet: 500 }, [inv({ totalNet: "500.00" })]);
+    expect(ok.reasons).toContain("kwota zgodna z „Na FV”");
+    const [bad] = suggestInvoices({ ...rental, invoiceNet: 500 }, [inv({ totalNet: "2000.00" })]);
+    expect(bad.reasons).toContain("kwota ≠ „Na FV” (500 zł netto)");
+    expect(bad.score).toBeLessThan(ok.score);
+  });
   it("inny klient albo poza oknem ±7 dni — brak", () => {
     expect(suggestInvoices(rental, [inv({ clientId: "c2" })])).toEqual([]);
     expect(suggestInvoices(rental, [inv({ sellDate: new Date("2026-09-20T00:00:00Z") })])).toEqual([]);

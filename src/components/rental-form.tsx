@@ -12,6 +12,7 @@ import { RentalFinanceSection, type FinancePayload } from "@/components/rental-f
 import type { PreviewPriceRule, PreviewPulseTier } from "@/lib/pricing/preview";
 import type { RentalFinanceDto } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
+import type { ClientTermsDto } from "@/lib/clients/terms";
 
 export type Device = {
   id: string;
@@ -849,6 +850,27 @@ export function RentalForm({
   }, []);
   const isSzkolenie = eventType === "SZKOLENIE";
   const durationDays = rentalDurationDays(new Date(startsAt), new Date(endsAt));
+
+  // Warunki handlowe klienta (etap C) — ceny, transport, faktura i płatność do
+  // podstawienia w sekcji Finanse. Klient z rezerwacji albo z kontaktu HubSpot.
+  const termsContact = pendingContact?.id ?? rental?.hubspotContactId ?? null;
+  const termsWho = rental?.clientId ? `klient=${encodeURIComponent(rental.clientId)}` : termsContact ? `kontakt=${encodeURIComponent(termsContact)}` : "";
+  const termsQuery = canManageFinance && termsWho ? `${termsWho}&dzien=${startsAt.slice(0, 10)}${rental ? `&bez=${encodeURIComponent(rental.id)}` : ""}` : "";
+  const [loadedTerms, setLoadedTerms] = useState<{ query: string; terms: ClientTermsDto | null } | null>(null);
+  useEffect(() => {
+    if (!termsQuery) return;
+    let cancelled = false;
+    void fetch(`${BASE_PATH}/api/rentals/client-terms?${termsQuery}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { terms?: ClientTermsDto | null } | null) => {
+        if (!cancelled) setLoadedTerms({ query: termsQuery, terms: data?.terms ?? null });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [termsQuery]);
+  const clientTerms = loadedTerms?.query === termsQuery ? loadedTerms.terms : null;
   const [reminderDays, setReminderDays] = useState<Set<ReminderDays>>(() => {
     if (!rental) return new Set([1, 3, 7]);
     const checked = rental.reminderRules
@@ -1288,6 +1310,7 @@ export function RentalForm({
                 initialFinance={rental?.finance ?? null}
                 endsAt={endsAt}
                 onChange={handleFinanceChange}
+                clientTerms={clientTerms}
               />
             )}
 

@@ -79,6 +79,7 @@ export function recalculateFinance(ctx: PricingContext, state: FinanceState): Co
     membraneFeeNet: state.membraneFeeNet,
     vatApplicable: state.vatApplicable,
     vatRate: state.vatRate,
+    invoicePartNet: state.invoiceNet ?? null,
   });
 
   return {

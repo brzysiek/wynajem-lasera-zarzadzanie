@@ -55,6 +55,15 @@ describe("nowe pola klienta", () => {
     expect(parseClientProfilePatch({ paymentForm: "" })).toEqual({ ok: true, data: { paymentForm: null } });
     expect(parseClientProfilePatch({ paymentForm: "karta" }).ok).toBe(false);
   });
+  it("warunki: faktura, część na FV, impulsy, termin", () => {
+    expect(parseClientProfilePatch({ invoiceMode: "część", invoicePartDefault: "500", pulsesCharged: "nie", pulseRateNet: "0,06", paymentTermDays: 7 })).toEqual({
+      ok: true,
+      data: { invoiceMode: "PARTIAL", invoicePartDefault: "500.00", pulsesCharged: false, pulseRateNet: "0.0600", paymentTermDays: 7 },
+    });
+    expect(parseClientProfilePatch({ invoiceMode: "bez FV", pulsesCharged: null })).toEqual({ ok: true, data: { invoiceMode: "NONE", pulsesCharged: null } });
+    expect(parseClientProfilePatch({ invoiceMode: "pół" }).ok).toBe(false);
+    expect(parseClientProfilePatch({ paymentTermDays: 7.5 }).ok).toBe(false);
+  });
   it("błędy i czyszczenie", () => {
     expect(parseClientProfilePatch({ invoiceEmail: "zly" }).ok).toBe(false);
     expect(parseClientProfilePatch({ frameAgreement: { url: "http://x" } }).ok).toBe(false);

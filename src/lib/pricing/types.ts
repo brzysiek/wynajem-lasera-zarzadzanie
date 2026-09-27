@@ -68,6 +68,8 @@ export type FinanceState = {
   transportPriceNet: Prisma.Decimal | null;
   transportPaidSeparately: boolean;
   transportVatApplicable: boolean; // tylko gdy transportPaidSeparately
+  // Część netto na fakturze (RentalFinance.invoiceNet) — VAT tylko od niej.
+  invoiceNet?: Prisma.Decimal | null;
 };
 
 // Wynik recalculateFinance() — pola do zapisania na RentalFinance.

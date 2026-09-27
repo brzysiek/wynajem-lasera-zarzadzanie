@@ -11,7 +11,8 @@ import { DriverFinancePanel } from "@/components/driver-finance-panel";
 import { DriverDeliveryPassport, DriverFeedbackForm } from "@/components/driver-delivery-passport";
 import { loadRentalAddress } from "@/lib/clients/delivery";
 import { AgentRentalSummary } from "@/components/agent-rental-summary";
-import { financeDto, loadFinanceFormContext } from "@/lib/finance";
+import { Prisma } from "@prisma/client";
+import { clientPulseRate, financeDto, loadFinanceFormContext } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 
 const DEVICE_SELECT = {
@@ -80,7 +81,12 @@ export default async function RentalDetailPage({
     if (!rental || (!preview && rental.driverId !== session!.user.id)) {
       notFound();
     }
-    const passport = rental.eventType === "WYNAJEM" ? await loadRentalAddress(rental) : null;
+    const [passport, pulseTerms] = await Promise.all([
+      rental.eventType === "WYNAJEM" ? loadRentalAddress(rental) : null,
+      rental.clientId ? prisma.client.findUnique({ where: { id: rental.clientId }, select: { pulsesCharged: true, pulseRateNet: true } }) : null,
+    ]);
+    // Stawka za impuls wg warunków klienta (etap C) — ta sama co przy zapisie.
+    const pulseRate = clientPulseRate(pulseTerms, new Prisma.Decimal(financeCtx.almaPulseRateNet)).toNumber();
 
     const tripRental: ReadonlyRental = {
       startsAt: rental.startsAt.toISOString(),
@@ -112,7 +118,7 @@ export default async function RentalDetailPage({
             endsAt={rental.endsAt.toISOString()}
             transportPrice={rental.transportPrice}
             capFeeHsNet={financeCtx.capFeeHsNet}
-            almaPulseRateNet={financeCtx.almaPulseRateNet}
+            almaPulseRateNet={pulseRate}
             membraneFeeCooltechNet={financeCtx.membraneFeeCooltechNet}
             vehicleId={rental.vehicleId}
             vehicleName={rental.vehicle?.name ?? null}

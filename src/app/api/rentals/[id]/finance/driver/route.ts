@@ -247,6 +247,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       transportPriceNet,
       transportPaidSeparately,
       transportVatApplicable,
+      invoiceNet: existing?.invoiceNet ?? null,
     });
   } catch (err) {
     if (err instanceof PricingError) return bad(err.message);

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { formatPln } from "@/lib/pricing/format";
+import { round2 } from "@/lib/pricing/total";
 import { INVOICE_ALERT_SINCE, type InvoiceAlert } from "@/lib/invoice-alerts";
 
 // Serwerowa (Prisma) część modelu "brak faktury" — src/lib/invoice-alerts.ts
@@ -22,7 +23,7 @@ export async function loadInvoiceAlerts(): Promise<InvoiceAlert[]> {
       title: true,
       endsAt: true,
       device: { select: { name: true, color: true } },
-      finance: { select: { totalNet: true, totalGross: true, vatApplicable: true } },
+      finance: { select: { totalNet: true, totalGross: true, vatApplicable: true, invoiceNet: true, vatRate: true } },
     },
   });
 
@@ -32,6 +33,13 @@ export async function loadInvoiceAlerts(): Promise<InvoiceAlert[]> {
     endsAt: r.endsAt.toISOString(),
     deviceName: r.device.name,
     deviceColor: r.device.color,
-    amount: formatPln(r.finance?.vatApplicable ? r.finance.totalGross : (r.finance?.totalNet ?? 0)),
+    // Faktura na część (warunki klienta) — brutto samej części.
+    amount: formatPln(
+      r.finance?.vatApplicable
+        ? r.finance.invoiceNet != null && r.finance.invoiceNet.lessThan(r.finance.totalNet)
+          ? round2(r.finance.invoiceNet.times(r.finance.vatRate.div(100).plus(1)))
+          : r.finance.totalGross
+        : (r.finance?.totalNet ?? 0),
+    ),
   }));
 }

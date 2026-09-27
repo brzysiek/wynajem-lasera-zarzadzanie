@@ -525,11 +525,13 @@ function CashForm({ fakturowniaId, onDone, onCancel, notify }: { fakturowniaId: 
 export function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail; onShowAll: () => void; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
   const agent = useContext(AgentModeContext);
   const [cashFor, setCashFor] = useState<number | null>(null);
-  const rows = d.transactions.filter((t) => t.invoice).slice(0, 6);
+  // Etap C: wiersz = wynajem (także zaplanowany) albo faktura bez wynajmu —
+  // pozycje rozliczenia, razem, część na FV i status wpłaty.
+  const rows = d.transactions.slice(0, 8);
+  const thisYear = new Date().getFullYear();
   const t = d.txTotals;
-  // Stałe szerokości kolumn z kwotą i datą (kwota „1 480,00 / 1 820,40 zł”
-  // nie może wchodzić na „Wpłatę”); status zawija się w swojej kolumnie.
-  const cols = { gridTemplateColumns: "96px 84px 172px minmax(0, 1fr) 64px" };
+  // Data · Wynajem · Pozycje · Razem · Na FV · Status (wg karta-kierunek.html).
+  const cols = { gridTemplateColumns: "50px minmax(0,0.9fr) minmax(0,1.5fr) 62px 58px minmax(96px,0.8fr)" };
 
   async function undoCash(fakturowniaId: number) {
     if (!window.confirm("Cofnąć oznaczenie „opłacona gotówką”?")) return;
@@ -558,48 +560,68 @@ export function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: Client
         </button>
       </div>
       {rows.length === 0 ? (
-        <p className="text-[13px] text-[#5C6166]">Brak faktur w panelu.</p>
+        <p className="text-[13px] text-[#5C6166]">Brak wynajmów i faktur w panelu.</p>
       ) : (
         <div className="overflow-x-auto">
-          <div className="min-w-[560px]">
-            <div className={`grid gap-3 border-b border-[#E6D5C6] pb-2 ${LABEL}`} style={cols}>
-              <span>Numer</span>
-              <span>Sprzedaż</span>
-              <span className="whitespace-nowrap">Netto / brutto</span>
-              <span>Wpłata</span>
-              <span />
+          <div className="min-w-[540px]">
+            <div className={`grid gap-2.5 border-b-[1.5px] border-[#0C3450] pb-1.5 ${LABEL}`} style={cols}>
+              <span>Data</span>
+              <span>Wynajem</span>
+              <span>Pozycje</span>
+              <span className="text-right">Razem</span>
+              <span className="text-right">Na FV</span>
+              <span>Status</span>
             </div>
             {rows.map((r) => {
+              const inv = r.invoice;
               const cash = r.status.kind === "ZAPLACONA" && r.status.method === "CASH";
-              const unpaid = !["ZAPLACONA", "GOTOWKA", "ARCHIWALNA"].includes(r.status.kind);
+              const unpaid = inv && !["ZAPLACONA", "GOTOWKA", "ARCHIWALNA"].includes(r.status.kind);
+              const noFv = r.status.kind === "BEZ_FAKTURY" && r.onInvoiceNet === 0;
+              const d0 = new Date(r.date);
+              const total = r.rentalNet ?? r.net;
               return (
                 <div key={r.key}>
-                  <div className="grid items-baseline gap-3 border-b border-[#E6D5C6] py-1.5 text-[13px] tabular-nums text-[#333333]" style={cols}>
-                    <span className="truncate">{r.invoice!.number}</span>
-                    <span>{dmy(r.date)}</span>
-                    <span className="whitespace-nowrap">
-                      {r.net != null ? num(r.net, 2) : "—"}
-                      {r.invoice!.totalGross != null ? ` / ${num(r.invoice!.totalGross, 2)}` : ""} zł
+                  <div className="grid items-baseline gap-2.5 border-b border-[#E6D5C6] py-1.5 text-[12.5px] tabular-nums text-[#333333]" style={cols}>
+                    <span>{d0.getFullYear() === thisYear ? dm(r.date) : dmy(r.date)}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate" title={r.title}>
+                        {r.title}
+                      </span>
+                      {inv && <span className="block truncate text-[11px] text-[#767C82]">FV {inv.number}</span>}
                     </span>
-                    <span className={`min-w-0 text-[12.5px] ${statusColor(r.status.kind)}`} title={r.status.label}>
-                      {r.status.kind === "NIE_SPRAWDZONO" && !t.paymentsAsOf ? "brak danych z banku" : r.status.label.charAt(0).toLowerCase() + r.status.label.slice(1)}
-                    </span>
-                    <span className="text-right text-[12.5px]">
-                      {!agent && unpaid && cashFor !== r.invoice!.fakturowniaInvoiceId && (
-                        <button type="button" className="text-[#1B6FA8] hover:text-[#0C3450]" onClick={() => setCashFor(r.invoice!.fakturowniaInvoiceId)}>
+                    <span className="min-w-0 text-[11.5px] text-[#5C6166]">{r.positions ?? r.details ?? "—"}</span>
+                    <span className="text-right">{total != null ? num(total) : "—"}</span>
+                    <span className="text-right">{r.onInvoiceNet != null ? num(r.onInvoiceNet) : "—"}</span>
+                    <span className="min-w-0 text-[11.5px]">
+                      <span
+                        className={`inline-block px-1.5 py-px ${
+                          r.status.kind === "ZAPLANOWANY"
+                            ? "bg-[#EAF4FB] text-[#1B6FA8]"
+                            : r.status.kind === "ZAPLACONA" || r.status.kind === "GOTOWKA"
+                              ? "bg-[#E6F2EE] text-[#2F7A68]"
+                              : noFv
+                                ? "text-[#767C82]"
+                                : statusColor(r.status.kind)
+                        }`}
+                        title={r.status.label}
+                      >
+                        {noFv ? "bez FV" : r.status.kind === "NIE_SPRAWDZONO" && !t.paymentsAsOf ? "brak danych z banku" : r.status.label.charAt(0).toLowerCase() + r.status.label.slice(1)}
+                      </span>
+                      {!agent && unpaid && cashFor !== inv.fakturowniaInvoiceId && (
+                        <button type="button" className="ml-1.5 text-[#1B6FA8] hover:text-[#0C3450]" onClick={() => setCashFor(inv.fakturowniaInvoiceId)}>
                           gotówka
                         </button>
                       )}
-                      {!agent && cash && (
-                        <button type="button" className="text-[#767C82] hover:text-[#B8612F]" onClick={() => void undoCash(r.invoice!.fakturowniaInvoiceId)}>
+                      {!agent && cash && inv && (
+                        <button type="button" className="ml-1.5 text-[#767C82] hover:text-[#B8612F]" onClick={() => void undoCash(inv.fakturowniaInvoiceId)}>
                           cofnij
                         </button>
                       )}
                     </span>
                   </div>
-                  {cashFor === r.invoice!.fakturowniaInvoiceId && (
+                  {inv && cashFor === inv.fakturowniaInvoiceId && (
                     <CashForm
-                      fakturowniaId={r.invoice!.fakturowniaInvoiceId}
+                      fakturowniaId={inv.fakturowniaInvoiceId}
                       notify={notify}
                       onCancel={() => setCashFor(null)}
                       onDone={(n) => {

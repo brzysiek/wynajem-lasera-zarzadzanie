@@ -23,6 +23,7 @@ import {
   type PricingSettings,
 } from "@/lib/pricing";
 import { isAllowedVariant } from "@/lib/pricing/variants";
+import { deviceCodeFor } from "@/lib/clients/terms-rules";
 import type { PreviewPriceRule, PreviewPulseTier } from "@/lib/pricing/preview";
 
 const SETTING_FALLBACKS: Record<keyof PricingSettings, { key: string; value: number }> = {
@@ -55,7 +56,20 @@ type RentalForPricingContext = {
   endsAt: Date;
   device: { pricingCategory: DevicePricingCategory | null };
   finance: { deviceVariant: string | null } | null;
+  // Klient panelu — jego warunki (stawka impulsów, „nie doliczać”) mają
+  // pierwszeństwo przed cennikiem ogólnym.
+  clientId?: string | null;
 };
+
+// Stawka za impuls Alma wg warunków klienta: „nie doliczać” = 0, własna
+// stawka, inaczej cennik ogólny.
+export function clientPulseRate(
+  client: { pulsesCharged: boolean | null; pulseRateNet: Prisma.Decimal | null } | null,
+  fallback: Prisma.Decimal,
+): Prisma.Decimal {
+  if (client?.pulsesCharged === false) return new Prisma.Decimal(0);
+  return client?.pulseRateNet ?? fallback;
+}
 
 // Składa PricingContext dla jednego wydarzenia: kategoria z urządzenia,
 // wybrany wariant z RentalFinance (jeśli już jest), reguły/progi ograniczone
@@ -63,11 +77,13 @@ type RentalForPricingContext = {
 export async function loadPricingContext(rental: RentalForPricingContext): Promise<PricingContext> {
   const pricingCategory = rental.device.pricingCategory;
 
-  const [priceRules, pulseTiers, settings] = await Promise.all([
+  const [priceRules, pulseTiers, baseSettings, client] = await Promise.all([
     pricingCategory ? prisma.priceRule.findMany({ where: { pricingCategory } }) : Promise.resolve([]),
     pricingCategory ? prisma.pulseTier.findMany({ where: { pricingCategory } }) : Promise.resolve([]),
     loadPricingSettings(),
+    rental.clientId ? prisma.client.findUnique({ where: { id: rental.clientId }, select: { pulsesCharged: true, pulseRateNet: true } }) : Promise.resolve(null),
   ]);
+  const settings = { ...baseSettings, almaPulseRateNet: clientPulseRate(client, baseSettings.almaPulseRateNet) };
 
   return {
     eventType: rental.eventType,
@@ -166,6 +182,8 @@ export type RentalFinanceDto = {
   membraneFeeNet: string | null;
   vatApplicable: boolean;
   vatRate: string;
+  // Część netto na FV (null = całość, gdy VAT) — etap C.
+  invoiceNet: string | null;
   totalNet: string;
   totalGross: string;
   paymentMethod: PaymentMethod;
@@ -212,6 +230,7 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
     membraneFeeNet: row.membraneFeeNet ? row.membraneFeeNet.toString() : null,
     vatApplicable: row.vatApplicable,
     vatRate: row.vatRate.toString(),
+    invoiceNet: row.invoiceNet ? row.invoiceNet.toString() : null,
     totalNet: row.totalNet.toString(),
     totalGross: row.totalGross.toString(),
     paymentMethod: row.paymentMethod,
@@ -235,6 +254,20 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
   };
 }
 
+// Cena wynajmu z tabeli cen klienta (ClientPrice) dla urządzenia / wariantu
+// i liczby dni; null = brak — decyduje cennik ogólny.
+function clientPrice(
+  terms: { prices: { device: string; days: number; priceNet: Prisma.Decimal }[] } | null,
+  eventType: RentalEventType,
+  category: DevicePricingCategory | null,
+  variant: string | null,
+  days: number,
+): Prisma.Decimal | null {
+  if (!terms) return null;
+  const code = deviceCodeFor(eventType, category, variant);
+  return terms.prices.find((p) => p.device === code && p.days === days)?.priceNet ?? null;
+}
+
 // --- zapis finansów przez biuro (POST/PATCH /api/rentals) ---
 export type OfficeFinanceInput = {
   deviceVariant: string | null;
@@ -249,10 +282,14 @@ export type OfficeFinanceInput = {
   transportPaidSeparately?: boolean;
   transportVatApplicable?: boolean;
   transportPaymentMethod?: "CASH" | "TRANSFER" | null;
+  // Część netto na fakturze (warunki „część”); pusta = całość. Klucz
+  // nieobecny = bez zmiany (nowe rozliczenie: domyślna część z warunków).
+  invoiceNet?: string | number | null;
 };
 
 type RentalForFinanceSave = {
   id: string;
+  clientId?: string | null;
   eventType: RentalEventType;
   startsAt: Date;
   endsAt: Date;
@@ -271,6 +308,9 @@ export async function saveRentalFinance(
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const settings = await loadPricingSettings();
   const ctx = await loadPricingContext({ ...rental, finance: { deviceVariant: input.deviceVariant } });
+  const terms = rental.clientId
+    ? await prisma.client.findUnique({ where: { id: rental.clientId }, select: { invoiceMode: true, invoicePartDefault: true, prices: { select: { device: true, days: true, priceNet: true } } } })
+    : null;
 
   const isSzkolenie = rental.eventType === "SZKOLENIE";
   const variant = isSzkolenie ? null : input.deviceVariant;
@@ -300,6 +340,10 @@ export async function saveRentalFinance(
     baseRentalPriceNet = manual;
     baseRentalPriceSource = "MANUAL";
     overrideNote = input.baseRentalPriceOverrideNote?.trim() || null;
+  } else if (clientPrice(terms, rental.eventType, ctx.pricingCategory, variant, ctx.durationDays)) {
+    // Warunki klienta mają pierwszeństwo przed cennikiem ogólnym (etap C).
+    baseRentalPriceNet = clientPrice(terms, rental.eventType, ctx.pricingCategory, variant, ctx.durationDays)!;
+    baseRentalPriceSource = "CLIENT_TERMS";
   } else {
     const resolved = resolveBasePrice({
       eventType: rental.eventType,
@@ -348,6 +392,18 @@ export async function saveRentalFinance(
       : "CASH"
     : null;
 
+  // Kwota na FV: tylko przy VAT; pusta = całość.
+  const vatOn = Boolean(input.vatApplicable);
+  const invoiceNet = !vatOn
+    ? null
+    : "invoiceNet" in input
+      ? parseDecimalInput(input.invoiceNet)
+      : existing
+        ? existing.invoiceNet
+        : terms?.invoiceMode === "PARTIAL"
+          ? terms.invoicePartDefault
+          : null;
+
   const computed = recalculateFinance(
     { ...ctx, deviceVariant: variant },
     {
@@ -366,6 +422,7 @@ export async function saveRentalFinance(
       transportPriceNet,
       transportPaidSeparately,
       transportVatApplicable,
+      invoiceNet,
     },
   );
 
@@ -386,6 +443,8 @@ export async function saveRentalFinance(
     membraneFeeNet,
     vatApplicable: Boolean(input.vatApplicable),
     vatRate,
+    // Część ≥ sumy = całość (null) — kwota na FV idzie wtedy za sumą.
+    invoiceNet: invoiceNet != null && invoiceNet.lessThan(computed.totalNet) ? invoiceNet : null,
     totalNet: computed.totalNet,
     totalGross: computed.totalGross,
     paymentMethod: (input.paymentMethod === "TRANSFER" ? "TRANSFER" : "CASH") as PaymentMethod,

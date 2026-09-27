@@ -30,6 +30,11 @@ export type ClientProfilePatch = Partial<{
   agreedPrice: string | null; // Decimal jako tekst
   paymentTerms: string | null;
   paymentForm: "GOTOWKA" | "PRZELEW" | "OBA" | null;
+  paymentTermDays: number | null;
+  invoiceMode: "FULL" | "PARTIAL" | "NONE" | null;
+  invoicePartDefault: string | null; // Decimal jako tekst
+  pulsesCharged: boolean | null;
+  pulseRateNet: string | null; // Decimal jako tekst
   invoiceEmail: string | null;
   invoiceBuyerName: string | null;
   invoiceBuyerNip: string | null;
@@ -59,6 +64,11 @@ export const CLIENT_PROFILE_FIELDS = [
   "agreedPrice",
   "paymentTerms",
   "paymentForm",
+  "paymentTermDays",
+  "invoiceMode",
+  "invoicePartDefault",
+  "pulsesCharged",
+  "pulseRateNet",
   "invoiceEmail",
   "invoiceBuyerName",
   "invoiceBuyerNip",
@@ -77,7 +87,18 @@ export const CONTACT_JSON_FIELDS = ["roles", "trainedOn"] as const;
 
 // Warunki handlowe ustala biuro — agent może je tylko zaproponować
 // (propozycje_dodaj, rodzaj „pole”), nie zmienić sam.
-export const PROPOSAL_ONLY_CLIENT_FIELDS = ["agreedPrice", "paymentTerms", "paymentForm", "transportPriceNet", "frameAgreement"] as const;
+export const PROPOSAL_ONLY_CLIENT_FIELDS = [
+  "agreedPrice",
+  "paymentTerms",
+  "paymentForm",
+  "paymentTermDays",
+  "invoiceMode",
+  "invoicePartDefault",
+  "pulsesCharged",
+  "pulseRateNet",
+  "transportPriceNet",
+  "frameAgreement",
+] as const;
 
 export const CLIENT_FIELD_LABEL: Record<string, string> = {
   name: "pełna nazwa",
@@ -101,8 +122,13 @@ export const CLIENT_FIELD_LABEL: Record<string, string> = {
   seasonality: "sezonowość",
   agreedPrice: "cena ustalona (wynajem)",
   transportPriceNet: "transport",
-  paymentTerms: "warunki płatności",
+  paymentTerms: "uwagi do warunków",
   paymentForm: "forma płatności",
+  paymentTermDays: "termin płatności (dni)",
+  invoiceMode: "faktura (całość / część / bez FV)",
+  invoicePartDefault: "kwota na FV przy „część”",
+  pulsesCharged: "doliczać impulsy",
+  pulseRateNet: "stawka za impuls",
   invoiceEmail: "e-mail do faktur",
   invoiceBuyerName: "nabywca faktury (inny niż gabinet)",
   invoiceBuyerNip: "NIP nabywcy faktury",
@@ -269,6 +295,40 @@ export function parseClientProfilePatch(body: Record<string, unknown>): Result<C
       if (!Number.isFinite(n) || n < 0) return { ok: false, message: "Cena ustalona: kwota netto, np. 1180." };
       out.agreedPrice = n.toFixed(2);
     } else out.agreedPrice = null;
+  }
+  const amount = (k: "invoicePartDefault" | "pulseRateNet", digits: number): string | null | "invalid" => {
+    const raw = text(body[k] === null ? null : String(body[k]), 32);
+    if (!raw) return null;
+    const n = Number(raw.replace(/\s/g, "").replace(",", ".").replace(/zł$/i, ""));
+    if (!Number.isFinite(n) || n < 0) return "invalid";
+    return n.toFixed(digits);
+  };
+  if (has("invoicePartDefault")) {
+    const v = amount("invoicePartDefault", 2);
+    if (v === "invalid") return { ok: false, message: "Kwota na FV: kwota netto, np. 500." };
+    out.invoicePartDefault = v;
+  }
+  if (has("pulseRateNet")) {
+    const v = amount("pulseRateNet", 4);
+    if (v === "invalid") return { ok: false, message: "Stawka za impuls: kwota netto, np. 0,06." };
+    out.pulseRateNet = v;
+  }
+  if (has("invoiceMode")) {
+    const raw = text(body.invoiceMode, 16);
+    const k = raw ? fold(raw).replace(/[^a-z]/g, "") : null;
+    const mode = k === null ? null : k === "full" || k === "calosc" ? "FULL" : k === "partial" || k === "czesc" ? "PARTIAL" : k === "none" || k === "bezfv" ? "NONE" : "invalid";
+    if (mode === "invalid") return { ok: false, message: "Faktura: całość, część albo bez FV." };
+    out.invoiceMode = mode;
+  }
+  if (has("pulsesCharged")) {
+    const b = body.pulsesCharged === null || body.pulsesCharged === "" ? null : bool(body.pulsesCharged);
+    if (b === "invalid") return { ok: false, message: "Impulsy: doliczać tak albo nie." };
+    out.pulsesCharged = b;
+  }
+  if (has("paymentTermDays")) {
+    const raw = body.paymentTermDays === null || body.paymentTermDays === "" ? null : Number(body.paymentTermDays);
+    if (raw !== null && (!Number.isInteger(raw) || raw < 0 || raw > 120)) return { ok: false, message: "Termin płatności: liczba dni 0–120." };
+    out.paymentTermDays = raw;
   }
   if (has("paymentForm")) {
     const raw = text(body.paymentForm, 32);

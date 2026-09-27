@@ -29,6 +29,9 @@ export type InvoicePositionsInput = {
     transportPaidSeparately: boolean;
     vatApplicable: boolean;
     vatRate: Prisma.Decimal;
+    // Część netto na FV (warunki „część”, etap C) — null = całość.
+    invoiceNet?: Prisma.Decimal | null;
+    totalNet?: Prisma.Decimal;
   };
 };
 
@@ -71,6 +74,12 @@ export function buildInvoicePositions(input: InvoicePositionsInput): InvoicePosi
   const baseLabel = isSzkolenie
     ? `Szkolenie – ${input.deviceName}, ${rentalDateLabel(input.startsAt, input.endsAt)}`
     : `Wynajem urządzenia ${input.deviceName} ${rentalDateLabel(input.startsAt, input.endsAt)}`;
+  // Faktura na część kwoty — jedna pozycja na uzgodnioną część netto.
+  if (finance.invoiceNet != null && finance.totalNet && finance.invoiceNet.lessThan(finance.totalNet)) {
+    positions.push({ name: baseLabel, quantity: 1, taxLabel, totalPriceGross: gross(finance.invoiceNet) });
+    return positions;
+  }
+
   positions.push({ name: baseLabel, quantity: 1, taxLabel, totalPriceGross: gross(finance.baseRentalPriceNet) });
 
   if (finance.pulseSurchargeNet && finance.pulseSurchargeNet.greaterThan(0)) {

@@ -76,6 +76,7 @@ enum PriceSource {
   PRICE_LIST // z tabeli PriceRule
   MANUAL // wpisana ręcznie (nadpisanie albo brak reguły)
   PULSE_CALCULATED // wyliczona z licznika impulsów (LightSheer wariant elastyczny)
+  CLIENT_TERMS // z warunków handlowych klienta (ClientPrice) — karta klienta, etap C
 }
 
 enum PaymentMethod {
@@ -420,6 +421,10 @@ model RentalFinance {
   // --- VAT ---
   vatApplicable Boolean @default(false)
   vatRate       Decimal @default(23) @db.Decimal(5, 2) // per-wydarzenie, na wypadek zmiany stawki
+
+  // --- kwota na fakturę (etap C): null = całość (gdy VAT), liczba = część
+  // netto na FV (warunki „część”, np. Kolber); bez VAT zawsze 0 na FV.
+  invoiceNet Decimal? @db.Decimal(10, 2)
 
   // --- suma WYNAJMU — przeliczana i zapisywana po każdej zmianie, NIE ufać wartości z klienta ---
   // Gdy transportPaidSeparately = false, zawiera też transport (jak dawniej).
@@ -823,7 +828,14 @@ model Client {
   seasonality        String?   @db.Text
   agreedPrice        Decimal?  @db.Decimal(10, 2) // cena ustalona netto — sam wynajem (transport: transportPriceNet)
   paymentForm        String?   @db.VarChar(12) // GOTOWKA | PRZELEW | OBA — jak zwykle płaci
-  paymentTerms       String?   @db.Text // forma i termin płatności
+  paymentTerms       String?   @db.Text // uwagi do warunków (dawniej „forma i termin płatności”)
+  // Warunki handlowe (karta klienta, etap C). Ceny: ClientPrice; brak wiersza
+  // = cennik ogólny (Ustawienia → Cennik). Transport: transportPriceNet.
+  paymentTermDays    Int? // termin płatności przelewu (dni)
+  invoiceMode        String?   @db.VarChar(8) // FULL | PARTIAL | NONE — ile idzie na fakturę
+  invoicePartDefault Decimal?  @db.Decimal(10, 2) // netto na FV przy PARTIAL
+  pulsesCharged      Boolean? // czy doliczać impulsy (Alma), null = do potwierdzenia
+  pulseRateNet       Decimal?  @db.Decimal(10, 4) // stawka za impuls, gdy inna niż w cenniku
   invoiceEmail       String?
   // Nabywca faktury inny niż gabinet (np. SHA → Dominika Twardowska,
   // Morawska → P.H.U. Zibi Anna Morawska) — karta klienta, „Dane do faktury”.
@@ -860,6 +872,7 @@ model Client {
   proposalLinks ProposalClient[]
   remarks  Remark[]
   deliveryAddresses ClientDeliveryAddress[]
+  prices   ClientPrice[]
 
   @@index([nip])
   @@index([name])
@@ -907,6 +920,26 @@ model ClientDeliveryAddress {
 
   @@index([clientId])
   @@map("client_delivery_addresses")
+}
+
+// Warunki handlowe (karta klienta, etap C): cena netto wynajmu klienta dla
+// urządzenia / wariantu i liczby dni. Ma pierwszeństwo przed cennikiem ogólnym
+// przy tworzeniu rezerwacji. Kody urządzeń: src/lib/clients/terms-rules.ts.
+model ClientPrice {
+  id        String   @id @default(cuid())
+  clientId  String
+  device    String   @db.VarChar(24) // LS_1G, LS_2G, ET400, ALMA_DYEVL, … SZKOLENIE
+  days      Int
+  priceNet  Decimal  @db.Decimal(10, 2)
+  source    String?  @db.VarChar(32) // OFERTA | UMOWA | HISTORIA | USTALENIE | AGENT
+  sourceRef String?  @db.VarChar(191) // np. „oferta 30.10.2025”, nr paczki
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, device, days])
+  @@map("client_prices")
 }
 
 // Uwagi kierowcy o adresie — wpisywane po dostawie / odbiorze (widok

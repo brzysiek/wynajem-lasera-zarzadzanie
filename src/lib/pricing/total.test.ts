@@ -137,3 +137,15 @@ describe("round2", () => {
     expect(n(round2(D("0.005")))).toBe(0.01);
   });
 });
+
+describe("faktura na część kwoty (warunki klienta, etap C)", () => {
+  it("VAT tylko od części na FV", () => {
+    const r = computeTotals({ ...BASE, vatApplicable: true, invoicePartNet: D(500) });
+    expect(n(r.totalNet)).toBe(1500);
+    expect(n(r.totalGross)).toBe(1615);
+  });
+  it("część ≥ sumy = VAT od całości", () => {
+    const r = computeTotals({ ...BASE, vatApplicable: true, invoicePartNet: D(2000) });
+    expect(n(r.totalGross)).toBe(1845);
+  });
+});

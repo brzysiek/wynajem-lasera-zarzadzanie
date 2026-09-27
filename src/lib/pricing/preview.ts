@@ -97,6 +97,7 @@ export function previewTotals(input: {
   vatApplicable: boolean;
   vatRate: number;
   isSzkolenie: boolean;
+  invoicePartNet?: number | null; // część netto na FV (lustro total.ts)
 }): { net: number; gross: number; transportNet: number | null; transportGross: number | null } {
   const transportSeparate = Boolean(input.transportPaidSeparately) && !input.isSzkolenie;
 
@@ -106,7 +107,8 @@ export function previewTotals(input: {
   if (input.capUsed) net += (input.capFeeNet ?? 0) * Math.max(1, Math.trunc(input.capCount ?? 1));
   if (input.membraneUsed) net += (input.membraneFeeNet ?? 0) * Math.max(1, Math.trunc(input.membraneCount ?? 1));
   net = round2(net);
-  const gross = input.vatApplicable ? round2(net * (1 + input.vatRate / 100)) : net;
+  const part = input.invoicePartNet != null && input.invoicePartNet < net ? input.invoicePartNet : null;
+  const gross = !input.vatApplicable ? net : part != null ? round2(net + part * (input.vatRate / 100)) : round2(net * (1 + input.vatRate / 100));
 
   let transportNet: number | null = null;
   let transportGross: number | null = null;

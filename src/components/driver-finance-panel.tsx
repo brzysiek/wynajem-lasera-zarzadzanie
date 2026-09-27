@@ -316,6 +316,7 @@ export function DriverFinancePanel({
       vatApplicable,
       vatRate,
       isSzkolenie,
+      invoicePartNet: finance.invoiceNet != null ? Number(finance.invoiceNet) : null,
     });
 
     const r: { label: string; value: number }[] = [];
