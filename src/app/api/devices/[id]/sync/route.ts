@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { syncDevice } from "@/lib/device-sync";
+import { linkUnassignedRentalsSafe } from "@/lib/clients/rental-match";
 import { logInfo, logError } from "@/lib/logger";
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -35,6 +36,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ message: result.message }, { status: 502 });
     }
 
+    await linkUnassignedRentalsSafe({ userId: session.user.id });
     logInfo("device_sync_ok", { userId: session.user.id, deviceId: device.id, count: result.count });
     return NextResponse.json({ message: result.message, count: result.count });
   } catch (err) {

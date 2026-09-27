@@ -22,6 +22,9 @@ export async function GET(req: NextRequest) {
       changedSince: since,
       inquiries: z === "1" ? true : z === "0" ? false : null,
       q: sp.get("q"),
+      region: sp.get("region"),
+      beforeSeason: sp.get("przed_sezonem") === "1" || sp.get("przed_sezonem") === "true",
+      noNextStep: sp.get("bez_nastepnego_kroku") === "1" || sp.get("bez_nastepnego_kroku") === "true",
     });
     return json(paginate(list, pagination(sp)));
   });

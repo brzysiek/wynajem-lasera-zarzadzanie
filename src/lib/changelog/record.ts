@@ -6,7 +6,7 @@ import type { Provenance } from "@/lib/changelog/provenance";
 // Zapis do dziennika zmian (model ChangeLog). Wywoływany przez endpointy
 // zapisu — w tej samej transakcji co zmiana, gdy to możliwe.
 
-export type ChangeEntity = "CLIENT" | "CONTACT" | "LEAD" | "HISTORY" | "INVOICE" | "TASK" | "NOTE" | "TASK_COMMENT";
+export type ChangeEntity = "CLIENT" | "CONTACT" | "LEAD" | "HISTORY" | "INVOICE" | "TASK" | "NOTE" | "TASK_COMMENT" | "RENTAL";
 
 export type ChangeOperation =
   | "FIELD_CHANGE"

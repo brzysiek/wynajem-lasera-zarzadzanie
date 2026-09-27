@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { syncAllDevices } from "@/lib/device-sync";
+import { linkUnassignedRentalsSafe } from "@/lib/clients/rental-match";
 import { logInfo, logError } from "@/lib/logger";
 
 export async function POST() {
@@ -20,6 +21,7 @@ export async function POST() {
   // the panel's json() parse can't read, and nothing of ours logged at all.
   try {
     const results = await syncAllDevices();
+    await linkUnassignedRentalsSafe({ userId: session.user.id });
     const totalEvents = results.reduce((sum, r) => sum + r.count, 0);
     const errors = results.filter((r) => r.status === "ERROR");
 

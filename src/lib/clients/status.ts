@@ -43,27 +43,31 @@ export function daysAgo(date: Date, today: Date): number {
   return Math.max(0, dayIndex(today) - dayIndex(date));
 }
 
-// Reguły w tej kolejności (spec, sekcja 2):
+// Reguły w tej kolejności (wniosek nr 12, lista klientów 27.09.2026):
 // 1. blokada → NIE_KONTAKTOWAC
-// 2. brak zrealizowanych wynajmów → POTENCJALNY
-// 3. ostatni wynajem > 365 dni temu → BYLY
-// 4. ostatni wynajem 181–365 dni temu → USPIONY
-// 5. ≥ 2 wynajmy w ostatnich 365 dniach → STALY
-// 6. w przeciwnym razie → NOWY
+// 2. ≥ 2 wynajmy w ostatnich 365 dniach → STALY
+// 3. 1 wynajem w ostatnich 180 dniach → NOWY
+// 4. rezerwacja w przyszłości → co najmniej NOWY (zdejmuje Uśpiony/Były/Potencjalny)
+// 5. brak zrealizowanych wynajmów → POTENCJALNY
+// 6. ostatni wynajem 181–365 dni temu → USPIONY, > 365 dni → BYLY
+// Wcześniej „Uśpiony” szedł przed liczeniem wynajmów — Be Beauty z 10
+// wynajmami w roku i rezerwacjami na X wychodziła jako uśpiona. Pkt 3
+// świadomie węższy niż „1 wynajem w 12 mies.” z wniosku: inaczej Uśpiony
+// nie mógłby wystąpić nigdy (jedyny wynajem 8 mies. temu to uśpiona, nie nowa).
 // `realizedRentalDates` = daty rozpoczęcia wynajmów spełniających
 // isRealizedRental — filtrowanie robi wywołujący.
 export function computeClientStatus(input: {
   statusOverride: "NIE_KONTAKTOWAC" | null;
   realizedRentalDates: Date[];
   today: Date;
+  hasFutureReservation?: boolean;
 }): ClientStatus {
   if (input.statusOverride === "NIE_KONTAKTOWAC") return "NIE_KONTAKTOWAC";
-  if (input.realizedRentalDates.length === 0) return "POTENCJALNY";
-
   const ages = input.realizedRentalDates.map((d) => daysAgo(d, input.today));
-  const lastAge = Math.min(...ages);
-  if (lastAge > 365) return "BYLY";
-  if (lastAge > 180) return "USPIONY";
   const inLastYear = ages.filter((a) => a <= 365).length;
-  return inLastYear >= 2 ? "STALY" : "NOWY";
+  if (inLastYear >= 2) return "STALY";
+  if (inLastYear === 1 && Math.min(...ages) <= 180) return "NOWY";
+  if (input.hasFutureReservation) return "NOWY";
+  if (ages.length === 0) return "POTENCJALNY";
+  return Math.min(...ages) > 365 ? "BYLY" : "USPIONY";
 }

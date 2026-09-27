@@ -26,7 +26,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
   const withAmount = d.transactions.filter((t) => new Date(t.date).getFullYear() === year && t.net);
   const avgInvoice = withAmount.length ? withAmount.reduce((s, t) => s + (t.net ?? 0), 0) / withAmount.length : null;
   return (
-    <Section title="Rytm współpracy" gap="gap-4" action={<Legend />}>
+    <Section id="rytm" title="Rytm współpracy" gap="gap-4" action={<Legend />}>
       {r.grid.length === 0 ? (
         <p className="text-[15px] text-[#5C6166]">Brak wynajmów — rytm pojawi się po pierwszych rezerwacjach.</p>
       ) : (

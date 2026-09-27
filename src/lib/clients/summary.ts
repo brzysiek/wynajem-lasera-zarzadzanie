@@ -72,6 +72,8 @@ export function summarizeClient(input: {
     statusOverride: input.statusOverride,
     realizedRentalDates: realized.map((r) => r.startsAt),
     today: input.today,
+    // Rezerwacja = wynajem (nie szkolenie) nieusunięty, zaczynający się po dziś.
+    hasFutureReservation: input.rentals.some((r) => r.eventType === "WYNAJEM" && !r.deletedInGoogle && r.startsAt > input.today),
   });
 
   const finished = input.rentals.filter((r) => !r.deletedInGoogle && r.endsAt <= input.today && r.totalNet != null);

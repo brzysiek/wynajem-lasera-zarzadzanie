@@ -2,7 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { normalizePolishPhone } from "@/lib/reminders";
 import type { AgentCtx } from "@/lib/agent-api/handler";
 import { AgentApiError } from "@/lib/agent-api/handler";
-import { listAgentClients } from "@/lib/agent-api/clients";
+import { listAgentClients, parseRegion } from "@/lib/agent-api/clients";
+import { loadUnassignedRentals } from "@/lib/clients/rental-match";
 import { parseManualEntry } from "@/lib/agent-api/manual-entry";
 import { paginate } from "@/lib/agent-api/token";
 import { loadClientDetail } from "@/lib/clients/load";
@@ -117,13 +118,18 @@ export const TOOLS: McpTool[] = [
     name: "klienci_lista",
     title: "Lista klientów",
     description:
-      "Klienci i kontakty z zapytań z paginacją. Filtry: brak telefonu / NIP / miasta, status (POTENCJALNY, NOWY, STALY, USPIONY, BYLY, NIE_KONTAKTOWAC), miasto, zmienione od daty, tylko kontakty z zapytań, wyszukiwanie.",
+      "Klienci i kontakty z zapytań z paginacją. Filtry: brak telefonu / NIP / miasta, status (POTENCJALNY, NOWY, STALY, USPIONY, BYLY, NIE_KONTAKTOWAC), miasto, region, " +
+      "„przed sezonem” (wynajmowały w poprzednim półroczu, a na bieżące nie mają wynajmu ani rezerwacji), bez następnego kroku, zmienione od daty, tylko kontakty z zapytań, wyszukiwanie (także nazwa robocza i aliasy z kalendarzy). " +
+      "Każdy rekord: shortName, region, rentals12m, nextRental (unassigned = rezerwacja bez klienta z propozycją), rhythmDays, churnRisk, nextStep, beforeSeason, check (status do sprawdzenia).",
     inputSchema: obj({
       brak_telefonu: b("Tylko bez telefonu."),
       brak_nip: b("Tylko bez NIP."),
       brak_miasta: b("Tylko bez miasta."),
       status: s("Status klienta.", { enum: ["POTENCJALNY", "NOWY", "STALY", "USPIONY", "BYLY", "NIE_KONTAKTOWAC"] }),
       miasto: s("Fragment nazwy miasta."),
+      region: s("Region z kodu pocztowego / miasta.", { enum: ["KRAKOWSKI", "MALOPOLSKA", "PODKARPACIE", "SLASK", "SWIETOKRZYSKIE", "INNE"] }),
+      przed_sezonem: b("Tylko „przed sezonem” (pętla półroczy I–VIII / IX–XII)."),
+      bez_nastepnego_kroku: b("Tylko bez następnego kroku (brak pola, zadania i zaplanowanego kontaktu)."),
       zmienione_od: s("Dane zmienione od daty RRRR-MM-DD."),
       zapytania: b("true = tylko kontakty z zapytań, false = tylko klienci (działa po włączeniu kwalifikacji klientów)."),
       q: s("Szukaj: nazwa, NIP, osoba, e-mail, telefon."),
@@ -140,7 +146,11 @@ export const TOOLS: McpTool[] = [
         changedSince: day(a, "zmienione_od"),
         inquiries: typeof a.zapytania === "boolean" ? a.zapytania : null,
         q: str(a, "q"),
+        region: str(a, "region"),
+        beforeSeason: a.przed_sezonem === true,
+        noNextStep: a.bez_nastepnego_kroku === true,
       });
+      if (str(a, "region") && !parseRegion(str(a, "region"))) throw new AgentApiError("region: KRAKOWSKI, MALOPOLSKA, PODKARPACIE, SLASK, SWIETOKRZYSKIE albo INNE.");
       // Dopóki kwalifikacja jest wyłączona (Ustawienia → Klienci), wszyscy są
       // „klientami” — filtr zapytania=true zwraca wtedy pustą listę.
       const qualification = typeof a.zapytania === "boolean" ? await isQualificationActive() : null;
@@ -148,6 +158,31 @@ export const TOOLS: McpTool[] = [
         ...paginate(list, page(a)),
         ...(qualification === false ? { uwaga: "Kwalifikacja klientów jest wyłączona — wszyscy są na liście klientów, więc kontaktów z zapytań nie wyróżniamy (zapytania=true zwraca 0)." } : {}),
       };
+    },
+  },
+  {
+    name: "rezerwacje_bez_klienta",
+    title: "Rezerwacje bez klienta",
+    description:
+      "Przyszłe rezerwacje z kalendarzy urządzeń bez przypisanego klienta (wniosek 13), z propozycją klienta (alias z dopasowań, seria tytułu, podobieństwo nazwy; pewnosc 0–1). " +
+      "Pewne dopasowania (alias, ta sama seria, kontakt HubSpot) panel przypisuje sam przy synchronizacji kalendarzy. Tylko odczyt: agent NIE zmienia rezerwacji — " +
+      "listę do potwierdzenia zgłasza biuru (np. zadanie_utworz dla Ani); potwierdza biuro w Klienci → Dopasowania historii, sekcja „Rezerwacje bez klienta”.",
+    inputSchema: obj({ ...PAGE }),
+    readOnly: true,
+    run: async (a) => {
+      const list = await loadUnassignedRentals();
+      return paginate(
+        list.map((r) => ({
+          id: r.id,
+          tytul: r.title,
+          od: r.startsAt,
+          do: r.endsAt,
+          urzadzenie: r.deviceName,
+          typ: r.eventType,
+          propozycje: r.candidates.map((c) => ({ klientId: c.clientId, nazwa: c.name, nazwaRobocza: c.shortName, miasto: c.city, pewnosc: c.score })),
+        })),
+        page(a),
+      );
     },
   },
   {

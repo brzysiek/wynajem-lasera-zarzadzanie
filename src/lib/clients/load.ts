@@ -1,235 +1,39 @@
-import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getHubspotContactUrl } from "@/lib/integrations/hubspot";
-import { CATEGORY_TO_INTEREST, DEVICE_INTEREST_KEYS, type ClinicTypeKey, type DeviceInterestKey, type SourceKey } from "@/lib/clients/labels";
-import { summarizeClient, type ClientInvoiceFact, type ClientRentalFact } from "@/lib/clients/summary";
-import { interestsFromText } from "@/lib/history/invoices";
+import type { ClinicTypeKey, DeviceInterestKey, SourceKey } from "@/lib/clients/labels";
+import { summarizeClient } from "@/lib/clients/summary";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { buildTransactions, rentalRhythmDays, transactionTotals, typicalPayment, type TxRental, type TxTotals } from "@/lib/clients/transactions";
 import { paymentLabel, type PaymentStatus } from "@/lib/clients/payment-status";
 import { loadCardExtras, profileDto, type ClientProfileDto, type FieldMetaDto, type LineageDto, type OpportunityDto } from "@/lib/clients/card-extras";
 import type { PersonRole, TrainedOn } from "@/lib/clients/profile-fields";
 import { rentalTimeOf } from "@/lib/rental-title";
-import { VISIBLE_EMAIL } from "@/lib/porzadki/exclusion-load";
 import { computeRhythm, headsFromText, monthsLabel, type ClientRhythm, type RhythmRental } from "@/lib/clients/rhythm";
 import { loadPaymentCoverage } from "@/lib/invoicing/bank-transfers";
 import { gmailSummary } from "@/lib/gmail/sync";
 import { isQualified } from "@/lib/clients/qualification";
 import { isQualificationActive } from "@/lib/clients/qualify";
 import type { ClientStatus } from "@/lib/clients/status";
+import {
+  HISTORY_FACT_SELECT,
+  HISTORY_FACT_WHERE,
+  INVOICE_FACT_SELECT,
+  INVOICE_FACT_WHERE,
+  RENTAL_FACT_SELECT,
+  historyToFact,
+  invoiceToFact,
+  parseInterests,
+  toFact,
+  type RentalFactRow,
+} from "@/lib/clients/facts";
+
+export { loadClientRows, type ClientListRow } from "@/lib/clients/list-load";
 
 // Odczyt modułu Klienci (serwer). ZAWIERA PRZYCHÓD — wołać wyłącznie z
 // miejsc dostępnych dla ADMIN/STAFF (strona /klienci, /api/clients/*),
 // NIGDY z niczego dostępnego roli KIEROWCA (spec, sekcja 2 i 4).
 // Status liczony przy odczycie (<1000 klientów — jedno zapytanie wystarcza,
 // bez denormalizacji; spec, sekcja 2).
-
-const RENTAL_FACT_SELECT = {
-  startsAt: true,
-  endsAt: true,
-  eventType: true,
-  deletedInGoogle: true,
-  device: { select: { pricingCategory: true } },
-  finance: { select: { confirmedAt: true, totalNet: true } },
-} as const;
-
-type RentalFactRow = {
-  startsAt: Date;
-  endsAt: Date;
-  eventType: "WYNAJEM" | "SZKOLENIE";
-  deletedInGoogle: boolean;
-  device: { pricingCategory: string | null };
-  finance: { confirmedAt: Date | null; totalNet: { toString(): string } } | null;
-};
-
-function toFact(r: RentalFactRow): ClientRentalFact {
-  return {
-    startsAt: r.startsAt,
-    endsAt: r.endsAt,
-    eventType: r.eventType,
-    deletedInGoogle: r.deletedInGoogle,
-    confirmedAt: r.finance?.confirmedAt ?? null,
-    totalNet: r.finance ? Number(r.finance.totalNet.toString()) : null,
-    interest: r.device.pricingCategory ? (CATEGORY_TO_INTEREST[r.device.pricingCategory] ?? null) : null,
-  };
-}
-
-// Historia z kalendarzy (prompt 3A): liczą się tylko wpisy przypisane
-// automatycznie albo potwierdzone — propozycje (SUGGESTED) dopiero po
-// potwierdzeniu. Bez kwot: nie wpływają na przychód.
-const HISTORY_FACT_WHERE: Prisma.RentalHistoryWhereInput = {
-  matchState: { in: ["AUTO", "CONFIRMED"] },
-  kind: { in: ["WYNAJEM", "SZKOLENIE"] },
-};
-const HISTORY_FACT_SELECT = {
-  startsAt: true,
-  endsAt: true,
-  kind: true,
-  device: { select: { pricingCategory: true } },
-} as const;
-
-type HistoryFactRow = { startsAt: Date; endsAt: Date; kind: string; device: { pricingCategory: string | null } };
-
-function historyToFact(h: HistoryFactRow): ClientRentalFact {
-  return {
-    startsAt: h.startsAt,
-    endsAt: h.endsAt,
-    eventType: h.kind === "SZKOLENIE" ? "SZKOLENIE" : "WYNAJEM",
-    deletedInGoogle: false,
-    confirmedAt: null,
-    totalNet: null,
-    interest: h.device.pricingCategory ? (CATEGORY_TO_INTEREST[h.device.pricingCategory] ?? null) : null,
-    historical: true,
-  };
-}
-
-// Faktury przypisane do klienta (prompt 3B) — dowód wynajmu, gdy nie ma go
-// w kalendarzu (summary.ts), i suma „zafakturowano”.
-const INVOICE_FACT_WHERE: Prisma.ClientInvoiceWhereInput = { matchState: { in: ["AUTO", "CONFIRMED"] } };
-const INVOICE_FACT_SELECT = { sellDate: true, totalNet: true, rentalId: true, positionsSummary: true } as const;
-
-function invoiceToFact(i: { sellDate: Date; totalNet: { toString(): string }; rentalId: string | null; positionsSummary: string | null }): ClientInvoiceFact {
-  return {
-    sellDate: i.sellDate,
-    totalNet: Number(i.totalNet.toString()),
-    hasRental: i.rentalId != null,
-    interest: interestsFromText(i.positionsSummary).find((k) => k !== "SZKOLENIE") ?? null,
-  };
-}
-
-function parseInterests(v: unknown): DeviceInterestKey[] {
-  return Array.isArray(v) ? v.filter((x): x is DeviceInterestKey => DEVICE_INTEREST_KEYS.includes(x as DeviceInterestKey)) : [];
-}
-
-function personName(c: { firstName: string | null; lastName: string | null }): string | null {
-  const n = [c.firstName, c.lastName].filter(Boolean).join(" ").trim();
-  return n || null;
-}
-
-export type ClientListRow = {
-  id: string;
-  name: string;
-  city: string | null;
-  primaryName: string | null;
-  primaryPhone: string | null;
-  primaryEmail: string | null;
-  hasPhone: boolean;
-  status: ClientStatus;
-  rentals12m: number;
-  rentalsTotal: number;
-  lastRentalAt: string | null;
-  // Ostatni kontakt = najnowsze z: e-mail (Gmail), SMS/rozmowa z panelu, wynajem.
-  lastContactAt: string | null;
-  // Klient vs „kontakt z zapytania” (prompt 2 v2, 1.0) i ostatni sygnał.
-  qualified: boolean;
-  lastInquiry: { leadId: string; at: string } | null;
-  revenueNet: number;
-  // Wynajmowane (od najczęstszego), potem deklarowane zainteresowania.
-  devices: DeviceInterestKey[];
-  // Urządzenia faktycznie wynajmowane — pod podpowiedź sezonową.
-  rentedDevices: DeviceInterestKey[];
-  source: SourceKey | null;
-  clinicType: ClinicTypeKey | null;
-  createdAt: string;
-  // Indeks wyszukiwania (spec 3.2): nazwa, NIP, miasto, osoby, e-maile;
-  // telefony osobno, same cyfry bez prefiksu 48 — „601 000 111” trafi.
-  search: string;
-  phoneDigits: string;
-};
-
-// Najnowszy kontakt z klientem (e-mail z Gmaila, SMS i rozmowy z panelu).
-async function lastContacts(): Promise<Map<string, Date>> {
-  const [emails, messages, calls] = await Promise.all([
-    prisma.emailMessage.groupBy({ by: ["clientId"], where: { clientId: { not: null }, ...VISIBLE_EMAIL }, _max: { sentAt: true } }),
-    prisma.message.groupBy({ by: ["clientId"], where: { clientId: { not: null } }, _max: { sentAt: true } }),
-    prisma.leadActivity.groupBy({ by: ["clientId"], where: { clientId: { not: null }, type: { in: ["CALL", "CALL_NO_ANSWER", "SMS", "EMAIL"] } }, _max: { createdAt: true } }),
-  ]);
-  const out = new Map<string, Date>();
-  const put = (id: string | null, d: Date | null | undefined) => {
-    if (!id || !d) return;
-    const prev = out.get(id);
-    if (!prev || d > prev) out.set(id, d);
-  };
-  for (const e of emails) put(e.clientId, e._max.sentAt);
-  for (const m of messages) put(m.clientId, m._max.sentAt);
-  for (const c of calls) put(c.clientId, c._max.createdAt);
-  return out;
-}
-
-export async function loadClientRows(today = new Date()): Promise<ClientListRow[]> {
-  const [contactsAt, qualificationActive] = await Promise.all([lastContacts(), isQualificationActive()]);
-  const clients = await prisma.client.findMany({
-    // Zarchiwizowani (Porządki → Archiwum) nie wracają na listę.
-    where: { archivedAt: null },
-    select: {
-      id: true,
-      name: true,
-      city: true,
-      nip: true,
-      statusOverride: true,
-      source: true,
-      clinicType: true,
-      deviceInterests: true,
-      createdAt: true,
-      contacts: {
-        select: { firstName: true, lastName: true, phone: true, phone2: true, email: true, isPrimary: true },
-        orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
-      },
-      rentals: { select: RENTAL_FACT_SELECT },
-      history: { where: HISTORY_FACT_WHERE, select: HISTORY_FACT_SELECT },
-      invoices: { where: INVOICE_FACT_WHERE, select: INVOICE_FACT_SELECT },
-      qualifiedAt: true,
-      leads: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, createdAt: true } },
-    },
-  });
-
-  return clients.map((c) => {
-    const summary = summarizeClient({
-      statusOverride: c.statusOverride,
-      rentals: [...(c.rentals as RentalFactRow[]).map(toFact), ...c.history.map(historyToFact)],
-      invoices: c.invoices.map(invoiceToFact),
-      today,
-    });
-    const primary = c.contacts[0] ?? null;
-    const interests = parseInterests(c.deviceInterests);
-    return {
-      id: c.id,
-      name: c.name,
-      city: c.city,
-      primaryName: primary ? personName(primary) : null,
-      primaryPhone: primary?.phone ?? null,
-      primaryEmail: primary?.email ?? null,
-      hasPhone: c.contacts.some((p) => Boolean(p.phone?.trim() || p.phone2?.trim())),
-      status: summary.status,
-      rentals12m: summary.rentals12m,
-      rentalsTotal: summary.rentalsTotal,
-      lastRentalAt: summary.lastRentalAt?.toISOString() ?? null,
-      lastContactAt: (() => {
-        const d = [contactsAt.get(c.id), summary.lastRentalAt && summary.lastRentalAt <= today ? summary.lastRentalAt : null]
-          .filter((x): x is Date => Boolean(x))
-          .sort((a, b) => b.getTime() - a.getTime())[0];
-        return d?.toISOString() ?? null;
-      })(),
-      revenueNet: summary.revenueNet,
-      qualified: isQualified({ qualifiedAt: c.qualifiedAt, rentals: c.rentals.length, history: c.history.length, invoices: c.invoices.length }, qualificationActive),
-      lastInquiry: c.leads[0] ? { leadId: c.leads[0].id, at: c.leads[0].createdAt.toISOString() } : null,
-      devices: [...new Set([...summary.rentedDevices, ...interests])],
-      rentedDevices: summary.rentedDevices,
-      source: c.source,
-      clinicType: c.clinicType,
-      createdAt: c.createdAt.toISOString(),
-      search: [c.name, c.nip, c.city, ...c.contacts.flatMap((p) => [personName(p), p.email])]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase(),
-      phoneDigits: c.contacts
-        .flatMap((p) => [p.phone, p.phone2])
-        .map((ph) => (ph ?? "").replace(/\D/g, "").replace(/^48(?=\d{9}$)/, ""))
-        .filter(Boolean)
-        .join(" "),
-    };
-  });
-}
 
 export type ClientContactDto = {
   id: string;

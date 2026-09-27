@@ -755,6 +755,9 @@ model Client {
   street            String?
   zip               String?
   city              String?
+  // Region do filtra listy (src/lib/clients/region.ts) — pole liczone z kodu
+  // pocztowego / miasta, odświeżane przy odczycie listy, gdy się rozjedzie.
+  region            String?               @db.VarChar(16)
   country           String?               @default("Polska")
   transportPriceNet Decimal?              @db.Decimal(10, 2) // dawne HubSpot „ustalona_cena_transportu”
   distanceKm        Decimal?              @db.Decimal(6, 1) // ostatnia znana odległość (z wynajmów)

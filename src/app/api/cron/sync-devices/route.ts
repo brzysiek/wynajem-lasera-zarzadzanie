@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncAllDevices } from "@/lib/device-sync";
+import { linkUnassignedRentalsSafe } from "@/lib/clients/rental-match";
 import { logWarn, logError, logInfo } from "@/lib/logger";
 
 // Internal-only endpoint, meant to be hit by a real cPanel Cron Job on a
@@ -17,6 +18,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const results = await syncAllDevices();
+    // Rezerwacje bez klienta → klient po aliasie / serii (wniosek 13).
+    const linked = await linkUnassignedRentalsSafe();
     const totalEvents = results.reduce((sum, r) => sum + r.count, 0);
     const errors = results.filter((r) => r.status === "ERROR");
 
@@ -30,7 +33,7 @@ export async function POST(req: NextRequest) {
       logInfo("device_sync_cron_ok", { deviceCount: results.length, totalEvents });
     }
 
-    return NextResponse.json({ deviceCount: results.length, totalEvents, errorCount: errors.length, results });
+    return NextResponse.json({ deviceCount: results.length, totalEvents, errorCount: errors.length, results, linkedRentals: linked?.assigned ?? null });
   } catch (err) {
     logError("device_sync_cron_failed", err);
     return NextResponse.json({ message: err instanceof Error ? err.message : String(err) }, { status: 500 });

@@ -63,6 +63,8 @@ export type MessageSummary = {
 };
 
 export type Rental = {
+  // Klient panelu (CRM); brak = ostrzeżenie w kalendarzu (wniosek 13). Opcjonalne — nie każdy DTO je niesie.
+  clientId?: string | null;
   id: string;
   deviceId: string;
   title: string;

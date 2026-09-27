@@ -39,7 +39,9 @@ export function Section({
   sub,
   children,
   gap = "gap-1",
+  id,
 }: {
+  id?: string; // kotwica (np. „rytm” — link z listy klientów)
   title: string;
   action?: ReactNode;
   sub?: ReactNode; // podtytuł pod nagłówkiem (np. „Dla kierowcy i instalatora.”)
@@ -47,7 +49,7 @@ export function Section({
   gap?: string;
 }) {
   return (
-    <section className={`flex flex-col ${gap}`}>
+    <section id={id} className={`flex scroll-mt-6 flex-col ${gap}`}>
       <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <Heading>{title}</Heading>
         {action && <div className="flex items-baseline gap-4">{action}</div>}

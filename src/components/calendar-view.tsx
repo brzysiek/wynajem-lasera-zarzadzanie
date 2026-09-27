@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Device, Rental } from "@/components/rental-form";
 import { BASE_PATH } from "@/lib/base-path";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
+import { normalizeTitle } from "@/lib/history/normalize-title";
 import { rentalNeedsReport } from "@/lib/report-alerts";
 import { rentalInvoiceStatus } from "@/lib/invoice-alerts";
 import { useNotifications } from "@/components/notifications-context";
@@ -273,6 +274,14 @@ function CalendarWeekRow({
                 </span>
               );
             })()}
+            {needsClient(s.rental) && (
+              <span
+                className="flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full bg-[#E08A5C] text-[10px] font-bold leading-none text-white"
+                title="Rezerwacja bez klienta — przypisz w Klienci → Dopasowania historii"
+              >
+                ?
+              </span>
+            )}
             {s.rental.hubspotContactId && <ContactBadge name={s.rental.contactNameCache} />}
             {s.rental.driver && <DriverBadge name={s.rental.driver.name} color={s.rental.driver.driverColor} />}
             <span className="truncate">
@@ -285,6 +294,11 @@ function CalendarWeekRow({
       </div>
     </div>
   );
+}
+
+// Wniosek 13: rezerwacja bez klienta panelu (serwis / blokada się nie liczą).
+function needsClient(r: RawRental): boolean {
+  return r.clientId === null && normalizeTitle(r.title).kind !== "INNE";
 }
 
 function ContactBadge({ name }: { name?: string | null }) {

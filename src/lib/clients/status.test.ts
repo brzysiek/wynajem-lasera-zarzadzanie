@@ -4,8 +4,8 @@ import { CONFIRMATION_TRACKED_SINCE, computeClientStatus, daysAgo, isRealizedRen
 const today = new Date(2026, 9, 1, 12, 0); // 1.10.2026, 12:00
 const ago = (n: number) => new Date(2026, 9, 1 - n, 10, 0);
 
-function status(dates: Date[], statusOverride: "NIE_KONTAKTOWAC" | null = null) {
-  return computeClientStatus({ statusOverride, realizedRentalDates: dates, today });
+function status(dates: Date[], statusOverride: "NIE_KONTAKTOWAC" | null = null, hasFutureReservation = false) {
+  return computeClientStatus({ statusOverride, realizedRentalDates: dates, today, hasFutureReservation });
 }
 
 describe("computeClientStatus", () => {
@@ -37,20 +37,27 @@ describe("computeClientStatus", () => {
     expect(status([ago(180)])).toBe("NOWY");
   });
 
-  it("ostatni wynajem 181 dni temu → USPIONY", () => {
+  it("jedyny wynajem w roku 181–365 dni temu → USPIONY", () => {
     expect(status([ago(181)])).toBe("USPIONY");
+    expect(status([ago(365), ago(900)])).toBe("USPIONY");
   });
 
-  it("ostatni wynajem 365 dni temu → USPIONY", () => {
-    expect(status([ago(365)])).toBe("USPIONY");
+  it("rezerwacja w przyszłości zdejmuje Uśpiony", () => {
+    expect(status([ago(200)], null, true)).toBe("NOWY");
   });
 
   it("ostatni wynajem 366 dni temu → BYLY", () => {
     expect(status([ago(366), ago(500)])).toBe("BYLY");
   });
 
-  it("uśpiony mimo kilku wynajmów w roku, jeśli ostatni > 180 dni", () => {
-    expect(status([ago(200), ago(300)])).toBe("USPIONY");
+  it("kilka wynajmów w roku → STALY, nawet gdy ostatni > 180 dni (wniosek 12, Be Beauty)", () => {
+    expect(status([ago(200), ago(300)])).toBe("STALY");
+  });
+
+  it("rezerwacja w przyszłości zdejmuje Były i Potencjalny", () => {
+    expect(status([ago(400), ago(500)], null, true)).toBe("NOWY");
+    expect(status([], null, true)).toBe("NOWY");
+    expect(status([ago(400)], "NIE_KONTAKTOWAC", true)).toBe("NIE_KONTAKTOWAC");
   });
 });
 

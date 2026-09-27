@@ -42,9 +42,9 @@ describe("summarizeClient", () => {
     expect(s.rentedDevices).toEqual(["LIGHTSHEER", "ALMA_HARMONY"]);
   });
 
-  it("przyszła rezerwacja nie jest ani wynajmem zrealizowanym, ani przychodem", () => {
+  it("przyszła rezerwacja nie jest ani wynajmem zrealizowanym, ani przychodem — ale daje status Nowy (wniosek 12)", () => {
     const s = summarizeClient({ statusOverride: null, rentals: [rental({ startsAt: day(2026, 10, 20), totalNet: 2000 })], today });
-    expect(s).toMatchObject({ rentalsTotal: 0, revenueNet: 0, status: "POTENCJALNY" });
+    expect(s).toMatchObject({ rentalsTotal: 0, revenueNet: 0, status: "NOWY" });
   });
 
   it("niepotwierdzony wynajem po 22.09 nie liczy się jeszcze do wynajmów, ale przychód już tak", () => {

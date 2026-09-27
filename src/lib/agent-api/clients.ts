@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { loadClientRows } from "@/lib/clients/load";
 import type { ClientStatus } from "@/lib/clients/status";
+import { loadUnassignedRentals } from "@/lib/clients/rental-match";
+import { REGIONS, REGION_LABEL, type RegionKey } from "@/lib/clients/region";
+import type { ClientListRow } from "@/lib/clients/list-load";
+import { logError } from "@/lib/logger";
 
 // Lista klientów dla API agenta: status i kwalifikacja z listy panelu
 // (loadClientRows) + surowe dane do porządków (NIP, adres, osoby, data
@@ -16,7 +20,17 @@ export type AgentClientFilters = {
   changedSince: Date | null;
   inquiries: boolean | null; // true = tylko kontakty z zapytań, false = tylko klienci
   q: string | null;
+  // Lista klientów 27.09.2026 (pkt 7).
+  region?: string | null; // klucz (KRAKOWSKI…) albo nazwa („Świętokrzyskie”)
+  beforeSeason?: boolean;
+  noNextStep?: boolean;
 };
+
+export function parseRegion(v: string | null | undefined): RegionKey | null {
+  if (!v) return null;
+  const f = fold(v.trim());
+  return REGIONS.find((k) => fold(k) === f || fold(REGION_LABEL[k]) === f) ?? null;
+}
 
 export type AgentClient = {
   id: string;
@@ -38,13 +52,29 @@ export type AgentClient = {
   lastContactAt: string | null;
   createdAt: string;
   updatedAt: string;
+  shortName: string | null;
+  region: RegionKey;
+  rentals12m: number;
+  nextRental: ClientListRow["nextRental"];
+  rhythmDays: number | null;
+  churnRisk: ClientListRow["rhythm"]["risk"];
+  nextStep: ClientListRow["nextStep"];
+  beforeSeason: boolean;
+  check: string | null;
 };
 
 const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ł/g, "l");
 
 export async function listAgentClients(f: AgentClientFilters): Promise<AgentClient[]> {
+  // Rezerwacje bez klienta z propozycją — jak na liście w panelu (następny
+  // wynajem, „przed sezonem”).
+  const unassigned = await loadUnassignedRentals().catch((err) => {
+    logError("agent_unassigned_rentals_failed", err);
+    return [];
+  });
+  const region = parseRegion(f.region);
   const [rows, raw] = await Promise.all([
-    loadClientRows(),
+    loadClientRows(new Date(), { unassigned }),
     prisma.client.findMany({
       select: {
         id: true,
@@ -81,6 +111,9 @@ export async function listAgentClients(f: AgentClientFilters): Promise<AgentClie
     if (f.changedSince && c.updatedAt < f.changedSince) continue;
     if (f.inquiries === true && r.qualified) continue;
     if (f.inquiries === false && !r.qualified) continue;
+    if (region && r.region !== region) continue;
+    if (f.beforeSeason && !r.beforeSeason) continue;
+    if (f.noNextStep && r.nextStep) continue;
     if (q && !fold(r.search).includes(q) && !(qDigits.length >= 5 && r.phoneDigits.includes(qDigits))) continue;
     out.push({
       id: r.id,
@@ -102,6 +135,15 @@ export async function listAgentClients(f: AgentClientFilters): Promise<AgentClie
       lastContactAt: r.lastContactAt,
       createdAt: r.createdAt,
       updatedAt: c.updatedAt.toISOString(),
+      shortName: r.shortName,
+      region: r.region,
+      rentals12m: r.rentals12m,
+      nextRental: r.nextRental,
+      rhythmDays: r.rhythm.days,
+      churnRisk: r.rhythm.risk,
+      nextStep: r.nextStep,
+      beforeSeason: r.beforeSeason,
+      check: r.check,
     });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name, "pl"));

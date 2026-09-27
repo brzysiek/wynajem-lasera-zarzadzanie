@@ -10,6 +10,7 @@ import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { resolveDriverId } from "@/lib/rental-driver";
 import { resolveContactDistanceKm, resolveVehicleId } from "@/lib/rental-vehicle";
 import { saveRentalFinance } from "@/lib/finance";
+import { linkUnassignedRentalsSafe } from "@/lib/clients/rental-match";
 
 const RENTAL_INCLUDE = {
   device: true,
@@ -187,6 +188,9 @@ export async function POST(req: NextRequest) {
         logError("rental_contact_assign_on_create_failed", err, { rentalId: rental.id, contactId });
       }
     }
+
+    // Klient po kontakcie HubSpot / aliasie / serii tytułu (wniosek 13).
+    await linkUnassignedRentalsSafe({ userId: session.user.id, rentalIds: [rental.id] });
 
     logInfo("rental_created", { userId: session.user.id, rentalId: rental.id, deviceId: device.id });
 
