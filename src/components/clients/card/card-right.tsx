@@ -549,7 +549,7 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
   return (
     <section className="flex flex-col gap-2 bg-[#FBF0E7] px-4 py-4">
       <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-4">
-        <h2 className="m-0 self-start border-b-2 border-[#E08A5C] pb-[3px] text-[17px] font-semibold leading-tight text-[#0C3450]">Faktury i płatności</h2>
+        <h2 className="m-0 self-start border-b-2 border-[#E08A5C] pb-[2px] text-[16px] font-semibold leading-tight text-[#0C3450]">Faktury i płatności</h2>
         <button type="button" onClick={onShowAll} className={LINK}>
           Wszystkie wynajmy i faktury →
         </button>

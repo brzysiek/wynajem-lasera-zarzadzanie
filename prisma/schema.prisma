@@ -818,6 +818,10 @@ model Client {
   paymentForm        String?   @db.VarChar(12) // GOTOWKA | PRZELEW | OBA — jak zwykle płaci
   paymentTerms       String?   @db.Text // forma i termin płatności
   invoiceEmail       String?
+  // Nabywca faktury inny niż gabinet (np. SHA → Dominika Twardowska,
+  // Morawska → P.H.U. Zibi Anna Morawska) — karta klienta, „Dane do faktury”.
+  invoiceBuyerName   String?   @db.VarChar(191)
+  invoiceBuyerNip    String?   @db.VarChar(16)
   frameAgreement     Json? // { fileId, name, signedAt, note, url } — umowa ramowa / kaucja (plik: ClientFile)
   marketingConsent   Json? // { email, sms, date, source }
   smsReminders       Boolean?

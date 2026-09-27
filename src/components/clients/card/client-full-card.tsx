@@ -242,7 +242,7 @@ export function ClientFullCard({
           </div>
         )}
         <Indicators d={d} />
-        <div className="flex flex-col gap-8 px-4 pb-10 pt-6 md:px-7 xl:flex-row xl:items-start">
+        <div className="flex flex-col gap-7 px-4 pb-10 pt-5 md:px-7 xl:flex-row xl:items-start">
           <CardLeft d={d} onChanged={setD} notify={notify} isAdmin={isAdmin} isAgent={isAgent} pendingProposals={pendingProposals} onDialog={setDialog} />
           <CardRight
             d={d}

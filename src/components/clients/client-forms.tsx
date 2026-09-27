@@ -346,7 +346,7 @@ export function ContactForm({
           );
         })}
       </div>
-      <input className={INPUT} placeholder="Rola opisowa (opcjonalnie), np. właścicielka, księgowa" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} />
+      <input className={INPUT} placeholder="Inna rola — tylko gdy nie ma jej na liście powyżej" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} />
       <div className="grid grid-cols-2 gap-2">
         <input className={INPUT} placeholder="Zwrot, np. Pani Basiu" value={f.salutation} onChange={(e) => setF({ ...f, salutation: e.target.value })} />
         <input className={INPUT} placeholder="Kanał, np. SMS i telefon" value={f.preferredChannel} onChange={(e) => setF({ ...f, preferredChannel: e.target.value })} />

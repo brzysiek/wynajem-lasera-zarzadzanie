@@ -571,7 +571,7 @@ export const TOOLS: McpTool[] = [
     description:
       "Zmienia dane klienta; każda zmiana pola trafia do dziennika (przed → po) i do pochodzenia pola (zrodlo). Pola: name, nip, street, zip, city, country, clinicType, " +
       "source (źródło pozyskania, nie zmiany), deviceInterests, statusOverride oraz nowe pola karty: shortName, regon, legalForm, businessStartDate, pkd, vatStatus, bankAccounts, " +
-      "deliveryAddress, deliveryNotes, services, openingHours, links, ownDevices, seasonality, invoiceEmail, marketingConsent, smsReminders, googleReview, " +
+      "deliveryAddress, deliveryNotes, services, openingHours, links, ownDevices, seasonality, invoiceEmail, invoiceBuyerName, invoiceBuyerNip, marketingConsent, smsReminders, googleReview, " +
       "nextStepText + nextStepDueAt (baner „Następny krok”; pierwsza linia = krok, dalsze = kontekst). null czyści pole. " +
       "Warunki handlowe (agreedPrice = cena ustalona za sam wynajem, transportPriceNet = transport, paymentForm = gotówka | przelew | oba, paymentTerms, frameAgreement) " +
       "tylko przez propozycje_dodaj. Wymagane: zrodlo, pewnosc, paczka.",
@@ -603,6 +603,8 @@ export const TOOLS: McpTool[] = [
         ownDevices: s("Własne urządzenia gabinetu / konkurencja."),
         seasonality: s("Sezonowość, np. depilacja X–VI, przerwa VII–VIII."),
         invoiceEmail: s("E-mail do faktur."),
+        invoiceBuyerName: s("Nabywca faktury inny niż gabinet (nazwa), np. SHA → Dominika Twardowska."),
+        invoiceBuyerNip: s("NIP nabywcy faktury (10 cyfr), gdy inny niż NIP gabinetu."),
         marketingConsent: { type: ["object", "null"], properties: { email: { type: "boolean" }, sms: { type: "boolean" }, date: { type: "string" }, source: { type: "string" } }, description: "Zgoda marketingowa." },
         smsReminders: { type: ["boolean", "null"], description: "SMS-przypomnienia o wynajmie." },
         googleReview: { type: ["object", "null"], properties: { askedAt: { type: "string" }, given: { type: "boolean" } }, description: "Opinia Google: prośba (data) i czy wystawiona." },

@@ -3,7 +3,8 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { ClientDetail } from "@/lib/clients/load";
-import { CLINIC_TYPE_LABEL, type ClinicTypeKey, formatNip, formatPhone } from "@/lib/clients/labels";
+import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_LABEL, SOURCE_LABEL, type ClinicTypeKey, formatNip, formatPhone } from "@/lib/clients/labels";
+import { REGION_LABEL, computeRegion } from "@/lib/clients/region";
 import { PERSON_ROLE_LABEL, type PersonRole } from "@/lib/clients/profile-fields";
 import { monthsLabel } from "@/lib/clients/rhythm";
 import { ContactForm, api } from "../client-forms";
@@ -11,9 +12,10 @@ import { FieldsEditor, boolInput, dateInput, type FieldDef } from "./fields-edit
 import { LINK, Missing, Quote, Row, Section, dm, dmy, money } from "./kit";
 import { isConfirmingSource } from "./sources";
 
-// Lewa kolumna karty (440 px) wg projektu Main.dc.html: Dane firmy, Osoby,
-// Paszport dostawy, Profil gabinetu, Zgody i komunikacja, Powiązania
-// i aliasy. Każda sekcja edytowana w miejscu (PATCH /api/clients/:id).
+// Lewa kolumna karty wg karta-kierunek.html (etap 1, 27.09.2026): Dane firmy
+// (dane do faktury zwinięte), Osoby, Paszport dostawy, a Profil gabinetu,
+// Zgody i komunikacja oraz Powiązania i aliasy — zwinięte do jednej linii.
+// Każda sekcja edytowana w miejscu (PATCH /api/clients/:id).
 
 type Props = { d: ClientDetail; onChanged: (next: ClientDetail) => void; notify: (text: string, error?: boolean) => void };
 
@@ -60,36 +62,38 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
     .filter((x): x is string => !!x)
     .sort()
     .pop();
-  const mainPkd = p.pkd.find((x) => x.main) ?? p.pkd[0];
-  const otherPkd = p.pkd.filter((x) => x !== mainPkd).map((x) => x.code);
   const fields: FieldDef[] = [
     { key: "name", label: "Pełna nazwa" },
     { key: "shortName", label: "Nazwa robocza", placeholder: "tak jak w kalendarzach, np. MiWiNi" },
-    { key: "legalForm", label: "Forma", placeholder: "JDG, sp. z o.o., s.c." },
-    { key: "businessStartDate", label: "Działalność od", kind: "date" },
     { key: "nip", label: "NIP" },
-    { key: "regon", label: "REGON" },
-    { key: "pkd", label: "PKD", kind: "list", placeholder: "96.02.Z zabiegi kosmetyczne\n85.59.B" },
     { key: "street", label: "Ulica i numer" },
     { key: "zip", label: "Kod" },
     { key: "city", label: "Miasto" },
+    { key: "regon", label: "REGON" },
+    { key: "legalForm", label: "Forma prawna", placeholder: "JDG, sp. z o.o., s.c." },
     { key: "vatStatus", label: "Status VAT", kind: "select", options: ["Czynny", "Zwolniony", "Niezarejestrowany"].map((x) => ({ value: x, label: x })) },
+    { key: "invoiceEmail", label: "E-mail do faktur" },
     { key: "bankAccounts", label: "Rachunki", kind: "list" },
+    { key: "invoiceBuyerName", label: "Nabywca faktury (inny niż gabinet)", placeholder: "puste = faktura na gabinet" },
+    { key: "invoiceBuyerNip", label: "NIP nabywcy" },
   ];
   const initial = {
     name: d.name,
     shortName: p.shortName ?? "",
-    legalForm: p.legalForm ?? "",
-    businessStartDate: dateInput(p.businessStartDate),
     nip: d.nip ?? "",
-    regon: p.regon ?? "",
-    pkd: p.pkd.map((x) => `${x.code}${x.name ? ` ${x.name}` : ""}`).join("\n"),
     street: d.street ?? "",
     zip: d.zip ?? "",
     city: d.city ?? "",
+    regon: p.regon ?? "",
+    legalForm: p.legalForm ?? "",
     vatStatus: p.vatStatus ?? "",
+    invoiceEmail: p.invoiceEmail ?? "",
     bankAccounts: p.bankAccounts.join("\n"),
+    invoiceBuyerName: p.invoiceBuyerName ?? "",
+    invoiceBuyerNip: p.invoiceBuyerNip ? (formatNip(p.invoiceBuyerNip) ?? p.invoiceBuyerNip) : "",
   };
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const region = d.city || d.zip ? REGION_LABEL[computeRegion(d.zip, d.city)] : null;
 
   async function enrich() {
     setEnriching(true);
@@ -123,32 +127,76 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
           <Row label="Nazwa robocza" labelWidth={110} src={src("shortName")}>
             {p.shortName ?? <Missing>uzupełnij</Missing>}
           </Row>
-          <Row label="Forma" labelWidth={110} src={src(d.fieldMeta.legalForm ? "legalForm" : "businessStartDate")}>
-            {p.legalForm || p.businessStartDate ? [p.legalForm, p.businessStartDate ? `od ${dmy(p.businessStartDate)}` : null].filter(Boolean).join(" · ") : <Missing>do sprawdzenia</Missing>}
-          </Row>
           <Row label="NIP" labelWidth={110} src={nipSrc}>
             {d.nip ? formatNip(d.nip) : <Missing>brak</Missing>}
           </Row>
-          <Row label="REGON" labelWidth={110} src={src("regon")}>
-            {p.regon ?? <Missing>uzupełnij po NIP</Missing>}
-          </Row>
-          <Row label="PKD" labelWidth={110} src={src("pkd")}>
-            {mainPkd ? (
-              <span title={otherPkd.length ? `także: ${otherPkd.join(", ")}` : undefined}>
-                {mainPkd.code}
-                {mainPkd.name ? ` ${mainPkd.name}` : ""}
-                {otherPkd.length ? <span className="text-[#767C82]"> (+{otherPkd.length})</span> : null}
-              </span>
+          <Row label="Adres firmy" labelWidth={110} src={src("street")}>
+            {d.street || d.city ? (
+              <>
+                {[d.street, [d.zip, d.city].filter(Boolean).join(" ")].filter(Boolean).join(", ")}
+                {region && <span className="text-[#767C82]"> · {region.toLowerCase()}</span>}
+              </>
             ) : (
-              <Missing>do sprawdzenia</Missing>
+              <Missing>brak adresu</Missing>
             )}
           </Row>
-          <Row label="Adres" labelWidth={110} src={src("street")}>
-            {d.street || d.city ? [d.street, [d.zip, d.city].filter(Boolean).join(" ")].filter(Boolean).join(", ") : <Missing>brak adresu</Missing>}
-          </Row>
-          <Row label="Status VAT" labelWidth={110} src={src("vatStatus")}>
-            {p.vatStatus ? `${p.vatStatus}${p.bankAccounts.length ? ` · ${p.bankAccounts.length} rach.` : ""}` : <Missing>do sprawdzenia</Missing>}
-          </Row>
+          {/* Dane do faktury — zwinięte; rozwinięcie w miejscu. */}
+          <div className="grid items-baseline gap-2.5 border-b border-[#F0F1F2] py-[5px] last:border-0" style={{ gridTemplateColumns: "110px minmax(0,1fr)" }}>
+            <button type="button" onClick={() => setInvoiceOpen((v) => !v)} aria-expanded={invoiceOpen} className="text-left text-[10.5px] uppercase tracking-[0.12em] text-[#5C6166] hover:text-[#1B6FA8]">
+              Dane do faktury {invoiceOpen ? "▴" : "▾"}
+            </button>
+            {invoiceOpen ? (
+              <span className="text-[12px] text-[#767C82]">poniżej</span>
+            ) : (
+              <button type="button" onClick={() => setInvoiceOpen(true)} className="text-left text-[12.5px] text-[#8A939B] hover:text-[#1B6FA8]">
+                {[
+                  p.regon ? "REGON" : null,
+                  p.legalForm ?? null,
+                  p.vatStatus ? `VAT: ${p.vatStatus.toLowerCase()}` : null,
+                  p.invoiceEmail ? "e-mail do faktur" : null,
+                  p.bankAccounts.length ? `${p.bankAccounts.length} rach.` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || "REGON · forma · status VAT · e-mail do faktur · rachunek"}
+                {p.invoiceBuyerName && <b className="font-semibold text-[#1B6FA8]"> · nabywca: {p.invoiceBuyerName}</b>}
+              </button>
+            )}
+          </div>
+          {invoiceOpen && (
+            <div className="border-l-2 border-[#EAF4FB] pl-2">
+              <Row label="REGON" labelWidth={102} src={src("regon")}>
+                {p.regon ?? <Missing>uzupełnij po NIP</Missing>}
+              </Row>
+              <Row label="Forma prawna" labelWidth={102} src={src("legalForm")}>
+                {p.legalForm ?? <Missing>do sprawdzenia</Missing>}
+              </Row>
+              <Row label="Status VAT" labelWidth={102} src={src("vatStatus")}>
+                {p.vatStatus ?? <Missing>do sprawdzenia</Missing>}
+              </Row>
+              <Row label="E-mail do faktur" labelWidth={102}>
+                {p.invoiceEmail ?? <Missing>brak</Missing>}
+              </Row>
+              <Row label="Rachunek" labelWidth={102} src={p.bankAccounts.length ? src("bankAccounts") : undefined}>
+                {p.bankAccounts.length ? p.bankAccounts.map((a) => a.replace(/(\d{2})(?=\d)/g, "$1 ").trim()).join(", ") : <span className="text-[#767C82]">— (uzupełni się z wyciągu)</span>}
+              </Row>
+              <Row label="Nabywca faktury" labelWidth={102}>
+                {p.invoiceBuyerName ? (
+                  <>
+                    {p.invoiceBuyerName}
+                    {p.invoiceBuyerNip && <span className="text-[#767C82]"> · NIP {formatNip(p.invoiceBuyerNip)}</span>}
+                  </>
+                ) : (
+                  <span className="text-[#767C82]">ten sam co gabinet</span>
+                )}
+              </Row>
+              {p.frameAgreement && (
+                <Row label="Umowa ramowa" labelWidth={102}>
+                  {p.frameAgreement.name}
+                  {p.frameAgreement.signedAt ? ` · ${dmy(p.frameAgreement.signedAt)}` : ""}
+                </Row>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap gap-x-5 pt-3 text-[12.5px] text-[#767C82]">
             {verified && <span>zweryfikowano {dmy(verified)}</span>}
             {!isAgent && d.nip && (
@@ -208,42 +256,51 @@ function PeopleSection({ d, onChanged, notify }: Props) {
               }}
             />
           );
-        const roles = [...c.roles.map((r) => PERSON_ROLE_LABEL[r as PersonRole] ?? r), ...(!c.roles.length && c.role ? [c.role] : [])];
+        // Jedna „rola”: role z listy + opisowa (gdy nie powtarza tej z listy).
+        const listed = c.roles.map((r) => PERSON_ROLE_LABEL[r as PersonRole] ?? r);
+        const roles = [...listed, ...(c.role && !listed.some((x) => x.toLowerCase().startsWith(c.role!.toLowerCase().slice(0, 5))) ? [c.role] : [])];
         const extra = [c.salutation ? `Zwrot „${c.salutation}”` : null, c.preferredChannel, c.roles.includes("invoices") ? "faktury mailem" : null].filter(Boolean).join(" · ");
-        const trained = c.trainedOn.length || c.roles.includes("owner") || c.roles.includes("cosmetologist");
-        if (c.isPrimary)
+        if (c.isPrimary) {
+          const sms = d.profile.smsReminders === true ? "tak" : d.profile.smsReminders === false ? "nie" : null;
+          const details = [
+            c.salutation ? `forma: ${c.salutation}` : null,
+            c.preferredChannel ? `kanał: ${c.preferredChannel}` : null,
+            sms ? `przypomnienia SMS: ${sms}` : null,
+            c.trainedOn.length ? `przeszkolenia: ${c.trainedOn.map((t) => `${t.device}${t.date ? ` ${dmy(t.date)}` : ""}`).join(", ")}` : null,
+          ].filter(Boolean);
           return (
-            <div key={c.id} className="flex flex-col gap-1 border-l-[3px] border-[#2F7A68] bg-[#EEF6F2] px-3 py-2.5">
-              <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#2F7A68]">{["Osoba główna", ...roles].join(" · ")}</div>
-              <button type="button" onClick={() => setEditing(c.id)} className="text-left text-[15px] font-semibold text-[#1F5E4F] hover:underline" title="Edytuj osobę">
-                {personName(c) || c.email || "Osoba bez nazwy"}
-              </button>
-              {c.phone && (
-                <div className="text-[13px] tabular-nums text-[#333333]">
-                  <a href={`tel:${c.phone}`} className="text-[#333333] hover:text-[#1B6FA8]">
-                    {formatPhone(c.phone)}
-                  </a>{" "}
-                  {confirmed(c, "phone") && <span className="text-[12px] font-semibold text-[#2F7A68]">✓ potwierdzony</span>}
+            <div key={c.id} className="flex flex-col gap-0.5 border-l-[3px] border-[#2F7A68] bg-[#EEF6F2] px-3 py-2.5">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#2F7A68]">Osoba główna</div>
+              <div>
+                <button type="button" onClick={() => setEditing(c.id)} className="text-left text-[14px] font-semibold text-[#0C3450] hover:underline" title="Edytuj osobę">
+                  {personName(c) || c.email || "Osoba bez nazwy"}
+                </button>
+                {roles.length > 0 && <span className="text-[13px] text-[#3A3A3A]"> · {roles.join(", ")}</span>}
+              </div>
+              {(c.phone || c.email) && (
+                <div className="break-all text-[13px] tabular-nums text-[#333333]">
+                  {c.phone && (
+                    <a href={`tel:${c.phone}`} className="text-[#333333] hover:text-[#1B6FA8]">
+                      {formatPhone(c.phone)}
+                    </a>
+                  )}
+                  {c.phone && confirmed(c, "phone") && <span className="text-[11px] font-semibold text-[#2F7A68]"> ✓</span>}
+                  {c.phone && c.email && " · "}
+                  {c.email}
+                  {c.email && (c.roles.includes("invoices") || c.email === d.profile.invoiceEmail) && <span className="text-[11px] font-semibold text-[#2F7A68]"> ✓ faktury</span>}
                 </div>
               )}
               {c.phone2 && (
                 <div className="text-[13px] tabular-nums text-[#333333]">
-                  {formatPhone(c.phone2)} <span className="text-[12px] text-[#767C82]">{c.phone2Label ?? "drugi"}</span>
+                  {formatPhone(c.phone2)} <span className="text-[11px] text-[#767C82]">{c.phone2Label ?? "drugi"}</span>
                 </div>
               )}
-              {c.email && (
-                <div className="break-all text-[13px] text-[#333333]">
-                  {c.email} {(c.roles.includes("invoices") || c.email === d.profile.invoiceEmail) && <span className="text-[12px] font-semibold text-[#2F7A68]">✓ faktury</span>}
-                </div>
-              )}
-              {extra && <div className="text-[13px] text-[#4A4A4A]">{extra}</div>}
-              {trained && (
-                <div className="text-[13px] text-[#4A4A4A]">
-                  Przeszkolona: {c.trainedOn.length ? c.trainedOn.map((t) => `${t.device}${t.date ? ` · ${dmy(t.date)}` : ""}`).join(", ") : <Missing>data</Missing>}
-                </div>
-              )}
+              <div className="mt-0.5 text-[11.5px] leading-snug text-[#5C6166]">
+                {details.length ? details.join(" · ") : <span>forma zwracania · kanał · przeszkolenia — <Missing>uzupełnij</Missing></span>}
+              </div>
             </div>
           );
+        }
         return (
           <div key={c.id} className="flex flex-col gap-0.5 border border-dashed border-[#C3C4C7] px-3 py-2">
             <div className="flex items-baseline justify-between gap-3">
@@ -337,7 +394,7 @@ function DeliverySection({ d, onChanged, notify, isAgent }: Props & { isAgent: b
 
 const LINK_LABEL: Record<string, string> = { www: "WWW", instagram: "Instagram", facebook: "Facebook", booksy: "Booksy", fresha: "Fresha" };
 
-function ProfileSection({ d, onChanged, notify }: Props) {
+function ProfileSection({ d, onChanged, notify, headless }: Props & { headless?: boolean }) {
   const [edit, setEdit] = useState(false);
   const p = d.profile;
   const links = p.links
@@ -377,7 +434,7 @@ function ProfileSection({ d, onChanged, notify }: Props) {
   const href = (k: string, v: string) =>
     /^https?:\/\//.test(v) ? v : k === "instagram" ? `https://instagram.com/${v.replace(/^@/, "")}` : k === "www" ? `https://${v}` : null;
   return (
-    <Section title="Profil gabinetu" action={!edit && <EditLink onClick={() => setEdit(true)} />}>
+    <Section title="Profil gabinetu" headless={headless} action={!edit && <EditLink onClick={() => setEdit(true)} />}>
       {edit ? (
         <FieldsEditor
           clientId={d.id}
@@ -418,6 +475,8 @@ function ProfileSection({ d, onChanged, notify }: Props) {
             )}
           </Row>
           <Row label="Własne urządzenia">{p.ownDevices ?? <Missing>zapytać</Missing>}</Row>
+          <Row label="Zainteresowania">{d.deviceInterests.length ? d.deviceInterests.map((k) => DEVICE_INTEREST_LABEL[k]).join(", ") : <Missing>brak</Missing>}</Row>
+          <Row label="Źródło">{d.source ? SOURCE_LABEL[d.source] : <Missing>nieznane</Missing>}</Row>
           <Row label="Sezonowość">
             {p.seasonality ?? (d.rhythm.seasonalBreak.length ? `przerwa ${monthsLabel(d.rhythm.seasonalBreak)} (z historii wynajmów)` : <Missing>brak danych</Missing>)}
           </Row>
@@ -429,7 +488,7 @@ function ProfileSection({ d, onChanged, notify }: Props) {
 
 // ------------------------------------------------------------------ Zgody i komunikacja
 
-function ConsentsSection({ d, onChanged, notify }: Props) {
+function ConsentsSection({ d, onChanged, notify, headless }: Props & { headless?: boolean }) {
   const [edit, setEdit] = useState(false);
   const p = d.profile;
   const lastSms = [d.cardFacts.lastSmsAt, ...d.history.filter((h) => h.kind === "message" && h.channel === "SMS" && !h.failed).map((h) => h.at)]
@@ -459,7 +518,7 @@ function ConsentsSection({ d, onChanged, notify }: Props) {
   const smsText = p.smsReminders === false ? "nie" : smsOn ? `✓ tak${lastSms ? ` (ostatni ${dmy(lastSms)})` : ""}` : null;
   const consent = mc && (mc.email !== null || mc.sms !== null) ? [mc.email !== null ? `e-mail: ${mc.email ? "tak" : "nie"}` : null, mc.sms !== null ? `SMS: ${mc.sms ? "tak" : "nie"}` : null, mc.date ? dmy(mc.date) : null, mc.source].filter(Boolean).join(" · ") : null;
   return (
-    <Section title="Zgody i komunikacja" action={!edit && <EditLink onClick={() => setEdit(true)} />}>
+    <Section title="Zgody i komunikacja" headless={headless} action={!edit && <EditLink onClick={() => setEdit(true)} />}>
       {edit ? (
         <FieldsEditor
           clientId={d.id}
@@ -500,7 +559,9 @@ function LinksSection({
   isAgent,
   pendingProposals,
   onDialog,
+  headless,
 }: {
+  headless?: boolean;
   d: ClientDetail;
   isAdmin: boolean;
   isAgent: boolean;
@@ -517,7 +578,7 @@ function LinksSection({
       `„${l.otherName}”`
     );
   return (
-    <Section title="Powiązania i aliasy" gap="gap-3">
+    <Section title="Powiązania i aliasy" gap="gap-3" headless={headless}>
       <div className="text-[13px] text-[#5C6166]">
         {d.aliases.length ? "Tytuły z kalendarzy, które same trafiają do tej karty:" : "Brak aliasów z kalendarzy — przypisz wydarzenia w Klienci → Dopasowania."}
       </div>
@@ -552,6 +613,14 @@ function LinksSection({
         </div>
       ))}
       {!manual && d.hubspotCompanyId && <div className="text-[13px] text-[#5C6166]">Rekord z HubSpota (firma {d.hubspotCompanyId}).</div>}
+      {(d.hubspotCompanyId || d.hubspotContactIds.length > 0 || d.legacyHubspotTag) && (
+        <div className="text-[12px] text-[#767C82]">
+          Dane techniczne (HubSpot):{" "}
+          {[d.hubspotCompanyId ? `firma ${d.hubspotCompanyId}` : null, d.hubspotContactIds.length ? `kontakty ${d.hubspotContactIds.join(", ")}` : null, d.legacyHubspotTag ? `tagi: ${d.legacyHubspotTag}` : null]
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
+      )}
       {!d.archive && (
         <div className="flex flex-wrap gap-x-5 gap-y-1 pt-1">
           <button type="button" onClick={() => onDialog("merge")} className={LINK}>
@@ -584,14 +653,66 @@ function LinksSection({
 }
 
 function Tile({ children }: { children: ReactNode }) {
-  return <div className="border border-[#CFE3DA] bg-white px-[18px] py-4 empty:hidden">{children}</div>;
+  return <div className="border border-[#CFE3DA] bg-white px-4 py-3.5 empty:hidden">{children}</div>;
+}
+
+// Kafel zwinięty domyślnie: tytuł + jedna linia podsumowania, klik rozwija.
+function FoldTile({ title, summary, children }: { title: string; summary: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-[#CFE3DA] bg-white px-4 py-2.5">
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center justify-between gap-3 text-left">
+        <span className="text-[14px] font-semibold text-[#0C3450]">{title}</span>
+        <span className="bg-[#EEF0F2] px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.1em] text-[#5C6166]">{open ? "zwiń ▴" : "zwinięte ▾"}</span>
+      </button>
+      {open ? <div className="mt-1.5 pb-1">{children}</div> : <p className="mt-0.5 truncate text-[12px] text-[#8A939B]" title={summary}>{summary}</p>}
+    </div>
+  );
+}
+
+function profileSummary(d: ClientDetail): string {
+  const p = d.profile;
+  const links = p.links ? Object.entries(p.links).filter(([, v]) => v).map(([k]) => k) : [];
+  const parts = [
+    d.clinicType ? CLINIC_TYPE_LABEL[d.clinicType].toLowerCase() : null,
+    p.services.length ? `${p.services.length} ${p.services.length === 1 ? "usługa" : "usług"}` : null,
+    p.ownDevices ? "własne urządzenia" : null,
+    d.deviceInterests.length ? d.deviceInterests.map((k) => DEVICE_INTEREST_LABEL[k]).join(", ") : null,
+    p.seasonality ?? (d.rhythm.seasonalBreak.length ? `przerwa ${monthsLabel(d.rhythm.seasonalBreak)}` : null),
+    d.source ? SOURCE_LABEL[d.source].toLowerCase() : null,
+    links.length ? links.join(", ") : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" · ") : "rodzaj · usługi · własne urządzenia · zainteresowania · sezonowość · źródło · linki — do uzupełnienia";
+}
+
+function consentsSummary(d: ClientDetail): string {
+  const p = d.profile;
+  const mc = p.marketingConsent;
+  return [
+    `przypomnienia SMS: ${p.smsReminders === true ? "tak" : p.smsReminders === false ? "nie" : "nie ustalono"}`,
+    `zgoda marketingowa: ${mc && (mc.email || mc.sms) ? "tak" : "brak"}`,
+    `opinia Google: ${p.googleReview?.given ? "wystawiona" : p.googleReview?.askedAt ? `prośba ${dm(p.googleReview.askedAt)}` : "—"}`,
+    d.statusOverride === "NIE_KONTAKTOWAC" ? "NIE KONTAKTOWAĆ" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function linksSummary(d: ClientDetail): string {
+  return [
+    d.aliases.length ? `${d.aliases.length} ${d.aliases.length === 1 ? "alias" : "aliasów"} z kalendarzy` : "brak aliasów z kalendarzy",
+    d.lineage.length ? `${d.lineage.length} ${d.lineage.length === 1 ? "powiązanie" : "powiązania"} (wydzielenie / scalenie)` : null,
+    d.hubspotCompanyId || d.hubspotContactIds.length ? "dane techniczne HubSpot" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export function CardLeft(props: Props & { isAdmin: boolean; isAgent: boolean; pendingProposals: number; onDialog: (k: "merge" | "split" | "archive") => void }) {
   return (
     // Lewa kolumna = dane o gabinecie: każda sekcja w białym kaflu z bladozieloną
     // ramką #CFE3DA (jaśniejszą od zieleni statusów #2F7A68). Prawa — bez ramek.
-    <div className="flex w-full shrink-0 flex-col gap-3 xl:w-[420px]">
+    <div className="flex w-full shrink-0 flex-col gap-3 xl:w-[470px]">
       <Tile>
         <CompanySection {...props} />
       </Tile>
@@ -601,15 +722,15 @@ export function CardLeft(props: Props & { isAdmin: boolean; isAgent: boolean; pe
       <Tile>
         <DeliverySection {...props} />
       </Tile>
-      <Tile>
-        <ProfileSection {...props} />
-      </Tile>
-      <Tile>
-        <ConsentsSection {...props} />
-      </Tile>
-      <Tile>
-        <LinksSection d={props.d} isAdmin={props.isAdmin} isAgent={props.isAgent} pendingProposals={props.pendingProposals} onDialog={props.onDialog} />
-      </Tile>
+      <FoldTile title="Profil gabinetu" summary={profileSummary(props.d)}>
+        <ProfileSection {...props} headless />
+      </FoldTile>
+      <FoldTile title="Zgody i komunikacja" summary={consentsSummary(props.d)}>
+        <ConsentsSection {...props} headless />
+      </FoldTile>
+      <FoldTile title="Powiązania i aliasy" summary={linksSummary(props.d)}>
+        <LinksSection d={props.d} isAdmin={props.isAdmin} isAgent={props.isAgent} pendingProposals={props.pendingProposals} onDialog={props.onDialog} headless />
+      </FoldTile>
     </div>
   );
 }

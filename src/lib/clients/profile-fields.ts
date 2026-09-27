@@ -31,6 +31,8 @@ export type ClientProfilePatch = Partial<{
   paymentTerms: string | null;
   paymentForm: "GOTOWKA" | "PRZELEW" | "OBA" | null;
   invoiceEmail: string | null;
+  invoiceBuyerName: string | null;
+  invoiceBuyerNip: string | null;
   frameAgreement: FrameAgreement | null;
   marketingConsent: MarketingConsent | null;
   smsReminders: boolean | null;
@@ -58,6 +60,8 @@ export const CLIENT_PROFILE_FIELDS = [
   "paymentTerms",
   "paymentForm",
   "invoiceEmail",
+  "invoiceBuyerName",
+  "invoiceBuyerNip",
   "frameAgreement",
   "marketingConsent",
   "smsReminders",
@@ -100,6 +104,8 @@ export const CLIENT_FIELD_LABEL: Record<string, string> = {
   paymentTerms: "warunki płatności",
   paymentForm: "forma płatności",
   invoiceEmail: "e-mail do faktur",
+  invoiceBuyerName: "nabywca faktury (inny niż gabinet)",
+  invoiceBuyerNip: "NIP nabywcy faktury",
   frameAgreement: "umowa ramowa",
   marketingConsent: "zgoda marketingowa",
   smsReminders: "SMS-przypomnienia",
@@ -275,6 +281,13 @@ export function parseClientProfilePatch(body: Record<string, unknown>): Result<C
     const e = text(body.invoiceEmail, 191)?.toLowerCase() ?? null;
     if (e && !EMAIL_RE.test(e)) return { ok: false, message: "Nieprawidłowy e-mail do faktur." };
     out.invoiceEmail = e;
+  }
+  if (has("invoiceBuyerName")) out.invoiceBuyerName = text(body.invoiceBuyerName, 191);
+  if (has("invoiceBuyerNip")) {
+    const raw = text(body.invoiceBuyerNip, 32);
+    const digits = raw ? raw.replace(/\D/g, "") : null;
+    if (digits !== null && digits.length !== 10) return { ok: false, message: "NIP nabywcy faktury musi mieć 10 cyfr." };
+    out.invoiceBuyerNip = digits;
   }
   if (has("frameAgreement")) {
     const o = obj(body.frameAgreement);

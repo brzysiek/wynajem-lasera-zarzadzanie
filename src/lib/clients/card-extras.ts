@@ -24,6 +24,8 @@ export type ClientProfileDto = {
   paymentTerms: string | null;
   paymentForm: "GOTOWKA" | "PRZELEW" | "OBA" | null;
   invoiceEmail: string | null;
+  invoiceBuyerName: string | null;
+  invoiceBuyerNip: string | null;
   frameAgreement: FrameAgreement | null;
   marketingConsent: MarketingConsent | null;
   smsReminders: boolean | null;
@@ -55,6 +57,8 @@ export function profileDto(c: Client): ClientProfileDto {
     paymentTerms: c.paymentTerms,
     paymentForm: (c.paymentForm as ClientProfileDto["paymentForm"]) ?? null,
     invoiceEmail: c.invoiceEmail,
+    invoiceBuyerName: c.invoiceBuyerName,
+    invoiceBuyerNip: c.invoiceBuyerNip,
     frameAgreement: objOrNull<FrameAgreement>(c.frameAgreement),
     marketingConsent: objOrNull<MarketingConsent>(c.marketingConsent),
     smsReminders: c.smsReminders,

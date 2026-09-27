@@ -81,6 +81,8 @@ export const AGENT_CLIENT_FIELDS = [
   "ownDevices",
   "seasonality",
   "invoiceEmail",
+  "invoiceBuyerName",
+  "invoiceBuyerNip",
   "marketingConsent",
   "smsReminders",
   "googleReview",

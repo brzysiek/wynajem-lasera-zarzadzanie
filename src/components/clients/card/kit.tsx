@@ -26,7 +26,7 @@ export const C = {
 // Etykieta: 12 px, wersaliki, rozstrzelenie 0.12em (na pasku wskaźników 0.16em).
 export const LABEL = "text-[10.5px] uppercase tracking-[0.12em] text-[#5C6166]";
 export const LABEL_WIDE = "text-[10.5px] uppercase tracking-[0.14em] text-[#5C6166]";
-export const H2 = "m-0 self-start border-b-2 border-[#E08A5C] pb-[3px] text-[17px] font-semibold leading-tight text-[#0C3450]";
+export const H2 = "m-0 self-start border-b-2 border-[#E08A5C] pb-[2px] text-[16px] font-semibold leading-tight text-[#0C3450]";
 
 export function Heading({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <h2 className={`${H2} ${className}`}>{children}</h2>;
@@ -40,8 +40,10 @@ export function Section({
   children,
   gap = "gap-1",
   id,
+  headless = false,
 }: {
   id?: string; // kotwica (np. „rytm” — link z listy klientów)
+  headless?: boolean; // tytuł rysuje kafel zwijany (lewa kolumna karty)
   title: string;
   action?: ReactNode;
   sub?: ReactNode; // podtytuł pod nagłówkiem (np. „Dla kierowcy i instalatora.”)
@@ -50,10 +52,14 @@ export function Section({
 }) {
   return (
     <section id={id} className={`flex scroll-mt-6 flex-col ${gap}`}>
-      <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <Heading>{title}</Heading>
-        {action && <div className="flex items-baseline gap-4">{action}</div>}
-      </div>
+      {headless ? (
+        action && <div className="mb-1 flex items-baseline justify-end gap-4">{action}</div>
+      ) : (
+        <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <Heading>{title}</Heading>
+          {action && <div className="flex items-baseline gap-4">{action}</div>}
+        </div>
+      )}
       {sub && <div className="-mt-1.5 mb-1.5 text-[13px] text-[#5C6166]">{sub}</div>}
       {children}
     </section>
