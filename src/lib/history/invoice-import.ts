@@ -5,6 +5,7 @@ import { getInvoicePositionNames, listInvoicesForHistory, type FakturowniaHistor
 import { normalizeTitle } from "@/lib/history/normalize-title";
 import { buildMatcher, type MatchCandidate, type MatchMethod, type MatchState } from "@/lib/history/match";
 import { logWarn } from "@/lib/logger";
+import { vetoNameMatchOnNipConflict } from "@/lib/history/invoices";
 
 // Faktury z Fakturowni jako historia klienta (CRM, prompt 3B). Z Fakturowni
 // wyłącznie odczyt; zapis tylko do client_invoices (i aliasów). Dashboard
@@ -45,6 +46,7 @@ async function loadInvoiceClassifier() {
   ]);
   const match = buildMatcher(clients, new Map(aliases.map((a) => [a.alias, a.clientId])), normalizePolishPhone);
   const rentalByInvoice = new Map(linked.map((l) => [l.fakturowniaInvoiceId as number, l.rental]));
+  const nipById = new Map(clients.map((c) => [c.id, normalizeNip(c.nip)]));
 
   return function classify(inv: { fakturowniaInvoiceId: number; buyerName: string; buyerTaxNo: string | null }): InvoiceClassification & {
     rentalId: string | null;
@@ -54,7 +56,7 @@ async function loadInvoiceClassifier() {
     if (rental?.clientId) {
       return { buyerKey, rentalId: rental.id, clientId: rental.clientId, matchMethod: "RENTAL", matchState: "AUTO", matchScore: 1, candidates: [] };
     }
-    const r = match(buyerKey, { phones: [], emails: [], nips: inv.buyerTaxNo ? [inv.buyerTaxNo] : [] });
+    const r = vetoNameMatchOnNipConflict(match(buyerKey, { phones: [], emails: [], nips: inv.buyerTaxNo ? [inv.buyerTaxNo] : [] }), normalizeNip(inv.buyerTaxNo), (id) => nipById.get(id) ?? null);
     return {
       buyerKey,
       rentalId: rental?.id ?? null,

@@ -34,12 +34,14 @@ async function loadExisting(clients: PlannedClient[]) {
   const contactIds = clients.flatMap((c) => c.contacts.map((p) => p.hubspotContactId));
   const companyIds = clients.map((c) => c.hubspotCompanyId).filter((id): id is string => Boolean(id));
   const [contacts, companies] = await Promise.all([
-    prisma.clientContact.findMany({ where: { hubspotContactId: { in: contactIds } }, select: { hubspotContactId: true, clientId: true } }),
-    prisma.client.findMany({ where: { hubspotCompanyId: { in: companyIds } }, select: { hubspotCompanyId: true, id: true } }),
+    prisma.clientContact.findMany({ where: { hubspotContactId: { in: contactIds } }, select: { hubspotContactId: true, clientId: true, client: { select: { archivedAt: true } } } }),
+    prisma.client.findMany({ where: { hubspotCompanyId: { in: companyIds } }, select: { hubspotCompanyId: true, id: true, archivedAt: true } }),
   ]);
   return {
     clientIdByContact: new Map(contacts.map((c) => [c.hubspotContactId as string, c.clientId])),
     clientIdByCompany: new Map(companies.map((c) => [c.hubspotCompanyId as string, c.id])),
+    // Klienci w archiwum (Porządki): import niczego do nich nie dopisuje.
+    archived: new Set([...contacts.filter((c) => c.client.archivedAt).map((c) => c.clientId), ...companies.filter((c) => c.archivedAt).map((c) => c.id)]),
   };
 }
 
@@ -55,8 +57,12 @@ function existingClientId(plan: PlannedClient, existing: Awaited<ReturnType<type
   return null;
 }
 
-const isDone = (plan: PlannedClient, existing: Awaited<ReturnType<typeof loadExisting>>) =>
-  plan.contacts.every((p) => existing.clientIdByContact.has(p.hubspotContactId));
+// Gotowe: wszystkie osoby już są w panelu — albo klient docelowy jest w
+// archiwum (nie wraca przy imporcie; decyzja panelu wygrywa z HubSpotem).
+const isDone = (plan: PlannedClient, existing: Awaited<ReturnType<typeof loadExisting>>) => {
+  const target = existingClientId(plan, existing);
+  return (target !== null && existing.archived.has(target)) || plan.contacts.every((p) => existing.clientIdByContact.has(p.hubspotContactId));
+};
 
 export type RentalLinkPreview = {
   rentalsWithHubspot: number;

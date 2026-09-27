@@ -41,3 +41,18 @@ export function invoiceOnlyRentalDates(
   }
   return kept;
 }
+
+// NIP ma pierwszeństwo przed nazwą: jeśli faktura ma NIP, a klient wskazany
+// po podobieństwie nazwy ma INNY NIP, to nie jest automatyczne dopasowanie —
+// faktura czeka na decyzję (SUGGESTED z tym kandydatem). Przypadek MiWiNi:
+// faktury z NIP 9441828201 trafiły po nazwie do klienta z NIP 6621249644.
+export function vetoNameMatchOnNipConflict<T extends { clientId: string | null; method: string | null; state: string; score: number | null }>(
+  r: T,
+  invoiceNip: string | null,
+  clientNip: (clientId: string) => string | null,
+): T {
+  if (!invoiceNip || !r.clientId || r.method !== "NAME_AUTO") return r;
+  const nip = clientNip(r.clientId);
+  if (!nip || nip === invoiceNip) return r;
+  return { ...r, clientId: null, method: null, state: "SUGGESTED" };
+}

@@ -676,8 +676,27 @@ export const TOOLS: McpTool[] = [
   {
     name: "wniosek_zmien",
     title: "Zmień wniosek",
-    description: "Zmienia własny wniosek (w statusie NOWY / DO_DECYZJI) — te same pola co przy tworzeniu — albo przełącza status NOWY ↔ DO_DECYZJI.",
-    inputSchema: obj({ id: s("ID wniosku."), status: s("Status.", { enum: ["NOWY", "DO_DECYZJI"] }), comment: s("Komentarz do zmiany statusu.") }, ["id"]),
+    description: "Zmienia własny wniosek (w statusie NOWY / DO_DECYZJI): dowolne pola z tworzenia (podane zastępują stare) i/lub status NOWY ↔ DO_DECYZJI.",
+    inputSchema: obj(
+      {
+        id: s("ID wniosku."),
+        title: s("Tytuł (jedno zdanie)."),
+        area: s("Obszar."),
+        type: s("Typ."),
+        problem: s("Problem (markdown)."),
+        evidence: s("Dowód."),
+        scale: s("Skala."),
+        causes: { type: "array", items: { type: "string", enum: ["PANEL", "HUBSPOT", "N8N", "FORMULARZ", "PROCES", "INNE"] } },
+        proposal: s("Propozycja (markdown)."),
+        priority: s("Priorytet.", { enum: ["HIGH", "MEDIUM", "LOW"] }),
+        priorityReason: s("Uzasadnienie priorytetu."),
+        blocksCleanup: b("Blokuje porządki."),
+        clientIds: { type: "array", items: { type: "string" }, description: "Powiązani klienci (ID) — pełna lista." },
+        status: s("Status.", { enum: ["NOWY", "DO_DECYZJI"] }),
+        comment: s("Komentarz do zmiany statusu."),
+      },
+      ["id"],
+    ),
     readOnly: false,
     run: async (a, agent) => {
       const id = req(a, "id");

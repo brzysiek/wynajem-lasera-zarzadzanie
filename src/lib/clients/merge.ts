@@ -55,8 +55,11 @@ export async function mergeClients(
     const targetHasContacts = (await tx.clientContact.count({ where: { clientId: targetId } })) > 0;
     moved.osoby = (await tx.clientContact.updateMany({ where, data: targetHasContacts ? { ...data, isPrimary: false } : data })).count;
     moved.wynajmy = (await tx.rental.updateMany({ where, data })).count;
-    moved.historia = (await tx.rentalHistory.updateMany({ where, data })).count;
-    moved.faktury = (await tx.clientInvoice.updateMany({ where, data })).count;
+    // Przeniesione dopasowania = decyzja biura: automatyczne przeliczanie
+    // (rematch) ich nie rusza (matchedByUserId).
+    const decided = { ...data, matchState: "CONFIRMED" as const, matchMethod: "MANUAL" as const, matchScore: 1, matchedByUserId: actor.userId };
+    moved.historia = (await tx.rentalHistory.updateMany({ where, data: decided })).count;
+    moved.faktury = (await tx.clientInvoice.updateMany({ where, data: decided })).count;
     moved.sygnaly = (await tx.lead.updateMany({ where, data })).count;
     moved.notatki = (await tx.leadActivity.updateMany({ where, data })).count;
     moved.zadania = (await tx.task.updateMany({ where, data })).count;
