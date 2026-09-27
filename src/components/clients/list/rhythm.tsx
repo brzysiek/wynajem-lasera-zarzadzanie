@@ -17,7 +17,7 @@ const CELL: Record<StripCell, string> = {
 const CELL_TITLE: Record<StripCell, string> = { R: "był wynajem", P: "jest rezerwacja", F: "wg rytmu bez rezerwacji", E: "brak wynajmu" };
 
 export function StripCellBox({ kind, title }: { kind: StripCell; title?: string }) {
-  return <span title={title} className={`box-border block h-5 w-3 flex-none ${CELL[kind]}`} />;
+  return <span title={title} className={`box-border block h-3 w-3 flex-none ${CELL[kind]}`} />;
 }
 
 export function Strip({ cells, labels }: { cells: StripCell[]; labels: string[] }) {
@@ -26,7 +26,7 @@ export function Strip({ cells, labels }: { cells: StripCell[]; labels: string[] 
       {cells.slice(0, 12).map((c, i) => (
         <StripCellBox key={i} kind={c} title={`${labels[i]} · ${CELL_TITLE[c]}`} />
       ))}
-      <span className="mx-[3px] h-[26px] w-px flex-none bg-[#9AA1A8]" />
+      <span className="mx-[3px] h-4 w-px flex-none bg-[#9AA1A8]" />
       {cells.slice(12).map((c, i) => (
         <StripCellBox key={i + 12} kind={c} title={`${labels[i + 12]} · ${CELL_TITLE[c]}`} />
       ))}
@@ -39,7 +39,7 @@ export function Strip({ cells, labels }: { cells: StripCell[]; labels: string[] 
 export function RiskDot({ risk }: { risk: ClientListRow["rhythm"]["risk"] }) {
   const cls =
     risk === "niskie" ? "bg-[#2F7A68]" : risk === "średnie" ? "box-border border-2 border-[#E08A5C]" : risk === "wysokie" ? "bg-[#E08A5C]" : "bg-[#C3C4C7]";
-  return <span className={`h-2 w-2 flex-none rounded-full ${cls}`} />;
+  return <span className={`h-[7px] w-[7px] flex-none rounded-full ${cls}`} />;
 }
 
 const WEEKDAY_PLURAL: Record<string, string> = { pn: "w poniedziałki", wt: "we wtorki", śr: "w środy", czw: "w czwartki", pt: "w piątki", sob: "w soboty", nd: "w niedziele" };
@@ -104,7 +104,7 @@ export function RhythmHelp({ rows, pastLabel, futureLabel }: { rows: ClientListR
           if (btn.current) setArrow(btn.current.offsetLeft + 4);
           setOpen((v) => !v);
         }}
-        className="card-display flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full border-[1.5px] border-[#1B6FA8] bg-[#1B6FA8] p-0 text-[13px] font-semibold normal-case leading-none tracking-normal text-white outline-offset-2 hover:bg-[#0C3450]"
+        className="flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border-[1.5px] border-[#1B6FA8] bg-[#1B6FA8] p-0 text-[11px] font-semibold normal-case leading-none tracking-normal text-white outline-offset-2 hover:bg-[#0C3450]"
       >
         i
       </button>
@@ -114,11 +114,11 @@ export function RhythmHelp({ rows, pastLabel, futureLabel }: { rows: ClientListR
           id="rhythm-help"
           role="dialog"
           aria-label="Jak czytać pasek rytmu"
-          className="absolute left-[-12px] top-[calc(100%+22px)] z-30 flex w-[500px] max-w-[calc(100vw-32px)] flex-col border border-[#C9D6E0] bg-white text-left normal-case tracking-normal shadow-[0_12px_32px_rgba(12,52,80,0.18)]"
+          className="absolute left-[-12px] top-[calc(100%+16px)] z-30 flex w-[460px] max-w-[calc(100vw-32px)] flex-col border border-[#C9D6E0] bg-white text-left normal-case tracking-normal shadow-[0_12px_32px_rgba(12,52,80,0.18)]"
         >
           <span className="absolute -top-2 h-3.5 w-3.5 rotate-45 bg-[#0C3450]" style={{ left: arrow + 12 }} />
-          <div className="relative flex items-center justify-between bg-[#0C3450] px-[18px] py-3.5">
-            <span className="card-display text-[19px] font-medium text-white">Jak czytać pasek rytmu</span>
+          <div className="relative flex items-center justify-between bg-[#0C3450] px-4 py-2.5">
+            <span className="text-[15px] font-semibold text-white">Jak czytać pasek rytmu</span>
             <button
               type="button"
               aria-label="Zamknij"
@@ -126,12 +126,12 @@ export function RhythmHelp({ rows, pastLabel, futureLabel }: { rows: ClientListR
                 setOpen(false);
                 btn.current?.focus();
               }}
-              className="h-[30px] w-[30px] border border-white/40 bg-transparent p-0 text-[16px] text-white hover:bg-white/10"
+              className="h-[26px] w-[26px] rounded-[4px] border border-white/40 bg-transparent p-0 text-[13px] text-white hover:bg-white/10"
             >
               ✕
             </button>
           </div>
-          <div className="flex flex-col gap-3.5 px-[18px] pb-[18px] pt-4 text-[14px] leading-[1.5] text-[#3A3A3A]">
+          <div className="flex flex-col gap-3 px-4 pb-4 pt-3 text-[13px] leading-[1.5] text-[#3A3A3A]">
             <div>
               Każdy kwadrat to <b>jeden miesiąc</b>. 12 po lewej to ostatni rok ({pastLabel.replace(/\.(\d\d)/g, ".20$1")}), 3 za kreską to najbliższe miesiące ({futureLabel}).
             </div>
@@ -169,11 +169,11 @@ export function RhythmHelp({ rows, pastLabel, futureLabel }: { rows: ClientListR
               <span>za mało wynajmów, żeby policzyć rytm</span>
             </div>
             {ex && (
-              <div className="bg-[#EAF4FB] px-3 py-2.5 text-[13px] leading-[1.5] text-[#0C3450]">
+              <div className="bg-[#EAF4FB] px-3 py-2 text-[12.5px] leading-[1.5] text-[#0C3450]">
                 <b>Przykład – {ex.row.shortName ?? ex.row.name}:</b> {ex.text}
               </div>
             )}
-            <Link href={ex ? `/klienci/${ex.row.id}#rytm` : "/klienci"} className="text-[13px] text-[#1B6FA8] hover:text-[#0C3450]">
+            <Link href={ex ? `/klienci/${ex.row.id}#rytm` : "/klienci"} className="text-[12.5px] text-[#1B6FA8] hover:text-[#0C3450]">
               Szczegóły na karcie klienta, sekcja „Rytm współpracy” →
             </Link>
           </div>

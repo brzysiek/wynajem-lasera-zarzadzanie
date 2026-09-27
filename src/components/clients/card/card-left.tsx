@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { ClientDetail } from "@/lib/clients/load";
 import { CLINIC_TYPE_LABEL, type ClinicTypeKey, formatNip, formatPhone } from "@/lib/clients/labels";
@@ -117,22 +117,22 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
         />
       ) : (
         <>
-          <Row label="Pełna nazwa" labelWidth={124} src={src("name")}>
+          <Row label="Pełna nazwa" labelWidth={110} src={src("name")}>
             {d.name}
           </Row>
-          <Row label="Nazwa robocza" labelWidth={124} src={src("shortName")}>
+          <Row label="Nazwa robocza" labelWidth={110} src={src("shortName")}>
             {p.shortName ?? <Missing>uzupełnij</Missing>}
           </Row>
-          <Row label="Forma" labelWidth={124} src={src(d.fieldMeta.legalForm ? "legalForm" : "businessStartDate")}>
+          <Row label="Forma" labelWidth={110} src={src(d.fieldMeta.legalForm ? "legalForm" : "businessStartDate")}>
             {p.legalForm || p.businessStartDate ? [p.legalForm, p.businessStartDate ? `od ${dmy(p.businessStartDate)}` : null].filter(Boolean).join(" · ") : <Missing>do sprawdzenia</Missing>}
           </Row>
-          <Row label="NIP" labelWidth={124} src={nipSrc}>
+          <Row label="NIP" labelWidth={110} src={nipSrc}>
             {d.nip ? formatNip(d.nip) : <Missing>brak</Missing>}
           </Row>
-          <Row label="REGON" labelWidth={124} src={src("regon")}>
+          <Row label="REGON" labelWidth={110} src={src("regon")}>
             {p.regon ?? <Missing>uzupełnij po NIP</Missing>}
           </Row>
-          <Row label="PKD" labelWidth={124} src={src("pkd")}>
+          <Row label="PKD" labelWidth={110} src={src("pkd")}>
             {mainPkd ? (
               <span title={otherPkd.length ? `także: ${otherPkd.join(", ")}` : undefined}>
                 {mainPkd.code}
@@ -143,13 +143,13 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
               <Missing>do sprawdzenia</Missing>
             )}
           </Row>
-          <Row label="Adres" labelWidth={124} src={src("street")}>
+          <Row label="Adres" labelWidth={110} src={src("street")}>
             {d.street || d.city ? [d.street, [d.zip, d.city].filter(Boolean).join(" ")].filter(Boolean).join(", ") : <Missing>brak adresu</Missing>}
           </Row>
-          <Row label="Status VAT" labelWidth={124} src={src("vatStatus")}>
+          <Row label="Status VAT" labelWidth={110} src={src("vatStatus")}>
             {p.vatStatus ? `${p.vatStatus}${p.bankAccounts.length ? ` · ${p.bankAccounts.length} rach.` : ""}` : <Missing>do sprawdzenia</Missing>}
           </Row>
-          <div className="flex flex-wrap gap-x-5 pt-3 text-[14px] text-[#767C82]">
+          <div className="flex flex-wrap gap-x-5 pt-3 text-[12.5px] text-[#767C82]">
             {verified && <span>zweryfikowano {dmy(verified)}</span>}
             {!isAgent && d.nip && (
               <button type="button" onClick={() => void enrich()} disabled={enriching} className={LINK} title="Biała lista MF i CEIDG po NIP — pola zmienione ręcznie zostają">
@@ -192,7 +192,7 @@ function PeopleSection({ d, onChanged, notify }: Props) {
           }}
         />
       )}
-      {d.contacts.length === 0 && editing !== "new" && <p className="text-[15px] text-[#5C6166]">Brak osób kontaktowych.</p>}
+      {d.contacts.length === 0 && editing !== "new" && <p className="text-[13px] text-[#5C6166]">Brak osób kontaktowych.</p>}
       {d.contacts.map((c) => {
         if (editing === c.id)
           return (
@@ -213,52 +213,52 @@ function PeopleSection({ d, onChanged, notify }: Props) {
         const trained = c.trainedOn.length || c.roles.includes("owner") || c.roles.includes("cosmetologist");
         if (c.isPrimary)
           return (
-            <div key={c.id} className="flex flex-col gap-2 border-l-[3px] border-[#2F7A68] bg-[#EEF6F2] px-[22px] py-5">
-              <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#2F7A68]">{["Osoba główna", ...roles].join(" · ")}</div>
-              <button type="button" onClick={() => setEditing(c.id)} className="card-display text-left text-[21px] font-medium text-[#1F5E4F] hover:underline" title="Edytuj osobę">
+            <div key={c.id} className="flex flex-col gap-1 border-l-[3px] border-[#2F7A68] bg-[#EEF6F2] px-3 py-2.5">
+              <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#2F7A68]">{["Osoba główna", ...roles].join(" · ")}</div>
+              <button type="button" onClick={() => setEditing(c.id)} className="text-left text-[15px] font-semibold text-[#1F5E4F] hover:underline" title="Edytuj osobę">
                 {personName(c) || c.email || "Osoba bez nazwy"}
               </button>
               {c.phone && (
-                <div className="text-[16px] tabular-nums text-[#333333]">
+                <div className="text-[13px] tabular-nums text-[#333333]">
                   <a href={`tel:${c.phone}`} className="text-[#333333] hover:text-[#1B6FA8]">
                     {formatPhone(c.phone)}
                   </a>{" "}
-                  {confirmed(c, "phone") && <span className="text-[13px] font-semibold text-[#2F7A68]">✓ potwierdzony</span>}
+                  {confirmed(c, "phone") && <span className="text-[12px] font-semibold text-[#2F7A68]">✓ potwierdzony</span>}
                 </div>
               )}
               {c.phone2 && (
-                <div className="text-[16px] tabular-nums text-[#333333]">
-                  {formatPhone(c.phone2)} <span className="text-[13px] text-[#767C82]">{c.phone2Label ?? "drugi"}</span>
+                <div className="text-[13px] tabular-nums text-[#333333]">
+                  {formatPhone(c.phone2)} <span className="text-[12px] text-[#767C82]">{c.phone2Label ?? "drugi"}</span>
                 </div>
               )}
               {c.email && (
-                <div className="break-all text-[16px] text-[#333333]">
-                  {c.email} {(c.roles.includes("invoices") || c.email === d.profile.invoiceEmail) && <span className="text-[13px] font-semibold text-[#2F7A68]">✓ faktury</span>}
+                <div className="break-all text-[13px] text-[#333333]">
+                  {c.email} {(c.roles.includes("invoices") || c.email === d.profile.invoiceEmail) && <span className="text-[12px] font-semibold text-[#2F7A68]">✓ faktury</span>}
                 </div>
               )}
-              {extra && <div className="text-[15px] text-[#4A4A4A]">{extra}</div>}
+              {extra && <div className="text-[13px] text-[#4A4A4A]">{extra}</div>}
               {trained && (
-                <div className="text-[15px] text-[#4A4A4A]">
+                <div className="text-[13px] text-[#4A4A4A]">
                   Przeszkolona: {c.trainedOn.length ? c.trainedOn.map((t) => `${t.device}${t.date ? ` · ${dmy(t.date)}` : ""}`).join(", ") : <Missing>data</Missing>}
                 </div>
               )}
             </div>
           );
         return (
-          <div key={c.id} className="flex flex-col gap-1 border border-dashed border-[#C3C4C7] px-[22px] py-4">
+          <div key={c.id} className="flex flex-col gap-0.5 border border-dashed border-[#C3C4C7] px-3 py-2">
             <div className="flex items-baseline justify-between gap-3">
-              <button type="button" onClick={() => setEditing(c.id)} className="text-left text-[17px] font-medium text-[#1B6FA8] hover:underline" title="Edytuj osobę">
+              <button type="button" onClick={() => setEditing(c.id)} className="text-left text-[14px] font-medium text-[#1B6FA8] hover:underline" title="Edytuj osobę">
                 {personName(c) || c.email || c.phone || "Osoba bez nazwy"}
               </button>
               {roles.length ? (
-                <span className="text-right text-[12px] uppercase tracking-[0.12em] text-[#5C6166]">{roles.join(" · ")}</span>
+                <span className="text-right text-[11px] uppercase tracking-[0.12em] text-[#5C6166]">{roles.join(" · ")}</span>
               ) : (
-                <span className="text-[12px] uppercase tracking-[0.12em] text-[#B8612F]">do potwierdzenia</span>
+                <span className="text-[11px] uppercase tracking-[0.12em] text-[#B8612F]">do potwierdzenia</span>
               )}
             </div>
-            {c.phone && <div className="text-[16px] tabular-nums text-[#333333]">{formatPhone(c.phone)}</div>}
-            {c.email && <div className="break-all text-[16px] text-[#333333]">{c.email}</div>}
-            {extra && <div className="text-[14px] text-[#767C82]">{extra}</div>}
+            {c.phone && <div className="text-[13px] tabular-nums text-[#333333]">{formatPhone(c.phone)}</div>}
+            {c.email && <div className="break-all text-[13px] text-[#333333]">{c.email}</div>}
+            {extra && <div className="text-[12.5px] text-[#767C82]">{extra}</div>}
           </div>
         );
       })}
@@ -474,10 +474,10 @@ function ConsentsSection({ d, onChanged, notify }: Props) {
         />
       ) : (
         <>
-          <Row label="SMS-przypomnienia" labelWidth={190} valueClass={smsOn ? "font-semibold text-[#2F7A68]" : "text-[#333333]"}>
+          <Row label="SMS-przypomnienia" labelWidth={150} valueClass={smsOn ? "font-semibold text-[#2F7A68]" : "text-[#333333]"}>
             {smsText ?? <Missing>nie ustalono</Missing>}
           </Row>
-          <Row label="Mailing / oferty" labelWidth={190}>
+          <Row label="Mailing / oferty" labelWidth={150}>
             {consent ?? <Missing>brak zapisanej zgody</Missing>}
           </Row>
           <Row label="Nie kontaktować" labelWidth={190}>
@@ -518,13 +518,13 @@ function LinksSection({
     );
   return (
     <Section title="Powiązania i aliasy" gap="gap-3">
-      <div className="text-[15px] text-[#5C6166]">
+      <div className="text-[13px] text-[#5C6166]">
         {d.aliases.length ? "Tytuły z kalendarzy, które same trafiają do tej karty:" : "Brak aliasów z kalendarzy — przypisz wydarzenia w Klienci → Dopasowania."}
       </div>
       {d.aliases.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {d.aliases.map((a) => (
-            <span key={a} className="bg-[#EAF4FB] px-2.5 py-1 text-[14px] text-[#1B6FA8]">
+            <span key={a} className="bg-[#EAF4FB] px-2.5 py-1 text-[12.5px] text-[#1B6FA8]">
               {a}
             </span>
           ))}
@@ -551,7 +551,7 @@ function LinksSection({
           </Quote>
         </div>
       ))}
-      {!manual && d.hubspotCompanyId && <div className="text-[15px] text-[#5C6166]">Rekord z HubSpota (firma {d.hubspotCompanyId}).</div>}
+      {!manual && d.hubspotCompanyId && <div className="text-[13px] text-[#5C6166]">Rekord z HubSpota (firma {d.hubspotCompanyId}).</div>}
       {!d.archive && (
         <div className="flex flex-wrap gap-x-5 gap-y-1 pt-1">
           <button type="button" onClick={() => onDialog("merge")} className={LINK}>
@@ -573,7 +573,7 @@ function LinksSection({
             </a>
           )}
           {isAdmin && (
-            <button type="button" onClick={() => onDialog("archive")} className="text-[15px] text-[#767C82] hover:text-[#B8612F]">
+            <button type="button" onClick={() => onDialog("archive")} className="text-[13px] text-[#767C82] hover:text-[#B8612F]">
               Archiwizuj
             </button>
           )}
@@ -583,15 +583,33 @@ function LinksSection({
   );
 }
 
+function Tile({ children }: { children: ReactNode }) {
+  return <div className="border border-[#CFE3DA] bg-white px-[18px] py-4 empty:hidden">{children}</div>;
+}
+
 export function CardLeft(props: Props & { isAdmin: boolean; isAgent: boolean; pendingProposals: number; onDialog: (k: "merge" | "split" | "archive") => void }) {
   return (
-    <div className="flex w-full shrink-0 flex-col gap-10 xl:w-[440px]">
-      <CompanySection {...props} />
-      <PeopleSection {...props} />
-      <DeliverySection {...props} />
-      <ProfileSection {...props} />
-      <ConsentsSection {...props} />
-      <LinksSection d={props.d} isAdmin={props.isAdmin} isAgent={props.isAgent} pendingProposals={props.pendingProposals} onDialog={props.onDialog} />
+    // Lewa kolumna = dane o gabinecie: każda sekcja w białym kaflu z bladozieloną
+    // ramką #CFE3DA (jaśniejszą od zieleni statusów #2F7A68). Prawa — bez ramek.
+    <div className="flex w-full shrink-0 flex-col gap-3 xl:w-[420px]">
+      <Tile>
+        <CompanySection {...props} />
+      </Tile>
+      <Tile>
+        <PeopleSection {...props} />
+      </Tile>
+      <Tile>
+        <DeliverySection {...props} />
+      </Tile>
+      <Tile>
+        <ProfileSection {...props} />
+      </Tile>
+      <Tile>
+        <ConsentsSection {...props} />
+      </Tile>
+      <Tile>
+        <LinksSection d={props.d} isAdmin={props.isAdmin} isAgent={props.isAgent} pendingProposals={props.pendingProposals} onDialog={props.onDialog} />
+      </Tile>
     </div>
   );
 }

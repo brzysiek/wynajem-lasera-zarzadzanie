@@ -117,13 +117,13 @@ export function ClientFullCard({
   const commCount = d.history.filter((h) => h.kind === "email" || h.kind === "message" || h.kind === "activity").length;
   const overdue = d.txTotals.overdueCount;
   const btn =
-    "flex h-10 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-4 text-[14px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40";
+    "flex h-10 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-4 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40";
   const soft = `${btn} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`;
 
   const toastEl = toast && (
     <p
       role="status"
-      className={`rounded-lg px-3 py-2 text-[13px] ${toast.error ? "bg-[var(--c-red-soft)] text-[var(--c-red)]" : "bg-[var(--c-green-soft)] text-[var(--c-green-deep)]"}`}
+      className={`rounded-lg px-3 py-2 text-[12px] ${toast.error ? "bg-[var(--c-red-soft)] text-[var(--c-red)]" : "bg-[var(--c-green-soft)] text-[var(--c-green-deep)]"}`}
     >
       {toast.text}
     </p>
@@ -189,9 +189,9 @@ export function ClientFullCard({
     // Układ 1:1 z projektu Main.dc.html: nagłówek, pas wskaźników na całą
     // szerokość, dwie kolumny (440 px + reszta) z marginesem 48 px.
     return (
-      <div style={CARD_CSS_VARS} className="card-body -mx-4 -mt-6 flex flex-col bg-[#FDFBF8] text-[#3A3A3A] md:-mx-[30px] md:-mt-[26px]">
+      <div style={CARD_CSS_VARS} className="-mx-4 -mt-6 flex flex-col bg-[#FDFBF8] text-[13px] leading-[1.45] tabular-nums text-[#3A3A3A] md:-mx-[30px] md:-mt-[26px]">
         {d.archive && (
-          <div className="mx-4 mt-6 flex flex-wrap items-center gap-2 border-l-[3px] border-[#E08A5C] bg-[#FBF0E7] px-4 py-2.5 text-[15px] text-[#B8612F] md:mx-12">
+          <div className="mx-4 mt-4 flex flex-wrap items-center gap-2 border-l-[3px] border-[#E08A5C] bg-[#FBF0E7] px-4 py-2 text-[13px] text-[#B8612F] md:mx-7">
             <b className="font-semibold">W archiwum</b>
             <span>
               {d.archive.reason ? ARCHIVE_REASON_LABEL[d.archive.reason as ArchiveReasonKey] ?? d.archive.reason : ""}
@@ -215,7 +215,7 @@ export function ClientFullCard({
         )}
         <CardHeader d={d} backHref={backHref} isAgent={isAgent} onSms={() => setSms((v) => !v)} onTask={() => setTask({ title: "", due: null })} />
         {(sms || splitTo || toastEl) && (
-          <div className="flex flex-col gap-3 px-4 pb-6 md:px-12">
+          <div className="flex flex-col gap-3 px-4 pb-4 md:px-7">
             {sms && (
               <div className="max-w-[560px]">
                 <SmsComposer
@@ -231,7 +231,7 @@ export function ClientFullCard({
               </div>
             )}
             {splitTo && (
-              <p className="bg-[#EAF4FB] px-3 py-2 text-[15px] text-[#1B6FA8]">
+              <p className="bg-[#EAF4FB] px-3 py-2 text-[13px] text-[#1B6FA8]">
                 Nowy klient z wydzielonych osób:{" "}
                 <Link href={`/klienci/${splitTo}`} className="font-semibold underline">
                   otwórz kartę →
@@ -242,7 +242,7 @@ export function ClientFullCard({
           </div>
         )}
         <Indicators d={d} />
-        <div className="flex flex-col gap-12 px-4 pb-12 pt-11 md:px-12 xl:flex-row xl:items-start">
+        <div className="flex flex-col gap-8 px-4 pb-10 pt-6 md:px-7 xl:flex-row xl:items-start">
           <CardLeft d={d} onChanged={setD} notify={notify} isAdmin={isAdmin} isAgent={isAgent} pendingProposals={pendingProposals} onDialog={setDialog} />
           <CardRight
             d={d}
@@ -262,11 +262,11 @@ export function ClientFullCard({
     <div style={APP_CSS_VARS} className="text-[var(--c-text)]">
       {/* Nagłówek */}
       <div className="-mx-4 -mt-6 border-b border-[var(--c-border)] bg-white px-4 pt-5 md:-mx-[30px] md:-mt-[26px] md:px-[30px]">
-        <button type="button" onClick={() => switchTab("karta")} className="text-[13px] font-medium text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+        <button type="button" onClick={() => switchTab("karta")} className="text-[12px] font-medium text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
           ← Karta klienta
         </button>
         {d.archive && (
-          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[12px] text-[var(--c-red)]">
             <b className="font-semibold">W archiwum</b>
             <span>
               {d.archive.reason ? ARCHIVE_REASON_LABEL[d.archive.reason as ArchiveReasonKey] ?? d.archive.reason : ""}
@@ -314,7 +314,7 @@ export function ClientFullCard({
                 </span>
               )}
             </div>
-            <p className="mt-1 text-[14px] leading-relaxed text-[var(--c-muted)]">
+            <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--c-muted)]">
               {[
                 primary ? personName(primary) : null,
                 primary?.phone ? (
@@ -425,7 +425,7 @@ export function ClientFullCard({
                 role="tab"
                 aria-selected={on}
                 onClick={() => switchTab(t.key)}
-                className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-[3px] px-4 pb-3 pt-1 text-[15px] transition-colors ${
+                className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-[3px] px-4 pb-3 pt-1 text-[13px] transition-colors ${
                   on ? "border-[var(--c-brand)] font-semibold text-[var(--c-navy)]" : "border-transparent text-[var(--c-sidebar-text)] hover:text-[var(--c-text)]"
                 }`}
               >
@@ -444,7 +444,7 @@ export function ClientFullCard({
 
       <div className="pt-6">
         {splitTo && (
-          <p className="mb-4 rounded-lg bg-[var(--c-brand-soft)] px-3 py-2 text-[13px] text-[var(--c-brand-deep)]">
+          <p className="mb-4 rounded-lg bg-[var(--c-brand-soft)] px-3 py-2 text-[12px] text-[var(--c-brand-deep)]">
             Nowy klient z wydzielonych osób:{" "}
             <Link href={`/klienci/${splitTo}`} className="font-semibold underline">
               otwórz kartę →

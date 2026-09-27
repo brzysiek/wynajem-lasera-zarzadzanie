@@ -127,7 +127,7 @@ function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () =
     onSaved(data.detail);
   }
 
-  const label = "flex flex-col gap-1 text-[12px] uppercase tracking-[0.12em] text-[#5C6166]";
+  const label = "flex flex-col gap-1 text-[11px] uppercase tracking-[0.12em] text-[#5C6166]";
   return (
     <div className="flex flex-col gap-3 pt-1">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -142,7 +142,7 @@ function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () =
       </div>
       <fieldset className={label}>
         <legend className="mb-1">Forma płatności (można obie)</legend>
-        <div className="flex gap-5 text-[16px] normal-case tracking-normal text-[#333333]">
+        <div className="flex gap-5 text-[13px] normal-case tracking-normal text-[#333333]">
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={f.cash} onChange={(e) => set("cash", e.target.checked)} /> gotówka
           </label>
@@ -164,14 +164,14 @@ function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () =
       <fieldset className={`${label} border border-[#E4E7EA] p-4`}>
         <legend className="px-1">Umowa ramowa / kaucja</legend>
         {p.frameAgreement?.fileId && !removeFile && (
-          <div className="flex items-center gap-3 text-[16px] normal-case tracking-normal text-[#333333]">
+          <div className="flex items-center gap-3 text-[13px] normal-case tracking-normal text-[#333333]">
             obecny plik: {p.frameAgreement.name}
-            <button type="button" className="text-[14px] text-[#B8612F] hover:underline" onClick={() => setRemoveFile(true)}>
+            <button type="button" className="text-[12.5px] text-[#B8612F] hover:underline" onClick={() => setRemoveFile(true)}>
               usuń
             </button>
           </div>
         )}
-        <input type="file" accept="application/pdf,image/jpeg,image/png" className="text-[14px] normal-case tracking-normal" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <input type="file" accept="application/pdf,image/jpeg,image/png" className="text-[12.5px] normal-case tracking-normal" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         <span className="normal-case tracking-normal">PDF, JPG albo PNG, do 8 MB. Nowy plik zastępuje poprzedni.</span>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className={label}>

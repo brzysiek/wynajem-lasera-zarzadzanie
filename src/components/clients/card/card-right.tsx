@@ -26,13 +26,13 @@ function RhythmSection({ d }: { d: ClientDetail }) {
   const withAmount = d.transactions.filter((t) => new Date(t.date).getFullYear() === year && t.net);
   const avgInvoice = withAmount.length ? withAmount.reduce((s, t) => s + (t.net ?? 0), 0) / withAmount.length : null;
   return (
-    <Section id="rytm" title="Rytm współpracy" gap="gap-4" action={<Legend />}>
+    <Section id="rytm" title="Rytm współpracy" gap="gap-3" action={<Legend />}>
       {r.grid.length === 0 ? (
-        <p className="text-[15px] text-[#5C6166]">Brak wynajmów — rytm pojawi się po pierwszych rezerwacjach.</p>
+        <p className="text-[13px] text-[#5C6166]">Brak wynajmów — rytm pojawi się po pierwszych rezerwacjach.</p>
       ) : (
         <div className="overflow-x-auto">
           <div className="flex min-w-[560px] flex-col gap-1">
-            <div className="grid gap-1 text-[12px] tracking-[0.12em] text-[#767C82]" style={GRID}>
+            <div className="grid gap-1 text-[11px] tracking-[0.12em] text-[#767C82]" style={GRID}>
               <span />
               {ROMAN.map((m) => (
                 <span key={m} className="text-center">
@@ -42,7 +42,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
             </div>
             {r.grid.map((g) => (
               <div key={g.year} className="grid items-center gap-1" style={GRID}>
-                <span className="text-[15px] text-[#5C6166]">{g.year}</span>
+                <span className="text-[13px] text-[#5C6166]">{g.year}</span>
                 {g.months.map((m, i) => {
                   const count = m.realized + m.planned + m.proposed;
                   const cls =
@@ -55,7 +55,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
                           : "bg-[#F4F5F6]";
                   const title = [m.realized ? `zrealizowane: ${m.realized}` : null, m.planned ? `zaplanowane: ${m.planned}` : null, m.proposed ? "proponowany termin" : null].filter(Boolean).join(", ");
                   return (
-                    <div key={i} title={title || undefined} className={`box-border flex h-9 items-center justify-center text-[13px] font-medium ${cls}`}>
+                    <div key={i} title={title || undefined} className={`box-border flex h-6 items-center justify-center text-[11px] font-medium ${cls}`}>
                       {count > 1 ? count : ""}
                     </div>
                   );
@@ -65,7 +65,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
           </div>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-4 border-t border-[#E4E7EA] pt-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 border-t border-[#E4E7EA] pt-3 md:grid-cols-4">
         <Stat
           label="Urządzenie"
           value={dc ? `${dc.family}${dc.heads ? ` · ${dc.heads} ${dc.heads === 1 ? "głowica" : "głowice"}` : ""}` : "—"}
@@ -91,7 +91,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
 function Legend() {
   const box = "box-border h-3 w-3";
   return (
-    <div className="hidden gap-[18px] text-[14px] text-[#4A4A4A] sm:flex">
+    <div className="hidden gap-[18px] text-[12.5px] text-[#4A4A4A] sm:flex">
       <span className="flex items-center gap-1.5">
         <span className={`${box} bg-[#1B6FA8]`} />
         zrealizowany
@@ -112,8 +112,8 @@ function Stat({ label, value, sub, valueClass = "font-medium text-[#1B6FA8]" }: 
   return (
     <div>
       <div className={LABEL}>{label}</div>
-      <div className={`text-[17px] ${valueClass}`}>{value}</div>
-      {sub && <div className="text-[14px] text-[#5C6166]">{sub}</div>}
+      <div className={`text-[14px] ${valueClass}`}>{value}</div>
+      {sub && <div className="text-[12.5px] text-[#5C6166]">{sub}</div>}
     </div>
   );
 }
@@ -134,11 +134,11 @@ const stageLabel = (s: string) => STAGES.find((x) => x.value === s)?.label ?? s;
 function Tile({ no, label, title, children, actions }: { no: number; label: string; title: string; children: ReactNode; actions?: ReactNode }) {
   return (
     <div className="flex flex-col gap-2 bg-[#EAF4FB] p-[22px]">
-      <div className="text-[13px] uppercase tracking-[0.16em] text-[#82B7DA]">
+      <div className="text-[12px] uppercase tracking-[0.16em] text-[#82B7DA]">
         {String(no).padStart(2, "0")} · {label}
       </div>
-      <div className="card-display text-[19px] font-medium text-[#1B6FA8]">{title}</div>
-      <div className="text-[15px] leading-[1.5] text-[#4A4A4A]">{children}</div>
+      <div className="card-display text-[15px] font-medium text-[#1B6FA8]">{title}</div>
+      <div className="text-[13px] leading-[1.5] text-[#4A4A4A]">{children}</div>
       {actions}
     </div>
   );
@@ -202,7 +202,7 @@ function OpportunitiesSection({ d, onChanged, notify }: { d: ClientDetail; onCha
             </select>
             <input className={INPUT} type="date" title="Wrócić" value={f.returnAt} onChange={(e) => setF({ ...f, returnAt: e.target.value })} />
           </div>
-          <textarea className="w-full border border-[#C3C4C7] px-3 py-2 text-[15px] outline-none focus:border-[#1B6FA8]" rows={2} placeholder="Opis" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
+          <textarea className="w-full border border-[#C3C4C7] px-3 py-2 text-[13px] outline-none focus:border-[#1B6FA8]" rows={2} placeholder="Opis" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
           <div className="flex justify-end gap-2.5">
             <button type="button" className={BTN_OUTLINE} onClick={() => setAdding(false)}>
               Anuluj
@@ -214,7 +214,7 @@ function OpportunitiesSection({ d, onChanged, notify }: { d: ClientDetail; onCha
         </div>
       )}
       {open.length === 0 && !showReview && !adding ? (
-        <p className="text-[15px] text-[#5C6166]">Brak otwartych szans.</p>
+        <p className="text-[13px] text-[#5C6166]">Brak otwartych szans.</p>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {open.map((o, i) => (
@@ -225,7 +225,7 @@ function OpportunitiesSection({ d, onChanged, notify }: { d: ClientDetail; onCha
               title={o.device}
               actions={
                 !agent && (
-                  <div className="flex gap-4 pt-1 text-[14px]">
+                  <div className="flex gap-4 pt-1 text-[12.5px]">
                     <button type="button" className="text-[#1B6FA8] hover:text-[#0C3450]" onClick={() => void close(o.id, "wygrana")}>
                       wygrana
                     </button>
@@ -405,13 +405,13 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
         </div>
       }
     >
-      <div className="flex items-center gap-2.5 py-3">
+      <div className="flex items-center gap-2.5 py-2">
         <label htmlFor="card-note" className={LABEL}>
           Notatka
         </label>
         <input
           id="card-note"
-          className="h-11 min-w-0 flex-grow border border-[#C3C4C7] bg-white px-3 text-[15px] outline-none focus:border-[#1B6FA8]"
+          className="h-[34px] min-w-0 flex-grow rounded-[6px] border border-[#C3C4C7] bg-white px-3 text-[13px] outline-none focus:border-[#1B6FA8]"
           placeholder="Dodaj notatkę z rozmowy…"
           value={note}
           disabled={saving}
@@ -426,27 +426,27 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
           </button>
         )}
       </div>
-      {items.length === 0 && <p className="text-[15px] text-[#5C6166]">Brak zdarzeń w tym widoku.</p>}
+      {items.length === 0 && <p className="text-[13px] text-[#5C6166]">Brak zdarzeń w tym widoku.</p>}
       <div className="flex flex-col">
         {items.slice(0, limit).map((i) => (
           <div
             key={i.key}
-            className={`grid items-start gap-3.5 border-b border-[#E4E7EA] py-3.5 ${clickable(i) ? "cursor-pointer hover:bg-white" : ""}`}
+            className={`grid items-start gap-3 border-b border-[#E4E7EA] py-2 ${clickable(i) ? "cursor-pointer hover:bg-white" : ""}`}
             style={{ gridTemplateColumns: "100px 16px minmax(0, 1fr) auto" }}
             onClick={() => clickable(i) && onOpenItem(i.item!)}
           >
-            <div className="text-[15px] tabular-nums text-[#5C6166]">{dmy(i.at)}</div>
+            <div className="text-[13px] tabular-nums text-[#5C6166]">{dmy(i.at)}</div>
             <div className="mt-[7px] box-border h-2.5 w-2.5" style={i.dot === "filled" ? { background: i.color } : { border: `2px solid ${i.color}` }} />
             <div className="flex min-w-0 flex-col gap-0.5">
-              <div className="text-[16px] font-semibold text-[#2B2B2B]">{i.title}</div>
-              {i.sub && <div className="break-words text-[15px] text-[#5C6166]">{i.sub}</div>}
+              <div className="text-[13px] font-semibold text-[#2B2B2B]">{i.title}</div>
+              {i.sub && <div className="break-words text-[13px] text-[#5C6166]">{i.sub}</div>}
             </div>
             <span className="flex flex-col items-end gap-1">
-              <span className="whitespace-nowrap text-[12px] uppercase tracking-[0.12em] text-[#767C82]">{i.tag}</span>
+              <span className="whitespace-nowrap text-[11px] uppercase tracking-[0.12em] text-[#767C82]">{i.tag}</span>
               {!agent && i.item?.kind === "email" && (
                 <button
                   type="button"
-                  className="text-[13px] text-[#767C82] hover:text-[#1B6FA8]"
+                  className="text-[12px] text-[#767C82] hover:text-[#1B6FA8]"
                   onClick={(e) => {
                     e.stopPropagation();
                     void toggleHidden(i.item!.id, !i.hidden);
@@ -470,7 +470,7 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
           </button>
         )}
         {d.hiddenThreads.length > 0 && (
-          <button type="button" onClick={() => setShowHidden((v) => !v)} className="text-[15px] text-[#767C82] hover:text-[#1B6FA8]">
+          <button type="button" onClick={() => setShowHidden((v) => !v)} className="text-[13px] text-[#767C82] hover:text-[#1B6FA8]">
             {showHidden ? "Schowaj ukryte wątki" : `Ukryte wątki (${d.hiddenThreads.length})`}
           </button>
         )}
@@ -547,15 +547,15 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
     .join(" ");
 
   return (
-    <section className="flex flex-col gap-2.5 bg-[#FBF0E7] px-[30px] py-7">
+    <section className="flex flex-col gap-2 bg-[#FBF0E7] px-4 py-4">
       <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-4">
-        <h2 className="card-display m-0 self-start border-b-2 border-[#E08A5C] pb-1.5 text-[24px] font-medium leading-tight text-[#0C3450]">Faktury i płatności</h2>
+        <h2 className="m-0 self-start border-b-2 border-[#E08A5C] pb-[3px] text-[17px] font-semibold leading-tight text-[#0C3450]">Faktury i płatności</h2>
         <button type="button" onClick={onShowAll} className={LINK}>
           Wszystkie wynajmy i faktury →
         </button>
       </div>
       {rows.length === 0 ? (
-        <p className="text-[15px] text-[#5C6166]">Brak faktur w panelu.</p>
+        <p className="text-[13px] text-[#5C6166]">Brak faktur w panelu.</p>
       ) : (
         <div className="overflow-x-auto">
           <div className="min-w-[620px]">
@@ -571,17 +571,17 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
               const unpaid = !["ZAPLACONA", "GOTOWKA", "ARCHIWALNA"].includes(r.status.kind);
               return (
                 <div key={r.key}>
-                  <div className="grid items-baseline gap-3 border-b border-[#E6D5C6] py-1.5 text-[16px] tabular-nums text-[#333333]" style={cols}>
+                  <div className="grid items-baseline gap-3 border-b border-[#E6D5C6] py-1.5 text-[13px] tabular-nums text-[#333333]" style={cols}>
                     <span className="truncate">{r.invoice!.number}</span>
                     <span>{dmy(r.date)}</span>
                     <span className="whitespace-nowrap">
                       {r.net != null ? num(r.net, 2) : "—"}
                       {r.invoice!.totalGross != null ? ` / ${num(r.invoice!.totalGross, 2)}` : ""} zł
                     </span>
-                    <span className={`text-[14px] ${statusColor(r.status.kind)}`} title={r.status.label}>
+                    <span className={`text-[12.5px] ${statusColor(r.status.kind)}`} title={r.status.label}>
                       {r.status.kind === "NIE_SPRAWDZONO" && !t.paymentsAsOf ? "brak danych z banku" : r.status.label.charAt(0).toLowerCase() + r.status.label.slice(1)}
                     </span>
-                    <span className="text-right text-[14px]">
+                    <span className="text-right text-[12.5px]">
                       {!agent && unpaid && cashFor !== r.invoice!.fakturowniaInvoiceId && (
                         <button type="button" className="text-[#1B6FA8] hover:text-[#0C3450]" onClick={() => setCashFor(r.invoice!.fakturowniaInvoiceId)}>
                           gotówka
@@ -646,22 +646,22 @@ function QualitySection({ d, onShowData }: { d: ClientDetail; onShowData: () => 
           <div className="h-1.5 w-[220px] max-w-[40vw] bg-[#E3F1EC]">
             <div className="h-1.5 bg-[#2F7A68]" style={{ width: `${q.percent}%` }} />
           </div>
-          <span className="text-[22px] text-[#2F7A68]">{q.percent}%</span>
+          <span className="text-[17px] text-[#2F7A68]">{q.percent}%</span>
         </div>
       }
     >
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div>
-          <div className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-[#2F7A68]">✓ Potwierdzone</div>
-          <div className="text-[15px] leading-[1.5] text-[#4A4A4A]">{q.confirmed.length ? q.confirmed.join(" · ") : "—"}</div>
+          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#2F7A68]">✓ Potwierdzone</div>
+          <div className="text-[13px] leading-[1.5] text-[#4A4A4A]">{q.confirmed.length ? q.confirmed.join(" · ") : "—"}</div>
         </div>
         <div>
           <div className={`mb-1.5 ${LABEL}`}>Brakuje</div>
-          <div className="text-[15px] leading-[1.5] text-[#4A4A4A]">{q.missing.length ? q.missing.join(" · ") : "nic — komplet"}</div>
+          <div className="text-[13px] leading-[1.5] text-[#4A4A4A]">{q.missing.length ? q.missing.join(" · ") : "nic — komplet"}</div>
         </div>
         <div>
           <div className={`mb-1.5 ${LABEL}`}>Źródła</div>
-          <div className="text-[15px] leading-[1.5] text-[#4A4A4A]">{q.sources.length ? q.sources.join(" · ") : <Missing>brak</Missing>}</div>
+          <div className="text-[13px] leading-[1.5] text-[#4A4A4A]">{q.sources.length ? q.sources.join(" · ") : <Missing>brak</Missing>}</div>
         </div>
       </div>
       <button type="button" onClick={onShowData} className={`${LINK} self-start`}>
@@ -687,7 +687,7 @@ export function CardRight({
   top?: ReactNode; // blok „Następny krok”
 }) {
   return (
-    <div className="flex w-full min-w-0 flex-grow flex-col gap-11">
+    <div className="flex w-full min-w-0 flex-grow flex-col gap-6">
       {top}
       <RhythmSection d={d} />
       <OpportunitiesSection d={d} onChanged={onChanged} notify={notify} />

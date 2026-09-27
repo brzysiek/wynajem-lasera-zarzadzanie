@@ -43,13 +43,13 @@ export function dataGaps(r: ClientListRow): string[] {
   return out;
 }
 
-const GRID = "grid grid-cols-[minmax(200px,330px)_150px_150px_170px_minmax(160px,1fr)_170px] gap-x-4";
+const GRID = "grid grid-cols-[minmax(200px,300px)_140px_140px_150px_minmax(150px,1fr)_130px] gap-x-3";
 
 export function PotentialTable({ rows, total, onMore, today }: { rows: ClientListRow[]; total: number; onMore: () => void; today: Date }) {
   return (
-    <div className="mx-4 overflow-x-auto border border-[#E4E7EA] bg-white md:mx-12">
-      <div className="min-w-[1080px]">
-        <div className={`${GRID} border-b border-[#E4E7EA] px-[18px] pb-2.5 pt-3.5 text-[12px] uppercase tracking-[0.14em] text-[#5C6166]`}>
+    <div className="mx-4 overflow-x-auto border border-[#E4E7EA] bg-white md:mx-7">
+      <div className="min-w-[980px]">
+        <div className={`${GRID} border-b border-[#E4E7EA] px-3.5 pb-2 pt-2.5 text-[10.5px] uppercase tracking-[0.12em] text-[#5C6166]`}>
           <span>Kontakt</span>
           <span>Pyta o</span>
           <span>Etap</span>
@@ -57,7 +57,7 @@ export function PotentialTable({ rows, total, onMore, today }: { rows: ClientLis
           <span>Dane</span>
           <span className="text-right">Akcja</span>
         </div>
-        {rows.length === 0 && <div className="px-[18px] py-10 text-center text-[15px] text-[#5C6166]">Nikt nie pasuje do tych filtrów.</div>}
+        {rows.length === 0 && <div className="px-3.5 py-10 text-center text-[13px] text-[#5C6166]">Nikt nie pasuje do tych filtrów.</div>}
         {rows.map((r) => {
           const stage = stageOf(r);
           const gaps = dataGaps(r);
@@ -77,34 +77,34 @@ export function PotentialTable({ rows, total, onMore, today }: { rows: ClientLis
                   ? { label: "Zadzwoń →", href: `tel:${r.primaryPhone}` }
                   : { label: "Szkic maila →", href: `mailto:${r.primaryEmail}` };
           return (
-            <div key={r.id} className={`${GRID} items-center border-b border-[#EEF0F2] px-[18px] py-3.5`}>
+            <div key={r.id} className={`${GRID} items-center border-b border-[#EEF0F2] px-3.5 py-2.5`}>
               <div className="flex min-w-0 flex-col gap-0.5">
-                <Link href={`/klienci/${r.id}`} className="truncate text-[16px] font-semibold text-[#2B2B2B] hover:text-[#1B6FA8]">
+                <Link href={`/klienci/${r.id}`} className="truncate text-[14px] font-semibold text-[#2B2B2B] hover:text-[#1B6FA8]">
                   {r.shortName ?? r.name}
                 </Link>
-                <span className="truncate text-[14px] text-[#5C6166]">{sub}</span>
+                <span className="truncate text-[12px] text-[#5C6166]">{sub}</span>
               </div>
-              <span className="truncate text-[14px] text-[#3A3A3A]" title={asks}>
+              <span className="truncate text-[13px] text-[#3A3A3A]" title={asks}>
                 {asks}
               </span>
-              <span className="justify-self-start border border-[#A9D2EC] px-[9px] py-[3px] text-[13px] text-[#1B6FA8]" title={stage === "PRZEGRANE" && r.lead?.lostReason ? `powód: ${LOST_REASON_LABEL[r.lead.lostReason as LostReasonKey] ?? r.lead.lostReason}` : undefined}>
+              <span className="justify-self-start rounded-[4px] border border-[#A9D2EC] px-2 py-px text-[12px] text-[#1B6FA8]" title={stage === "PRZEGRANE" && r.lead?.lostReason ? `powód: ${LOST_REASON_LABEL[r.lead.lostReason as LostReasonKey] ?? r.lead.lostReason}` : undefined}>
                 {STAGE_LABEL[stage]}
               </span>
-              <span className="text-[14px] tabular-nums text-[#3A3A3A]">{last ? `${dmSmart(last, today)}${channel ? ` · ${channel}` : ""}` : "—"}</span>
+              <span className="text-[13px] tabular-nums text-[#3A3A3A]">{last ? `${dmSmart(last, today)}${channel ? ` · ${channel}` : ""}` : "—"}</span>
               <div className="flex flex-wrap gap-1">
                 {gaps.map((g) => (
-                  <span key={g} className="bg-[#FBF0E7] px-2 py-0.5 text-[12px] text-[#B8612F]">
+                  <span key={g} className="bg-[#FBF0E7] px-1.5 py-px text-[11.5px] text-[#B8612F]">
                     {g}
                   </span>
                 ))}
               </div>
-              <a href={action.href.startsWith("/") ? `${BASE_PATH}${action.href}` : action.href} className="text-right text-[14px] text-[#1B6FA8] hover:text-[#0C3450]">
+              <a href={action.href.startsWith("/") ? `${BASE_PATH}${action.href}` : action.href} className="text-right text-[13px] text-[#1B6FA8] hover:text-[#0C3450]">
                 {action.label}
               </a>
             </div>
           );
         })}
-        <div className="flex items-center justify-between px-[18px] py-4 text-[14px] text-[#5C6166]">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-3 text-[12.5px] text-[#5C6166]">
           <span>
             Pokazano {rows.length} z {total}
             {rows.length < total && (

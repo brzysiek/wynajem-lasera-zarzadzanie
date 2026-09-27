@@ -54,33 +54,37 @@ export function CardHeader({
   ].filter((x): x is string => !!x);
 
   return (
-    <div className="flex flex-col gap-4 px-4 pb-7 pt-9 md:px-12">
-      <div className="text-[12px] uppercase tracking-[0.16em] text-[#5C6166]">
+    <div className="flex flex-col gap-2 px-4 pb-4 pt-6 md:px-7">
+      <div className="text-[10.5px] uppercase tracking-[0.12em] text-[#5C6166]">
         <Link href={backHref} className="text-[#5C6166] no-underline hover:text-[#1B6FA8]">
           Klienci
         </Link>{" "}
         / {d.profile.shortName ?? d.name}
       </div>
-      <div className="flex flex-col justify-between gap-8 xl:flex-row xl:items-end">
-        <div className="flex min-w-0 flex-col gap-3">
-          <div className="flex flex-wrap items-baseline gap-4">
-            <h1 className="card-display m-0 text-[42px] font-normal leading-[1.1] text-[#0C3450]">{d.name}</h1>
+      <div className="flex flex-col justify-between gap-3 xl:flex-row xl:items-end">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 items-baseline gap-2.5">
+            {/* Nazwa robocza w H1 (jedna linia); pełna nazwa rejestrowa pod spodem. */}
+            <h1 className="m-0 min-w-0 truncate text-[26px] font-semibold leading-[1.15] text-[#0C3450]" title={d.name}>
+              {d.profile.shortName ?? d.name}
+            </h1>
             {status ? (
-              <span className={`px-3 py-1 text-[12px] font-medium uppercase tracking-[0.14em] ${statusCls}`}>{STATUS_LABEL[status]}</span>
+              <span className={`flex-none px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] ${statusCls}`}>{STATUS_LABEL[status]}</span>
             ) : (
-              <span className="border border-dashed border-[#C3C4C7] px-3 py-1 text-[12px] font-medium uppercase tracking-[0.14em] text-[#5C6166]">Kontakt z zapytania</span>
+              <span className="flex-none border border-dashed border-[#C3C4C7] px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] text-[#5C6166]">Kontakt z zapytania</span>
             )}
           </div>
-          <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-[16px] text-[#4A4A4A]">
+          {d.profile.shortName && d.profile.shortName !== d.name && <div className="truncate text-[13px] text-[#5C6166]" title={d.name}>{d.name}</div>}
+          <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[13px] text-[#4A4A4A]">
             {meta.map((m, i) => (
-              <span key={i} className="flex gap-5">
+              <span key={i} className="flex gap-2.5">
                 {i > 0 && <span className="text-[#C3C4C7]">|</span>}
                 <span>{m}</span>
               </span>
             ))}
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2.5">
+        <div className="flex shrink-0 flex-wrap gap-2">
           {primary?.phone ? (
             <a href={`tel:${primary.phone}`} className={BTN_OUTLINE}>
               Zadzwoń
@@ -123,10 +127,10 @@ export function CardHeader({
 
 function Indicator({ label, value, sub, warn = false }: { label: string; value: React.ReactNode; sub?: React.ReactNode; warn?: boolean }) {
   return (
-    <div className={`flex flex-col gap-1 ${warn ? "border-l-[3px] border-[#E08A5C] pl-5" : ""}`}>
-      <div className={warn ? "text-[12px] uppercase tracking-[0.16em] text-[#B8612F]" : LABEL_WIDE}>{label}</div>
-      <div className={`card-display text-[28px] font-medium tabular-nums ${warn ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>{value}</div>
-      {sub && <div className="text-[15px] text-[#5C6166]">{sub}</div>}
+    <div className={`flex min-w-0 flex-col gap-0.5 ${warn ? "border-l-[3px] border-[#E08A5C] pl-3" : ""}`}>
+      <div className={warn ? "text-[10.5px] uppercase tracking-[0.14em] text-[#B8612F]" : LABEL_WIDE}>{label}</div>
+      <div className={`text-[22px] font-medium leading-tight tabular-nums ${warn ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>{value}</div>
+      {sub && <div className="text-[12px] text-[#5C6166]">{sub}</div>}
     </div>
   );
 }
@@ -155,7 +159,7 @@ export function Indicators({ d }: { d: ClientDetail }) {
           : "0 zł";
 
   return (
-    <div className="grid grid-cols-2 gap-6 bg-[#EAF4FB] px-4 py-[26px] md:grid-cols-3 md:px-12 xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-4 bg-[#EAF4FB] px-4 py-3 md:grid-cols-3 md:px-7 xl:grid-cols-5">
       <Indicator
         label="Następny wynajem"
         value={n ? `${weekdayShort(n.startsAt)} ${dm(n.startsAt)}${n.time ? ` · ${n.time}` : ""}` : r.forecast[0] ? `≈ ${dm(r.forecast[0])}` : "—"}
@@ -189,7 +193,7 @@ export function Indicators({ d }: { d: ClientDetail }) {
         label="Wynajmy"
         value={
           <>
-            {d.summary.rentalsTotal} <span className="text-[17px] font-normal">· {d.summary.rentals12m} w 12 mies.</span>
+            {d.summary.rentalsTotal} <span className="text-[14px] font-normal">· {d.summary.rentals12m} w 12 mies.</span>
           </>
         }
         sub={planned ? `+ ${planned} ${planned === 1 ? "zaplanowany" : "zaplanowane"} (${plannedRows.map((h) => dm(h.at)).reverse().join(", ")})` : "brak zaplanowanych"}
@@ -243,8 +247,8 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
   const overdue = step?.dueAt && new Date(step.dueAt).getTime() < new Date().setHours(0, 0, 0, 0);
 
   return (
-    <div className="flex flex-col gap-3 bg-[#2B5B82] px-[34px] py-[30px]">
-      <div className="text-[12px] uppercase tracking-[0.18em] text-[#CFE3F2]">
+    <div className="flex flex-col gap-2 bg-[#2B5B82] px-4 py-3.5">
+      <div className="text-[11px] uppercase tracking-[0.18em] text-[#CFE3F2]">
         Następny krok
         {step?.dueAt && !edit && <span className={overdue ? "text-white" : ""}> · {overdue ? "zaległe od" : "do"} {dm(step.dueAt)}</span>}
       </div>
@@ -252,7 +256,7 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
         <>
           <textarea
             rows={3}
-            className="w-full border border-[#46749A] bg-white px-3 py-2 text-[16px] text-[#333333] outline-none"
+            className="w-full border border-[#46749A] bg-white px-3 py-2 text-[13px] text-[#333333] outline-none"
             placeholder={"Pierwsza linia = krok, kolejne = kontekst"}
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -260,7 +264,7 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
           <div className="flex flex-wrap items-center gap-3 border-t border-[#46749A] pt-2">
             <input type="date" className={`${INPUT} w-auto`} value={due} onChange={(e) => setDue(e.target.value)} />
             <span className="flex-grow" />
-            <button type="button" onClick={() => setEdit(false)} className="h-[46px] border border-[#CFE3F2] px-[18px] text-[15px] text-white">
+            <button type="button" onClick={() => setEdit(false)} className="h-[34px] rounded-[6px] border border-[#CFE3F2] px-3 text-[13px] text-white">
               Anuluj
             </button>
             <button type="button" disabled={busy} onClick={() => void save()} className={BTN_TERRA}>
@@ -270,28 +274,28 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
         </>
       ) : step ? (
         <>
-          <button type="button" onClick={() => setEdit(true)} className="card-display text-left text-[24px] font-medium leading-[1.3] text-white hover:underline" title="Zmień">
+          <button type="button" onClick={() => setEdit(true)} className="text-left text-[16px] font-medium leading-[1.3] text-white hover:underline" title="Zmień">
             {title}
           </button>
-          {rest.join(" ").trim() && <div className="text-[16px] leading-[1.5] text-[#EAF4FB]">{rest.join(" ").trim()}</div>}
+          {rest.join(" ").trim() && <div className="text-[13px] leading-[1.5] text-[#EAF4FB]">{rest.join(" ").trim()}</div>}
           <div className="flex flex-wrap items-center gap-3 border-t border-[#46749A] pt-2">
             <button type="button" onClick={() => onTask(title, step.dueAt)} className={BTN_TERRA}>
               Utwórz zadanie dla Ani →
             </button>
-            {footer && <span className="text-[14px] text-[#CFE3F2]">{footer}</span>}
+            {footer && <span className="text-[12.5px] text-[#CFE3F2]">{footer}</span>}
           </div>
         </>
       ) : (
         <>
-          <div className="card-display text-[24px] font-medium leading-[1.3] text-white">Nie ustalono następnego kroku</div>
-          <div className="text-[16px] leading-[1.5] text-[#EAF4FB]">
+          <div className="text-[16px] font-medium leading-[1.3] text-white">Nie ustalono następnego kroku</div>
+          <div className="text-[13px] leading-[1.5] text-[#EAF4FB]">
             {derived ? `Z zadań i sygnałów: ${derived.text}${derived.at ? ` · ${dm(derived.at)}` : ""}` : "Wpisz, co dalej z tym klientem — agent też może go zaproponować."}
           </div>
           <div className="flex flex-wrap items-center gap-3 border-t border-[#46749A] pt-2">
             <button type="button" onClick={() => setEdit(true)} className={BTN_TERRA}>
               Ustaw następny krok →
             </button>
-            {footer && <span className="text-[14px] text-[#CFE3F2]">{footer}</span>}
+            {footer && <span className="text-[12.5px] text-[#CFE3F2]">{footer}</span>}
           </div>
         </>
       )}
@@ -341,7 +345,7 @@ export function TaskDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
       <div className="flex w-full max-w-md flex-col gap-3 bg-white p-5" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Nowe zadanie">
-        <h2 className="card-display m-0 text-[22px] font-medium text-[var(--c-navy)]">Nowe zadanie · {d.name}</h2>
+        <h2 className="card-display m-0 text-[17px] font-medium text-[var(--c-navy)]">Nowe zadanie · {d.name}</h2>
         <input className={INPUT} autoFocus placeholder="Co zrobić?" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
         <div className="grid grid-cols-2 gap-2">
           <input type="date" className={INPUT} value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} />
@@ -354,7 +358,7 @@ export function TaskDialog({
             ))}
           </select>
         </div>
-        {error && <p className=" bg-[var(--c-red-soft)] px-3 py-2 text-[14px] text-[var(--c-red)]">{error}</p>}
+        {error && <p className=" bg-[var(--c-red-soft)] px-3 py-2 text-[12.5px] text-[var(--c-red)]">{error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className={BTN_OUTLINE}>
             Anuluj
