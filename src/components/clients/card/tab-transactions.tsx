@@ -59,7 +59,8 @@ export function TabTransactions({ d, isAdmin }: { d: ClientDetail; isAdmin: bool
   const pdfHref = (id: number) => `${BASE_PATH}/api/fakturownia/invoices/${id}/pdf`;
 
   const Actions = ({ r }: { r: Tx }) =>
-    isAdmin && r.invoice ? (
+    // Faktura z Excela (ujemny identyfikator) nie istnieje w Fakturowni — bez PDF-a i przypomnienia.
+    isAdmin && r.invoice && r.invoice.fakturowniaInvoiceId > 0 ? (
       <span className="flex justify-end gap-3" onClick={(e) => e.stopPropagation()}>
         <a href={pdfHref(r.invoice.fakturowniaInvoiceId)} target="_blank" rel="noreferrer" className="text-[13px] font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
           PDF

@@ -31,7 +31,7 @@ function normalizeNip(raw: string | null | undefined): string | null {
   return digits.length === 10 ? digits : null;
 }
 
-async function loadInvoiceClassifier() {
+export async function loadInvoiceClassifier() {
   const [clients, aliases, linked] = await Promise.all([
     prisma.client.findMany({
       where: { archivedAt: null }, // zarchiwizowanych nie dopasowujemy
@@ -69,7 +69,7 @@ async function loadInvoiceClassifier() {
   };
 }
 
-function matchData(c: InvoiceClassification & { rentalId: string | null }) {
+export function matchData(c: InvoiceClassification & { rentalId: string | null }) {
   return {
     buyerKey: c.buyerKey,
     rentalId: c.rentalId,

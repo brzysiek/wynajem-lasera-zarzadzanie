@@ -58,6 +58,7 @@ const PAYMENT_TONE: Record<PaymentKind, { bg: string; fg: string }> = {
   BRAK_PRZELEWU: { bg: "var(--c-accent-soft)", fg: "var(--c-accent-deep)" },
   ZAPLANOWANY: { bg: "var(--c-purple-soft)", fg: "var(--c-purple-deep)" },
   BEZ_FAKTURY: { bg: "var(--c-bg)", fg: "var(--c-sidebar-text)" },
+  ARCHIWALNA: { bg: "var(--c-bg)", fg: "var(--c-sidebar-text)" },
 };
 
 export function PaymentChip({ status }: { status: Tx["status"] }) {

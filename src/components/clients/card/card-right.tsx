@@ -568,7 +568,7 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
             </div>
             {rows.map((r) => {
               const cash = r.status.kind === "ZAPLACONA" && r.status.method === "CASH";
-              const unpaid = !["ZAPLACONA", "GOTOWKA"].includes(r.status.kind);
+              const unpaid = !["ZAPLACONA", "GOTOWKA", "ARCHIWALNA"].includes(r.status.kind);
               return (
                 <div key={r.key}>
                   <div className="grid items-baseline gap-3 border-b border-[#E6D5C6] py-1.5 text-[16px] tabular-nums text-[#333333]" style={cols}>

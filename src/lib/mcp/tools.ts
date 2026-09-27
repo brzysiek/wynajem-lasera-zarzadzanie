@@ -373,6 +373,7 @@ export const TOOLS: McpTool[] = [
               paymentType: r.paymentType,
               paymentTo: r.paymentTo,
               issueDate: r.issueDate,
+              archived: r.fakturowniaInvoiceId < 0,
               cashConfirmed: false,
             },
             today,

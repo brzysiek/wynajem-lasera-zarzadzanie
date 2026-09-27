@@ -89,6 +89,7 @@ export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], to
         paymentTo: inv.paymentTo,
         issueDate: inv.issueDate,
         cashConfirmed: cash,
+        archived: inv.fakturowniaInvoiceId < 0,
       },
       today,
       coverage,

@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE `client_invoices` ADD COLUMN `source` VARCHAR(16) NOT NULL DEFAULT 'FAKTUROWNIA',
+    ADD COLUMN `sourceFile` VARCHAR(191) NULL;
+

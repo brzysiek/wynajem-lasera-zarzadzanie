@@ -1013,7 +1013,11 @@ model ClientAlias {
 // nie używa.
 model ClientInvoice {
   id                   String              @id @default(cuid())
+  // Faktury z Excela (sprzed Fakturowni, wniosek 9) mają UJEMNY identyfikator
+  // liczony z numeru (03/01/2026 → -202601003) — src/lib/invoicing/excel-invoice.ts.
   fakturowniaInvoiceId Int                 @unique
+  source               String              @default("FAKTUROWNIA") @db.VarChar(16) // FAKTUROWNIA | EXCEL
+  sourceFile           String?             @db.VarChar(191) // nazwa pliku Excela
   number               String
   issueDate            DateTime
   sellDate             DateTime // data sprzedaży = data usługi — porównanie z wynajmami (±7 dni)

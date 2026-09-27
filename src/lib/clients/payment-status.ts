@@ -19,7 +19,8 @@ export type PaymentStatus =
   | { kind: "NIE_SPRAWDZONO"; days: number | null } // days = ile po terminie (informacyjnie)
   | { kind: "BRAK_PRZELEWU"; days: number } // wyciąg obejmuje termin, przelewu nie ma — gotówka?
   | { kind: "ZAPLANOWANY" }
-  | { kind: "BEZ_FAKTURY" };
+  | { kind: "BEZ_FAKTURY" }
+  | { kind: "ARCHIWALNA" }; // faktura z Excela sprzed Fakturowni (wniosek 9) — bez danych o wpłacie
 
 export type PaymentKind = PaymentStatus["kind"];
 
@@ -58,6 +59,7 @@ export type InvoicePaymentInput = {
   paymentTo: Date | null;
   issueDate?: Date | null;
   cashConfirmed: boolean;
+  archived?: boolean; // faktura z Excela (ujemny fakturowniaInvoiceId)
 };
 
 export function invoicePaymentStatus(inv: InvoicePaymentInput, today: Date, coverage: PaymentCoverage = null): PaymentStatus {
@@ -65,6 +67,7 @@ export function invoicePaymentStatus(inv: InvoicePaymentInput, today: Date, cove
     const partial = inv.paidAmount != null && inv.totalGross != null && inv.paidAmount < inv.totalGross - 0.01;
     return { kind: "ZAPLACONA", paidAt: inv.paidAt, partial, method: inv.paidMethod ?? null, receivedBy: inv.paidReceivedBy ?? null };
   }
+  if (inv.archived) return { kind: "ARCHIWALNA" };
   if (inv.paymentType === "cash" || inv.cashConfirmed) return { kind: "GOTOWKA" };
   const due = inv.paymentTo ?? inv.issueDate ?? null;
   if (!due) return { kind: "OCZEKUJE", dueInDays: null };
@@ -108,6 +111,8 @@ export function paymentLabel(s: PaymentStatus): string {
       return "Zaplanowany";
     case "BEZ_FAKTURY":
       return "Brak faktury w systemie";
+    case "ARCHIWALNA":
+      return "Archiwalna (Excel)";
   }
 }
 

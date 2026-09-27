@@ -1,6 +1,7 @@
 import { getFakturowniaConfigStatus } from "@/lib/integrations/fakturownia";
 import { FakturowniaPanel } from "@/components/fakturownia-panel";
 import { InvoiceHistoryImportPanel } from "@/components/invoice-history-import-panel";
+import { ExcelInvoiceImportPanel } from "@/components/excel-invoice-import-panel";
 
 function Code({ children }: { children: string }) {
   return <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800">{children}</code>;
@@ -18,6 +19,8 @@ export default async function FakturowniaIntegrationPage() {
       <FakturowniaPanel initiallyConfigured={fakturowniaConfigured} />
 
       <InvoiceHistoryImportPanel configured={fakturowniaConfigured} />
+
+      <ExcelInvoiceImportPanel />
 
       <div className="mb-6 rounded-lg border border-[#CFE0F0] bg-[#EAF4FB] p-4 text-sm text-[#14567F]">
         Konfiguracja poniżej ustawia tylko dane dostępowe do Fakturowni (token, konto, dział wystawiający). Samo
