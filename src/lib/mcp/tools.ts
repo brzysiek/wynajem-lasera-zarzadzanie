@@ -8,7 +8,7 @@ import { paginate } from "@/lib/agent-api/token";
 import { loadClientDetail } from "@/lib/clients/load";
 import { patchClient, patchContact } from "@/lib/clients/update";
 import { mergeClients } from "@/lib/clients/merge";
-import { qualifyClient } from "@/lib/clients/qualify";
+import { isQualificationActive, qualifyClient } from "@/lib/clients/qualify";
 import { parseContactInput } from "@/lib/clients/validate";
 import { loadLeadDetail, loadLeadRows } from "@/lib/leads/load";
 import { addLeadNote } from "@/lib/leads/actions";
@@ -33,6 +33,8 @@ import { listPaymentsForAgent, loadPaymentCoverage } from "@/lib/invoicing/bank-
 import { invoicePaymentStatus, paymentLabel } from "@/lib/clients/payment-status";
 import { dropNullJson } from "@/lib/clients/profile-fields";
 import { addOpportunity } from "@/lib/clients/opportunities";
+import { listExclusions } from "@/lib/porzadki/exclusions";
+import { getHideKeywords } from "@/lib/porzadki/exclusion-load";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
 // co panel i API agenta (src/lib/permissions.ts): odczyt + zapisy agenta,
@@ -123,7 +125,7 @@ export const TOOLS: McpTool[] = [
       status: s("Status klienta.", { enum: ["POTENCJALNY", "NOWY", "STALY", "USPIONY", "BYLY", "NIE_KONTAKTOWAC"] }),
       miasto: s("Fragment nazwy miasta."),
       zmienione_od: s("Dane zmienione od daty RRRR-MM-DD."),
-      zapytania: b("true = tylko kontakty z zapytań, false = tylko klienci."),
+      zapytania: b("true = tylko kontakty z zapytań, false = tylko klienci (działa po włączeniu kwalifikacji klientów)."),
       q: s("Szukaj: nazwa, NIP, osoba, e-mail, telefon."),
       ...PAGE,
     }),
@@ -139,7 +141,13 @@ export const TOOLS: McpTool[] = [
         inquiries: typeof a.zapytania === "boolean" ? a.zapytania : null,
         q: str(a, "q"),
       });
-      return paginate(list, page(a));
+      // Dopóki kwalifikacja jest wyłączona (Ustawienia → Klienci), wszyscy są
+      // „klientami” — filtr zapytania=true zwraca wtedy pustą listę.
+      const qualification = typeof a.zapytania === "boolean" ? await isQualificationActive() : null;
+      return {
+        ...paginate(list, page(a)),
+        ...(qualification === false ? { uwaga: "Kwalifikacja klientów jest wyłączona — wszyscy są na liście klientów, więc kontaktów z zapytań nie wyróżniamy (zapytania=true zwraca 0)." } : {}),
+      };
     },
   },
   {
@@ -353,6 +361,16 @@ export const TOOLS: McpTool[] = [
         total,
       };
     },
+  },
+  {
+    name: "wykluczenia",
+    title: "Lista wykluczeń domen",
+    description:
+      "Tylko odczyt. Domeny i adresy z listy wykluczeń (EXCLUDE: maile nie trafiają do panelu, kontakty i transakcje z HubSpota nie tworzą klientów ani sygnałów; " +
+      "HIDE: wątki ukryte w historii klienta, chyba że temat / skrót zawiera słowa o wynajmie) i te słowa. Nowe domeny zgłaszaj propozycją rodzaju wykluczenie w propozycje_dodaj.",
+    inputSchema: obj({}),
+    readOnly: true,
+    run: async () => ({ rows: await listExclusions(), keywords: await getHideKeywords() }),
   },
   {
     name: "szansa_dodaj",
@@ -886,11 +904,12 @@ export const TOOLS: McpTool[] = [
     name: "propozycje_dodaj",
     title: "Zgłoś propozycje zmian",
     description:
-      "Zgłasza hurtem propozycje do akceptacji administratora (Porządki → Propozycje). Każda: rodzaj (pole | osoba | archiwizacja | scalenie | wydzielenie | dopasowanie_platnosci), klient_id, " +
+      "Zgłasza hurtem propozycje do akceptacji administratora (Porządki → Propozycje). Każda: rodzaj (pole | osoba | archiwizacja | scalenie | wydzielenie | dopasowanie_platnosci | wykluczenie), klient_id, " +
       "dla pola: pole + proponowane (także nowe pola karty jak w klient_zmien oraz agreedPrice, paymentTerms, frameAgreement); dla osoby: osoba_id + pole + proponowane (także roles, preferredChannel, salutation, trainedOn); dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id; " +
       "dla wydzielenia (rodzaj: wydzielenie; klient-zlepek → nowy klient): osoby_ids, nazwa, opcjonalnie nip, ulica, kod, miasto, " +
       "invoiceNip (faktury z tym NIP-em nabywcy przechodzą; bez niego — faktury z NIP-em nowego klienta), historyKeys (klucze grup z kalendarzy z narzędzia dopasowania). " +
       "Nowy klient nie dziedziczy źródła ani tagu HubSpot zlepka. " +
+      "Dla wykluczenia (lista wykluczeń domen): wartosci (lista domen albo adresów, maks. 500), typ (wyklucz | ukrywaj), dopisek — po akceptacji maile z nich nie trafiają do panelu. " +
       "Dla dopasowania_platnosci (przelew z wyciągu → faktura): przelew_id i faktura_id z narzędzia platnosci; po akceptacji faktura jest zapłacona z datą przelewu. " +
       "Zawsze zrodlo, pewnosc, paczka; opcjonalnie klasa (np. miasto_slownik) — klasy zatwierdzone na stałe wykonują się od razu. " +
       "Odrzucone wcześniej zmiany są blokowane (dostaniesz komentarz odrzucenia).",

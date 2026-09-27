@@ -18,6 +18,10 @@ export type PaymentStatus =
 
 export type PaymentKind = PaymentStatus["kind"];
 
+// Przelew księguje się z opóźnieniem, a klienci płacą w dniu terminu —
+// „po terminie” dopiero, gdy wyciąg obejmuje co najmniej 5 dni po terminie.
+export const PAYMENT_GRACE_DAYS = 5;
+
 // Okres, który sprawdzają importy wyciągów: od początku śledzenia wpłat
 // do ostatniego dnia w wgranych plikach. null = nic jeszcze nie wgrano.
 export type PaymentCoverage = { from: Date; to: Date } | null;
@@ -61,7 +65,7 @@ export function invoicePaymentStatus(inv: InvoicePaymentInput, today: Date, cove
   const checked =
     coverage != null &&
     (!inv.issueDate || dayIndex(inv.issueDate) >= dayIndex(coverage.from)) &&
-    dayIndex(due) <= dayIndex(coverage.to);
+    dayIndex(due) + PAYMENT_GRACE_DAYS <= dayIndex(coverage.to);
   return checked ? { kind: "PO_TERMINIE", days: diff } : { kind: "NIE_SPRAWDZONO", days: diff };
 }
 

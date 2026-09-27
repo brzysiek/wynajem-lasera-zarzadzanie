@@ -8,7 +8,7 @@ import { PERSON_ROLE_LABEL, type PersonRole } from "@/lib/clients/profile-fields
 import { monthsLabel } from "@/lib/clients/rhythm";
 import { AgentModeContext, INPUT, api } from "../client-forms";
 import { gmailComposeUrl } from "./shared";
-import { BTN_OUTLINE, BTN_PRIMARY, Chip, WEEKDAY_IN, dm, hm, money, weekdayShort } from "./kit";
+import { BTN_OUTLINE, BTN_PRIMARY, Chip, WEEKDAY_IN, dm, money, weekdayShort } from "./kit";
 
 // Nagłówek karty, pasek 5 wskaźników i baner „Następny krok” wg
 // karta-klienta-wzor.html (sekcja 2).
@@ -156,7 +156,7 @@ export function Indicators({ d }: { d: ClientDetail }) {
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
       <Indicator
         label="Następny wynajem"
-        value={n ? `${weekdayShort(n.startsAt)} ${dm(n.startsAt)}${hm(n.startsAt) !== "00:00" ? ` · ${hm(n.startsAt)}` : ""}` : r.forecast[0] ? `≈ ${dm(r.forecast[0])}` : "—"}
+        value={n ? `${weekdayShort(n.startsAt)} ${dm(n.startsAt)} · ${n.time ?? "godz. do ustalenia"}` : r.forecast[0] ? `≈ ${dm(r.forecast[0])}` : "—"}
         sub={
           n
             ? [`${n.deviceName}${n.heads ? ` ${n.heads} gł.` : ""}`, n.smsSentAt ? `SMS ${dm(n.smsSentAt)} ✓` : null].filter(Boolean).join(" · ")
@@ -195,7 +195,7 @@ export function Indicators({ d }: { d: ClientDetail }) {
         label="Należności"
         warn={warn}
         value={due}
-        sub={t.paymentsAsOf ? `wpłaty aktualne na ${dm(t.paymentsAsOf)}` : "brak wgranych wyciągów z banku"}
+        sub={t.paymentsAsOf ? `wpłaty z okresu ${t.paymentsFrom ? `${dm(t.paymentsFrom)}–` : "do "}${dm(t.paymentsAsOf)}` : "brak wgranych wyciągów z banku"}
       />
     </div>
   );

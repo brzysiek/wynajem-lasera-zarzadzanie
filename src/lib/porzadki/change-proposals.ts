@@ -10,6 +10,7 @@ import { sameLogValue } from "@/lib/changelog/undo-rules";
 import { archiveRecords } from "@/lib/porzadki/archive";
 import type { ArchiveInput } from "@/lib/porzadki/archive-rules";
 import { PorzadkiError, type Actor } from "@/lib/porzadki/proposals";
+import { addExclusions } from "@/lib/porzadki/exclusions";
 import { applyPaymentMatch, describePaymentMatch, type PaymentMatchInput } from "@/lib/invoicing/bank-transfers";
 import { parseProposalItem, type ChangeProposalStatus, type ParsedProposal, type ProposalKind } from "@/lib/porzadki/proposal-rules";
 
@@ -198,6 +199,11 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
     const input = value as SplitInput;
     const r = await splitClient(p.clientId!, { ...input, historyKeys: input.historyKeys ?? [] }, provenance, actor, { approvedById });
     return r.ok ? { ok: true } : { ok: false, message: r.message };
+  }
+  if (p.kind === "EXCLUSION") {
+    const v = value as { values: string[]; kind: "EXCLUDE" | "HIDE"; note: string | null };
+    await addExclusions(v.values.join("\n"), v.kind, [v.note, `propozycja agenta, źródło: ${p.source}`].filter(Boolean).join(" · "), approvedById);
+    return { ok: true };
   }
   if (p.kind === "PAYMENT_MATCH") {
     const r = await applyPaymentMatch(value as PaymentMatchInput, { userId: actor.userId, provenance: { source: p.source, confidence: p.confidence as "HIGH" | "MEDIUM" | "LOW", batch: p.batch }, approvedById });

@@ -134,6 +134,7 @@ export type TxTotals = {
   uncheckedNet: number; // po terminie, ale poza okresem wgranych wyciągów
   uncheckedCount: number;
   paymentsAsOf: string | null; // ISO — „wpłaty aktualne na”: ostatni dzień wgranych wyciągów
+  paymentsFrom: string | null; // ISO — początek sprawdzanego okresu („wpłaty z okresu od–do”)
   withoutInvoice: number;
   withoutInvoiceAllCalendar: boolean;
 };
@@ -164,6 +165,7 @@ export function transactionTotals(rows: TxRow[], today: Date, coverage: PaymentC
     uncheckedNet: round2(unchecked.reduce((s, r) => s + (r.net ?? 0), 0)),
     uncheckedCount: unchecked.length,
     paymentsAsOf: coverage?.to.toISOString() ?? null,
+    paymentsFrom: coverage?.from.toISOString() ?? null,
     withoutInvoice: noInvoice.length,
     withoutInvoiceAllCalendar: noInvoice.length > 0 && noInvoice.every((r) => r.source === "kalendarz"),
   };
@@ -186,14 +188,17 @@ export function rhythmLabel(days: number): string {
 }
 
 // Typowa forma płatności: z faktur (przelew / gotówka) + czy zwykle w terminie.
-// „Zaległości” / „po terminie” liczone tylko z faktur sprawdzonych wyciągiem.
+// Tylko z faktur sprawdzonych wyciągiem (zapłacone i „po terminie”), od
+// 2 takich faktur; „zaległości” dopiero przy opóźnieniu ponad 14 dni.
 export function typicalPayment(rows: TxRow[]): string | null {
   const inv = rows.filter((r) => r.invoice || r.status.kind === "GOTOWKA");
   if (inv.length === 0) return null;
   const cash = inv.filter((r) => r.status.kind === "GOTOWKA").length;
   if (cash > inv.length / 2) return "gotówka";
-  const paid = inv.filter((r) => r.status.kind === "ZAPLACONA");
-  const overdue = inv.filter((r) => r.status.kind === "PO_TERMINIE").length;
-  if (paid.length === 0) return overdue ? "przelew, zaległości" : "przelew";
-  return overdue > paid.length / 3 ? "przelew, bywa po terminie" : "przelew, zwykle w terminie";
+  const paid = inv.filter((r) => r.status.kind === "ZAPLACONA").length;
+  const overdue = inv.filter((r) => r.status.kind === "PO_TERMINIE");
+  if (paid + overdue.length < 2) return "przelew";
+  const serious = overdue.filter((r) => r.status.kind === "PO_TERMINIE" && r.status.days > 14).length;
+  if (paid === 0) return serious ? "przelew, zaległości" : "przelew";
+  return overdue.length > paid / 3 ? "przelew, bywa po terminie" : "przelew, zwykle w terminie";
 }

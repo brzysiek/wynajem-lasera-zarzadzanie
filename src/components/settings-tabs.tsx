@@ -10,6 +10,7 @@ const ALL_TABS = [
   { href: "/ustawienia/cennik", label: "Cennik", adminOnly: true },
   { href: "/ustawienia/pojazdy", label: "Pojazdy", adminOnly: true },
   { href: "/ustawienia/kategorie-kosztow", label: "Kategorie kosztów", adminOnly: true },
+  { href: "/ustawienia/wykluczenia", label: "Wykluczenia maili", adminOnly: true },
   { href: "/ustawienia/uzytkownicy", label: "Użytkownicy", adminOnly: true },
 ];
 

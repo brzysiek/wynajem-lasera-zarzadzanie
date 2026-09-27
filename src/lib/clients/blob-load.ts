@@ -12,9 +12,10 @@ export async function listSuspectedBlobs(): Promise<SuspectedBlob[]> {
       id: true,
       name: true,
       city: true,
+      country: true,
       nip: true,
       hubspotCompanyId: true,
-      contacts: { select: { firstName: true, lastName: true, email: true } },
+      contacts: { select: { firstName: true, lastName: true, email: true, phone: true } },
       invoices: { select: { buyerTaxNo: true } },
       _count: { select: { rentals: true } },
     },
@@ -27,6 +28,8 @@ export async function listSuspectedBlobs(): Promise<SuspectedBlob[]> {
         hubspotCompanyId: c.hubspotCompanyId,
         contacts: c.contacts,
         invoiceNips: c.invoices.map((i) => i.buyerTaxNo).filter((x): x is string => !!x),
+        country: c.country,
+        invoicesCount: c.invoices.length,
       });
       return { clientId: c.id, name: c.name, city: c.city, contacts: c.contacts.length, rentals: c._count.rentals, score: r.score, reasons: r.reasons };
     })

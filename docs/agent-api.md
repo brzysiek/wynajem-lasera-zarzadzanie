@@ -385,6 +385,16 @@ Wpłaty sprawdza się w module Finanse na podstawie pliku CSV z banku, wgrywaneg
 
 Niedopasowany przelew (np. dopasowany przez Ciebie po NIP-ie, nazwie nadawcy i kwocie) zgłoś propozycją `dopasowanie_platnosci` w paczce.
 
+## Lista wykluczeń domen (wniosek 7)
+
+Narzędzie MCP `wykluczenia` służy tylko do odczytu. Zwraca:
+
+- domeny i adresy `EXCLUDE`: ich maile nie trafiają do panelu, a kontakty i transakcje z HubSpota nie tworzą klientów ani sygnałów;
+- domeny i adresy `HIDE`: wątki z ich udziałem są ukryte w historii klienta, chyba że temat albo skrót zawiera słowo o wynajmie;
+- listę tych słów.
+
+Nowe domeny zgłaszasz w `propozycje_dodaj`, rodzaj `wykluczenie`, z polami `wartosci` (lista, maks. 500), `typ` (`wyklucz` albo `ukrywaj`) i `dopisek`. Po akceptacji panel od razu ukrywa pasujące maile. Niczego nie usuwa.
+
 `GET /api/agent/fv-bez-faktury` zwraca zakończone wynajmy ze znacznikiem FV (VAT doliczony), które nie mają faktury. Przy każdym wynajmie jest `suggestions[]`: prawdopodobne faktury (ten sam klient albo NIP, data sprzedaży ±7 dni, urządzenie w pozycjach). Powiązanie faktury z wynajmem zatwierdza administrator w panelu, w **Finanse → Faktury VAT → FV bez faktury → Powiąż**.
 
 ---

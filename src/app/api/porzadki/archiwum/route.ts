@@ -5,6 +5,7 @@ import { archiveRecords, listArchive, parseArchiveInput, parseTypeIds } from "@/
 import { porzadkiErrorResponse } from "@/lib/porzadki/http";
 import { dayParam } from "@/lib/agent-api/token";
 import { logInfo } from "@/lib/logger";
+import { suggestDomainsForClients } from "@/lib/porzadki/exclusions";
 
 // Archiwum: lista (odczyt — ADMIN/STAFF/AGENT) i archiwizacja (tylko ADMIN;
 // agent tylko proponuje). Body: { type: "client"|"lead", ids, reason, note, batch? }.
@@ -37,7 +38,9 @@ export async function POST(req: NextRequest) {
   try {
     const count = await archiveRecords(target.type, target.ids, input.value, { userId: session.user.id, role: session.user.role });
     logInfo("archive_records", { userId: session.user.id, type: target.type, count });
-    return NextResponse.json({ archived: count });
+    // Spoza branży → domeny osób do dodania na listę wykluczeń (wniosek 7).
+    const suggestedDomains = input.value.reason === "SPOZA_BRANZY" && target.type === "client" ? await suggestDomainsForClients(target.ids) : [];
+    return NextResponse.json({ archived: count, suggestedDomains });
   } catch (err) {
     return porzadkiErrorResponse(err, "archive_failed", session.user.id);
   }

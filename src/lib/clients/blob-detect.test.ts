@@ -30,6 +30,41 @@ describe("wykrywanie zlepków", () => {
     expect(r.score).toBeLessThan(SUSPECT_SCORE);
     expect(r.reasons).toEqual([]);
   });
+  it("„Anna Górska” — zlepek na darmowej domenie, kraj USA, NIP bez faktur (wniosek 3)", () => {
+    const r = blobScore({
+      name: "Anna Górska",
+      nip: "7341070956",
+      hubspotCompanyId: "229407504592",
+      country: "United States",
+      invoicesCount: 0,
+      contacts: [
+        { firstName: "Anna", lastName: "Górska", email: "anna.gorska@interia.eu", phone: "+48600100200" },
+        { firstName: "Monika", lastName: "Nowak", email: "m.nowak@interia.eu", phone: "+48600100201" },
+        { firstName: "Ewa", lastName: "Wiśniewska", email: "ewa.w@interia.eu", phone: null },
+        { firstName: "Kasia", lastName: "Zając", email: null, phone: "+48600100203" },
+      ],
+      invoiceNips: [],
+    });
+    expect(r.score).toBeGreaterThanOrEqual(SUSPECT_SCORE);
+    expect(r.reasons.join(" | ")).toContain("darmową domenę (interia.eu)");
+    expect(r.reasons.join(" | ")).toContain("kraj „United States”");
+  });
+  it("rodzina (Kowalska / Kowalski) w jednym gabinecie — nie", () => {
+    const r = blobScore({
+      name: "Salon Kowalskich",
+      nip: "1234567890",
+      hubspotCompanyId: "301",
+      country: "Polska",
+      invoicesCount: 3,
+      contacts: [
+        { firstName: "Anna", lastName: "Kowalska", email: "anna@gmail.com", phone: "+48600000001" },
+        { firstName: "Jan", lastName: "Kowalski", email: "jan@gmail.com", phone: "+48600000002" },
+        { firstName: "Ola", lastName: "Kowalska", email: null, phone: null },
+      ],
+      invoiceNips: ["1234567890"],
+    });
+    expect(r.score).toBeLessThan(SUSPECT_SCORE);
+  });
   it("faktury na dwa NIP-y wystarczą", () => {
     expect(blobScore({ name: "X", nip: null, hubspotCompanyId: null, contacts: [p("A", "a@x.pl")], invoiceNips: ["111", "222"] }).score).toBeGreaterThanOrEqual(SUSPECT_SCORE);
   });

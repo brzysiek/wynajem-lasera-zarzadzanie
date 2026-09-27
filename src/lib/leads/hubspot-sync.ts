@@ -1,3 +1,4 @@
+import { loadExclusionMatcher } from "@/lib/porzadki/exclusion-load";
 import { isLocked, readFieldMeta } from "@/lib/clients/profile-fields";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -268,7 +269,10 @@ export async function syncDeals(opts: { maxNew?: number; reclassify?: boolean } 
   const cursorRow = await prisma.setting.findUnique({ where: { key: CURSOR_KEY } });
   const cursor = cursorRow ? new Date(cursorRow.value) : null;
 
+  // Transakcje osób z listy wykluczeń (wniosek 7) nie tworzą sygnałów ani klientów.
+  const exclusions = await loadExclusionMatcher();
   const fresh = dealsToImport(deals, new Set(byDeal.keys()), blocked)
+    .filter((d) => exclusions(planLeadFromDeal(d.properties, normalizePolishPhone).email) !== "EXCLUDE")
     .sort((a, b) => (a.properties.createdate ?? "").localeCompare(b.properties.createdate ?? ""));
   const batch = fresh.slice(0, maxNew);
   const changed = deals.filter((d) => {

@@ -51,6 +51,14 @@ describe("parseProposalItem", () => {
     expect(parseProposalItem({ rodzaj: "dopasowanie_platnosci", faktura_id: 1, ...prov }).ok).toBe(false);
     expect(parseProposalItem({ rodzaj: "dopasowanie_platnosci", przelew_id: "t1", faktura_id: "FV 1", ...prov }).ok).toBe(false);
   });
+  it("wykluczenie: lista domen z pliku agenta", () => {
+    expect(parseProposalItem({ rodzaj: "wykluczenie", wartosci: ["edina.pl", "https://www.tylia.pl", "wach.kuba@gmail.com"], typ: "wyklucz", dopisek: "wniosek 7", ...prov })).toMatchObject({
+      ok: true,
+      value: { kind: "EXCLUSION", proposed: { values: ["edina.pl", "tylia.pl", "wach.kuba@gmail.com"], kind: "EXCLUDE", note: "wniosek 7" } },
+    });
+    expect(parseProposalItem({ rodzaj: "wykluczenie", wartosci: "kreatywnainzynieria.pl", typ: "ukrywaj", ...prov })).toMatchObject({ ok: true, value: { proposed: { kind: "HIDE" } } });
+    expect(parseProposalItem({ rodzaj: "wykluczenie", wartosci: [], ...prov }).ok).toBe(false);
+  });
   it("nieznany rodzaj", () => {
     expect(parseProposalItem({ rodzaj: "usuniecie", klient_id: "c1", ...prov }).ok).toBe(false);
   });

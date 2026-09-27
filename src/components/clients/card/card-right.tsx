@@ -4,7 +4,7 @@ import { useContext, useMemo, useState } from "react";
 import type { ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { cardQuality } from "@/lib/clients/card-quality";
 import { AgentModeContext, INPUT, api } from "../client-forms";
-import { BTN_OUTLINE, BTN_PRIMARY, LINK, Missing, Pill, Section, Tag, dm, dmy, hm, money, num } from "./kit";
+import { BTN_OUTLINE, BTN_PRIMARY, LINK, Missing, Pill, Section, Tag, dm, dmy, money, num } from "./kit";
 
 // Prawa kolumna karty wg karta-klienta-wzor.html: Rytm współpracy (siatka
 // lata × miesiące), Oś zdarzeń z filtrami i szybką notatką, Faktury
@@ -117,9 +117,11 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
 // ------------------------------------------------------------------ Oś zdarzeń
 
 type Filter = "all" | "rentals" | "invoices" | "comm" | "notes";
-type Item = { key: string; at: string; title: string; sub: string | null; tag: string; dot: "filled" | "outline"; color: string; group: Exclude<Filter, "all">; item?: ClientHistoryItem };
+type Item = { key: string; at: string; title: string; sub: string | null; tag: string; dot: "filled" | "outline"; color: string; group: Exclude<Filter, "all">; item?: ClientHistoryItem; hidden?: string | null };
 
-function timelineItems(d: ClientDetail): Item[] {
+const HIDDEN_LABEL: Record<string, string> = { ENGINEERING: "ukryty · inżynieria", EXCLUDED: "ukryty · wykluczona domena", MANUAL: "ukryty ręcznie" };
+
+function timelineItems(d: ClientDetail, withHidden = false): Item[] {
   const out: Item[] = [];
   // Adnotacje wzoru: „Pierwszy wynajem”, „pierwszy po przerwie” (odstęp
   // dłuższy niż 2,5 × rytm).
@@ -139,7 +141,7 @@ function timelineItems(d: ClientDetail): Item[] {
     return n === "first" ? `Pierwszy wynajem · ${device}` : n === "break" ? `Wynajem zrealizowany · pierwszy po przerwie · ${device}` : `Wynajem zrealizowany · ${device}`;
   };
   const invByNumber = new Map(d.transactions.filter((t) => t.invoice).map((t) => [t.invoice!.number, t]));
-  for (const h of d.history) {
+  for (const h of withHidden ? [...d.history, ...d.hiddenThreads] : d.history) {
     if (h.kind === "rental") {
       if (h.deleted) continue;
       const planned = h.upcoming;
@@ -147,7 +149,7 @@ function timelineItems(d: ClientDetail): Item[] {
         key: `r-${h.id}`,
         at: h.at,
         title: planned
-          ? `Rezerwacja${hm(h.at) !== "00:00" ? ` ${hm(h.at)}` : ""} · ${h.deviceName}`
+          ? `Rezerwacja ${h.time ?? "(godz. do ustalenia)"} · ${h.deviceName}`
           : h.eventType === "SZKOLENIE"
             ? `Szkolenie · ${h.deviceName}`
             : realizedTitle(h.at, h.deviceName),
@@ -173,7 +175,18 @@ function timelineItems(d: ClientDetail): Item[] {
         group: "invoices",
       });
     } else if (h.kind === "email") {
-      out.push({ key: `e-${h.id}`, at: h.at, title: `Mail: ${h.subject ?? "(bez tematu)"}`, sub: h.snippet ? `„${h.snippet.slice(0, 110)}${h.snippet.length > 110 ? "…" : ""}”` : null, tag: "mail", dot: "filled", color: "var(--c-muted)", group: "comm", item: h });
+      out.push({
+        key: `e-${h.id}`,
+        at: h.at,
+        title: `Mail: ${h.subject ?? "(bez tematu)"}`,
+        sub: h.snippet ? `„${h.snippet.slice(0, 110)}${h.snippet.length > 110 ? "…" : ""}”` : null,
+        tag: h.hidden ? HIDDEN_LABEL[h.hidden] ?? "ukryty" : "mail",
+        dot: h.hidden ? "outline" : "filled",
+        color: "var(--c-muted)",
+        group: "comm",
+        item: h,
+        hidden: h.hidden ?? null,
+      });
     } else if (h.kind === "message") {
       out.push({ key: `m-${h.id}`, at: h.at, title: `${h.channel === "SMS" ? "SMS" : "E-mail z panelu"}${h.failed ? " (nie wysłano)" : ""}`, sub: h.body.slice(0, 120), tag: h.channel === "SMS" ? "sms" : "mail", dot: "filled", color: "var(--c-muted)", group: "comm", item: h });
     } else if (h.kind === "activity") {
@@ -213,7 +226,16 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [limit, setLimit] = useState(10);
-  const all = useMemo(() => timelineItems(d), [d]);
+  const [showHidden, setShowHidden] = useState(false);
+  const agent = useContext(AgentModeContext);
+  const all = useMemo(() => timelineItems(d, showHidden), [d, showHidden]);
+
+  async function toggleHidden(messageId: string, hidden: boolean) {
+    const { ok, data } = await api<{ detail: ClientDetail | null }>(`/api/emails/${messageId}/hide`, "POST", { hidden });
+    if (!ok) return notify(data.message ?? "Nie udało się zmienić.", true);
+    if (data.detail) onChanged(data.detail);
+    notify(hidden ? "Wątek ukryty w historii klienta." : "Wątek znów widoczny.");
+  }
   const items = all.filter((i) => filter === "all" || i.group === filter);
   const rentalsCount = d.summary.rentalsTotal;
 
@@ -286,9 +308,28 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
             <div className="text-[14px] font-medium">{i.title}</div>
             {i.sub && <div className="break-words text-[13px] text-[var(--c-muted)]">{i.sub}</div>}
           </div>
-          <Tag tone="neutral">{i.tag}</Tag>
+          <span className="flex flex-col items-end gap-1">
+            <Tag tone={i.hidden ? "warn" : "neutral"}>{i.tag}</Tag>
+            {!agent && i.item?.kind === "email" && (
+              <button
+                type="button"
+                className="text-[11px] text-[var(--c-muted)] hover:text-[var(--c-brand-deep)] hover:underline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void toggleHidden(i.item!.id, !i.hidden);
+                }}
+              >
+                {i.hidden ? "pokaż" : "ukryj"}
+              </button>
+            )}
+          </span>
         </div>
       ))}
+      {d.hiddenThreads.length > 0 && (
+        <button type="button" onClick={() => setShowHidden((v) => !v)} className={`${LINK} self-start`}>
+          {showHidden ? "Schowaj ukryte wątki" : `Pokaż ukryte wątki (${d.hiddenThreads.length}) — inżynieria, wykluczone domeny, ukryte ręcznie`}
+        </button>
+      )}
       {items.length > limit ? (
         <button type="button" onClick={() => setLimit((l) => l + 30)} className={`${LINK} self-start`}>
           Pokaż więcej ({items.length - limit})
@@ -346,13 +387,15 @@ function InvoicesSection({ d, onShowAll }: { d: ClientDetail; onShowAll: () => v
         {[
           d.overview.typicalPayment ? `Płaci: ${d.overview.typicalPayment}.` : null,
           t.overdueCount ? `${t.overdueCount} po terminie (${money(t.overdueNet)}).` : null,
-          t.uncheckedCount ? `${t.uncheckedCount} ${t.uncheckedCount === 1 ? "faktura" : "faktur"} nie sprawdzono (termin po ostatnim wyciągu albo sprzed 09.2026).` : null,
+          t.uncheckedCount
+            ? `${t.uncheckedCount} ${t.uncheckedCount === 1 ? "faktura" : "faktur"} nie sprawdzono — poza okresem wgranych wyciągów (wystawione przed ${t.paymentsFrom ? dmy(t.paymentsFrom) : "01.09.2026"} albo termin mniej niż 5 dni przed końcem wyciągu).`
+            : null,
         ]
           .filter(Boolean)
           .join(" ")}
       </div>
       <div className="text-[13px] text-[var(--c-text-2)]">
-        {t.paymentsAsOf ? `Wpłaty aktualne na ${dm(t.paymentsAsOf)} (wyciąg z banku)` : "Brak wgranych wyciągów z banku"}
+        {t.paymentsAsOf ? `Wpłaty z okresu ${t.paymentsFrom ? `${dm(t.paymentsFrom)}–` : "do "}${dm(t.paymentsAsOf)} (wyciągi z banku)` : "Brak wgranych wyciągów z banku"}
         {d.profile.invoiceEmail ? ` · e-mail do FV: ${d.profile.invoiceEmail}` : ""}
       </div>
       <button type="button" onClick={onShowAll} className={`${LINK} self-start`}>

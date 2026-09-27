@@ -1,3 +1,5 @@
+import { withoutExcluded } from "@/lib/porzadki/exclusion-rules";
+import { loadExclusionMatcher } from "@/lib/porzadki/exclusion-load";
 import { isLocked, readFieldMeta } from "@/lib/clients/profile-fields";
 import { prisma } from "@/lib/prisma";
 import { normalizePolishPhone } from "@/lib/reminders";
@@ -19,15 +21,17 @@ import { withoutBlocked } from "@/lib/porzadki/import-block-rules";
 // UI woła runHubspotImportBatch w pętli, aż `remaining` = 0.
 
 async function loadPlan() {
-  const [contacts, companies, blockedContacts, blockedCompanies] = await Promise.all([
+  const [contacts, companies, blockedContacts, blockedCompanies, exclusions] = await Promise.all([
     fetchAllHubspotContacts(),
     fetchAllHubspotCompanies(),
     blockedIds("CONTACT"),
     blockedIds("COMPANY"),
+    loadExclusionMatcher(),
   ]);
   const plan = planHubspotImport({ contacts, companies }, { normalizePhone: normalizePolishPhone });
-  // Kontakty i firmy trwale usunięte w panelu (Porządki → Archiwum) nie wracają.
-  return { ...plan, clients: withoutBlocked(plan.clients, blockedContacts, blockedCompanies) };
+  // Kontakty i firmy trwale usunięte w panelu (Porządki → Archiwum) nie wracają;
+  // osoby z domen / adresów z listy wykluczeń (wniosek 7) nie tworzą klientów.
+  return { ...plan, clients: withoutExcluded(withoutBlocked(plan.clients, blockedContacts, blockedCompanies), exclusions) };
 }
 
 // Które zaplanowane kontakty/firmy już są w bazie (z poprzedniego przebiegu).

@@ -876,6 +876,21 @@ model ClientContact {
 // Szanse sprzedaży klienta (karta, sekcja „Szanse sprzedaży”; MCP
 // szansa_dodaj). Np. „Cooltech – modelowanie ciała”, oferta 03.2025,
 // wrócić 02.2027.
+// Lista wykluczeń domen i adresów (wniosek 7; Ustawienia → Wykluczenia).
+// EXCLUDE: maile nie trafiają do panelu, kontakty i transakcje z HubSpota
+// nie tworzą klientów ani sygnałów. HIDE: wątki domyślnie ukryte w historii
+// klienta, chyba że dotyczą wynajmu. Reguły: src/lib/porzadki/exclusion-rules.ts.
+model EmailExclusion {
+  id          String   @id @default(cuid())
+  kind        String   @db.VarChar(16) // EXCLUDE | HIDE
+  value       String   @unique @db.VarChar(191) // domena (bez @) albo pełny adres
+  note        String?  @db.Text
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@map("email_exclusions")
+}
+
 model ClientOpportunity {
   id          String    @id @default(cuid())
   clientId    String
@@ -1153,6 +1168,12 @@ model EmailMessage {
   client          Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
   clientContactId String?
   matchMethod     HistoryMatchMethod?
+  // Ukryty w historii klienta (wniosek 7): EXCLUDED = domena z listy
+  // wykluczeń, ENGINEERING = wątek z domeny „ukrywaj” bez słów o wynajmie,
+  // MANUAL = ukryty ręcznie. null = widoczny. SHOWN = ręcznie przywrócony
+  // (reguły go nie ukrywają ponownie).
+  hiddenReason    String?             @db.VarChar(16)
+  hiddenById      String?
   createdAt       DateTime            @default(now())
 
   @@unique([mailbox, gmailMessageId])

@@ -4,6 +4,7 @@ import { AGENT_PROPOSAL_CLIENT_FIELDS } from "../permissions";
 import { parseProvenance, type Provenance } from "../changelog/provenance";
 import { parseArchiveInput, type ArchiveInput } from "./archive-rules";
 import { parseSplitInput } from "../clients/split-rules";
+import { parseExclusionList } from "./exclusion-rules";
 
 export const PROPOSAL_KIND_LABEL = {
   FIELD: "pole klienta",
@@ -12,6 +13,7 @@ export const PROPOSAL_KIND_LABEL = {
   MERGE: "scalenie duplikatu",
   SPLIT: "wydzielenie do nowego klienta",
   PAYMENT_MATCH: "dopasowanie przelewu do faktury",
+  EXCLUSION: "lista wykluczeń domen",
 } as const;
 export type ProposalKind = keyof typeof PROPOSAL_KIND_LABEL;
 
@@ -33,6 +35,8 @@ const KIND_ALIASES: Record<string, ProposalKind> = {
   split: "SPLIT",
   dopasowanie_platnosci: "PAYMENT_MATCH",
   payment_match: "PAYMENT_MATCH",
+  wykluczenie: "EXCLUSION",
+  exclusion: "EXCLUSION",
 };
 
 export type ParsedProposal = {
@@ -65,7 +69,7 @@ export function normalizeClass(v: unknown): string | null {
 export function parseProposalItem(item: Record<string, unknown>): { ok: true; value: ParsedProposal } | { ok: false; message: string } {
   const rawKind = str(item.rodzaj ?? item.kind, 32)?.toLowerCase();
   const kind = rawKind ? KIND_ALIASES[rawKind] : undefined;
-  if (!kind) return { ok: false, message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie albo dopasowanie_platnosci." };
+  if (!kind) return { ok: false, message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie, dopasowanie_platnosci albo wykluczenie." };
   const provenance = parseProvenance(item, { required: true });
   if (!provenance.ok) return provenance;
   if (!provenance.value.batch) return { ok: false, message: "Podaj paczkę (paczka)." };
@@ -96,6 +100,16 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
     const split = parseSplitInput(item);
     if (!split.ok) return split;
     return { ok: true, value: { ...base, kind, proposed: split.value } };
+  }
+  if (kind === "EXCLUSION") {
+    const raw = item.wartosci ?? item.values;
+    const text = Array.isArray(raw) ? raw.filter((x) => typeof x === "string").join("\n") : typeof raw === "string" ? raw : "";
+    const { values, errors } = parseExclusionList(text);
+    if (!values.length) return { ok: false, message: errors[0] ?? "Podaj wartosci — domeny albo adresy e-mail." };
+    if (values.length > 500) return { ok: false, message: "Maks. 500 domen w jednej propozycji." };
+    const t = str(item.typ ?? item.kind_list, 16)?.toLowerCase();
+    const listKind = t === "ukrywaj" || t === "hide" ? "HIDE" : "EXCLUDE";
+    return { ok: true, value: { ...base, kind, proposed: { values, kind: listKind, note: str(item.dopisek ?? item.note, 500) } } };
   }
   if (kind === "PAYMENT_MATCH") {
     const transferId = str(item.przelew_id ?? item.transferId, 64);

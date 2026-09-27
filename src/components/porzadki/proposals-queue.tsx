@@ -33,6 +33,15 @@ function describe(p: ChangeProposalRow): { what: string; from: string | null; to
     const extras = [v?.invoiceNip ? `faktury z NIP ${v.invoiceNip}` : null, v?.historyKeys?.length ? `${v.historyKeys.length} grup z dopasowań` : null].filter(Boolean).join(", ");
     return { what: `wydziel: ${v?.contactNames?.join(", ") ?? "osoby"}`, from: null, to: `nowy klient „${v?.name ?? "?"}”${extras ? ` (+ ${extras})` : ""}` };
   }
+  if (p.kind === "EXCLUSION") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { values: string[]; kind: "EXCLUDE" | "HIDE"; note: string | null }) : null;
+    const list = v?.values ?? [];
+    return {
+      what: v?.kind === "HIDE" ? "ukrywaj w historii klienta" : "lista wykluczeń domen",
+      from: null,
+      to: `${list.slice(0, 12).join(", ")}${list.length > 12 ? ` … (+${list.length - 12})` : ""}${v?.note ? ` — ${v.note}` : ""}`,
+    };
+  }
   if (p.kind === "PAYMENT_MATCH") {
     const v = p.proposedValue
       ? (JSON.parse(p.proposedValue) as { invoiceNumber?: string; invoiceGross?: string; buyerName?: string; transfer?: { date: string; amount: string; description: string } })

@@ -9,6 +9,8 @@ import { buildTransactions, rentalRhythmDays, transactionTotals, typicalPayment,
 import { paymentLabel, type PaymentStatus } from "@/lib/clients/payment-status";
 import { loadCardExtras, profileDto, type ClientProfileDto, type FieldMetaDto, type LineageDto, type OpportunityDto } from "@/lib/clients/card-extras";
 import type { PersonRole, TrainedOn } from "@/lib/clients/profile-fields";
+import { rentalTimeOf } from "@/lib/rental-title";
+import { VISIBLE_EMAIL } from "@/lib/porzadki/exclusion-load";
 import { computeRhythm, headsFromText, monthsLabel, type ClientRhythm, type RhythmRental } from "@/lib/clients/rhythm";
 import { loadPaymentCoverage } from "@/lib/invoicing/bank-transfers";
 import { gmailSummary } from "@/lib/gmail/sync";
@@ -138,7 +140,7 @@ export type ClientListRow = {
 // Najnowszy kontakt z klientem (e-mail z Gmaila, SMS i rozmowy z panelu).
 async function lastContacts(): Promise<Map<string, Date>> {
   const [emails, messages, calls] = await Promise.all([
-    prisma.emailMessage.groupBy({ by: ["clientId"], where: { clientId: { not: null } }, _max: { sentAt: true } }),
+    prisma.emailMessage.groupBy({ by: ["clientId"], where: { clientId: { not: null }, ...VISIBLE_EMAIL }, _max: { sentAt: true } }),
     prisma.message.groupBy({ by: ["clientId"], where: { clientId: { not: null } }, _max: { sentAt: true } }),
     prisma.leadActivity.groupBy({ by: ["clientId"], where: { clientId: { not: null }, type: { in: ["CALL", "CALL_NO_ANSWER", "SMS", "EMAIL"] } }, _max: { createdAt: true } }),
   ]);
@@ -260,6 +262,7 @@ export type ClientHistoryItem =
       totalNet: number | null;
       settled: boolean; // kierowca potwierdził odbiór
       upcoming: boolean;
+      time?: string | null; // godzina dostawy (deliveryTime / prefiks tytułu); null = do ustalenia
       deleted: boolean;
     }
   | { kind: "message"; id: string; at: string; channel: string; body: string; failed: boolean }
@@ -281,6 +284,7 @@ export type ClientHistoryItem =
       mailbox: string;
       messageIds: string[];
       thread: { id: string; direction: "IN" | "OUT"; from: string; at: string; snippet: string | null }[];
+      hidden?: "EXCLUDED" | "ENGINEERING" | "MANUAL" | null;
     }
   // Rozmowa / notatka (LeadActivity przy kliencie lub jego sygnale).
   | {
@@ -349,6 +353,9 @@ export type ClientDetail = {
     favoriteDevice: DeviceInterestKey | null;
   };
   history: ClientHistoryItem[];
+  // Wątki ukryte w historii (wniosek 7: inżynieria, wykluczone domeny, ręcznie)
+  // — osobno, żeby żaden widok nie pokazał ich przypadkiem.
+  hiddenThreads: ClientHistoryItem[];
   // Adresy z firmowej domeny klienta, z których przyszły e-maile, a których
   // nie ma wśród osób kontaktowych — propozycja „Dodaj osobę” (prompt 3, 4.3).
   suggestedEmails: string[];
@@ -377,7 +384,7 @@ export type ClientDetail = {
   overview: {
     revenue12m: number;
     avg12m: number | null;
-    nextRental: { startsAt: string; deviceName: string; heads: number | null; smsSentAt: string | null } | null;
+    nextRental: { startsAt: string; time: string | null; deviceName: string; heads: number | null; smsSentAt: string | null } | null;
     favoriteDeviceName: string | null;
     favoriteDeviceCount: number;
     realizedCount: number;
@@ -411,6 +418,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
           ...RENTAL_FACT_SELECT,
           id: true,
           title: true,
+          deliveryTime: true,
           device: { select: { name: true, pricingCategory: true } },
           messages: { select: { id: true, channel: true, body: true, status: true, sentAt: true } },
           finance: {
@@ -485,6 +493,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       settled: r.finance?.confirmedAt != null,
       upcoming: r.startsAt > today,
       deleted: r.deletedInGoogle,
+      time: rentalTimeOf(r),
     });
     for (const m of r.messages) {
       if (seenMessages.has(m.id)) continue;
@@ -536,6 +545,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       fromAddress: true,
       toAddresses: true,
       matchMethod: true,
+      hiddenReason: true,
     },
   });
   const threads = new Map<string, (typeof emails)[number][]>();
@@ -557,6 +567,8 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       mailbox: latest.mailbox,
       messageIds: list.map((e) => e.id),
       thread: [...list].reverse().map((e) => ({ id: e.id, direction: e.direction, from: e.fromAddress, at: e.sentAt.toISOString(), snippet: e.snippet })),
+      // Ukryty wątek (wniosek 7): inżynieria / wykluczona domena / ręcznie.
+      hidden: list.every((e) => e.hiddenReason && e.hiddenReason !== "SHOWN") ? (latest.hiddenReason as "EXCLUDED" | "ENGINEERING" | "MANUAL") : null,
     });
   }
 
@@ -682,8 +694,10 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
   ];
   // Typowa godzina dostawy: najczęstsza godzina startu wynajmów z panelu
   // (Europe/Warsaw); źródło = najbliższy (albo ostatni) wynajem z tą godziną.
-  const hm = (d: Date) => new Intl.DateTimeFormat("pl-PL", { timeZone: "Europe/Warsaw", hour: "2-digit", minute: "2-digit" }).format(d);
-  const timed = c.rentals.filter((r) => !r.deletedInGoogle && r.eventType === "WYNAJEM").map((r) => ({ at: r.startsAt, t: hm(r.startsAt) })).filter((x) => x.t !== "00:00");
+  const timed = c.rentals
+    .filter((r) => !r.deletedInGoogle && r.eventType === "WYNAJEM")
+    .map((r) => ({ at: r.startsAt, t: rentalTimeOf(r) }))
+    .filter((x): x is { at: Date; t: string } => !!x.t);
   const timeCounts = new Map<string, number>();
   for (const x of timed) timeCounts.set(x.t, (timeCounts.get(x.t) ?? 0) + 1);
   const topTime = [...timeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
@@ -702,6 +716,8 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
   const deviceCounts = new Map<string, number>();
   for (const r of txRentals) if (r.startsAt <= today) deviceCounts.set(r.deviceName, (deviceCounts.get(r.deviceName) ?? 0) + 1);
   const fav = [...deviceCounts.entries()].sort((a, b) => b[1] - a[1])[0];
+  const hiddenThreads = history.filter((h) => h.kind === "email" && h.hidden);
+  for (const h of hiddenThreads) history.splice(history.indexOf(h), 1);
   const lastComm = history.find((h) => h.kind === "email" || h.kind === "message" || (h.kind === "activity" && h.type !== "NOTE"));
   const commLabel = (h: ClientHistoryItem) =>
     h.kind === "email" ? "e-mail" : h.kind === "message" ? (h.channel === "SMS" ? "SMS" : "e-mail z panelu") : "rozmowa";
@@ -842,6 +858,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       nextRental: next
         ? {
             startsAt: next.startsAt.toISOString(),
+            time: rentalTimeOf(next),
             deviceName: next.device.name,
             heads: next.finance?.deviceVariant === "double" ? 2 : next.finance?.deviceVariant?.startsWith("single") ? 1 : headsFromText(next.title),
             smsSentAt:
@@ -876,6 +893,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       };
     })(),
     suggestedEmails,
+    hiddenThreads,
     leads: c.leads.map((l) => ({ id: l.id, title: l.title, stage: l.stage, createdAt: l.createdAt.toISOString(), nextActionAt: l.nextActionAt?.toISOString() ?? null })),
   };
 }

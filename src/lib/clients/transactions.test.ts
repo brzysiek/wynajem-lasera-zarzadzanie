@@ -13,6 +13,8 @@ describe("invoicePaymentStatus", () => {
     expect(invoicePaymentStatus({ ...base, issueDate: d(4, 21), paymentTo: d(4, 28) }, today, cov)).toEqual({ kind: "NIE_SPRAWDZONO", days: 151 });
     // Termin po ostatnim dniu wyciągu.
     expect(invoicePaymentStatus({ ...base, issueDate: d(9, 18), paymentTo: d(9, 25) }, today, cov)).toEqual({ kind: "NIE_SPRAWDZONO", days: 1 });
+    // Termin 3 dni przed końcem wyciągu — przelew mógł się jeszcze nie zaksięgować.
+    expect(invoicePaymentStatus({ ...base, issueDate: d(9, 14), paymentTo: d(9, 21) }, today, cov)).toEqual({ kind: "NIE_SPRAWDZONO", days: 5 });
     // Sprawdzona i nieopłacona.
     expect(invoicePaymentStatus({ ...base, issueDate: d(9, 2), paymentTo: d(9, 9) }, today, cov)).toEqual({ kind: "PO_TERMINIE", days: 17 });
     // Bez żadnego wyciągu.
@@ -32,7 +34,7 @@ describe("invoicePaymentStatus", () => {
     expect(c).toEqual({ from: since, to: new Date("2026-09-15T12:00:00Z") });
   });
   it("zapłacona / gotówka / po terminie / oczekuje (sprawdzone wyciągiem)", () => {
-    const track = { from: d(1, 1), to: d(9, 25) };
+    const track = { from: d(1, 1), to: d(9, 30) };
     expect(invoicePaymentStatus({ paidAt: d(9, 20), paymentType: "transfer", paymentTo: d(9, 21), cashConfirmed: false }, today)).toEqual({
       kind: "ZAPLACONA",
       paidAt: d(9, 20),
@@ -93,7 +95,7 @@ describe("buildTransactions", () => {
       invoice({ id: "c", fakturowniaInvoiceId: 5, sellDate: d(3, 1), paidAt: d(3, 5) }),
     ],
     today,
-    { from: d(1, 1), to: d(9, 25) },
+    { from: d(1, 1), to: d(9, 30) },
   );
 
   it("faktura z panelu raz, faktura w ±7 dniach dołączona, reszta osobno", () => {
@@ -126,8 +128,16 @@ describe("buildTransactions", () => {
     const rows2 = buildTransactions([rental({ id: "r1", startsAt: d(4, 24), fakturowniaInvoiceId: 9 })], [invoice({ id: "a", fakturowniaInvoiceId: 9, sellDate: d(4, 24) })], today, cov);
     expect(rows2[0].status).toEqual({ kind: "NIE_SPRAWDZONO", days: 148 });
     const t = transactionTotals(rows2, today, cov);
-    expect(t).toMatchObject({ overdueCount: 0, oldestOverdue: null, dueCount: 0, uncheckedCount: 1, uncheckedNet: 1190, paymentsAsOf: d(9, 24).toISOString() });
+    expect(t).toMatchObject({ overdueCount: 0, oldestOverdue: null, dueCount: 0, uncheckedCount: 1, uncheckedNet: 1190, paymentsAsOf: d(9, 24).toISOString(), paymentsFrom: d(9, 1).toISOString() });
     expect(typicalPayment(rows2)).toBe("przelew");
+  });
+  it("typicalPayment: jedna faktura kilka dni po terminie to nie „zaległości”", () => {
+    const cov = { from: d(9, 1), to: d(9, 25) };
+    const one = buildTransactions([], [invoice({ id: "a", fakturowniaInvoiceId: 9, sellDate: d(9, 2) })], today, cov);
+    expect(one[0].status).toEqual({ kind: "PO_TERMINIE", days: 17 });
+    expect(typicalPayment(one)).toBe("przelew");
+    const two = buildTransactions([], [invoice({ id: "a", fakturowniaInvoiceId: 9, sellDate: d(9, 2) }), invoice({ id: "b", fakturowniaInvoiceId: 8, sellDate: d(9, 3) })], today, cov);
+    expect(typicalPayment(two)).toBe("przelew, zaległości");
   });
 });
 
@@ -137,5 +147,16 @@ describe("rytm wynajmów", () => {
     expect(rentalRhythmDays([d(1, 1), d(2, 1)])).toBeNull();
     expect(rhythmLabel(28)).toBe("co ok. 4 tygodnie");
     expect(rhythmLabel(95)).toBe("co ok. 3 miesiące");
+  });
+});
+
+describe("godzina dostawy", () => {
+  it("deliveryTime, prefiks tytułu, całodniowe bez godziny", async () => {
+    const { rentalTimeOf } = await import("../rental-title");
+    const allDay = new Date("2026-10-02T12:00:00.000Z");
+    expect(rentalTimeOf({ deliveryTime: "9:30", title: "MIWINI", startsAt: allDay })).toBe("09:30");
+    expect(rentalTimeOf({ title: "10:00 MIWINI", startsAt: allDay })).toBe("10:00");
+    expect(rentalTimeOf({ title: "MIWINI", startsAt: allDay })).toBeNull();
+    expect(rentalTimeOf({ title: "MIWINI", startsAt: new Date("2026-10-02T08:00:00.000Z") })).toBe("10:00");
   });
 });

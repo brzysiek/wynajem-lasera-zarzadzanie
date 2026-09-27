@@ -1,3 +1,5 @@
+import { emailHideReason } from "@/lib/porzadki/exclusion-rules";
+import { getHideKeywords, loadExclusionMatcher } from "@/lib/porzadki/exclusion-load";
 import { prisma } from "@/lib/prisma";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { logInfo, logWarn } from "@/lib/logger";
@@ -103,6 +105,9 @@ async function processIds(
     (await prisma.emailMessage.findMany({ where: { mailbox, gmailMessageId: { in: ids } }, select: { gmailMessageId: true } })).map((m) => m.gmailMessageId),
   );
   let stored = 0;
+  // Lista wykluczeń (wniosek 7): maile z wykluczonych domen nie trafiają do
+  // panelu; wątki z domen „ukrywaj” zapisujemy jako ukryte (chyba że o wynajmie).
+  const [exclusions, hideKeywords] = await Promise.all([loadExclusionMatcher(), getHideKeywords()]);
   for (let i = startOffset; i < ids.length; i += PARALLEL) {
     if (Date.now() > deadline) return { stored, done: false, nextOffset: i };
     const todo = ids.slice(i, i + PARALLEL).filter((id) => !known.has(id));
@@ -120,6 +125,8 @@ async function processIds(
       if (!c) continue;
       const sentAt = new Date(m.internalDate);
       const subject = h["subject"]?.slice(0, 1000) ?? null;
+      const hiddenReason = emailHideReason({ from, to, cc, subject, snippet: m.snippet }, exclusions, isOwn, hideKeywords);
+      if (hiddenReason === "EXCLUDED") continue;
       const rfcMessageId = h["message-id"]?.slice(0, 500) ?? null;
       // Ta sama wiadomość z innej podłączonej skrzynki — już jest.
       if (rfcMessageId && (await prisma.emailMessage.count({ where: { rfcMessageId, mailbox: { not: mailbox } } }))) continue;
@@ -146,6 +153,7 @@ async function processIds(
         clientId: c.clientId,
         clientContactId: c.clientContactId,
         matchMethod: c.matchMethod,
+        hiddenReason,
       });
     }
     if (rows.length) {

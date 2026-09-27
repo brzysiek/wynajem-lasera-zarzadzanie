@@ -206,6 +206,7 @@ export async function listPaymentsForAgent(q: PaymentsQuery) {
         }
       : null,
     wplaty_aktualne_na: coverage ? ymd(coverage.to) : null,
+    wplaty_z_okresu: coverage ? { od: ymd(coverage.from), do: ymd(coverage.to) } : null,
     sprawdzane_faktury_od: BANK_STATEMENT_SINCE,
     przelewy: transfers.map((t) => ({
       id: t.id,
