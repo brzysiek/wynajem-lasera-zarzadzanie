@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { normalizePolishPhone } from "@/lib/reminders";
 import { parseClientPatch, parseContactInput } from "@/lib/clients/validate";
 import { CLIENT_CACHE_KEYS, CONTACT_CACHE_KEYS, refreshFutureRentalCaches } from "@/lib/clients/refresh";
-import { AGENT_CLIENT_FIELDS } from "@/lib/permissions";
+import { AGENT_CLIENT_FIELDS, AGENT_PROPOSAL_CLIENT_FIELDS } from "@/lib/permissions";
 import { changedFields } from "@/lib/changelog/diff";
 import { parseProvenance } from "@/lib/changelog/provenance";
 import { fieldEntries, recordChanges } from "@/lib/changelog/record";
@@ -54,7 +54,10 @@ export async function patchClient(
   const parsed = parseClientPatch(body);
   if (!parsed.ok) return { ok: false, status: 400, message: parsed.message };
   if (isAgent) {
-    const denied = Object.keys(parsed.data).filter((k) => !(AGENT_CLIENT_FIELDS as readonly string[]).includes(k));
+    // Propozycja zaakceptowana przez ADMIN (approvedById) może zmienić też pola,
+    // które agent wolno tylko proponować (warunki handlowe).
+    const allowed: readonly string[] = opts.approvedById ? AGENT_PROPOSAL_CLIENT_FIELDS : AGENT_CLIENT_FIELDS;
+    const denied = Object.keys(parsed.data).filter((k) => !allowed.includes(k));
     if (denied.length) return { ok: false, status: 403, message: `Pole poza zakresem agenta: ${denied.join(", ")}.` };
   }
   const { deviceInterests, ...rest } = parsed.data;

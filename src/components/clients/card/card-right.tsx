@@ -4,8 +4,8 @@ import { useContext, useMemo, useState } from "react";
 import type { ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { cardQuality } from "@/lib/clients/card-quality";
 import { AgentModeContext, INPUT, api } from "../client-forms";
-import { BTN_OUTLINE, BTN_PRIMARY, Heading, LINK, Missing, Pill, Row, Section, Tag, dm, dmy, money, num } from "./kit";
-import { FieldsEditor } from "./fields-editor";
+import { BTN_OUTLINE, BTN_PRIMARY, Heading, LINK, Missing, Pill, Section, Tag, dm, dmy, money, num } from "./kit";
+import { TermsSection, agreedTotal } from "./card-terms";
 
 // Prawa kolumna karty wg karta-klienta-wzor.html: Rytm współpracy (siatka
 // lata × miesiące), Oś zdarzeń z filtrami i szybką notatką, Faktury
@@ -68,7 +68,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
         <Stat label="Urządzenie" value={dc ? `${dc.family}${dc.heads ? ` · ${dc.always ? "zawsze " : ""}${dc.heads} ${dc.heads === 1 ? "głowica" : "głowice"}` : ""}` : "—"} sub={dc?.models.map((m) => `${m.name} ${m.count}×`).join(" · ")} />
         <Stat label="Czas" value={d.cardFacts.typicalDays ? `${d.cardFacts.typicalDays} ${d.cardFacts.typicalDays === 1 ? "dzień" : "dni"}` : "—"} sub="wg rezerwacji w panelu" />
         <Stat
-          label={`Cena (${year})`}
+          label={price ? "Cena ustalona" : `Cena (${year})`}
           value={price ? `${money(price)} netto` : avgInvoice ? `≈ ${money(Math.round(avgInvoice))} netto` : "—"}
           sub={price ? (d.transportPriceNet ? "wynajem + transport, cena ustalona" : "wynajem (bez transportu), cena ustalona") : avgInvoice ? "średnia z faktur" : "brak faktur w tym roku"}
         />
@@ -354,76 +354,6 @@ function statusTone(kind: string): "warn" | "ok" | "neutral" {
   return "neutral";
 }
 
-export const PAYMENT_FORM_LABEL: Record<string, string> = { GOTOWKA: "gotówka", PRZELEW: "przelew", OBA: "gotówka i przelew" };
-
-// Cena ustalona = wynajem (agreedPrice) + transport (transportPriceNet).
-export function agreedTotal(d: ClientDetail): { rental: number | null; transport: number | null; total: number | null } {
-  const rental = d.profile.agreedPrice ? Number(d.profile.agreedPrice) : null;
-  const transport = d.transportPriceNet ? Number(d.transportPriceNet) : null;
-  return { rental, transport, total: rental != null ? rental + (transport ?? 0) : null };
-}
-
-function Terms({ d, onChanged, notify }: { d: ClientDetail; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
-  const agent = useContext(AgentModeContext);
-  const [edit, setEdit] = useState(false);
-  const p = d.profile;
-  const price = agreedTotal(d);
-  if (edit) {
-    return (
-      <FieldsEditor
-        clientId={d.id}
-        fields={[
-          { key: "paymentForm", label: "Forma płatności", kind: "select", options: Object.entries(PAYMENT_FORM_LABEL).map(([value, label]) => ({ value, label })) },
-          { key: "agreedPrice", label: "Wynajem netto (zł)", kind: "number", placeholder: "cena ustalona za wynajem, bez transportu" },
-          { key: "transportPriceNet", label: "Transport netto (zł)", kind: "number" },
-          { key: "paymentTerms", label: "Termin / uwagi", placeholder: "np. przelew 7 dni, gotówka przy dostawie" },
-          { key: "invoiceEmail", label: "E-mail do faktur" },
-        ]}
-        initial={{
-          paymentForm: p.paymentForm ?? "",
-          agreedPrice: price.rental != null ? String(price.rental) : "",
-          transportPriceNet: price.transport != null ? String(price.transport) : "",
-          paymentTerms: p.paymentTerms ?? "",
-          invoiceEmail: p.invoiceEmail ?? "",
-        }}
-        onCancel={() => setEdit(false)}
-        onSaved={(n) => {
-          setEdit(false);
-          onChanged(n);
-          notify("Zapisano warunki handlowe.");
-        }}
-      />
-    );
-  }
-  return (
-    <div className="flex flex-col">
-      <Row label="Forma płatności">{p.paymentForm ? PAYMENT_FORM_LABEL[p.paymentForm] : <Missing>ustal: gotówka / przelew / oba</Missing>}</Row>
-      <Row label="Cena ustalona">
-        {price.rental != null ? (
-          <>
-            <span className="font-semibold text-[var(--c-brand)]">{money(price.total!)} netto</span>
-            <span className="text-[var(--c-muted)]">
-              {" "}
-              = {money(price.rental)} wynajem + {price.transport != null ? `${money(price.transport)} transport` : "transport ?"}
-            </span>
-          </>
-        ) : (
-          <Missing>uzupełnij</Missing>
-        )}
-      </Row>
-      {p.paymentTerms && <Row label="Termin / uwagi">{p.paymentTerms}</Row>}
-      <Row label="E-mail do FV">{p.invoiceEmail ?? <Missing>uzupełnij</Missing>}</Row>
-      {!agent && (
-        <div className="border-t border-[var(--c-divider)] pt-2.5">
-          <button type="button" onClick={() => setEdit(true)} className={LINK}>
-            Zmień warunki
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function CashForm({ d, fakturowniaId, onDone, onCancel, notify }: { d: ClientDetail; fakturowniaId: number; onDone: (n: ClientDetail) => void; onCancel: () => void; notify: (t: string, e?: boolean) => void }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [receivedBy, setReceivedBy] = useState("");
@@ -472,7 +402,6 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
 
   return (
     <Section title="Faktury i płatności" wide gap="gap-2.5" tone="invoices">
-      <Terms d={d} onChanged={onChanged} notify={notify} />
       {rows.length === 0 ? (
         <p className="text-[14px] text-[var(--c-muted)]">Brak faktur w panelu.</p>
       ) : (
@@ -751,6 +680,7 @@ export function CardRight({
       <RhythmSection d={d} />
       <TimelineSection d={d} onChanged={onChanged} notify={notify} onOpenItem={onOpenItem} onShowAll={() => onTab("komunikacja")} />
       <div className="grid grid-cols-1 gap-6">
+        <TermsSection d={d} onChanged={onChanged} notify={notify} />
         <InvoicesSection d={d} onShowAll={() => onTab("transakcje")} onChanged={onChanged} notify={notify} />
         <OpportunitiesSection d={d} onChanged={onChanged} notify={notify} />
       </div>

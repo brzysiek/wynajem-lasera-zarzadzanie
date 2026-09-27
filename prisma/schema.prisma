@@ -807,7 +807,7 @@ model Client {
   paymentForm        String?   @db.VarChar(12) // GOTOWKA | PRZELEW | OBA — jak zwykle płaci
   paymentTerms       String?   @db.Text // forma i termin płatności
   invoiceEmail       String?
-  frameAgreement     Json? // { url, name, signedAt, note } — skan umowy ramowej / kaucji
+  frameAgreement     Json? // { fileId, name, signedAt, note, url } — umowa ramowa / kaucja (plik: ClientFile)
   marketingConsent   Json? // { email, sms, date, source }
   smsReminders       Boolean?
   googleReview       Json? // { askedAt, given }
@@ -884,6 +884,23 @@ model ClientContact {
 // Szanse sprzedaży klienta (karta, sekcja „Szanse sprzedaży”; MCP
 // szansa_dodaj). Np. „Cooltech – modelowanie ciała”, oferta 03.2025,
 // wrócić 02.2027.
+// Pliki klienta (karta, „Warunki handlowe”): skan umowy ramowej / kaucji.
+// Trzymane w bazie (brak osobnego magazynu plików na hostingu), maks. 8 MB.
+model ClientFile {
+  id           String   @id @default(cuid())
+  clientId     String
+  kind         String   @db.VarChar(24) // FRAME_AGREEMENT
+  fileName     String
+  mimeType     String   @db.VarChar(100)
+  size         Int
+  data         Bytes    @db.LongBlob
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  @@index([clientId, kind])
+  @@map("client_files")
+}
+
 // Lista wykluczeń domen i adresów (wniosek 7; Ustawienia → Wykluczenia).
 // EXCLUDE: maile nie trafiają do panelu, kontakty i transakcje z HubSpota
 // nie tworzą klientów ani sygnałów. HIDE: wątki domyślnie ukryte w historii

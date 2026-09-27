@@ -7,7 +7,7 @@ type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 export type PkdEntry = { code: string; name: string | null; main: boolean };
 export type DeliveryNotes = { entrance: string | null; floor: string | null; parking: string | null; power: string | null; receiver: string | null };
 export type ClientLinks = { www: string | null; instagram: string | null; facebook: string | null; booksy: string | null; fresha: string | null };
-export type FrameAgreement = { url: string | null; name: string | null; signedAt: string | null; note: string | null };
+export type FrameAgreement = { fileId?: string | null; url: string | null; name: string | null; signedAt: string | null; note: string | null };
 export type MarketingConsent = { email: boolean | null; sms: boolean | null; date: string | null; source: string | null };
 export type GoogleReview = { askedAt: string | null; given: boolean | null };
 export type TrainedOn = { device: string; date: string | null };
@@ -283,7 +283,7 @@ export function parseClientProfilePatch(body: Record<string, unknown>): Result<C
     if (url && !/^https:\/\//.test(url)) return { ok: false, message: "Umowa ramowa: link https:// (np. z Dysku Google)." };
     const signed = o ? parseDay(o.signedAt) : null;
     if (signed === "invalid") return { ok: false, message: "Umowa ramowa: data podpisania RRRR-MM-DD." };
-    const n: FrameAgreement | null = o ? { url, name: text(o.name, 191), signedAt: isoDay(signed), note: text(o.note, 500) } : null;
+    const n: FrameAgreement | null = o ? { fileId: text(o.fileId, 64), url, name: text(o.name, 191), signedAt: isoDay(signed), note: text(o.note, 500) } : null;
     out.frameAgreement = n && Object.values(n).some(Boolean) ? n : null;
   }
   if (has("marketingConsent")) {
