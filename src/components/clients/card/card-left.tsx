@@ -123,7 +123,7 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
           <Row label="NIP" sources={src("nip")}>
             {d.nip ? (
               <>
-                <span className="font-mono">{formatNip(d.nip)}</span>
+                <span className="">{formatNip(d.nip)}</span>
                 {d.cardFacts.nipInvoiceCount > 0 && ` · zgodny z ${d.cardFacts.nipInvoiceCount} FV`}
               </>
             ) : (
@@ -131,7 +131,7 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
             )}
           </Row>
           <Row label="REGON" sources={src("regon")}>
-            {p.regon ? <span className="font-mono">{p.regon}</span> : <Missing>uzupełnij po NIP</Missing>}
+            {p.regon ? <span className="">{p.regon}</span> : <Missing>uzupełnij po NIP</Missing>}
           </Row>
           <Row label="PKD" sources={src("pkd")}>
             {mainPkd ? `${mainPkd.code}${mainPkd.name ? ` ${mainPkd.name}` : ""}${otherPkd.length ? ` (+ ${otherPkd.join(", ")})` : ""}` : <Missing>CEIDG – do sprawdzenia</Missing>}
@@ -183,7 +183,7 @@ function PeopleSection({ d, onChanged, notify }: Props) {
           }}
         />
       )}
-      {d.contacts.length === 0 && editing !== "new" && <p className="text-[13px] text-[var(--c-muted)]">Brak osób kontaktowych.</p>}
+      {d.contacts.length === 0 && editing !== "new" && <p className="text-[14px] text-[var(--c-muted)]">Brak osób kontaktowych.</p>}
       {d.contacts.map((c) =>
         editing === c.id ? (
           <ContactForm
@@ -198,39 +198,41 @@ function PeopleSection({ d, onChanged, notify }: Props) {
             }}
           />
         ) : (
-          <div key={c.id} className="flex flex-col gap-2 rounded-[10px] border border-[var(--c-divider)] bg-[var(--c-inner)] p-3.5">
+          <div key={c.id} className="flex flex-col gap-2 border border-[var(--c-divider)] bg-[var(--c-inner)] p-3.5">
             <div className="flex items-center justify-between gap-2">
               <button type="button" onClick={() => setEditing(c.id)} className="text-left text-[15px] font-semibold hover:text-[var(--c-brand-deep)]" title="Edytuj osobę">
                 {personName(c) || c.email || "Osoba bez nazwy"}
               </button>
               <div className="flex flex-wrap justify-end gap-1.5">
+                {c.isPrimary && <Tag tone="ok">osoba główna</Tag>}
                 {c.roles.map((r) => (
-                  <Tag key={r}>{PERSON_ROLE_LABEL[r as PersonRole] ?? r}</Tag>
+                  <Tag key={r} tone="info">
+                    {PERSON_ROLE_LABEL[r as PersonRole] ?? r}
+                  </Tag>
                 ))}
-                {!c.roles.length && c.role && <Tag>{c.role}</Tag>}
-                {c.isPrimary && !c.roles.length && !c.role && <Tag tone="neutral">osoba główna</Tag>}
+                {!c.roles.length && c.role && <Tag tone="info">{c.role}</Tag>}
               </div>
             </div>
             {c.phone && (
-              <a href={`tel:${c.phone}`} className="font-mono text-[13px] hover:text-[var(--c-brand-deep)]">
+              <a href={`tel:${c.phone}`} className=" text-[14px] hover:text-[var(--c-brand-deep)]">
                 {formatPhone(c.phone)}
               </a>
             )}
             {c.phone2 && (
-              <a href={`tel:${c.phone2}`} className="font-mono text-[13px] hover:text-[var(--c-brand-deep)]">
+              <a href={`tel:${c.phone2}`} className=" text-[14px] hover:text-[var(--c-brand-deep)]">
                 {formatPhone(c.phone2)} · {c.phone2Label ?? "drugi"}
               </a>
             )}
-            {c.email && <div className="break-all font-mono text-[13px]">{c.email}</div>}
+            {c.email && <div className="break-all text-[14px]">{c.email}</div>}
             {(c.salutation || c.preferredChannel || c.roles.includes("invoices")) && (
-              <div className="text-[13px] text-[var(--c-text-2)]">
+              <div className="text-[14px] text-[var(--c-text-2)]">
                 {[c.salutation ? `Zwrot: „${c.salutation}”` : null, c.preferredChannel ? `kanał: ${c.preferredChannel}` : null, c.roles.includes("invoices") ? "faktury mailem" : null]
                   .filter(Boolean)
                   .join(" · ")}
               </div>
             )}
             {(c.trainedOn.length > 0 || c.roles.includes("owner") || c.roles.includes("cosmetologist")) && (
-              <div className="text-[13px] text-[var(--c-text-2)]">
+              <div className="text-[14px] text-[var(--c-text-2)]">
                 Przeszkolona:{" "}
                 {c.trainedOn.length ? (
                   c.trainedOn.map((t) => `${t.device}${t.date ? ` · ${dmy(t.date)}` : ""}`).join(", ")
@@ -494,20 +496,20 @@ function LinksSection({
   const manual = d.lineage.some((l) => l.kind === "SPLIT_FROM");
   return (
     <Section title="Powiązania i aliasy">
-      <div className="text-[13px] text-[var(--c-muted)]">
+      <div className="text-[14px] text-[var(--c-muted)]">
         {d.aliases.length ? "Tytuły z kalendarzy, które automatycznie trafiają do tej karty:" : "Brak aliasów z kalendarzy — przypisz wydarzenia w Klienci → Dopasowania."}
       </div>
       {d.aliases.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {d.aliases.map((a) => (
-            <span key={a} className="rounded bg-[var(--c-divider)] px-2 py-[3px] font-mono text-[12px]">
+            <span key={a} className="bg-[var(--c-card-neutral)] px-2 py-[3px] text-[14px]">
               {a}
             </span>
           ))}
         </div>
       )}
       {d.lineage.map((l, i) => (
-        <div key={i} className="border-t border-[var(--c-divider)] pt-2.5 text-[13px]">
+        <div key={i} className="border-t border-[var(--c-divider)] pt-2.5 text-[14px]">
           {l.kind === "SPLIT_FROM" && (
             <>
               Wydzielona {dmy(l.at)} z rekordu{" "}
@@ -541,7 +543,7 @@ function LinksSection({
           )}
         </div>
       ))}
-      {!manual && d.hubspotCompanyId && <div className="border-t border-[var(--c-divider)] pt-2.5 text-[13px] text-[var(--c-text-2)]">Rekord z HubSpota (firma {d.hubspotCompanyId}).</div>}
+      {!manual && d.hubspotCompanyId && <div className="border-t border-[var(--c-divider)] pt-2.5 text-[14px] text-[var(--c-text-2)]">Rekord z HubSpota (firma {d.hubspotCompanyId}).</div>}
       {!d.archive && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--c-divider)] pt-2.5">
           <button type="button" onClick={() => onDialog("merge")} className={LINK}>
@@ -563,7 +565,7 @@ function LinksSection({
             </a>
           )}
           {isAdmin && (
-            <button type="button" onClick={() => onDialog("archive")} className="text-[13px] text-[var(--c-muted)] hover:text-[var(--c-red)] hover:underline">
+            <button type="button" onClick={() => onDialog("archive")} className="text-[14px] text-[var(--c-muted)] hover:text-[var(--c-red)] hover:underline">
               Archiwizuj
             </button>
           )}

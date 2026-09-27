@@ -72,11 +72,11 @@ export function ClientsQualificationPanel({ configured }: { configured: boolean 
           type="button"
           onClick={() => void apply()}
           disabled={!p || busy !== null}
-          className="rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white hover:bg-[#083F3C] disabled:opacity-40"
+          className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-40"
         >
           {busy === "apply" ? "Zapisywanie…" : p?.active ? "2. Zapisz ponownie" : "2. Włącz podział"}
         </button>
-        <Link href="/klienci" className="ml-auto text-sm font-medium text-[#0E5C58] hover:underline">
+        <Link href="/klienci" className="ml-auto text-sm font-medium text-[#1B6FA8] hover:underline">
           Lista klientów →
         </Link>
       </div>

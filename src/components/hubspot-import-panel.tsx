@@ -21,7 +21,7 @@ function fmtDate(iso: string) {
 }
 
 function Stat({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "brand" | "warn" }) {
-  const color = tone === "brand" ? "text-[#0E5C58]" : tone === "warn" && value > 0 ? "text-amber-700" : "text-gray-900";
+  const color = tone === "brand" ? "text-[#1B6FA8]" : tone === "warn" && value > 0 ? "text-amber-700" : "text-gray-900";
   return (
     <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5">
       <p className={`text-xl font-semibold tabular-nums ${color}`}>{value}</p>
@@ -143,7 +143,7 @@ export function HubspotImportPanel({ configured }: { configured: boolean }) {
           type="button"
           onClick={() => void handleImport()}
           disabled={!preview || Boolean(nothingToImport) || importing}
-          className="rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#083F3C] disabled:opacity-40"
+          className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#14567F] disabled:opacity-40"
         >
           {importing ? "Importowanie…" : "2. Importuj"}
         </button>
@@ -162,7 +162,7 @@ export function HubspotImportPanel({ configured }: { configured: boolean }) {
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-gray-100">
             <div
-              className="h-full rounded-full bg-[#0E5C58] transition-[width] duration-300"
+              className="h-full rounded-full bg-[#1B6FA8] transition-[width] duration-300"
               style={{ width: `${progress.total ? Math.round((progress.done / progress.total) * 100) : 100}%` }}
             />
           </div>
@@ -247,7 +247,7 @@ export function HubspotImportPanel({ configured }: { configured: boolean }) {
               title="Wynajmy z kontaktem, którego nie ma w HubSpot"
               hint="Zostaną bez klienta — przypniesz je ręcznie po uruchomieniu modułu Klienci."
               items={preview.rentals.orphans.map((o) => (
-                <Link key={o.id} href={`/kalendarz/wynajem/${o.id}`} className="text-[#0E5C58] hover:underline">
+                <Link key={o.id} href={`/kalendarz/wynajem/${o.id}`} className="text-[#1B6FA8] hover:underline">
                   {fmtDate(o.startsAt)} · {o.title}
                   {o.contactName ? ` (${o.contactName})` : ""}
                 </Link>

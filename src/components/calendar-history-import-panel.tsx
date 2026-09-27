@@ -21,7 +21,7 @@ type ImportResult = { created: number; rematched: number; skippedInRental: numbe
 
 function Stat({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "brand" | "green" | "warn" }) {
   const color =
-    tone === "brand" ? "text-[#0E5C58]" : tone === "green" ? "text-green-700" : tone === "warn" && value > 0 ? "text-amber-700" : "text-gray-900";
+    tone === "brand" ? "text-[#1B6FA8]" : tone === "green" ? "text-green-700" : tone === "warn" && value > 0 ? "text-amber-700" : "text-gray-900";
   return (
     <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5">
       <p className={`text-xl font-semibold tabular-nums ${color}`}>{value}</p>
@@ -97,11 +97,11 @@ export function CalendarHistoryImportPanel() {
           type="button"
           onClick={() => void handleImport()}
           disabled={!preview || preview.toImport === 0 || busy !== null}
-          className="rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#083F3C] disabled:opacity-40"
+          className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#14567F] disabled:opacity-40"
         >
           {busy === "import" ? "Importowanie…" : "2. Importuj historię"}
         </button>
-        <Link href="/klienci/dopasowania" className="ml-auto text-sm font-medium text-[#0E5C58] hover:underline">
+        <Link href="/klienci/dopasowania" className="ml-auto text-sm font-medium text-[#1B6FA8] hover:underline">
           Dopasowania do klientów →
         </Link>
       </div>

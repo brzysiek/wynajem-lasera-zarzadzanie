@@ -1,38 +1,27 @@
 import type { CSSProperties } from "react";
 
-// Paleta i krój pisma ramy aplikacji — topbar, sidebar, prawy pasek ikon,
-// rama wysuwanego panelu. Od 27.09.2026 tokeny ze wzoru karty klienta
-// (prompt-code-karta-klienta.md, sekcja 1): akcent zieleń #0E5C58, tło
-// #F3F5F7, tekst #14191F, krój Public Sans. Wcześniej #1B6FA8 / Jost.
+// Paleta i krój pisma ramy aplikacji (docs/prompt-claude-code-powloka-aplikacji.md,
+// sekcja 3) — topbar, sidebar, prawy pasek ikon, rama wysuwanego panelu.
+// Ta sama paleta co wynajemlasera.pl (patrz np. strona produktowa Alma
+// Harmony) — #1B6FA8 / #E08A5C / Jost.
 export const SHELL = {
-  brand: "#0E5C58",
-  brandSoft: "#DDEDEA",
-  brandDeep: "#083F3C",
-  accent: "#C2620A",
-  accentSoft: "#FDF1E1",
-  sidebarBg: "#FFFFFF",
-  sidebarText: "#3F4852",
-  sidebarTextDim: "#8A94A0",
-  bg: "#F3F5F7",
+  brand: "#1B6FA8",
+  brandSoft: "#EAF4FB",
+  brandDeep: "#14567F",
+  accent: "#E08A5C",
+  accentSoft: "#FBF0E7",
+  // Lekko błękitne (nie białe/szare) tło sidebaru — celowo "żywsze" niż
+  // dawne prawie-białe #FAFCFD, żeby lewy pasek miał wyczuwalny kolor marki
+  // nawet gdy żadna pozycja nie jest aktywna.
+  sidebarBg: "#EFF6FB",
+  sidebarText: "#5B6167",
+  sidebarTextDim: "#9AA1A8",
+  bg: "#F2F4F6",
   surface: "#FFFFFF",
-  border: "#DDE2E8",
-  text: "#14191F",
-  textMuted: "#56606B",
-  textFaint: "#8A94A0",
-} as const;
-
-// Dodatkowe tokeny wzoru karty: linie podziału, tło wewnętrzne, tekst
-// drugorzędny (ciemniejszy), obramowanie przycisków, ostrzeżenie.
-export const TOKENS = {
-  divider: "#EDF0F3",
-  inner: "#F7F9FA",
-  textSecondary: "#3F4852",
-  buttonBorder: "#CBD2DA",
-  brandSoftBorder: "#B9D8D3",
-  warnBg: "#FDF1E1",
-  warnBorder: "#F2D2A6",
-  warnText: "#5E2C02",
-  warnTextSoft: "#7A3A04",
+  border: "#E9EDF1",
+  text: "#4A4A4A",
+  textMuted: "#6F7378",
+  textFaint: "#9AA1A8",
 } as const;
 
 // Paleta "premium" dla TREŚCI stron (dashboardy, tabele, formularze) — ten
@@ -45,8 +34,8 @@ export const TOKENS = {
 // każdym komponencie, żeby paleta się nie rozjeżdżała między stronami.
 export const APP = {
   ...SHELL,
-  navy: "#14191F",
-  navySoft: "#EDF0F3",
+  navy: "#0C3450",
+  navySoft: "#DCEAF4",
   gold: "#B5851E",
   goldSoft: "#FBF3E1",
   purple: "#7C3AED",
@@ -66,7 +55,7 @@ export const APP = {
 // odcienia tego samego koloru dla kontrastu.
 export const APP_DEEP = {
   green: "#15754F",
-  accent: "#7A3A04",
+  accent: "#8A4414",
   gold: "#8A6414",
   purple: "#5B2BB5",
 } as const;
@@ -123,18 +112,87 @@ export const APP_CSS_VARS = {
   "--c-accent-deep": APP_DEEP.accent,
   "--c-gold-deep": APP_DEEP.gold,
   "--c-purple-deep": APP_DEEP.purple,
-  "--c-divider": TOKENS.divider,
-  "--c-inner": TOKENS.inner,
-  "--c-text-2": TOKENS.textSecondary,
-  "--c-btn-border": TOKENS.buttonBorder,
-  "--c-brand-soft-border": TOKENS.brandSoftBorder,
-  "--c-warn-bg": TOKENS.warnBg,
-  "--c-warn-border": TOKENS.warnBorder,
-  "--c-warn-text": TOKENS.warnText,
-  "--c-warn-text-2": TOKENS.warnTextSoft,
+  // Zmienne używane też przez karty klienta i Porządki — w ramie panelu
+  // w palecie panelu (karta klienta nadpisuje je CARD_CSS_VARS).
+  "--c-divider": SHELL.border,
+  "--c-inner": SHELL.bg,
+  "--c-text-2": SHELL.text,
+  "--c-btn-border": SHELL.border,
+  "--c-brand-soft-border": SHELL.brandSoft,
+  "--c-warn-bg": SHELL.accentSoft,
+  "--c-warn-border": SHELL.accent,
+  "--c-warn-text": APP_DEEP.accent,
+  "--c-warn-text-2": APP_DEEP.accent,
+  "--c-ok": APP_DEEP.green,
+  "--c-ok-bg": APP.greenSoft,
+  "--c-ok-bg-2": APP.greenSoft,
 } as CSSProperties;
 
-// Krój ramy aplikacji — Public Sans (--font-app, src/app/fonts/fonts.css).
-// Jest krojem całego panelu (globals.css), więc helper zostaje tylko dla
-// miejsc, które wymuszają go jawnie.
-export const SHELL_FONT_STYLE: CSSProperties = { fontFamily: "var(--font-app)" };
+// Karta klienta (/klienci/[id], widok „Karta”) — styl strony
+// wynajemlasera.pl (np. /alma-harmony-xl-pro-2) dopasowany do pracy na co
+// dzień. TYLKO karta: reszta panelu zostaje w palecie SHELL/APP.
+// Niebieski marki = wartości, liczby, linki, przyciski; terakota = wyłącznie
+// „uwaga / do zrobienia”; zieleń = wyłącznie „w porządku”.
+export const CARD = {
+  page: "#FDFBF8",
+  surface: "#FFFFFF",
+  band: "#EAF4FB", // pas wskaźników
+  invoices: "#FBF0E7", // sekcja faktur
+  line: "#E4E7EA",
+  inner: "#FAF8F5",
+  navy: "#0C3450", // nagłówki sekcji
+  text: "#22292F",
+  text2: "#5C6166", // drugorzędny (min. 14 px)
+  faint: "#8A9096",
+  blue: "#1B6FA8",
+  blueDeep: "#14567F",
+  blueSoft: "#EAF4FB",
+  terra: "#E08A5C",
+  terraText: "#B8612F",
+  terraSoft: "#FBF0E7",
+  terraLine: "#F2D3BE",
+  green: "#2F7A68",
+  greenBg: "#EEF6F2",
+  greenBg2: "#E3F1EC",
+  next: "#2B5B82", // „Następny krok”
+  neutral: "#F1F3F5",
+} as const;
+
+export const CARD_CSS_VARS = {
+  ...APP_CSS_VARS,
+  "--c-brand": CARD.blue,
+  "--c-brand-deep": CARD.blueDeep,
+  "--c-brand-soft": CARD.blueSoft,
+  "--c-brand-soft-border": "#CFE3F1",
+  "--c-accent": CARD.terra,
+  "--c-accent-soft": CARD.terraSoft,
+  "--c-bg": CARD.page,
+  "--c-surface": CARD.surface,
+  "--c-border": CARD.line,
+  "--c-divider": CARD.line,
+  "--c-inner": CARD.inner,
+  "--c-text": CARD.text,
+  "--c-text-2": CARD.text2,
+  "--c-muted": CARD.text2,
+  "--c-faint": CARD.faint,
+  "--c-navy": CARD.navy,
+  "--c-btn-border": CARD.blue,
+  "--c-warn-bg": CARD.terraSoft,
+  "--c-warn-border": CARD.terraLine,
+  "--c-warn-text": CARD.terraText,
+  "--c-warn-text-2": CARD.terraText,
+  "--c-ok": CARD.green,
+  "--c-ok-bg": CARD.greenBg,
+  "--c-ok-bg-2": CARD.greenBg2,
+  "--c-card-band": CARD.band,
+  "--c-card-invoices": CARD.invoices,
+  "--c-card-next": CARD.next,
+  "--c-card-neutral": CARD.neutral,
+  "--c-terra": CARD.terra,
+} as CSSProperties;
+
+// Klasa na kontener, który ma renderować się krojem Jost (--font-jost,
+// wystawionym w layout.tsx). Odkąd Jost jest krojem całej aplikacji
+// (globals.css), ten helper jest już w większości zbędny — zostaje dla
+// miejsc, które chcą go jawnie wymusić niezależnie od dziedziczenia.
+export const SHELL_FONT_STYLE: CSSProperties = { fontFamily: "var(--font-jost)" };

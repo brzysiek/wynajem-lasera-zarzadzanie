@@ -5,7 +5,7 @@ import { Providers } from "./providers";
 import { AppFooter } from "@/components/app-footer";
 import { BASE_PATH } from "@/lib/base-path";
 
-// Czcionki (Public Sans — krój CAŁEJ aplikacji; IBM Plex Mono; Geist /
+// Czcionki (Jost — krój CAŁEJ aplikacji, spójny z wynajemlasera.pl; Geist /
 // Geist Mono) ładowane z plików w repozytorium: src/app/fonts/fonts.css.
 // Wcześniej next/font/google pobierał je z Google przy każdym buildzie i
 // wdrożenie padało, gdy Google Fonts zwróciło nietypową odpowiedź.
@@ -45,7 +45,7 @@ export default function RootLayout({
 
   return (
     <html lang="pl" className="h-full antialiased">
-      <body className={`min-h-full flex flex-col text-gray-900 ${isDev ? "bg-amber-50" : "bg-[#F3F5F7]"}`}>
+      <body className={`min-h-full flex flex-col text-gray-900 ${isDev ? "bg-amber-50" : "bg-[#F2F4F6]"}`}>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Providers>{children}</Providers>
         </div>

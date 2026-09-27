@@ -62,8 +62,8 @@ export function FuelPriceCard({
   }
 
   return (
-    <div className="mb-4 rounded-lg border p-4" style={{ borderColor: "#CFE0F0", background: "#DDEDEA" }}>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "#0E5C58" }}>
+    <div className="mb-4 rounded-lg border p-4" style={{ borderColor: "#CFE0F0", background: "#EAF4FB" }}>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: "#1B6FA8" }}>
         Cena paliwa — jeden parametr dla całej floty
       </p>
       {editing ? (
@@ -76,7 +76,7 @@ export function FuelPriceCard({
             className="w-28 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
           />
           <span className="text-sm text-gray-600">zł/L</span>
-          <button type="button" onClick={() => void save()} disabled={saving} className="rounded-md bg-[#0E5C58] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
+          <button type="button" onClick={() => void save()} disabled={saving} className="rounded-md bg-[#1B6FA8] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
             Zapisz
           </button>
           <button type="button" onClick={() => { setEditing(false); setValue(initialValue === value ? value : initialValue); setError(null); }} className="text-xs font-medium text-gray-500">
@@ -89,7 +89,7 @@ export function FuelPriceCard({
             {Number(value).toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł/L
             <span className="ml-2 text-xs font-normal text-gray-500">ostatnia aktualizacja: {daysAgoLabel(updatedAt)}</span>
           </div>
-          <button type="button" onClick={() => setEditing(true)} className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-[#0E5C58] shadow-sm">
+          <button type="button" onClick={() => setEditing(true)} className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-[#1B6FA8] shadow-sm">
             Zmień cenę
           </button>
         </div>
@@ -166,7 +166,7 @@ function VehicleRow({ vehicle, onSaved }: { vehicle: VehicleDto; onSaved: (v: Ve
             type="button"
             onClick={() => void save()}
             disabled={saving || !name.trim() || !plateNumber.trim()}
-            className="rounded-md bg-[#0E5C58] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            className="rounded-md bg-[#1B6FA8] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
           >
             Zapisz
           </button>
@@ -291,7 +291,7 @@ export function VehiclesPanel({
           <button
             type="submit"
             disabled={adding || !newName.trim() || !newPlate.trim()}
-            className="rounded-md bg-[#0E5C58] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-md bg-[#1B6FA8] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             + Dodaj
           </button>

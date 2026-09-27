@@ -76,7 +76,7 @@ function ResetPasswordForm() {
           minLength={8}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
         />
       </div>
 
@@ -93,7 +93,7 @@ function ResetPasswordForm() {
           minLength={8}
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
         />
       </div>
 
@@ -102,7 +102,7 @@ function ResetPasswordForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white hover:bg-[#083F3C] disabled:opacity-50"
+        className="w-full rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
       >
         {isSubmitting ? "Zapisywanie…" : "Ustaw nowe hasło"}
       </button>

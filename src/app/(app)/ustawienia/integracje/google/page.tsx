@@ -9,7 +9,7 @@ function Code({ children }: { children: string }) {
 
 function Pre({ children }: { children: string }) {
   return (
-    <pre className="overflow-x-auto rounded-lg bg-[#0E5C58] p-4 font-mono text-xs text-gray-100">
+    <pre className="overflow-x-auto rounded-lg bg-[#1B6FA8] p-4 font-mono text-xs text-gray-100">
       <code>{children}</code>
     </pre>
   );
@@ -26,7 +26,7 @@ export default async function GoogleCalendarIntegrationPage() {
     <div>
       <GoogleCalendarPanel initialStatus={googleStatus} />
 
-      <div className="mb-6 rounded-lg border border-[#CFE0F0] bg-[#DDEDEA] p-4 text-sm text-[#083F3C]">
+      <div className="mb-6 rounded-lg border border-[#CFE0F0] bg-[#EAF4FB] p-4 text-sm text-[#14567F]">
         Dane logowania Google (klucz service accounta) ustawia się bezpośrednio w <Code>.env</Code> na serwerze —
         panel wyżej tylko testuje, czy działają.
       </div>

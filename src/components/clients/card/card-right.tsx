@@ -4,7 +4,7 @@ import { useContext, useMemo, useState } from "react";
 import type { ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { cardQuality } from "@/lib/clients/card-quality";
 import { AgentModeContext, INPUT, api } from "../client-forms";
-import { BTN_OUTLINE, BTN_PRIMARY, LINK, Missing, Pill, Section, Tag, dm, dmy, money, num } from "./kit";
+import { BTN_OUTLINE, BTN_PRIMARY, Heading, LINK, Missing, Pill, Section, Tag, dm, dmy, money, num } from "./kit";
 
 // Prawa kolumna karty wg karta-klienta-wzor.html: Rytm współpracy (siatka
 // lata × miesiące), Oś zdarzeń z filtrami i szybką notatką, Faktury
@@ -18,7 +18,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
   const r = d.rhythm;
   const dc = r.deviceConfig;
   const risk = r.churnRisk;
-  const riskColor = risk?.level === "niskie" ? "var(--c-brand)" : risk?.level === "średnie" ? "#9A4A06" : "var(--c-red)";
+  const riskColor = risk?.level === "niskie" ? "var(--c-ok)" : "var(--c-warn-text)";
   const price = d.profile.agreedPrice ? Number(d.profile.agreedPrice) : null;
   const year = new Date().getFullYear();
   const invoicedThisYear = d.transactions.filter((t) => t.invoice && new Date(t.date).getFullYear() === year && t.net);
@@ -26,11 +26,11 @@ function RhythmSection({ d }: { d: ClientDetail }) {
   return (
     <Section title="Rytm współpracy" wide gap="gap-4" action={<Legend />}>
       {r.grid.length === 0 ? (
-        <p className="text-[13px] text-[var(--c-muted)]">Brak wynajmów — rytm pojawi się po pierwszych rezerwacjach.</p>
+        <p className="text-[14px] text-[var(--c-muted)]">Brak wynajmów — rytm pojawi się po pierwszych rezerwacjach.</p>
       ) : (
         <div className="overflow-x-auto">
           <div className="flex min-w-[560px] flex-col gap-1.5">
-            <div className="grid gap-1.5 text-[12px] text-[var(--c-muted)]" style={{ gridTemplateColumns: "56px repeat(12, minmax(0, 1fr))" }}>
+            <div className="grid gap-1.5 text-[14px] text-[var(--c-muted)]" style={{ gridTemplateColumns: "56px repeat(12, minmax(0, 1fr))" }}>
               <span />
               {ROMAN.map((m) => (
                 <span key={m} className="text-center">
@@ -40,7 +40,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
             </div>
             {r.grid.map((g) => (
               <div key={g.year} className="grid items-center gap-1.5" style={{ gridTemplateColumns: "56px repeat(12, minmax(0, 1fr))" }}>
-                <span className="font-mono text-[13px] text-[var(--c-text-2)]">{g.year}</span>
+                <span className=" text-[14px] text-[var(--c-text-2)]">{g.year}</span>
                 {g.months.map((m, i) => {
                   const count = m.realized + m.planned + m.proposed;
                   const cls =
@@ -49,11 +49,11 @@ function RhythmSection({ d }: { d: ClientDetail }) {
                       : m.planned > 0
                         ? "border-2 border-[var(--c-brand)] bg-white text-[var(--c-brand)]"
                         : m.proposed > 0
-                          ? "border-2 border-dashed border-[#8A94A0] bg-white text-[var(--c-muted)]"
-                          : "bg-[var(--c-bg)]";
+                          ? "border-2 border-dashed border-[var(--c-terra)] bg-white text-[var(--c-warn-text)]"
+                          : "bg-[var(--c-card-neutral)]";
                   const title = [m.realized ? `zrealizowane: ${m.realized}` : null, m.planned ? `zaplanowane: ${m.planned}` : null, m.proposed ? "proponowany termin" : null].filter(Boolean).join(", ");
                   return (
-                    <div key={i} title={title || undefined} className={`box-border flex h-[34px] items-center justify-center rounded-md text-[12px] font-semibold ${cls}`}>
+                    <div key={i} title={title || undefined} className={`box-border flex h-[34px] items-center justify-center text-[14px] font-semibold ${cls}`}>
                       {count > 1 ? count : ""}
                     </div>
                   );
@@ -83,9 +83,9 @@ function RhythmSection({ d }: { d: ClientDetail }) {
 }
 
 function Legend() {
-  const box = "h-3 w-3 rounded-[3px] box-border";
+  const box = "h-3 w-3 box-border";
   return (
-    <div className="hidden gap-4 text-[12px] text-[var(--c-text-2)] sm:flex">
+    <div className="hidden gap-4 text-[14px] text-[var(--c-text-2)] sm:flex">
       <span className="flex items-center gap-1.5">
         <span className={`${box} bg-[var(--c-brand)]`} />
         zrealizowany
@@ -95,7 +95,7 @@ function Legend() {
         zaplanowany
       </span>
       <span className="flex items-center gap-1.5">
-        <span className={`${box} border-2 border-dashed border-[#8A94A0] bg-white`} />
+        <span className={`${box} border-2 border-dashed border-[var(--c-terra)] bg-white`} />
         proponowany
       </span>
     </div>
@@ -105,11 +105,11 @@ function Legend() {
 function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string | null; color?: string }) {
   return (
     <div>
-      <div className="text-[12px] text-[var(--c-muted)]">{label}</div>
-      <div className="text-[14px] font-medium" style={color ? { color } : undefined}>
+      <div className="text-[14px] text-[var(--c-muted)]">{label}</div>
+      <div className="text-[16px] font-semibold text-[var(--c-brand)]" style={color ? { color } : undefined}>
         {value}
       </div>
-      {sub && <div className="text-[12px] text-[var(--c-muted)]">{sub}</div>}
+      {sub && <div className="text-[14px] text-[var(--c-muted)]">{sub}</div>}
     </div>
   );
 }
@@ -171,7 +171,7 @@ function timelineItems(d: ClientDetail, withHidden = false): Item[] {
         sub: [`${money(h.totalNet, 2)} netto`, tx?.invoice?.totalGross ? `${money(tx.invoice.totalGross, 2)} brutto` : null, tx ? tx.status.label.toLowerCase() : null].filter(Boolean).join(" / "),
         tag: "faktura",
         dot: "filled",
-        color: "#9A4A06",
+        color: "var(--c-navy)",
         group: "invoices",
       });
     } else if (h.kind === "email") {
@@ -259,9 +259,9 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
   ];
 
   return (
-    <section className="flex flex-col gap-3.5 rounded-lg border border-[var(--c-border)] bg-white px-[22px] py-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="m-0 text-[13px] font-bold uppercase tracking-[0.06em] text-[var(--c-text-2)]">Oś zdarzeń</h2>
+    <section className="flex flex-col gap-3.5 border border-[var(--c-border)] bg-white p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <Heading>Oś zdarzeń</Heading>
         <div className="flex flex-wrap gap-1.5">
           {FILTERS.map((f) => (
             <Pill key={f.k} on={filter === f.k} onClick={() => setFilter(f.k)}>
@@ -270,13 +270,13 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
           ))}
         </div>
       </div>
-      <div className="flex gap-2.5 rounded-lg border border-[var(--c-divider)] bg-[var(--c-inner)] px-3 py-2.5">
-        <label htmlFor="card-note" className="self-center text-[13px] text-[var(--c-muted)]">
+      <div className="flex gap-2.5 border border-[var(--c-divider)] bg-[var(--c-inner)] px-3 py-2.5">
+        <label htmlFor="card-note" className="self-center text-[14px] text-[var(--c-muted)]">
           Notatka
         </label>
         <input
           id="card-note"
-          className="h-9 min-w-0 flex-grow rounded-md border border-[var(--c-btn-border)] bg-white px-2.5 text-[14px] outline-none focus:border-[var(--c-brand)]"
+          className="h-9 min-w-0 flex-grow border border-[var(--c-btn-border)] bg-white px-2.5 text-[14px] outline-none focus:border-[var(--c-brand)]"
           placeholder="Dodaj notatkę z rozmowy…"
           value={note}
           disabled={saving}
@@ -286,12 +286,12 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
           }}
         />
         {note.trim() && (
-          <button type="button" onClick={() => void addNote()} disabled={saving} className="h-9 rounded-md bg-[var(--c-brand)] px-3 text-[13px] font-semibold text-white hover:bg-[var(--c-brand-deep)]">
+          <button type="button" onClick={() => void addNote()} disabled={saving} className="h-9 bg-[var(--c-brand)] px-3 text-[14px] font-semibold text-white hover:bg-[var(--c-brand-deep)]">
             Zapisz
           </button>
         )}
       </div>
-      {items.length === 0 && <p className="text-[13px] text-[var(--c-muted)]">Brak zdarzeń w tym widoku.</p>}
+      {items.length === 0 && <p className="text-[14px] text-[var(--c-muted)]">Brak zdarzeń w tym widoku.</p>}
       {items.slice(0, limit).map((i) => (
         <div
           key={i.key}
@@ -299,21 +299,21 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
           style={{ gridTemplateColumns: "92px 18px minmax(0, 1fr) auto" }}
           onClick={() => i.item && (i.item.kind === "email" || i.item.kind === "message" || i.item.kind === "activity") && onOpenItem(i.item)}
         >
-          <div className="pt-0.5 font-mono text-[12px] text-[var(--c-text-2)]">{dmy(i.at)}</div>
+          <div className="pt-0.5 text-[14px] text-[var(--c-text-2)]">{dmy(i.at)}</div>
           <div
             className="mt-1 box-border h-3 w-3 rounded-full"
             style={i.dot === "filled" ? { background: i.color } : { border: `2px solid ${i.color}`, background: "#FFFFFF" }}
           />
           <div className="flex min-w-0 flex-col gap-0.5">
             <div className="text-[14px] font-medium">{i.title}</div>
-            {i.sub && <div className="break-words text-[13px] text-[var(--c-muted)]">{i.sub}</div>}
+            {i.sub && <div className="break-words text-[14px] text-[var(--c-muted)]">{i.sub}</div>}
           </div>
           <span className="flex flex-col items-end gap-1">
-            <Tag tone={i.hidden ? "warn" : "neutral"}>{i.tag}</Tag>
+            <Tag tone="neutral">{i.tag}</Tag>
             {!agent && i.item?.kind === "email" && (
               <button
                 type="button"
-                className="text-[11px] text-[var(--c-muted)] hover:text-[var(--c-brand-deep)] hover:underline"
+                className="text-[14px] text-[var(--c-muted)] hover:text-[var(--c-brand-deep)] hover:underline"
                 onClick={(e) => {
                   e.stopPropagation();
                   void toggleHidden(i.item!.id, !i.hidden);
@@ -345,9 +345,11 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
 
 // ------------------------------------------------------------------ Faktury i płatności
 
-function statusTone(kind: string): "warn" | "accent" | "neutral" {
-  if (kind === "ZAPLACONA" || kind === "GOTOWKA") return "accent";
-  if (kind === "PO_TERMINIE" || kind === "NIE_SPRAWDZONO" || kind === "BEZ_FAKTURY") return "warn";
+// Zieleń = opłacona; terakota = po terminie / bez faktury (do zrobienia);
+// nie sprawdzono i oczekuje — neutralnie.
+function statusTone(kind: string): "warn" | "ok" | "neutral" {
+  if (kind === "ZAPLACONA" || kind === "GOTOWKA") return "ok";
+  if (kind === "PO_TERMINIE" || kind === "BEZ_FAKTURY") return "warn";
   return "neutral";
 }
 
@@ -355,27 +357,27 @@ function InvoicesSection({ d, onShowAll }: { d: ClientDetail; onShowAll: () => v
   const rows = d.transactions.filter((t) => t.invoice).slice(0, 6);
   const t = d.txTotals;
   return (
-    <Section title="Faktury i płatności" wide gap="gap-2.5">
+    <Section title="Faktury i płatności" wide gap="gap-2.5" tone="invoices">
       {rows.length === 0 ? (
-        <p className="text-[13px] text-[var(--c-muted)]">Brak faktur w panelu.</p>
+        <p className="text-[14px] text-[var(--c-muted)]">Brak faktur w panelu.</p>
       ) : (
         <div className="overflow-x-auto">
-          <div className="min-w-[380px]">
-            <div className="grid gap-2 border-b border-[var(--c-divider)] pb-1.5 text-[12px] text-[var(--c-muted)]" style={{ gridTemplateColumns: "88px 76px minmax(0, 1fr) 96px" }}>
+          <div className="min-w-[520px]">
+            <div className="grid gap-2 border-b border-[var(--c-divider)] pb-1.5 text-[14px] text-[var(--c-muted)]" style={{ gridTemplateColumns: "120px 110px minmax(0, 1fr) 170px" }}>
               <span>Numer</span>
               <span>Sprzedaż</span>
-              <span>Netto (zł)</span>
+              <span>Netto / brutto (zł)</span>
               <span>Status</span>
             </div>
             {rows.map((r) => (
-              <div key={r.key} className="mt-2.5 grid items-center gap-2 text-[13px]" style={{ gridTemplateColumns: "88px 76px minmax(0, 1fr) 96px" }}>
-                <span className="truncate font-mono">{r.invoice!.number}</span>
+              <div key={r.key} className="mt-2.5 grid items-center gap-2 text-[15px]" style={{ gridTemplateColumns: "120px 110px minmax(0, 1fr) 170px" }}>
+                <span className="truncate">{r.invoice!.number}</span>
                 <span>{dmy(r.date)}</span>
-                <span className="flex flex-col whitespace-nowrap leading-tight" title="netto / brutto, zł">
-                  <span>{r.net != null ? num(r.net, 2) : "—"}</span>
-                  {r.invoice!.totalGross != null && <span className="text-[11px] text-[var(--c-muted)]">{num(r.invoice!.totalGross, 2)} brutto</span>}
+                <span className="whitespace-nowrap" title="netto / brutto, zł">
+                  <span className="font-semibold text-[var(--c-brand)]">{r.net != null ? num(r.net, 2) : "—"}</span>
+                  {r.invoice!.totalGross != null && <span className="text-[var(--c-muted)]"> / {num(r.invoice!.totalGross, 2)}</span>}
                 </span>
-                <span className="text-center" title={r.status.label}>
+                <span title={r.status.label}>
                   <Tag tone={statusTone(r.status.kind)}>{r.status.kind === "NIE_SPRAWDZONO" ? "nie sprawdzono" : r.status.label.toLowerCase()}</Tag>
                 </span>
               </div>
@@ -383,7 +385,7 @@ function InvoicesSection({ d, onShowAll }: { d: ClientDetail; onShowAll: () => v
           </div>
         </div>
       )}
-      <div className="border-t border-[var(--c-divider)] pt-2.5 text-[13px] text-[var(--c-text-2)]">
+      <div className="border-t border-[var(--c-divider)] pt-2.5 text-[14px] text-[var(--c-text-2)]">
         {[
           d.overview.typicalPayment ? `Płaci: ${d.overview.typicalPayment}.` : null,
           t.overdueCount ? `${t.overdueCount} po terminie (${money(t.overdueNet)}).` : null,
@@ -394,7 +396,7 @@ function InvoicesSection({ d, onShowAll }: { d: ClientDetail; onShowAll: () => v
           .filter(Boolean)
           .join(" ")}
       </div>
-      <div className="text-[13px] text-[var(--c-text-2)]">
+      <div className="text-[14px] text-[var(--c-text-2)]">
         {t.paymentsAsOf ? `Wpłaty z okresu ${t.paymentsFrom ? `${dm(t.paymentsFrom)}–` : "do "}${dm(t.paymentsAsOf)} (wyciągi z banku)` : "Brak wgranych wyciągów z banku"}
         {d.profile.invoiceEmail ? ` · e-mail do FV: ${d.profile.invoiceEmail}` : ""}
       </div>
@@ -417,9 +419,9 @@ const STAGES = [
 ];
 const CHANCES = [
   { value: "wysoka", label: "wysoka", color: "var(--c-brand)" },
-  { value: "srednia", label: "średnia", color: "#9A4A06" },
+  { value: "srednia", label: "średnia", color: "var(--c-muted)" },
   { value: "niska", label: "niska", color: "var(--c-muted)" },
-  { value: "sprawdzic", label: "sprawdzić", color: "var(--c-muted)" },
+  { value: "sprawdzic", label: "sprawdzić", color: "var(--c-warn-text)" },
 ];
 const stageLabel = (s: string) => STAGES.find((x) => x.value === s)?.label ?? s;
 
@@ -461,7 +463,7 @@ function OpportunitiesSection({ d, onChanged, notify }: { d: ClientDetail; onCha
       }
     >
       {adding && (
-        <div className="flex flex-col gap-2 rounded-lg border border-[var(--c-brand)] p-3">
+        <div className="flex flex-col gap-2 border border-[var(--c-brand)] p-3">
           <input className={INPUT} placeholder="Urządzenie / temat, np. Cooltech – modelowanie ciała" value={f.device} onChange={(e) => setF({ ...f, device: e.target.value })} />
           <div className="grid grid-cols-3 gap-2">
             <select className={INPUT} value={f.stage} onChange={(e) => setF({ ...f, stage: e.target.value })}>
@@ -481,7 +483,7 @@ function OpportunitiesSection({ d, onChanged, notify }: { d: ClientDetail; onCha
             </select>
             <input className={INPUT} type="date" title="Wrócić" value={f.returnAt} onChange={(e) => setF({ ...f, returnAt: e.target.value })} />
           </div>
-          <textarea className="w-full rounded-lg border border-[var(--c-border)] px-3 py-2 text-sm outline-none focus:border-[var(--c-brand)]" rows={2} placeholder="Opis" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
+          <textarea className="w-full border border-[var(--c-border)] px-3 py-2 text-sm outline-none focus:border-[var(--c-brand)]" rows={2} placeholder="Opis" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
           <div className="flex justify-end gap-2">
             <button type="button" className={BTN_OUTLINE} onClick={() => setAdding(false)}>
               Anuluj
@@ -492,26 +494,26 @@ function OpportunitiesSection({ d, onChanged, notify }: { d: ClientDetail; onCha
           </div>
         </div>
       )}
-      {open.length === 0 && !review?.askedAt && !adding && <p className="text-[13px] text-[var(--c-muted)]">Brak otwartych szans.</p>}
+      {open.length === 0 && !review?.askedAt && !adding && <p className="text-[14px] text-[var(--c-muted)]">Brak otwartych szans.</p>}
       {open.map((o) => {
         const ch = CHANCES.find((c) => c.value === o.chance);
         return (
-          <div key={o.id} className="group flex flex-col gap-1 rounded-lg border border-[var(--c-divider)] bg-[var(--c-inner)] p-3">
+          <div key={o.id} className="group flex flex-col gap-1 border border-[var(--c-divider)] bg-[var(--c-inner)] p-3">
             <div className="flex justify-between gap-2">
               <span className="text-[14px] font-semibold">{o.device}</span>
-              <span className="text-[12px] font-semibold" style={{ color: ch?.color ?? "var(--c-muted)" }}>
+              <span className="text-[14px] font-semibold" style={{ color: ch?.color ?? "var(--c-muted)" }}>
                 {ch?.label ?? stageLabel(o.stage)}
               </span>
             </div>
-            <div className="text-[13px] text-[var(--c-text-2)]">
+            <div className="text-[14px] text-[var(--c-text-2)]">
               {[o.note, `etap: ${stageLabel(o.stage)}`, o.lastContact ? `ostatni kontakt ${dmy(o.lastContact)}` : null, o.returnAt ? `wrócić ${dmy(o.returnAt)}` : null].filter(Boolean).join(" · ")}
             </div>
             {!agent && (
-              <div className="hidden gap-3 text-[12px] group-hover:flex">
+              <div className="hidden gap-3 text-[14px] group-hover:flex">
                 <button type="button" className={LINK} onClick={() => void close(o.id, "wygrana")}>
                   wygrana
                 </button>
-                <button type="button" className="text-[12px] text-[var(--c-muted)] hover:underline" onClick={() => void close(o.id, "przegrana")}>
+                <button type="button" className="text-[14px] text-[var(--c-muted)] hover:underline" onClick={() => void close(o.id, "przegrana")}>
                   zamknij bez sprzedaży
                 </button>
               </div>
@@ -520,12 +522,12 @@ function OpportunitiesSection({ d, onChanged, notify }: { d: ClientDetail; onCha
         );
       })}
       {review?.askedAt && review.given !== true && (
-        <div className="flex flex-col gap-1 rounded-lg border border-[var(--c-divider)] bg-[var(--c-inner)] p-3">
+        <div className="flex flex-col gap-1 border border-[var(--c-divider)] bg-[var(--c-inner)] p-3">
           <div className="flex justify-between">
             <span className="text-[14px] font-semibold">Opinia w Google</span>
-            <span className="text-[12px] font-semibold text-[var(--c-muted)]">sprawdzić</span>
+            <span className="text-[14px] font-semibold text-[var(--c-warn-text)]">sprawdzić</span>
           </div>
-          <div className="text-[13px] text-[var(--c-text-2)]">Prośba wysłana {dmy(review.askedAt)}. {review.given === false ? "Nie wystawiła." : "Nie wiadomo, czy wystawiła."}</div>
+          <div className="text-[14px] text-[var(--c-text-2)]">Prośba wysłana {dmy(review.askedAt)}. {review.given === false ? "Nie wystawiła." : "Nie wiadomo, czy wystawiła."}</div>
         </div>
       )}
     </Section>
@@ -552,23 +554,23 @@ function QualitySection({ d, onShowData }: { d: ClientDetail; onShowData: () => 
     fieldSources: [...Object.values(d.fieldMeta), ...d.contacts.flatMap((c) => Object.values(c.fieldMeta))].map((m) => m.source),
   });
   return (
-    <section className="flex flex-col gap-3.5 rounded-lg border border-[var(--c-border)] bg-white px-[22px] py-5">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="m-0 text-[13px] font-bold uppercase tracking-[0.06em] text-[var(--c-text-2)]">Jakość danych</h2>
+    <section className="flex flex-col gap-3.5 border border-[var(--c-border)] bg-white p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <Heading>Jakość danych</Heading>
         <div className="flex items-center gap-2.5">
-          <div className="h-2 w-[200px] max-w-[40vw] rounded bg-[var(--c-divider)]">
-            <div className="h-2 rounded bg-[var(--c-brand)]" style={{ width: `${q.percent}%` }} />
+          <div className="h-2 w-[200px] max-w-[40vw] bg-[var(--c-divider)]">
+            <div className="h-2 bg-[var(--c-ok)]" style={{ width: `${q.percent}%` }} />
           </div>
-          <span className="text-[14px] font-semibold">{q.percent}%</span>
+          <span className="card-display text-[22px] font-medium text-[var(--c-ok)]">{q.percent}%</span>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-4 text-[13px] md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 text-[14px] md:grid-cols-3">
         <div className="flex flex-col gap-1.5">
-          <div className="font-semibold">Potwierdzone</div>
+          <div className="font-semibold text-[var(--c-ok)]">✓ Potwierdzone</div>
           <div className="text-[var(--c-text-2)]">{q.confirmed.length ? q.confirmed.join(" · ") : "—"}</div>
         </div>
         <div className="flex flex-col gap-1.5">
-          <div className="font-semibold">Brakuje</div>
+          <div className="font-semibold text-[var(--c-warn-text)]">Brakuje</div>
           <div className="text-[var(--c-text-2)]">{q.missing.length ? q.missing.join(" · ") : "nic — komplet"}</div>
         </div>
         <div className="flex flex-col gap-1.5">
@@ -600,7 +602,7 @@ export function CardRight({
     <div className="flex w-full min-w-0 flex-grow flex-col gap-4">
       <RhythmSection d={d} />
       <TimelineSection d={d} onChanged={onChanged} notify={notify} onOpenItem={onOpenItem} onShowAll={() => onTab("komunikacja")} />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6">
         <InvoicesSection d={d} onShowAll={() => onTab("transakcje")} />
         <OpportunitiesSection d={d} onChanged={onChanged} notify={notify} />
       </div>

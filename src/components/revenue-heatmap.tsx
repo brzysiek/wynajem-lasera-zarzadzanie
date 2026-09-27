@@ -13,13 +13,13 @@ import type { RevenueRow } from "@/lib/revenue/aggregate";
 // dashboardu przychodów (revenue-dashboard.tsx).
 const C = {
   surface: "#FFFFFF",
-  bg: "#F3F5F7",
+  bg: "#F2F4F6",
   border: "#E9EDF1",
-  text: "#14191F",
-  muted: "#56606B",
+  text: "#4A4A4A",
+  muted: "#6F7378",
   faint: "#9AA1A8",
-  brand: "#0E5C58",
-  brandSoft: "#DDEDEA",
+  brand: "#1B6FA8",
+  brandSoft: "#EAF4FB",
   green: "#1E9E6B",
 };
 
@@ -31,7 +31,7 @@ const HEAT: ({ bg: string; fg: string } | null)[] = [
   { bg: "#C2DBEA", fg: "#204A64" },
   { bg: "#8FBFDA", fg: "#153A52" },
   { bg: "#4E93BE", fg: "#FFFFFF" },
-  { bg: "#0E5C58", fg: "#FFFFFF" },
+  { bg: "#1B6FA8", fg: "#FFFFFF" },
 ];
 
 type PeriodMeta = { mode: "month" | "range" | "season"; label: string; start: string; end: string };

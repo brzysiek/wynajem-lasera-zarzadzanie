@@ -169,7 +169,7 @@ export function FvWithoutInvoicePanel({ canLink }: { canLink: boolean }) {
                             type="button"
                             onClick={() => void link(r.rentalId, s.id, s.number)}
                             disabled={busy !== null}
-                            className="rounded-md border px-2 py-0.5 text-[12px] font-semibold transition-colors hover:bg-[#DDEDEA] disabled:opacity-50"
+                            className="rounded-md border px-2 py-0.5 text-[12px] font-semibold transition-colors hover:bg-[#EAF4FB] disabled:opacity-50"
                             style={{ borderColor: APP.border, color: APP.brand }}
                           >
                             {busy === s.id ? "Wiązanie…" : "Powiąż"}

@@ -97,7 +97,7 @@ export function GmailSyncPanel() {
           <label className="ml-2 flex cursor-pointer items-center gap-2 text-sm text-gray-800">
             <input
               type="checkbox"
-              className="h-4 w-4 accent-[#0E5C58]"
+              className="h-4 w-4 accent-[#1B6FA8]"
               checked={s.enabled}
               disabled={busy !== null}
               onChange={(e) => void act("toggle", async () => setStatus(await call("/api/gmail/settings", "POST", { enabled: e.target.checked })))}
@@ -133,7 +133,7 @@ export function GmailSyncPanel() {
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           <div className="h-2 w-28 overflow-hidden rounded-full bg-gray-100">
-                            <div className="h-full rounded-full bg-[#0E5C58] transition-[width]" style={{ width: `${pct}%` }} />
+                            <div className="h-full rounded-full bg-[#1B6FA8] transition-[width]" style={{ width: `${pct}%` }} />
                           </div>
                           <span className="text-xs text-gray-500 tabular-nums">
                             {m.importedAddresses}/{total} adresów
@@ -172,7 +172,7 @@ export function GmailSyncPanel() {
               type="button"
               disabled={importing || busy !== null}
               onClick={() => void runImport()}
-              className="rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white hover:bg-[#083F3C] disabled:opacity-40"
+              className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-40"
             >
               {importing ? "Importowanie historii…" : "Importuj historię teraz"}
             </button>
@@ -192,7 +192,7 @@ export function GmailSyncPanel() {
                 className="w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm"
               />
               <label className="flex items-start gap-2 text-sm text-gray-700">
-                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#0E5C58]" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#1B6FA8]" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
                 <span>
                   Rozumiem, że biuro (ADMIN i STAFF) zobaczy w panelu korespondencję tej skrzynki z klientami — tematy, skróty i po
                   otwarciu pełną treść. Właściciel skrzynki o tym wie.

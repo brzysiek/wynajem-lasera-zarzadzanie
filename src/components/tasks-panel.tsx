@@ -17,13 +17,13 @@ const C = {
   fieldBorder: "#dadce0",
   field: "#f8f9fa",
   hover: "#f1f3f4",
-  blue: "#0E5C58",
-  bluePale: "#DDEDEA",
+  blue: "#1B6FA8",
+  bluePale: "#EAF4FB",
   red: "#d93025",
 };
 
 const CHIP: Record<Exclude<DueChipKind, "none">, { bg: string; fg: string }> = {
-  today: { bg: "#DDEDEA", fg: "#0E5C58" },
+  today: { bg: "#EAF4FB", fg: "#1B6FA8" },
   tomorrow: { bg: "#fef7e0", fg: "#b06000" },
   overdue: { bg: "#fce8e6", fg: "#d93025" },
   future: { bg: "#f1f3f4", fg: "#5f6368" },
@@ -657,7 +657,7 @@ function TaskRow({
             {(task.leadId || task.clientId) && (
               <a
                 href={task.leadId ? `${BASE_PATH}/sygnaly?id=${task.leadId}` : `${BASE_PATH}/klienci/${task.clientId}`}
-                className="mr-auto text-xs font-semibold text-[#0E5C58] hover:underline"
+                className="mr-auto text-xs font-semibold text-[#1B6FA8] hover:underline"
               >
                 {task.leadId ? "Otwórz sygnał →" : "Otwórz klienta →"}
               </a>

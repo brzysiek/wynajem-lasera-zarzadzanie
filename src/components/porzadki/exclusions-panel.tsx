@@ -94,7 +94,7 @@ export function ExclusionsPanel({ initialRows, initialKeywords }: { initialRows:
         }>
         {(["EXCLUDE", "HIDE"] as const).map((k) => (
           <div key={k} className="mb-4 last:mb-0">
-            <h3 className="mb-2 text-[13px] font-bold uppercase tracking-[0.06em] text-[var(--c-text-2)]">
+            <h3 className="mb-2 text-[14px] font-semibold text-[var(--c-navy)]">
               {k === "EXCLUDE" ? "Wykluczone" : "Ukrywane w historii"} ({group(k).length})
             </h3>
             {group(k).length === 0 ? (

@@ -45,16 +45,17 @@ export function CardHeader({
   const salutation = d.contacts.find((c) => c.salutation)?.salutation ?? null;
   const mailUrl = email ? `${gmailComposeUrl(email, d.gmail.mailboxes[0] ?? null)}${salutation ? `&body=${encodeURIComponent(`${salutation},\n\n`)}` : ""}` : null;
   const firstSeen = d.summary.firstSeenAt ? new Date(d.summary.firstSeenAt).toLocaleDateString("pl-PL", { month: "2-digit", year: "numeric" }) : null;
+  // Zieleń tylko dla „w porządku” (STAŁY, NOWY); reszta neutralnie.
   const statusCls =
     status === "STALY" || status === "NOWY"
-      ? "bg-[var(--c-brand)] text-white"
+      ? "bg-[var(--c-ok-bg-2)] text-[var(--c-ok)]"
       : status === "NIE_KONTAKTOWAC"
-        ? "bg-[var(--c-red-soft)] text-[var(--c-red)] line-through"
-        : "bg-[var(--c-divider)] text-[var(--c-text-2)]";
+        ? "bg-[var(--c-warn-bg)] text-[var(--c-warn-text)] line-through"
+        : "bg-[var(--c-card-neutral)] text-[var(--c-text-2)]";
 
   return (
     <div className="flex flex-col gap-3.5">
-      <div className="flex gap-2 text-[13px] text-[var(--c-muted)]">
+      <div className="flex gap-2 text-[14px] text-[var(--c-muted)]">
         <Link href={backHref} className="text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
           Klienci
         </Link>
@@ -64,11 +65,11 @@ export function CardHeader({
       <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-end">
         <div className="flex min-w-0 flex-col gap-2.5">
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="m-0 text-[30px] font-bold leading-[1.2] tracking-[-0.01em]">{d.name}</h1>
+            <h1 className="card-display m-0 text-[34px] font-medium leading-[1.15] text-[var(--c-navy)]">{d.name}</h1>
             {status ? (
-              <span className={`rounded-full px-2.5 py-1 text-[12px] font-semibold uppercase tracking-[0.04em] ${statusCls}`}>{STATUS_LABEL[status]}</span>
+              <span className={`px-2.5 py-1 text-[14px] font-semibold uppercase tracking-[0.04em] ${statusCls}`}>{STATUS_LABEL[status]}</span>
             ) : (
-              <span className="rounded-full border border-dashed border-[var(--c-faint)] px-2.5 py-1 text-[12px] font-semibold text-[var(--c-text-2)]">Kontakt z zapytania</span>
+              <span className="border border-dashed border-[var(--c-faint)] px-2.5 py-1 text-[14px] font-semibold text-[var(--c-text-2)]">Kontakt z zapytania</span>
             )}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -77,7 +78,7 @@ export function CardHeader({
             {firstSeen && <Chip>{`Klient od ${firstSeen}`}</Chip>}
             {dc && <Chip>{`${dc.family}${dc.heads ? ` · ${dc.heads} ${dc.heads === 1 ? "głowica" : "głowice"}` : ""}`}</Chip>}
             {rhythmChip(d.rhythm.rhythmDays, d.rhythm.preferredWeekday) && <Chip>{rhythmChip(d.rhythm.rhythmDays, d.rhythm.preferredWeekday)}</Chip>}
-            {d.clinicType && <Chip accent>{CLINIC_TYPE_LABEL[d.clinicType]}</Chip>}
+            {d.clinicType && <Chip>{CLINIC_TYPE_LABEL[d.clinicType]}</Chip>}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
@@ -121,12 +122,13 @@ export function CardHeader({
 
 // ------------------------------------------------------------------ wskaźniki
 
+// Pas wskaźników #EAF4FB; wartości Jost w niebieskim marki, „uwaga” (należności) terakota.
 function Indicator({ label, value, sub, warn = false }: { label: string; value: React.ReactNode; sub?: React.ReactNode; warn?: boolean }) {
   return (
-    <div className={`flex flex-col gap-1 rounded-lg border px-[18px] py-4 ${warn ? "border-[var(--c-warn-border)] bg-[var(--c-warn-bg)]" : "border-[var(--c-border)] bg-white"}`}>
-      <div className={`text-[12px] uppercase tracking-[0.06em] ${warn ? "text-[var(--c-warn-text-2)]" : "text-[var(--c-muted)]"}`}>{label}</div>
-      <div className={`text-[22px] font-semibold tabular-nums ${warn ? "text-[var(--c-warn-text)]" : ""}`}>{value}</div>
-      {sub && <div className={`text-[13px] ${warn ? "text-[var(--c-warn-text-2)]" : "text-[var(--c-muted)]"}`}>{sub}</div>}
+    <div className={`flex flex-col gap-1 px-5 py-4 ${warn ? "bg-[var(--c-warn-bg)]" : ""}`}>
+      <div className={`text-[14px] ${warn ? "text-[var(--c-warn-text)]" : "text-[var(--c-muted)]"}`}>{label}</div>
+      <div className={`card-display text-[24px] font-medium leading-tight tabular-nums ${warn ? "text-[var(--c-warn-text)]" : "text-[var(--c-brand)]"}`}>{value}</div>
+      {sub && <div className={`text-[14px] ${warn ? "text-[var(--c-warn-text)]" : "text-[var(--c-muted)]"}`}>{sub}</div>}
     </div>
   );
 }
@@ -149,17 +151,22 @@ export function Indicators({ d }: { d: ClientDetail }) {
     : t.dueCount
       ? `${money(t.dueNet)} do zapłaty`
       : t.uncheckedCount
-        ? `${t.uncheckedCount} FV nie sprawdzono`
+        ? `${t.uncheckedCount} FV do sprawdzenia`
         : "0 zł";
 
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+    <div className="grid grid-cols-2 divide-[var(--c-brand-soft-border)] bg-[var(--c-card-band)] md:grid-cols-3 xl:grid-cols-5 xl:divide-x">
       <Indicator
         label="Następny wynajem"
         value={n ? `${weekdayShort(n.startsAt)} ${dm(n.startsAt)} · ${n.time ?? "godz. do ustalenia"}` : r.forecast[0] ? `≈ ${dm(r.forecast[0])}` : "—"}
         sub={
           n
-            ? [`${n.deviceName}${n.heads ? ` ${n.heads} gł.` : ""}`, n.smsSentAt ? `SMS ${dm(n.smsSentAt)} ✓` : null].filter(Boolean).join(" · ")
+            ? (
+                <>
+                  {`${n.deviceName}${n.heads ? ` ${n.heads} gł.` : ""}`}
+                  {n.smsSentAt && <span className="text-[var(--c-ok)]"> · SMS {dm(n.smsSentAt)} ✓</span>}
+                </>
+              )
             : r.forecast[0]
               ? "prognoza z rytmu — brak rezerwacji"
               : "brak zaplanowanych"
@@ -181,7 +188,7 @@ export function Indicators({ d }: { d: ClientDetail }) {
         label="Wynajmy"
         value={
           <>
-            {d.summary.rentalsTotal} <span className="text-[16px] text-[var(--c-muted)]">· {d.summary.rentals12m} w 12 mies.</span>
+            {d.summary.rentalsTotal} <span className="text-[18px] text-[var(--c-muted)]">· {d.summary.rentals12m} w 12 mies.</span>
           </>
         }
         sub={planned ? `+ ${planned} ${planned === 1 ? "zaplanowany" : "zaplanowane"} (${plannedRows.map((h) => dm(h.at)).reverse().join(", ")})` : "brak zaplanowanych"}
@@ -230,11 +237,11 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
   const derived = d.overview.nextStep;
   if (edit) {
     return (
-      <div className="flex flex-col gap-2 rounded-lg bg-[var(--c-brand)] px-[22px] py-[18px] text-white">
-        <div className="text-[12px] font-semibold uppercase tracking-[0.08em] opacity-85">Następny krok</div>
+      <div className="flex flex-col gap-2 bg-[var(--c-card-next)] px-6 py-5 text-white">
+        <div className="card-display text-[20px] font-medium">Następny krok</div>
         <textarea
           rows={3}
-          className="w-full rounded-lg border border-white/40 bg-white px-3 py-2 text-[14px] text-[var(--c-text)] outline-none"
+          className="w-full border border-white/40 bg-white px-3 py-2 text-[14px] text-[var(--c-text)] outline-none"
           placeholder={"Pierwsza linia = krok, kolejne = kontekst"}
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -242,10 +249,10 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
         <div className="flex flex-wrap items-center gap-2">
           <input type="date" className={`${INPUT} w-auto`} value={due} onChange={(e) => setDue(e.target.value)} />
           <span className="flex-grow" />
-          <button type="button" onClick={() => setEdit(false)} className="h-11 rounded-lg border border-white/60 px-4 text-[14px] font-semibold">
+          <button type="button" onClick={() => setEdit(false)} className="h-11 border border-white/60 px-4 text-[15px] font-semibold">
             Anuluj
           </button>
-          <button type="button" disabled={busy} onClick={() => void save()} className="h-11 rounded-lg bg-white px-4 text-[14px] font-semibold text-[var(--c-brand-deep)]">
+          <button type="button" disabled={busy} onClick={() => void save()} className="h-11 bg-[var(--c-terra)] px-5 text-[15px] font-semibold text-white hover:brightness-95">
             Zapisz
           </button>
         </div>
@@ -254,8 +261,8 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
   }
   if (!step) {
     return (
-      <div className="flex flex-wrap items-center gap-6 rounded-lg border border-dashed border-[var(--c-brand)] bg-white px-[22px] py-[18px]">
-        <div className="w-[120px] text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--c-brand-deep)]">Następny krok</div>
+      <div className="flex flex-wrap items-center gap-6 border border-dashed border-[var(--c-terra)] bg-white px-6 py-5">
+        <div className="card-display w-[150px] text-[20px] font-medium text-[var(--c-navy)]">Następny krok</div>
         <div className="min-w-0 flex-grow text-[14px] text-[var(--c-muted)]">
           {derived ? (
             <>
@@ -266,7 +273,7 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
             "Nie ustalono następnego kroku."
           )}
         </div>
-        <button type="button" onClick={() => setEdit(true)} className={BTN_OUTLINE}>
+        <button type="button" onClick={() => setEdit(true)} className="h-11 whitespace-nowrap bg-[var(--c-terra)] px-5 text-[15px] font-semibold text-white hover:brightness-95">
           Ustaw następny krok
         </button>
       </div>
@@ -274,16 +281,16 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
   }
   const overdue = step.dueAt && new Date(step.dueAt).getTime() < new Date().setHours(0, 0, 0, 0);
   return (
-    <div className="flex flex-wrap items-center gap-6 rounded-lg bg-[var(--c-brand)] px-[22px] py-[18px] text-white">
-      <div className="w-[120px] text-[12px] font-semibold uppercase tracking-[0.08em] opacity-85">Następny krok</div>
+    <div className="flex flex-wrap items-center gap-6 bg-[var(--c-card-next)] px-6 py-5 text-white">
+      <div className="card-display w-[150px] text-[20px] font-medium">Następny krok</div>
       <div className="flex min-w-0 flex-grow basis-[320px] flex-col gap-1">
-        <button type="button" onClick={() => setEdit(true)} className="text-left text-[17px] font-semibold hover:underline" title="Zmień">
+        <button type="button" onClick={() => setEdit(true)} className="text-left text-[18px] font-semibold hover:underline" title="Zmień">
           {title}
-          {step.dueAt && <span className={`font-normal ${overdue ? "rounded bg-white/20 px-1" : "opacity-90"}`}> · {overdue ? "zaległe od " : "do "}{dm(step.dueAt)}</span>}
+          {step.dueAt && <span className={`font-normal ${overdue ? "bg-white/20 px-1" : "opacity-90"}`}> · {overdue ? "zaległe od " : "do "}{dm(step.dueAt)}</span>}
         </button>
-        {rest.join(" ").trim() && <div className="text-[14px] opacity-90">{rest.join(" ").trim()}</div>}
+        {rest.join(" ").trim() && <div className="text-[15px] text-[var(--c-card-band)]">{rest.join(" ").trim()}</div>}
       </div>
-      <button type="button" onClick={() => onTask(title, step.dueAt)} className="h-11 whitespace-nowrap rounded-lg border border-white bg-transparent px-4 text-[14px] font-semibold text-white hover:bg-white/10">
+      <button type="button" onClick={() => onTask(title, step.dueAt)} className="h-11 whitespace-nowrap bg-[var(--c-terra)] px-5 text-[15px] font-semibold text-white hover:brightness-95">
         Utwórz zadanie
       </button>
     </div>
@@ -331,8 +338,8 @@ export function TaskDialog({
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
-      <div className="flex w-full max-w-md flex-col gap-3 rounded-lg bg-white p-5" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Nowe zadanie">
-        <h2 className="m-0 text-[13px] font-bold uppercase tracking-[0.06em] text-[var(--c-text-2)]">Nowe zadanie · {d.name}</h2>
+      <div className="flex w-full max-w-md flex-col gap-3 bg-white p-5" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Nowe zadanie">
+        <h2 className="card-display m-0 text-[22px] font-medium text-[var(--c-navy)]">Nowe zadanie · {d.name}</h2>
         <input className={INPUT} autoFocus placeholder="Co zrobić?" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
         <div className="grid grid-cols-2 gap-2">
           <input type="date" className={INPUT} value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} />
@@ -345,7 +352,7 @@ export function TaskDialog({
             ))}
           </select>
         </div>
-        {error && <p className="rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">{error}</p>}
+        {error && <p className=" bg-[var(--c-red-soft)] px-3 py-2 text-[14px] text-[var(--c-red)]">{error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className={BTN_OUTLINE}>
             Anuluj

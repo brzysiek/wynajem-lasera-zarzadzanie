@@ -55,7 +55,7 @@ export default async function ReminderSettingsPage() {
 
       <UpcomingQueuePanel initialItems={upcomingQueue} />
 
-      <div className="rounded-lg border border-[#CFE0F0] bg-[#DDEDEA] p-4 text-sm text-[#083F3C]">
+      <div className="rounded-lg border border-[#CFE0F0] bg-[#EAF4FB] p-4 text-sm text-[#14567F]">
         <p className="mb-2">
           <strong>Jak to jest zrobione technicznie:</strong> ten mechanizm napędzają dwa niezależne{" "}
           <strong>Cron Joby w cPanelu (Cyberfolks)</strong> — nie sam proces aplikacji. Ten hosting (LiteSpeed

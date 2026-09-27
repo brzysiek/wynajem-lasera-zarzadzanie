@@ -75,13 +75,13 @@ export function FieldsEditor({
   return (
     <div className="flex flex-col gap-2.5 border-t border-[var(--c-divider)] pt-3">
       {fields.map((f) => (
-        <label key={f.key} className="grid grid-cols-[130px_minmax(0,1fr)] items-start gap-2.5 text-[13px] text-[var(--c-muted)]">
+        <label key={f.key} className="grid grid-cols-[130px_minmax(0,1fr)] items-start gap-2.5 text-[14px] text-[var(--c-muted)]">
           <span className="pt-2">{f.label}</span>
           <span className="flex flex-col gap-1">
             {f.kind === "textarea" || f.kind === "list" ? (
               <textarea
                 rows={f.kind === "list" ? 3 : 2}
-                className="w-full resize-y rounded-lg border border-[var(--c-border)] px-3 py-2 text-sm text-[var(--c-text)] outline-none focus:border-[var(--c-brand)]"
+                className="w-full resize-y border border-[var(--c-border)] px-3 py-2 text-sm text-[var(--c-text)] outline-none focus:border-[var(--c-brand)]"
                 value={v[f.key] ?? ""}
                 placeholder={f.placeholder ?? (f.kind === "list" ? "każda pozycja w osobnej linii" : undefined)}
                 onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
@@ -108,7 +108,7 @@ export function FieldsEditor({
                 onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
               />
             )}
-            {f.hint && <span className="text-xs text-[var(--c-faint)]">{f.hint}</span>}
+            {f.hint && <span className="text-[14px] text-[var(--c-faint)]">{f.hint}</span>}
           </span>
         </label>
       ))}

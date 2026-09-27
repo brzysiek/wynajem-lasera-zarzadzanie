@@ -40,7 +40,7 @@ export function Panel({ title, action, children, className = "" }: { title?: str
     <section className={`rounded-xl border border-[var(--c-border)] bg-white p-5 ${className}`}>
       {(title || action) && (
         <div className="mb-3 flex items-center gap-2">
-          {title && <h3 className="m-0 flex-grow text-[13px] font-bold uppercase tracking-[0.06em] text-[var(--c-text-2)]">{title}</h3>}
+          {title && <h3 className="m-0 flex-grow text-[15px] font-semibold text-[var(--c-navy)]">{title}</h3>}
           {action}
         </div>
       )}

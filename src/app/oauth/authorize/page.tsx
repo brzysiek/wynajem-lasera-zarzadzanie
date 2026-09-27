@@ -19,7 +19,7 @@ const CANNOT = ["usuwać ani archiwizować czegokolwiek", "tworzyć ani zmienia�
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#F3F5F7] p-4 text-[#14191F]">
+    <main className="flex min-h-screen items-center justify-center bg-[#F2F4F6] p-4 text-[#4A4A4A]">
       <div className="w-full max-w-lg rounded-xl border border-[#E9EDF1] bg-white p-6 shadow-sm">{children}</div>
     </main>
   );
@@ -34,7 +34,7 @@ export default async function OAuthAuthorizePage({ searchParams }: { searchParam
   if (!check.ok) {
     return (
       <Frame>
-        <h1 className="text-lg font-semibold text-[#14191F]">Nie można połączyć</h1>
+        <h1 className="text-lg font-semibold text-[#0C3450]">Nie można połączyć</h1>
         <p className="mt-2 text-sm">{check.message}</p>
       </Frame>
     );
@@ -42,7 +42,7 @@ export default async function OAuthAuthorizePage({ searchParams }: { searchParam
   if (session?.user.role !== "ADMIN") {
     return (
       <Frame>
-        <h1 className="text-lg font-semibold text-[#14191F]">Potrzebny administrator</h1>
+        <h1 className="text-lg font-semibold text-[#0C3450]">Potrzebny administrator</h1>
         <p className="mt-2 text-sm">Dostęp dla konektora zatwierdza administrator panelu. Zaloguj się kontem administratora i spróbuj ponownie.</p>
       </Frame>
     );
@@ -53,7 +53,7 @@ export default async function OAuthAuthorizePage({ searchParams }: { searchParam
   return (
     <Frame>
       <p className="text-xs font-semibold uppercase tracking-wide text-[#9AA1A8]">Panel WynajemLasera.pl</p>
-      <h1 className="mt-1 text-xl font-semibold text-[#14191F]">{check.clientName ?? "Aplikacja"} prosi o dostęp do panelu</h1>
+      <h1 className="mt-1 text-xl font-semibold text-[#0C3450]">{check.clientName ?? "Aplikacja"} prosi o dostęp do panelu</h1>
       <p className="mt-2 text-sm">
         Po zgodzie wrócisz do <b className="font-semibold">{redirectHost}</b>. Dostęp działa jako konto agenta, nie Twoje.
       </p>
@@ -68,11 +68,11 @@ export default async function OAuthAuthorizePage({ searchParams }: { searchParam
             sp.get(k) != null ? <input key={k} type="hidden" name={k} value={sp.get(k) ?? ""} /> : null,
           )}
           <fieldset className="rounded-md border border-[#E9EDF1] p-3">
-            <legend className="px-1 text-xs font-medium text-[#56606B]">Działa jako</legend>
+            <legend className="px-1 text-xs font-medium text-[#6F7378]">Działa jako</legend>
             {agents.map((a, i) => (
               <label key={a.id} className="flex items-center gap-2 py-1 text-sm">
                 <input type="radio" name="agent_user_id" value={a.id} defaultChecked={i === 0} required />
-                <span className="font-medium text-[#14191F]">{a.name}</span>
+                <span className="font-medium text-[#0C3450]">{a.name}</span>
                 <span className="text-xs text-[#9AA1A8]">{a.email}</span>
               </label>
             ))}
@@ -96,15 +96,15 @@ export default async function OAuthAuthorizePage({ searchParams }: { searchParam
               </ul>
             </div>
           </div>
-          <p className="mt-3 text-xs text-[#56606B]">
+          <p className="mt-3 text-xs text-[#6F7378]">
             Połączenie pojawi się w Ustawienia → Użytkownicy → Tokeny API przy koncie agenta — tam je unieważnisz. Każde wywołanie jest zapisywane.
           </p>
 
           <div className="mt-5 flex justify-end gap-2">
-            <button type="submit" name="decision" value="deny" className="h-9 rounded-lg px-4 text-sm font-medium text-[#56606B] hover:bg-[#F3F5F7]">
+            <button type="submit" name="decision" value="deny" className="h-9 rounded-lg px-4 text-sm font-medium text-[#6F7378] hover:bg-[#F2F4F6]">
               Odmów
             </button>
-            <button type="submit" name="decision" value="allow" className="h-9 rounded-lg bg-[#0E5C58] px-4 text-sm font-semibold text-white hover:bg-[#083F3C]">
+            <button type="submit" name="decision" value="allow" className="h-9 rounded-lg bg-[#1B6FA8] px-4 text-sm font-semibold text-white hover:bg-[#14567F]">
               Zezwól
             </button>
           </div>

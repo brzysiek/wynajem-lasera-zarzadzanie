@@ -108,7 +108,7 @@ export function FuelPriceReminder({ role }: { role?: "ADMIN" | "STAFF" | "KIEROW
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             inputMode="decimal"
-            className="w-28 rounded-md border border-gray-300 px-2 py-2 text-sm focus:border-[#0E5C58] focus:outline-none"
+            className="w-28 rounded-md border border-gray-300 px-2 py-2 text-sm focus:border-[#1B6FA8] focus:outline-none"
           />
           <span className="text-sm text-gray-600">zł/L</span>
         </div>
@@ -125,7 +125,7 @@ export function FuelPriceReminder({ role }: { role?: "ADMIN" | "STAFF" | "KIEROW
             type="button"
             onClick={() => void save()}
             disabled={saving}
-            className="rounded-lg bg-[#0E5C58] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50"
+            className="rounded-lg bg-[#1B6FA8] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50"
           >
             Zapisz
           </button>

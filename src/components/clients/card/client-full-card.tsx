@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { APP_CSS_VARS } from "@/components/shell-tokens";
+import { APP_CSS_VARS, CARD_CSS_VARS } from "@/components/shell-tokens";
 import type { ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { formatNip, formatPhone } from "@/lib/clients/labels";
 import { SmsComposer, api } from "../client-forms";
@@ -187,9 +187,9 @@ export function ClientFullCard({
   // Karta wg wzoru (karta-klienta-wzor.html) — domyślny widok.
   if (tab === "karta") {
     return (
-      <div style={APP_CSS_VARS} className="-mx-4 -mt-6 flex flex-col gap-5 bg-[var(--c-bg)] px-4 pb-10 pt-8 text-[var(--c-text)] md:-mx-[30px] md:-mt-[26px] md:px-10">
+      <div style={CARD_CSS_VARS} className="card-body -mx-4 -mt-6 flex flex-col gap-6 bg-[var(--c-bg)] px-4 pb-10 pt-8 text-[15px] text-[var(--c-text)] md:-mx-[30px] md:-mt-[26px] md:px-10">
         {d.archive && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">
+          <div className="flex flex-wrap items-center gap-2 bg-[var(--c-red-soft)] px-3 py-2 text-[14px] text-[var(--c-red)]">
             <b className="font-semibold">W archiwum</b>
             <span>
               {d.archive.reason ? ARCHIVE_REASON_LABEL[d.archive.reason as ArchiveReasonKey] ?? d.archive.reason : ""}
@@ -227,7 +227,7 @@ export function ClientFullCard({
           </div>
         )}
         {splitTo && (
-          <p className="rounded-lg bg-[var(--c-brand-soft)] px-3 py-2 text-[13px] text-[var(--c-brand-deep)]">
+          <p className=" bg-[var(--c-brand-soft)] px-3 py-2 text-[14px] text-[var(--c-brand-deep)]">
             Nowy klient z wydzielonych osób:{" "}
             <Link href={`/klienci/${splitTo}`} className="font-semibold underline">
               otwórz kartę →
