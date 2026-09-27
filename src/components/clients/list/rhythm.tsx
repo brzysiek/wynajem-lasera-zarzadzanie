@@ -22,11 +22,11 @@ export function StripCellBox({ kind, title }: { kind: StripCell; title?: string 
 
 export function Strip({ cells, labels }: { cells: StripCell[]; labels: string[] }) {
   return (
-    <div className="flex items-center gap-[3px]" role="img" aria-label={cells.map((c, i) => `${labels[i]}: ${CELL_TITLE[c]}`).join(", ")}>
+    <div className="flex items-center gap-[2px] overflow-hidden" role="img" aria-label={cells.map((c, i) => `${labels[i]}: ${CELL_TITLE[c]}`).join(", ")}>
       {cells.slice(0, 12).map((c, i) => (
         <StripCellBox key={i} kind={c} title={`${labels[i]} · ${CELL_TITLE[c]}`} />
       ))}
-      <span className="mx-[3px] h-4 w-px flex-none bg-[#9AA1A8]" />
+      <span className="mx-[2px] h-4 w-px flex-none bg-[#9AA1A8]" />
       {cells.slice(12).map((c, i) => (
         <StripCellBox key={i + 12} kind={c} title={`${labels[i + 12]} · ${CELL_TITLE[c]}`} />
       ))}

@@ -49,7 +49,8 @@ const SPECIAL_LABEL: Record<Exclude<Special, null>, string> = {
 const PAGE = 50;
 // Skala jak w reszcie panelu (Jost, 13 px, przyciski 34 px) — prompt
 // „zagęszczenie”, 27.09.2026: wiersz ok. 60 px, pierwszy klient ≤ 650 px.
-const ROW_GRID = "grid grid-cols-[24px_minmax(200px,300px)_212px_120px_188px_minmax(150px,1fr)_66px] gap-x-3";
+// Rytm: 15 × 12 px + odstępy 2 px + kreska = ok. 215 px — kolumna 226 px.
+const ROW_GRID = "grid grid-cols-[24px_minmax(200px,300px)_226px_120px_188px_minmax(140px,1fr)_66px] gap-x-3";
 const LABEL_WIDE = "text-[10.5px] uppercase tracking-[0.14em]";
 const BTN = "flex h-[34px] items-center whitespace-nowrap rounded-[6px] border border-[#A9D2EC] bg-white px-3 text-[13px] text-[#1B6FA8] hover:border-[#1B6FA8] disabled:opacity-40";
 const BTN_PRIMARY = "flex h-[34px] items-center whitespace-nowrap rounded-[6px] border border-[#1B6FA8] bg-[#1B6FA8] px-3.5 text-[13px] font-medium text-white hover:bg-[#0C3450]";
