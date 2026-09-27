@@ -79,6 +79,44 @@ node deploy/migrate.mjs
 # down twice. Passenger restarts the real app below; check its own logs if
 # it fails to come up, don't spawn a probe instance from the deploy.
 
+echo "==> Stopping the previous app process"
+# restart.txt alone is not enough: on 27.09.2026 the old worker (1 day old,
+# 15 threads) survived the restart trigger, kept serving the replaced .next/
+# ("Cannot find module './chunks/…'") and held the account at its 70-thread
+# LVE cap, so the new process couldn't spawn its threads and the panel hung.
+# Stop ONLY this app's processes (planer/promo run under the same account):
+#  - the worker LiteSpeed titles "lsnode:<APP_DIR>/" (padded with spaces),
+#  - a starter stuck before renaming itself: "node …/lsnode.js" whose
+#    working directory is APP_DIR.
+# Best-effort — a failure here must not fail the deploy.
+stop_old_app() {
+  local dir="${APP_DIR%/}" uid pid cwd pids=()
+  uid="$(id -u)"
+  while read -r pid; do [[ -n "$pid" ]] && pids+=("$pid"); done < <(pgrep -u "$uid" -f "^lsnode:${dir}/( |\$)" || true)
+  if [[ -d /proc ]]; then
+    while read -r pid; do
+      [[ -n "$pid" ]] || continue
+      cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+      [[ "${cwd%/}" == "$dir" ]] && pids+=("$pid")
+    done < <(pgrep -u "$uid" -f '^[^ ]*node [^ ]*/lsnode\.js( |$)' || true)
+  fi
+  if [[ ${#pids[@]} -eq 0 ]]; then
+    echo "    no running process for $dir"
+    return 0
+  fi
+  echo "    stopping: ${pids[*]}"
+  kill -TERM "${pids[@]}" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    local alive=()
+    for pid in "${pids[@]}"; do kill -0 "$pid" 2>/dev/null && alive+=("$pid"); done
+    [[ ${#alive[@]} -eq 0 ]] && return 0
+    sleep 1
+  done
+  echo "    still running after 10s, killing: ${alive[*]}"
+  kill -KILL "${alive[@]}" 2>/dev/null || true
+}
+stop_old_app || true
+
 echo "==> Restarting app (Passenger restart trigger)"
 mkdir -p tmp
 touch tmp/restart.txt
