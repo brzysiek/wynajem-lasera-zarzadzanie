@@ -46,8 +46,11 @@ export function daysAgo(date: Date, today: Date): number {
 // Reguły (wniosek nr 12, poprawka Tomka 27.09.2026 14:20):
 // 1. blokada → NIE_KONTAKTOWAC
 // 2. brak zrealizowanych wynajmów i rezerwacji → POTENCJALNY
-// 3. rezerwacja w przyszłości → NOWY, gdy nie ma zrealizowanych wynajmów albo
-//    pierwszy był ≤ 12 mies. temu; inaczej STALY
+// 3. rezerwacja w przyszłości → STALY, gdy ≥ 2 wynajmy w 12 mies. albo
+//    pierwszy wynajem był ponad 12 mies. temu; inaczej (0–1 wynajem, nowa
+//    klientka) → NOWY. Doprecyzowane 27.09 wieczorem wg kontroli Tomka:
+//    Pawlik, DaCorso, So Skin, Grelecka (rezerwacja + kilka wynajmów w roku)
+//    = Stałe; w Nowych tylko Karpierz (sama rezerwacja) i BlooMe (1 wynajem).
 // 4. bez rezerwacji — wg ostatniego zrealizowanego wynajmu:
 //    > 12 mies. → BYLY; 6–12 mies. → USPIONY;
 //    < 6 mies. i ≥ 2 wynajmy w 12 mies. → STALY;
@@ -65,11 +68,11 @@ export function computeClientStatus(input: {
   const ages = input.realizedRentalDates.map((d) => daysAgo(d, input.today));
   if (ages.length === 0) return input.hasFutureReservation ? "NOWY" : "POTENCJALNY";
   const firstAge = Math.max(...ages);
-  if (input.hasFutureReservation) return firstAge <= 365 ? "NOWY" : "STALY";
+  const inLastYear = ages.filter((a) => a <= 365).length;
+  if (input.hasFutureReservation) return inLastYear >= 2 || firstAge > 365 ? "STALY" : "NOWY";
   const lastAge = Math.min(...ages);
   if (lastAge > 365) return "BYLY";
   if (lastAge > 180) return "USPIONY";
-  const inLastYear = ages.filter((a) => a <= 365).length;
   if (inLastYear >= 2) return "STALY";
   return ages.length === 1 ? "NOWY" : "USPIONY";
 }
