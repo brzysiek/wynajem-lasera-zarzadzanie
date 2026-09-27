@@ -451,6 +451,9 @@ export function ClientsList({
           <button type="button" onClick={() => exportRows(visible, `klienci-${todayIso.slice(0, 10)}.csv`)} disabled={visible.length === 0} className={BTN}>
             Eksport CSV
           </button>
+          <Link href="/klienci/warunki" className={BTN} title="Przyszłe rezerwacje bez kwoty i kwoty inne niż w warunkach handlowych">
+            Kwoty wg warunków
+          </Link>
           <Link href="/klienci/dopasowania" className={BTN}>
             Dopasowania historii
             {pendingHistory > 0 && <span className="ml-1.5 rounded-[4px] bg-[#FBF0E7] px-1.5 font-semibold text-[#B8612F]">{pendingHistory}</span>}

@@ -67,6 +67,23 @@ describe("parseProposalItem", () => {
   });
 });
 
+describe("cennik_klienta i adres_dostawy (etap D)", () => {
+  it("cena klienta: urządzenie × dni", () => {
+    const r = parseProposalItem({ rodzaj: "cennik_klienta", klient_id: "c1", urzadzenie: "LS_1G", dni: 1, cena: "850", zrodlo_ceny: "oferta", odnosnik: "oferta 30.10.2025", ...prov });
+    expect(r.ok && r.value).toMatchObject({ kind: "CLIENT_PRICE", field: "LS_1G|1", proposed: { device: "LS_1G", days: 1, priceNet: 850, source: "OFERTA", sourceRef: "oferta 30.10.2025" } });
+    expect(parseProposalItem({ rodzaj: "cennik_klienta", klient_id: "c1", urzadzenie: "LS_1G", dni: 1, usun: true, ...prov })).toMatchObject({ ok: true, value: { proposed: { priceNet: null } } });
+    expect(parseProposalItem({ rodzaj: "cennik_klienta", klient_id: "c1", urzadzenie: "LASER", dni: 1, cena: 850, ...prov }).ok).toBe(false);
+    expect(parseProposalItem({ rodzaj: "cennik_klienta", klient_id: "c1", urzadzenie: "LS_1G", dni: 0, cena: 850, ...prov }).ok).toBe(false);
+  });
+  it("adres dostawy: polskie klucze, nowy wymaga miejscowości", () => {
+    const r = parseProposalItem({ rodzaj: "adres_dostawy", klient_id: "c1", nazwa: "Wieliczka", ulica: "Asnyka 5", miejscowosc: "Wieliczka", wejscie: "od podwórza", domyslny: true, ...prov });
+    expect(r.ok && r.value).toMatchObject({ kind: "DELIVERY_ADDRESS", field: "nowy", proposed: { addressId: null, label: "Wieliczka", street: "Asnyka 5", city: "Wieliczka", entrance: "od podwórza", isDefault: true } });
+    expect(parseProposalItem({ rodzaj: "adres_dostawy", klient_id: "c1", nazwa: "X", ...prov }).ok).toBe(false);
+    const upd = parseProposalItem({ rodzaj: "adres_dostawy", klient_id: "c1", adres_id: "a1", parking: "za budynkiem", ...prov });
+    expect(upd.ok && upd.value.field).toBe("a1");
+  });
+});
+
 describe("normalizeClass", () => {
   it("klucz klasy", () => {
     expect(normalizeClass("Ujednolicenie nazwy miasta ze słownika")).toBe("ujednolicenie_nazwy_miasta_ze_slownika");

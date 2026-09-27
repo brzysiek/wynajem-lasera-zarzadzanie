@@ -68,7 +68,7 @@ const MCP_TOOLS = [
   "klient_zmien", "osoba_zmien", "osoba_dodaj", "klienci_scal", "przenies_do_klientow", "notatka_klient", "notatka_sygnal",
   "zadanie_utworz", "zadanie_zmien", "zadanie_komentarz", "wniosek_utworz", "wniosek_zmien", "wniosek_komentarz",
   "uwaga_utworz", "uwaga_zmien", "dziennik_wpis", "propozycje_dodaj", "propozycje_lista",
-  "podejrzane_zlepki", "dopasowanie_decyzja",
+  "podejrzane_zlepki", "dopasowanie_decyzja", "uwagi_kierowcow",
 ];
 
 const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;

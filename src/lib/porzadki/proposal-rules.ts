@@ -5,6 +5,7 @@ import { parseProvenance, type Provenance } from "../changelog/provenance";
 import { parseArchiveInput, type ArchiveInput } from "./archive-rules";
 import { parseSplitInput } from "../clients/split-rules";
 import { parseExclusionList } from "./exclusion-rules";
+import { PRICE_SOURCES, isTermsDevice } from "../clients/terms-rules";
 
 export const PROPOSAL_KIND_LABEL = {
   FIELD: "pole klienta",
@@ -14,6 +15,8 @@ export const PROPOSAL_KIND_LABEL = {
   SPLIT: "wydzielenie do nowego klienta",
   PAYMENT_MATCH: "dopasowanie przelewu do faktury",
   EXCLUSION: "lista wykluczeń domen",
+  CLIENT_PRICE: "cena klienta (warunki handlowe)",
+  DELIVERY_ADDRESS: "adres dostawy (paszport)",
 } as const;
 export type ProposalKind = keyof typeof PROPOSAL_KIND_LABEL;
 
@@ -37,7 +40,32 @@ const KIND_ALIASES: Record<string, ProposalKind> = {
   payment_match: "PAYMENT_MATCH",
   wykluczenie: "EXCLUSION",
   exclusion: "EXCLUSION",
+  cennik_klienta: "CLIENT_PRICE",
+  client_price: "CLIENT_PRICE",
+  adres_dostawy: "DELIVERY_ADDRESS",
+  delivery_address: "DELIVERY_ADDRESS",
 };
+
+// Adres dostawy od agenta: polskie klucze → pola ClientDeliveryAddress.
+const ADDRESS_KEYS: Record<string, string> = {
+  nazwa: "label",
+  ulica: "street",
+  kod: "zip",
+  miejscowosc: "city",
+  miasto: "city",
+  wejscie: "entrance",
+  pietro: "floor",
+  parking: "parking",
+  prad: "power",
+  odbiera: "receiver",
+  godziny: "openingHours",
+  typowa_godzina: "usualStartTime",
+  uwagi_biura: "officeNotes",
+};
+const ADDRESS_FIELDS = new Set(Object.values(ADDRESS_KEYS));
+
+export type ClientPriceProposal = { device: string; days: number; priceNet: number | null; source: string; sourceRef: string | null };
+export type DeliveryAddressProposal = { addressId: string | null; isDefault?: boolean } & Record<string, string | null | boolean | undefined>;
 
 export type ParsedProposal = {
   kind: ProposalKind;
@@ -69,7 +97,7 @@ export function normalizeClass(v: unknown): string | null {
 export function parseProposalItem(item: Record<string, unknown>): { ok: true; value: ParsedProposal } | { ok: false; message: string } {
   const rawKind = str(item.rodzaj ?? item.kind, 32)?.toLowerCase();
   const kind = rawKind ? KIND_ALIASES[rawKind] : undefined;
-  if (!kind) return { ok: false, message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie, dopasowanie_platnosci albo wykluczenie." };
+  if (!kind) return { ok: false, message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie, dopasowanie_platnosci, wykluczenie, cennik_klienta albo adres_dostawy." };
   const provenance = parseProvenance(item, { required: true });
   if (!provenance.ok) return provenance;
   if (!provenance.value.batch) return { ok: false, message: "Podaj paczkę (paczka)." };
@@ -86,6 +114,42 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
     const contactId = kind === "CONTACT_FIELD" ? str(item.osoba_id ?? item.contactId, 64) : null;
     if (kind === "CONTACT_FIELD" && !contactId) return { ok: false, message: "Podaj osoba_id." };
     return { ok: true, value: { ...base, kind, contactId, field, proposed: item.proponowane ?? item.proposed ?? null } };
+  }
+  if (kind === "CLIENT_PRICE") {
+    if (!clientId) return { ok: false, message: "Podaj klient_id." };
+    const device = item.urzadzenie ?? item.device;
+    if (!isTermsDevice(device)) return { ok: false, message: "urzadzenie: LS_1G, LS_2G, ET400, ALMA_DYEVL, ALMA_DYEVL_IPIXEL, ALMA_IPIXEL, COOLTECH, RESURFX, OBSERV albo SZKOLENIE." };
+    const days = Number(item.dni ?? item.days);
+    if (!Number.isInteger(days) || days < 1 || days > 31) return { ok: false, message: "dni: liczba dni wynajmu 1–31." };
+    const remove = item.usun === true || item.remove === true;
+    const rawPrice = item.cena ?? item.priceNet;
+    const price = remove ? null : Number(typeof rawPrice === "string" ? rawPrice.replace(/\s/g, "").replace(",", ".") : rawPrice);
+    if (!remove && (price == null || !Number.isFinite(price) || price <= 0 || price > 100000)) return { ok: false, message: "cena: kwota netto wynajmu (albo usun: true)." };
+    const src = str(item.zrodlo_ceny ?? item.priceSource, 32)?.toUpperCase() ?? "AGENT";
+    const proposed: ClientPriceProposal = {
+      device,
+      days,
+      priceNet: price == null ? null : Math.round(price * 100) / 100,
+      source: (PRICE_SOURCES as readonly string[]).includes(src) ? src : "AGENT",
+      sourceRef: str(item.odnosnik ?? item.sourceRef, 191),
+    };
+    return { ok: true, value: { ...base, kind, field: `${device}|${days}`, proposed } };
+  }
+  if (kind === "DELIVERY_ADDRESS") {
+    if (!clientId) return { ok: false, message: "Podaj klient_id." };
+    const addressId = str(item.adres_id ?? item.addressId, 64);
+    const proposed: DeliveryAddressProposal = { addressId };
+    for (const [k, v] of Object.entries(item)) {
+      const field = ADDRESS_KEYS[k] ?? (ADDRESS_FIELDS.has(k) ? k : null);
+      if (!field) continue;
+      if (v !== null && typeof v !== "string") return { ok: false, message: `${k}: tekst albo null.` };
+      proposed[field] = v === null ? null : v.trim().slice(0, 2000) || null;
+    }
+    const def = item.domyslny ?? item.isDefault;
+    if (def === true) proposed.isDefault = true;
+    if (Object.keys(proposed).length <= 1) return { ok: false, message: "Podaj pola adresu (nazwa, ulica, kod, miejscowosc, wejscie, pietro, parking, prad, odbiera, godziny, typowa_godzina, uwagi_biura, domyslny)." };
+    if (!addressId && !proposed.city && !proposed.zip) return { ok: false, message: "Nowy adres: podaj miejscowosc albo kod." };
+    return { ok: true, value: { ...base, kind, field: addressId ?? "nowy", proposed } };
   }
   if (kind === "ARCHIVE") {
     const leadId = str(item.sygnal_id ?? item.leadId, 64);

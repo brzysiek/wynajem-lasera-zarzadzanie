@@ -15,6 +15,9 @@ import { loadLeadDetail, loadLeadRows } from "@/lib/leads/load";
 import { addLeadNote } from "@/lib/leads/actions";
 import { loadHistoryReview } from "@/lib/history/review-load";
 import { loadFvWithoutInvoice } from "@/lib/invoicing/fv-check-load";
+import { termsWarnings } from "@/lib/clients/terms";
+import { formatAddressLine } from "@/lib/clients/delivery-rules";
+import { invoiceNetOf, positionsSummary } from "@/lib/clients/terms-rules";
 import { listArchive } from "@/lib/porzadki/archive";
 import { listRules } from "@/lib/porzadki/cleanup-rules";
 import { listChangeLog } from "@/lib/changelog/load";
@@ -120,7 +123,9 @@ export const TOOLS: McpTool[] = [
     description:
       "Klienci i kontakty z zapytań z paginacją. Filtry: brak telefonu / NIP / miasta, status (POTENCJALNY, NOWY, STALY, USPIONY, BYLY, NIE_KONTAKTOWAC), miasto, region, " +
       "„przed sezonem” (wynajmowały w poprzednim półroczu, a na bieżące nie mają wynajmu ani rezerwacji), bez następnego kroku, zmienione od daty, tylko kontakty z zapytań, wyszukiwanie (także nazwa robocza i aliasy z kalendarzy). " +
-      "Każdy rekord: shortName, region, rentals12m, nextRental (unassigned = rezerwacja bez klienta z propozycją), rhythmDays, churnRisk, nextStep, beforeSeason, check (status do sprawdzenia).",
+      "Każdy rekord: shortName, region, rentals12m, nextRental (unassigned = rezerwacja bez klienta z propozycją), rhythmDays, churnRisk, nextStep, beforeSeason, check (status do sprawdzenia), " +
+      "deliveryAddresses (adresy dostawy z km i min od bazy; id do propozycji adres_dostawy), prices (ceny klienta: device × days, brak = cennik ogólny), " +
+      "terms (transportNet za kurs, invoiceMode FULL/PARTIAL/NONE + invoicePartDefault, paymentForm, paymentTermDays, pulsesCharged).",
     inputSchema: obj({
       brak_telefonu: b("Tylko bez telefonu."),
       brak_nip: b("Tylko bez NIP."),
@@ -191,13 +196,52 @@ export const TOOLS: McpTool[] = [
     description:
       "Pełna karta klienta: dane, osoby (z rolami, zwrotem, kanałem, szkoleniami), wynajmy i faktury (status wpłaty z wyciągów), komunikacja, historia; " +
       "profile = nowe pola karty (REGON, forma, PKD, VAT, paszport dostawy, profil gabinetu, zgody, następny krok); fieldMeta = pochodzenie każdego pola " +
-      "(source, sourceRef, verifiedAt, verifiedBy, lockedManual); rhythm = pola liczone (rytm, dzień tygodnia, urządzenie, przerwa, prognoza, ryzyko); opportunities = szanse sprzedaży.",
+      "(source, sourceRef, verifiedAt, verifiedBy, lockedManual); rhythm = pola liczone (rytm, dzień tygodnia, urządzenie, przerwa, prognoza, ryzyko); opportunities = szanse sprzedaży; " +
+      "delivery.addresses = paszport dostawy (adresy z km/min od bazy, pola na miejscu, uwagi biura, feedback = uwagi kierowców); " +
+      "terms.prices = ceny klienta (device × days; kody: LS_1G, LS_2G, ET400, ALMA_DYEVL, ALMA_DYEVL_IPIXEL, ALMA_IPIXEL, COOLTECH, RESURFX, OBSERV, SZKOLENIE), terms.priceList = cennik ogólny; " +
+      "profile: invoiceMode, invoicePartDefault, pulsesCharged, pulseRateNet, paymentTermDays, paymentForm, paymentTerms (uwagi do warunków); transactions: positions, rentalNet, onInvoiceNet (netto na FV).",
     inputSchema: obj({ id: s("ID klienta.") }, ["id"]),
     readOnly: true,
     run: async (a) => {
       const d = await loadClientDetail(req(a, "id"));
       if (!d) throw new AgentApiError("Nie znaleziono klienta.", 404);
       return d;
+    },
+  },
+  {
+    name: "uwagi_kierowcow",
+    title: "Uwagi kierowców o adresach dostawy",
+    description:
+      "Uwagi wpisane przez kierowców po dostawie / odbiorze (paszport dostawy), od najnowszych: klient, adres (etykieta i adres), wynajem, kierowca, data, tekst. " +
+      "Filtry: klient_id, od (RRRR-MM-DD). Poprawki do pól adresu (wejście, parking…) zgłaszaj jako propozycję adres_dostawy.",
+    inputSchema: obj({ klient_id: s("ID klienta."), od: s("Od RRRR-MM-DD."), ...PAGE }),
+    readOnly: true,
+    run: async (a) => {
+      const from = day(a, "od");
+      const rows = await prisma.deliveryFeedback.findMany({
+        where: { ...(str(a, "klient_id") ? { address: { clientId: str(a, "klient_id")! } } : {}), ...(from ? { createdAt: { gte: from } } : {}) },
+        orderBy: { createdAt: "desc" },
+        take: 1000,
+        include: {
+          driver: { select: { name: true } },
+          rental: { select: { id: true, title: true, startsAt: true } },
+          address: { select: { id: true, label: true, street: true, zip: true, city: true, client: { select: { id: true, name: true } } } },
+        },
+      });
+      return paginate(
+        rows.map((f) => ({
+          id: f.id,
+          createdAt: f.createdAt.toISOString(),
+          text: f.text,
+          driver: f.driver?.name ?? null,
+          clientId: f.address.client.id,
+          clientName: f.address.client.name,
+          addressId: f.address.id,
+          address: `${f.address.label}: ${formatAddressLine(f.address)}`,
+          rental: f.rental ? { id: f.rental.id, title: f.rental.title, startsAt: f.rental.startsAt.toISOString() } : null,
+        })),
+        page(a),
+      );
     },
   },
   {
@@ -245,7 +289,9 @@ export const TOOLS: McpTool[] = [
   {
     name: "kalendarz_wynajmy",
     title: "Kalendarz wynajmów",
-    description: "Wynajmy i szkolenia w zakresie dat (maks. 93 dni): urządzenie, klient, adres, kierowca, rozliczenie, znacznik FV i faktura.",
+    description:
+      "Wynajmy i szkolenia w zakresie dat (maks. 93 dni): urządzenie, klient, adres, kierowca, rozliczenie, znacznik FV i faktura; " +
+      "positions = pozycje rozliczenia (wynajem, transport, impulsy, nakładka), invoiceNet = netto na fakturę (0 = bez FV), priceSource (PRICE_LIST / CLIENT_TERMS / MANUAL / PULSE_CALCULATED), termsWarning = cena ≠ warunki klienta (> 10%).",
     inputSchema: obj({ od: s("Od RRRR-MM-DD."), do: s("Do RRRR-MM-DD (włącznie).") }, ["od", "do"]),
     readOnly: true,
     run: async (a) => {
@@ -267,11 +313,34 @@ export const TOOLS: McpTool[] = [
           contactPhoneCache: true,
           contactCompanyCache: true,
           deliveryAddress: true,
-          device: { select: { name: true } },
           driver: { select: { name: true } },
-          finance: { select: { vatApplicable: true, totalNet: true, totalGross: true, paymentMethod: true, fakturowniaInvoiceNumber: true, confirmedAt: true } },
+          device: { select: { name: true, pricingCategory: true } },
+          finance: {
+            select: {
+              vatApplicable: true,
+              totalNet: true,
+              totalGross: true,
+              paymentMethod: true,
+              fakturowniaInvoiceNumber: true,
+              confirmedAt: true,
+              invoiceNet: true,
+              baseRentalPriceNet: true,
+              baseRentalPriceSource: true,
+              deviceVariant: true,
+              transportPriceNet: true,
+              pulseSurchargeNet: true,
+              pulseCalculationStatus: true,
+              capUsedHS: true,
+              capCountHS: true,
+              capFeeNet: true,
+              membraneUsed: true,
+              membraneCount: true,
+              membraneFeeNet: true,
+            },
+          },
         },
       });
+      const warnings = await termsWarnings(rows);
       return {
         rentals: rows.map((r) => ({
           id: r.id,
@@ -287,6 +356,20 @@ export const TOOLS: McpTool[] = [
           driver: r.driver?.name ?? null,
           fv: r.finance?.vatApplicable ?? false,
           totalNet: r.finance?.totalNet.toString() ?? null,
+          invoiceNet: r.finance ? invoiceNetOf({ vatApplicable: r.finance.vatApplicable, invoiceNet: r.finance.invoiceNet != null ? Number(r.finance.invoiceNet) : null, totalNet: Number(r.finance.totalNet) }) : null,
+          positions: r.finance
+            ? positionsSummary({
+                eventType: r.eventType,
+                baseNet: Number(r.finance.baseRentalPriceNet),
+                transportNet: r.finance.transportPriceNet != null ? Number(r.finance.transportPriceNet) : null,
+                pulseSurchargeNet: r.finance.pulseSurchargeNet != null ? Number(r.finance.pulseSurchargeNet) : null,
+                pulsesPending: r.finance.pulseCalculationStatus === "PENDING",
+                capNet: r.finance.capUsedHS && r.finance.capFeeNet ? Number(r.finance.capFeeNet) * Math.max(1, r.finance.capCountHS) : null,
+                membraneNet: r.finance.membraneUsed && r.finance.membraneFeeNet ? Number(r.finance.membraneFeeNet) * Math.max(1, r.finance.membraneCount) : null,
+              })
+            : null,
+          priceSource: r.finance?.baseRentalPriceSource ?? null,
+          termsWarning: warnings.get(r.id) ?? null,
           totalGross: r.finance?.totalGross.toString() ?? null,
           payment: r.finance?.paymentMethod ?? null,
           invoiceNumber: r.finance?.fakturowniaInvoiceNumber ?? null,
@@ -954,6 +1037,10 @@ export const TOOLS: McpTool[] = [
       "Nowy klient nie dziedziczy źródła ani tagu HubSpot zlepka. " +
       "Dla wykluczenia (lista wykluczeń domen): wartosci (lista domen albo adresów, maks. 500), typ (wyklucz | ukrywaj), dopisek — po akceptacji maile z nich nie trafiają do panelu. " +
       "Dla dopasowania_platnosci (przelew z wyciągu → faktura): przelew_id i faktura_id z narzędzia platnosci; po akceptacji faktura jest zapłacona z datą przelewu. " +
+      "Dla cennik_klienta (warunki handlowe): klient_id, urzadzenie (LS_1G, LS_2G, ET400, ALMA_DYEVL, ALMA_DYEVL_IPIXEL, ALMA_IPIXEL, COOLTECH, RESURFX, OBSERV, SZKOLENIE), dni (1, 2, 3, 7…), cena (netto za wynajem) albo usun: true, " +
+      "zrodlo_ceny (OFERTA | UMOWA | USTALENIE | HISTORIA), odnosnik (np. „oferta 30.10.2025”, mail) — jedna propozycja = jedna komórka tabeli cen; transport, faktura, płatność i impulsy zgłaszaj rodzajem pole " +
+      "(transportPriceNet, invoiceMode FULL/PARTIAL/NONE, invoicePartDefault, paymentForm, paymentTermDays, pulsesCharged, pulseRateNet). " +
+      "Dla adres_dostawy (paszport dostawy): klient_id, adres_id (zmiana istniejącego — z narzędzia klient) albo bez niego (nowy adres: nazwa + miejscowosc/kod), pola: nazwa, ulica, kod, miejscowosc, wejscie, pietro, parking, prad, odbiera, godziny, typowa_godzina, uwagi_biura, domyslny (true). " +
       "Zawsze zrodlo, pewnosc, paczka; opcjonalnie klasa (np. miasto_slownik) — klasy zatwierdzone na stałe wykonują się od razu. " +
       "Odrzucone wcześniej zmiany są blokowane (dostaniesz komentarz odrzucenia).",
     inputSchema: obj({ propozycje: { type: "array", items: { type: "object" }, description: "Lista propozycji (maks. 500)." } }, ["propozycje"]),

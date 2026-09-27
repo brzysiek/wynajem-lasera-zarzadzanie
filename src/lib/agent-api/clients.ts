@@ -5,6 +5,7 @@ import { loadUnassignedRentals } from "@/lib/clients/rental-match";
 import { REGIONS, REGION_LABEL, type RegionKey } from "@/lib/clients/region";
 import type { ClientListRow } from "@/lib/clients/list-load";
 import { logError } from "@/lib/logger";
+import { formatAddressLine } from "@/lib/clients/delivery-rules";
 
 // Lista klientów dla API agenta: status i kwalifikacja z listy panelu
 // (loadClientRows) + surowe dane do porządków (NIP, adres, osoby, data
@@ -61,6 +62,10 @@ export type AgentClient = {
   nextStep: ClientListRow["nextStep"];
   beforeSeason: boolean;
   check: string | null;
+  // Etap D: paszport dostawy (km / min od bazy) i warunki handlowe.
+  deliveryAddresses: { id: string; label: string; isDefault: boolean; address: string; distanceKm: number | null; durationMin: number | null }[];
+  prices: { device: string; days: number; priceNet: number }[];
+  terms: { transportNet: number | null; invoiceMode: string | null; invoicePartDefault: number | null; paymentForm: string | null; paymentTermDays: number | null; pulsesCharged: boolean | null };
 };
 
 const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ł/g, "l");
@@ -86,6 +91,17 @@ export async function listAgentClients(f: AgentClientFilters): Promise<AgentClie
         statusOverride: true,
         hubspotCompanyId: true,
         updatedAt: true,
+        transportPriceNet: true,
+        invoiceMode: true,
+        invoicePartDefault: true,
+        paymentForm: true,
+        paymentTermDays: true,
+        pulsesCharged: true,
+        deliveryAddresses: {
+          orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+          select: { id: true, label: true, isDefault: true, street: true, zip: true, city: true, distanceKm: true, durationMin: true },
+        },
+        prices: { select: { device: true, days: true, priceNet: true }, orderBy: [{ device: "asc" }, { days: "asc" }] },
         contacts: {
           orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
           select: { id: true, firstName: true, lastName: true, phone: true, phone2: true, email: true, role: true, isPrimary: true, hubspotContactId: true },
@@ -144,6 +160,23 @@ export async function listAgentClients(f: AgentClientFilters): Promise<AgentClie
       nextStep: r.nextStep,
       beforeSeason: r.beforeSeason,
       check: r.check,
+      deliveryAddresses: c.deliveryAddresses.map((x) => ({
+        id: x.id,
+        label: x.label,
+        isDefault: x.isDefault,
+        address: formatAddressLine(x),
+        distanceKm: x.distanceKm != null ? Number(x.distanceKm) : null,
+        durationMin: x.durationMin,
+      })),
+      prices: c.prices.map((x) => ({ device: x.device, days: x.days, priceNet: Number(x.priceNet) })),
+      terms: {
+        transportNet: c.transportPriceNet != null ? Number(c.transportPriceNet) : null,
+        invoiceMode: c.invoiceMode,
+        invoicePartDefault: c.invoicePartDefault != null ? Number(c.invoicePartDefault) : null,
+        paymentForm: c.paymentForm,
+        paymentTermDays: c.paymentTermDays,
+        pulsesCharged: c.pulsesCharged,
+      },
     });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name, "pl"));

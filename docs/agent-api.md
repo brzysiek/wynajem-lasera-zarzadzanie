@@ -33,7 +33,7 @@ Panel ma serwer MCP: `https://panel.wynajemlasera.pl/api/mcp`. Po podłączeniu 
 
 **Narzędzia.** Odpowiadają trasom opisanym niżej:
 
-- **Odczyt:** `reguly_porzadkow`, `klienci_lista`, `klient`, `sygnaly_lista`, `sygnal`, `kalendarz_wynajmy`, `dopasowania`, `faktury`, `fv_bez_faktury`, `archiwum`, `dziennik`, `wnioski_lista`, `wniosek`, `uwagi_lista`, `zadania_lista`, `osoby_biura`.
+- **Odczyt:** `reguly_porzadkow`, `klienci_lista`, `klient`, `uwagi_kierowcow`, `sygnaly_lista`, `sygnal`, `kalendarz_wynajmy`, `dopasowania`, `faktury`, `fv_bez_faktury`, `archiwum`, `dziennik`, `wnioski_lista`, `wniosek`, `uwagi_lista`, `zadania_lista`, `osoby_biura`.
 - **Zapis:** `klient_zmien`, `osoba_zmien`, `osoba_dodaj`, `klienci_scal`, `przenies_do_klientow`, `notatka_klient`, `notatka_sygnal`, `zadanie_utworz` (pole `dla` przyjmuje id albo imię, np. „Ania”), `zadanie_zmien` (tylko własne zadania), `zadanie_komentarz`, `wniosek_utworz`, `wniosek_zmien`, `wniosek_komentarz`, `uwaga_utworz`, `uwaga_zmien`, `dziennik_wpis`, `propozycje_dodaj`, `propozycje_lista`, `dopasowanie_decyzja`; odczyt także `podejrzane_zlepki`.
 
 ---
@@ -274,6 +274,22 @@ Większe porządki zgłaszaj jako **paczkę propozycji**, nie bezpośrednimi zmi
     "invoiceNip": "9441828201", "historyKeys": ["miwini", "mi wi ni"],
     "zrodlo": "HubSpot + faktury 2026", "pewnosc": "wysoka", "paczka": "P-2026-09-27-01" }
   ```
+
+- **`cennik_klienta`**: jedna komórka tabeli cen klienta (warunki handlowe). Pola:
+  - `urzadzenie`: `LS_1G`, `LS_2G`, `ET400`, `ALMA_DYEVL`, `ALMA_DYEVL_IPIXEL`, `ALMA_IPIXEL`, `COOLTECH`, `RESURFX`, `OBSERV` albo `SZKOLENIE`;
+  - `dni`: liczba dni wynajmu (1, 2, 3, 7…);
+  - `cena`: netto za wynajem, albo `usun: true` (wraca cennik ogólny);
+  - `zrodlo_ceny` (`OFERTA`, `UMOWA`, `USTALENIE`, `HISTORIA`) i `odnosnik` (np. „oferta 30.10.2025”).
+
+  Transport, fakturę, płatność i impulsy zgłaszasz rodzajem `pole`: `transportPriceNet`, `invoiceMode` (`FULL` / `PARTIAL` / `NONE`), `invoicePartDefault`, `paymentForm`, `paymentTermDays`, `pulsesCharged`, `pulseRateNet`.
+
+  ```json
+  { "rodzaj": "cennik_klienta", "klient_id": "ckx1", "urzadzenie": "ALMA_DYEVL", "dni": 1, "cena": 1200,
+    "zrodlo_ceny": "OFERTA", "odnosnik": "oferta 30.10.2025", "zrodlo": "mail 30.10.2025", "pewnosc": "wysoka", "paczka": "P-2026-09-27-14A" }
+  ```
+- **`adres_dostawy`**: paszport dostawy. `adres_id` (z narzędzia `klient`, `delivery.addresses`) zmienia istniejący adres. Bez niego powstaje nowy adres: podaj `nazwa` i `miejscowosc` albo `kod`. Pola: `nazwa`, `ulica`, `kod`, `miejscowosc`, `wejscie`, `pietro`, `parking`, `prad`, `odbiera`, `godziny`, `typowa_godzina`, `uwagi_biura`, `domyslny` (`true`). Po akceptacji panel sam liczy km i minuty od bazy.
+
+**Uwagi kierowców** (`uwagi_kierowcow`, tylko odczyt): wpisy kierowców po dostawie i odbiorze, z klientem, adresem, wynajmem i datą. Filtry: `klient_id`, `od`.
 
 **Odpowiedź:** `results[]` ma osobny wynik dla każdej pozycji: `ok`, `id`, `status` albo `message`. Serwer odrzuca:
 

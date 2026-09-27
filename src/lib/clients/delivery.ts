@@ -1,7 +1,7 @@
 import { Prisma, type ClientDeliveryAddress } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logWarn } from "@/lib/logger";
-import { recordChanges, type ChangeEntry } from "@/lib/changelog/record";
+import { recordChanges, type ChangeActor, type ChangeEntry } from "@/lib/changelog/record";
 import { geocodeAddress, reverseGeocode } from "@/lib/clients/geocode";
 import { geoKey, mapAddress } from "@/lib/clients/geo-rules";
 import { regionFromZip } from "@/lib/clients/region";
@@ -293,7 +293,7 @@ export async function syncClientFieldsToDefault(clientId: string): Promise<void>
 
 // ------------------------------------------------------------------ zapis
 
-type Actor = { userId: string };
+type Actor = ChangeActor;
 
 const FIELD_LABEL: Record<keyof AddressInput, string> = {
   label: "nazwa",

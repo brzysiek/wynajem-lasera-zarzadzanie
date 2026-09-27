@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { recordChanges, type ChangeEntry } from "@/lib/changelog/record";
+import { recordChanges, type ChangeActor, type ChangeEntry } from "@/lib/changelog/record";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { warsawYmd } from "@/lib/clients/day-route";
 import {
@@ -83,6 +83,31 @@ export async function saveClientPrices(clientId: string, rows: PriceInput[], act
     await recordChanges(tx, actor, entries);
   });
   return { ok: true, changed: entries.length };
+}
+
+// Jedna cena (propozycja agenta cennik_klienta po akceptacji): dodaj, zmień
+// albo usuń (priceNet null) wiersz urządzenie × dni.
+export async function upsertClientPrice(
+  clientId: string,
+  row: { device: string; days: number; priceNet: number | null; source: string | null; sourceRef: string | null },
+  actor: ChangeActor,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (!isTermsDevice(row.device)) return { ok: false, message: "Nieznane urządzenie." };
+  if (!(await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } }))) return { ok: false, message: "Nie znaleziono klienta." };
+  const where = { clientId_device_days: { clientId, device: row.device, days: row.days } };
+  const old = await prisma.clientPrice.findUnique({ where });
+  await prisma.$transaction(async (tx) => {
+    if (row.priceNet == null) {
+      if (old) await tx.clientPrice.delete({ where });
+    } else {
+      const data = { priceNet: new Prisma.Decimal(row.priceNet), source: row.source, sourceRef: row.sourceRef };
+      await tx.clientPrice.upsert({ where, create: { clientId, device: row.device, days: row.days, ...data }, update: data });
+    }
+    await recordChanges(tx, actor, [
+      { entity: "CLIENT", entityId: clientId, operation: "FIELD_CHANGE", clientId, field: label(row), before: old?.priceNet.toString() ?? null, after: row.priceNet?.toFixed(2) ?? null },
+    ]);
+  });
+  return { ok: true };
 }
 
 // ------------------------------------------------------------------ formularz rezerwacji

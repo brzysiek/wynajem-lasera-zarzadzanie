@@ -8,6 +8,7 @@ import { PROPOSAL_KIND_LABEL, PROPOSAL_STATUS_LABEL, type ChangeProposalStatus }
 import { ARCHIVE_REASON_LABEL, FIELD_LABEL, type ArchiveReasonKey } from "@/lib/porzadki/labels";
 import { CONFIDENCE_LABEL, type Confidence } from "@/lib/changelog/provenance";
 import { readable } from "./changelog-panel";
+import { PRICE_SOURCE_LABEL, TERMS_DEVICE_LABEL } from "@/lib/clients/terms-rules";
 import { BTN, BTN_PRIMARY, ErrorNote, INPUT, SELECT_PILL, fmtDateTime } from "./shared";
 import { BlobsPanel } from "./blobs-panel";
 
@@ -21,6 +22,21 @@ const CONF_TONE: Record<string, string> = {
   HIGH: "bg-[var(--c-green-soft)] text-[var(--c-green-deep)]",
   MEDIUM: "bg-[var(--c-gold-soft)] text-[var(--c-gold-deep)]",
   LOW: "bg-[var(--c-red-soft)] text-[var(--c-red)]",
+};
+
+const ADDRESS_FIELD_LABEL: Record<string, string> = {
+  street: "ulica",
+  zip: "kod",
+  city: "miejscowość",
+  entrance: "wejście",
+  floor: "piętro",
+  parking: "parking",
+  power: "prąd",
+  receiver: "odbiera",
+  openingHours: "godziny",
+  usualStartTime: "typowa godzina",
+  officeNotes: "uwagi biura",
+  isDefault: "domyślny",
 };
 
 function describe(p: ChangeProposalRow): { what: string; from: string | null; to: string } {
@@ -51,6 +67,22 @@ function describe(p: ChangeProposalRow): { what: string; from: string | null; to
       from: null,
       to: `${v?.transfer ? `${v.transfer.date} · ${v.transfer.amount} zł · ${v.transfer.description}` : "przelew"} → FV ${v?.invoiceNumber ?? "?"} (${v?.buyerName ?? ""}, ${v?.invoiceGross ?? "?"} zł brutto)`,
     };
+  }
+  if (p.kind === "CLIENT_PRICE") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { device: string; days: number; priceNet: string | null; source: string; sourceRef: string | null }) : null;
+    const dev = v ? (TERMS_DEVICE_LABEL[v.device as keyof typeof TERMS_DEVICE_LABEL] ?? v.device) : "?";
+    return {
+      what: `cena: ${dev} · ${v?.days ?? "?"} ${v?.days === 1 ? "dzień" : "dni"}`,
+      from: p.currentValue ? `${readable(p.currentValue)} zł` : "cennik ogólny",
+      to: v?.priceNet ? `${v.priceNet} zł netto (${[PRICE_SOURCE_LABEL[v.source] ?? v.source, v.sourceRef].filter(Boolean).join(", ")})` : "usuń — wg cennika ogólnego",
+    };
+  }
+  if (p.kind === "DELIVERY_ADDRESS") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as Record<string, unknown>) : {};
+    const parts = Object.entries(v)
+      .filter(([k]) => k !== "addressId" && k !== "label")
+      .map(([k, x]) => `${ADDRESS_FIELD_LABEL[k] ?? k}: ${x === null ? "—" : x === true ? "tak" : String(x)}`);
+    return { what: `adres dostawy: ${String(v.label ?? "")}${v.addressId ? "" : " (nowy)"}`, from: readable(p.currentValue), to: parts.join(" · ") };
   }
   if (p.kind === "MERGE") {
     const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { duplicateId: string }) : null;

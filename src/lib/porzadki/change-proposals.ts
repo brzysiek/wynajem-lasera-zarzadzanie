@@ -12,7 +12,10 @@ import type { ArchiveInput } from "@/lib/porzadki/archive-rules";
 import { PorzadkiError, type Actor } from "@/lib/porzadki/proposals";
 import { addExclusions } from "@/lib/porzadki/exclusions";
 import { applyPaymentMatch, describePaymentMatch, type PaymentMatchInput } from "@/lib/invoicing/bank-transfers";
-import { parseProposalItem, type ChangeProposalStatus, type ParsedProposal, type ProposalKind } from "@/lib/porzadki/proposal-rules";
+import { parseProposalItem, type ChangeProposalStatus, type ClientPriceProposal, type DeliveryAddressProposal, type ParsedProposal, type ProposalKind } from "@/lib/porzadki/proposal-rules";
+import { upsertClientPrice } from "@/lib/clients/terms";
+import { createAddress, updateAddress } from "@/lib/clients/delivery";
+import { formatAddressLine, parseAddressInput } from "@/lib/clients/delivery-rules";
 
 // Kolejka propozycji zmian (Porządki, etap D). Agent zgłasza (hurtem),
 // ADMIN akceptuje / odrzuca / poprawia wartość. Akceptacja od razu wykonuje
@@ -59,6 +62,16 @@ async function currentFor(p: { kind: string; clientId: string | null; contactId:
     if (!c) throw new PorzadkiError("Nie znaleziono klienta.", 404);
     return toLogValue((c as unknown as Record<string, unknown>)[p.field]);
   }
+  if (p.kind === "CLIENT_PRICE" && p.clientId && p.field) {
+    const [device, days] = p.field.split("|");
+    const row = await prisma.clientPrice.findUnique({ where: { clientId_device_days: { clientId: p.clientId, device, days: Number(days) } } });
+    return row ? toLogValue(row.priceNet.toFixed(2)) : null;
+  }
+  if (p.kind === "DELIVERY_ADDRESS" && p.clientId && p.field && p.field !== "nowy") {
+    const a = await prisma.clientDeliveryAddress.findFirst({ where: { id: p.field, clientId: p.clientId } });
+    if (!a) throw new PorzadkiError("Nie znaleziono adresu dostawy tego klienta (adres_id z narzędzia klient).", 404);
+    return toLogValue(`${a.label}: ${formatAddressLine(a)}`);
+  }
   if (p.kind === "CONTACT_FIELD" && p.contactId && p.field) {
     const c = await prisma.clientContact.findFirst({ where: { id: p.contactId, clientId: p.clientId ?? undefined } });
     if (!c) throw new PorzadkiError("Nie znaleziono osoby kontaktowej tego klienta.", 404);
@@ -86,6 +99,24 @@ async function normalizeProposedAsync(p: ParsedProposal): Promise<unknown> {
       buyerName: invoice.buyerName,
       transfer: { date: transfer.bookedAt.toISOString().slice(0, 10), amount: transfer.amount.toString(), description: transfer.description.slice(0, 160) },
     };
+  }
+  if (p.kind === "CLIENT_PRICE") {
+    const v = p.proposed as ClientPriceProposal;
+    return { ...v, priceNet: v.priceNet != null ? v.priceNet.toFixed(2) : null };
+  }
+  if (p.kind === "DELIVERY_ADDRESS") {
+    // Walidacja jak przy zapisie z karty (kod NN-NNN, miejscowość…).
+    const v = p.proposed as DeliveryAddressProposal;
+    const cur = v.addressId ? await prisma.clientDeliveryAddress.findFirst({ where: { id: v.addressId, clientId: p.clientId! } }) : null;
+    if (v.addressId && !cur) throw new PorzadkiError("Nie znaleziono adresu dostawy tego klienta (adres_id z narzędzia klient).", 404);
+    const { addressId, isDefault, ...fields } = v;
+    const r = parseAddressInput(fields, cur ? { label: cur.label, street: cur.street, zip: cur.zip, city: cur.city, usualStartTime: cur.usualStartTime, entrance: cur.entrance, floor: cur.floor, parking: cur.parking, power: cur.power, receiver: cur.receiver, openingHours: cur.openingHours, officeNotes: cur.officeNotes } : null);
+    if (!r.ok) throw new PorzadkiError(r.message);
+    const out: Record<string, unknown> = { addressId, label: r.value.label };
+    for (const k of Object.keys(fields)) out[k] = (r.value as Record<string, unknown>)[k] ?? null;
+    if (!addressId) Object.assign(out, { street: r.value.street, zip: r.value.zip, city: r.value.city });
+    if (isDefault) out.isDefault = true;
+    return out;
   }
   if (p.kind !== "SPLIT") return normalizeProposed(p);
   // Wydzielenie: osoby muszą należeć do klienta; imiona do podglądu w kolejce.
@@ -193,6 +224,16 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
   }
   if (p.kind === "CONTACT_FIELD") {
     const r = await patchContact(p.clientId!, p.contactId!, { [p.field!]: value, ...provenance }, actor, { approvedById });
+    return r.ok ? { ok: true } : { ok: false, message: r.message };
+  }
+  if (p.kind === "CLIENT_PRICE") {
+    const v = value as { device: string; days: number; priceNet: string | null; source: string; sourceRef: string | null };
+    return upsertClientPrice(p.clientId!, { ...v, priceNet: v.priceNet != null ? Number(v.priceNet) : null }, { userId: actor.userId, provenance: { source: p.source, confidence: p.confidence as "HIGH" | "MEDIUM" | "LOW", batch: p.batch }, approvedById });
+  }
+  if (p.kind === "DELIVERY_ADDRESS") {
+    const { addressId, ...fields } = value as { addressId: string | null } & Record<string, unknown>;
+    const who = { userId: actor.userId, provenance: { source: p.source, confidence: p.confidence as "HIGH" | "MEDIUM" | "LOW", batch: p.batch }, approvedById };
+    const r = addressId ? await updateAddress(p.clientId!, addressId, fields, who) : await createAddress(p.clientId!, fields, who);
     return r.ok ? { ok: true } : { ok: false, message: r.message };
   }
   if (p.kind === "SPLIT") {
