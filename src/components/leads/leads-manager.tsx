@@ -15,6 +15,7 @@ import { useMediaQuery } from "@/components/clients/use-media-query";
 import { LeadCard, type CardIntent } from "./lead-card";
 import { CallsView, NaDzisView, toFunnel, type LinkSuggestion } from "./funnel-views";
 import { BoardView } from "./board-view";
+import { ReportView } from "./report-view";
 import { callQueue } from "@/lib/leads/funnel";
 import { BTN, LostDialog, NewLeadDialog } from "./lead-dialogs";
 import { DevicePill, RefreshIcon, StageChip, fmtRange } from "./lead-ui";
@@ -24,8 +25,8 @@ import { DevicePill, RefreshIcon, StageChip, fmtRange } from "./lead-ui";
 // kilkaset, więc filtrowanie i widoki liczą się w przeglądarce. Karta: prawa
 // kolumna od 1280 px, poniżej panel wysuwany.
 
-type View = "today" | "board" | "calls" | "list";
-const VIEW_LABEL: Record<View, string> = { today: "Na dziś", board: "Tablica", calls: "Do obdzwonienia", list: "Lista" };
+type View = "today" | "board" | "calls" | "list" | "report";
+const VIEW_LABEL: Record<View, string> = { today: "Na dziś", board: "Tablica", calls: "Do obdzwonienia", list: "Lista", report: "Raport" };
 
 
 function csvCell(v: string | number | null): string {
@@ -472,6 +473,8 @@ export function LeadsManager({
                   }}
                 />
               )}
+
+              {view === "report" && <ReportView rows={list} now={now} />}
 
               {view === "list" && (
                 <section aria-label="Lista" className="flex flex-col gap-3">
