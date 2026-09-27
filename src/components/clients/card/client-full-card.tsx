@@ -186,10 +186,12 @@ export function ClientFullCard({
 
   // Karta wg wzoru (karta-klienta-wzor.html) — domyślny widok.
   if (tab === "karta") {
+    // Układ 1:1 z projektu Main.dc.html: nagłówek, pas wskaźników na całą
+    // szerokość, dwie kolumny (440 px + reszta) z marginesem 48 px.
     return (
-      <div style={CARD_CSS_VARS} className="card-body -mx-4 -mt-6 flex flex-col gap-6 bg-[var(--c-bg)] px-4 pb-10 pt-8 text-[15px] text-[var(--c-text)] md:-mx-[30px] md:-mt-[26px] md:px-10">
+      <div style={CARD_CSS_VARS} className="card-body -mx-4 -mt-6 flex flex-col bg-[#FDFBF8] text-[#3A3A3A] md:-mx-[30px] md:-mt-[26px]">
         {d.archive && (
-          <div className="flex flex-wrap items-center gap-2 bg-[var(--c-red-soft)] px-3 py-2 text-[14px] text-[var(--c-red)]">
+          <div className="mx-4 mt-6 flex flex-wrap items-center gap-2 border-l-[3px] border-[#E08A5C] bg-[#FBF0E7] px-4 py-2.5 text-[15px] text-[#B8612F] md:mx-12">
             <b className="font-semibold">W archiwum</b>
             <span>
               {d.archive.reason ? ARCHIVE_REASON_LABEL[d.archive.reason as ArchiveReasonKey] ?? d.archive.reason : ""}
@@ -212,34 +214,44 @@ export function ClientFullCard({
           </div>
         )}
         <CardHeader d={d} backHref={backHref} isAgent={isAgent} onSms={() => setSms((v) => !v)} onTask={() => setTask({ title: "", due: null })} />
-        {sms && (
-          <div className="max-w-[560px]">
-            <SmsComposer
-              recipients={smsRecipients}
-              clientName={d.name}
-              onCancel={() => setSms(false)}
-              onSent={() => {
-                setSms(false);
-                notify("SMS wysłany.");
-                void reload();
-              }}
-            />
+        {(sms || splitTo || toastEl) && (
+          <div className="flex flex-col gap-3 px-4 pb-6 md:px-12">
+            {sms && (
+              <div className="max-w-[560px]">
+                <SmsComposer
+                  recipients={smsRecipients}
+                  clientName={d.name}
+                  onCancel={() => setSms(false)}
+                  onSent={() => {
+                    setSms(false);
+                    notify("SMS wysłany.");
+                    void reload();
+                  }}
+                />
+              </div>
+            )}
+            {splitTo && (
+              <p className="bg-[#EAF4FB] px-3 py-2 text-[15px] text-[#1B6FA8]">
+                Nowy klient z wydzielonych osób:{" "}
+                <Link href={`/klienci/${splitTo}`} className="font-semibold underline">
+                  otwórz kartę →
+                </Link>
+              </p>
+            )}
+            {toastEl}
           </div>
         )}
-        {splitTo && (
-          <p className=" bg-[var(--c-brand-soft)] px-3 py-2 text-[14px] text-[var(--c-brand-deep)]">
-            Nowy klient z wydzielonych osób:{" "}
-            <Link href={`/klienci/${splitTo}`} className="font-semibold underline">
-              otwórz kartę →
-            </Link>
-          </p>
-        )}
-        {toastEl}
         <Indicators d={d} />
-        <NextStepBanner d={d} onChanged={setD} notify={notify} onTask={(title, due) => setTask({ title, due })} />
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
+        <div className="flex flex-col gap-12 px-4 pb-12 pt-11 md:px-12 xl:flex-row xl:items-start">
           <CardLeft d={d} onChanged={setD} notify={notify} isAdmin={isAdmin} isAgent={isAgent} pendingProposals={pendingProposals} onDialog={setDialog} />
-          <CardRight d={d} onChanged={setD} notify={notify} onOpenItem={openItem} onTab={switchTab} />
+          <CardRight
+            d={d}
+            onChanged={setD}
+            notify={notify}
+            onOpenItem={openItem}
+            onTab={switchTab}
+            top={<NextStepBanner d={d} onChanged={setD} notify={notify} onTask={(title, due) => setTask({ title, due })} />}
+          />
         </div>
         {dialogs}
       </div>

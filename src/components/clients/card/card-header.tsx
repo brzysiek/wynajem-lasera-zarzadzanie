@@ -8,20 +8,13 @@ import { PERSON_ROLE_LABEL, type PersonRole } from "@/lib/clients/profile-fields
 import { monthsLabel } from "@/lib/clients/rhythm";
 import { AgentModeContext, INPUT, api } from "../client-forms";
 import { gmailComposeUrl } from "./shared";
-import { BTN_OUTLINE, BTN_PRIMARY, Chip, WEEKDAY_IN, dm, money, weekdayShort } from "./kit";
+import { BTN_OUTLINE, BTN_PRIMARY, BTN_TERRA, LABEL_WIDE, WEEKDAY_IN, dm, money, weekdayShort } from "./kit";
 
-// Nagłówek karty, pasek 5 wskaźników i baner „Następny krok” wg
-// karta-klienta-wzor.html (sekcja 2).
+// Nagłówek karty, pas 5 wskaźników i blok „Następny krok” — wartości 1:1
+// z projektu Main.dc.html (nagłówek 36/48/28 px, nazwa Jost 42 px, pas
+// #EAF4FB 26/48 px, wartości Jost 28 px, blok #2B5B82 30/34 px).
 
 const personName = (c: { firstName: string | null; lastName: string | null }) => [c.firstName, c.lastName].filter(Boolean).join(" ").trim();
-
-function rhythmChip(days: number | null, weekday: { day: number; share: number } | null): string | null {
-  if (!days) return null;
-  const weeks = Math.round(days / 7);
-  const base = days % 7 === 0 && weeks >= 1 && weeks <= 8 ? `co ${weeks === 1 ? "tydzień" : `${weeks} ${weeks < 5 ? "tygodnie" : "tygodni"}`}` : `co ${days} dni`;
-  const DAY = ["niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota"];
-  return weekday && weekday.share >= 0.5 ? `${base} · ${DAY[weekday.day]}` : base;
-}
 
 export function CardHeader({
   d,
@@ -48,40 +41,46 @@ export function CardHeader({
   // Zieleń tylko dla „w porządku” (STAŁY, NOWY); reszta neutralnie.
   const statusCls =
     status === "STALY" || status === "NOWY"
-      ? "bg-[var(--c-ok-bg-2)] text-[var(--c-ok)]"
+      ? "bg-[#2F7A68] text-white"
       : status === "NIE_KONTAKTOWAC"
-        ? "bg-[var(--c-warn-bg)] text-[var(--c-warn-text)] line-through"
-        : "bg-[var(--c-card-neutral)] text-[var(--c-text-2)]";
+        ? "bg-[#FBF0E7] text-[#B8612F] line-through"
+        : "bg-[#F4F5F6] text-[#5C6166]";
+  const meta = [
+    primary && personName(primary) ? [personName(primary), roleLabel].filter(Boolean).join(" · ") : null,
+    d.city,
+    firstSeen ? `klient od ${firstSeen}` : null,
+    dc ? `${dc.family}${dc.heads ? ` · ${dc.heads} ${dc.heads === 1 ? "głowica" : "głowice"}` : ""}` : null,
+    d.clinicType ? CLINIC_TYPE_LABEL[d.clinicType].toLowerCase() : null,
+  ].filter((x): x is string => !!x);
 
   return (
-    <div className="flex flex-col gap-3.5">
-      <div className="flex gap-2 text-[14px] text-[var(--c-muted)]">
-        <Link href={backHref} className="text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+    <div className="flex flex-col gap-4 px-4 pb-7 pt-9 md:px-12">
+      <div className="text-[12px] uppercase tracking-[0.16em] text-[#5C6166]">
+        <Link href={backHref} className="text-[#5C6166] no-underline hover:text-[#1B6FA8]">
           Klienci
-        </Link>
-        <span>/</span>
-        <span className="truncate">{d.name}</span>
+        </Link>{" "}
+        / {d.profile.shortName ?? d.name}
       </div>
-      <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-end">
-        <div className="flex min-w-0 flex-col gap-2.5">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="card-display m-0 text-[34px] font-medium leading-[1.15] text-[var(--c-navy)]">{d.name}</h1>
+      <div className="flex flex-col justify-between gap-8 xl:flex-row xl:items-end">
+        <div className="flex min-w-0 flex-col gap-3">
+          <div className="flex flex-wrap items-baseline gap-4">
+            <h1 className="card-display m-0 text-[42px] font-normal leading-[1.1] text-[#0C3450]">{d.name}</h1>
             {status ? (
-              <span className={`px-2.5 py-1 text-[14px] font-semibold uppercase tracking-[0.04em] ${statusCls}`}>{STATUS_LABEL[status]}</span>
+              <span className={`px-3 py-1 text-[12px] font-medium uppercase tracking-[0.14em] ${statusCls}`}>{STATUS_LABEL[status]}</span>
             ) : (
-              <span className="border border-dashed border-[var(--c-faint)] px-2.5 py-1 text-[14px] font-semibold text-[var(--c-text-2)]">Kontakt z zapytania</span>
+              <span className="border border-dashed border-[#C3C4C7] px-3 py-1 text-[12px] font-medium uppercase tracking-[0.14em] text-[#5C6166]">Kontakt z zapytania</span>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            {primary && personName(primary) && <Chip>{[personName(primary), roleLabel].filter(Boolean).join(" · ")}</Chip>}
-            {d.city && <Chip>{d.city}</Chip>}
-            {firstSeen && <Chip>{`Klient od ${firstSeen}`}</Chip>}
-            {dc && <Chip>{`${dc.family}${dc.heads ? ` · ${dc.heads} ${dc.heads === 1 ? "głowica" : "głowice"}` : ""}`}</Chip>}
-            {rhythmChip(d.rhythm.rhythmDays, d.rhythm.preferredWeekday) && <Chip>{rhythmChip(d.rhythm.rhythmDays, d.rhythm.preferredWeekday)}</Chip>}
-            {d.clinicType && <Chip>{CLINIC_TYPE_LABEL[d.clinicType]}</Chip>}
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-[16px] text-[#4A4A4A]">
+            {meta.map((m, i) => (
+              <span key={i} className="flex gap-5">
+                {i > 0 && <span className="text-[#C3C4C7]">|</span>}
+                <span>{m}</span>
+              </span>
+            ))}
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="flex shrink-0 flex-wrap gap-2.5">
           {primary?.phone ? (
             <a href={`tel:${primary.phone}`} className={BTN_OUTLINE}>
               Zadzwoń
@@ -111,7 +110,7 @@ export function CardHeader({
           </button>
           {!isAgent && (
             <Link href={`/kalendarz/wynajem/nowy?klient=${d.id}`} className={BTN_PRIMARY}>
-              Nowa rezerwacja
+              Nowa rezerwacja →
             </Link>
           )}
         </div>
@@ -120,15 +119,14 @@ export function CardHeader({
   );
 }
 
-// ------------------------------------------------------------------ wskaźniki
+// ------------------------------------------------------------------ pas wskaźników
 
-// Pas wskaźników #EAF4FB; wartości Jost w niebieskim marki, „uwaga” (należności) terakota.
 function Indicator({ label, value, sub, warn = false }: { label: string; value: React.ReactNode; sub?: React.ReactNode; warn?: boolean }) {
   return (
-    <div className={`flex flex-col gap-1 px-5 py-4 ${warn ? "bg-[var(--c-warn-bg)]" : ""}`}>
-      <div className={`text-[14px] ${warn ? "text-[var(--c-warn-text)]" : "text-[var(--c-muted)]"}`}>{label}</div>
-      <div className={`card-display text-[24px] font-medium leading-tight tabular-nums ${warn ? "text-[var(--c-warn-text)]" : "text-[var(--c-brand)]"}`}>{value}</div>
-      {sub && <div className={`text-[14px] ${warn ? "text-[var(--c-warn-text)]" : "text-[var(--c-muted)]"}`}>{sub}</div>}
+    <div className={`flex flex-col gap-1 ${warn ? "border-l-[3px] border-[#E08A5C] pl-5" : ""}`}>
+      <div className={warn ? "text-[12px] uppercase tracking-[0.16em] text-[#B8612F]" : LABEL_WIDE}>{label}</div>
+      <div className={`card-display text-[28px] font-medium tabular-nums ${warn ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>{value}</div>
+      {sub && <div className="text-[15px] text-[#5C6166]">{sub}</div>}
     </div>
   );
 }
@@ -139,10 +137,9 @@ export function Indicators({ d }: { d: ClientDetail }) {
   const plannedRows = d.history.filter((h) => h.kind === "rental" && !h.deleted && h.upcoming);
   const planned = plannedRows.length;
   const t = d.txTotals;
-  // Przychód 12 mies.: faktury i rozliczenia z ostatnich 12 miesięcy; wynajmy
-  // bez kwoty (z kalendarza) — szacunek z ceny ustalonej.
+  // Przychód 12 mies.: faktury i rozliczenia; wynajmy bez kwoty (z kalendarza)
+  // — szacunek z ceny ustalonej (wynajem + transport).
   const { known, withoutAmount: unknown } = d.cardFacts.revenue12m;
-  // Cena ustalona = wynajem + transport.
   const price = d.profile.agreedPrice ? Number(d.profile.agreedPrice) + (d.transportPriceNet ? Number(d.transportPriceNet) : 0) : null;
   const estimate = known + (price ? unknown * price : 0);
   const estimated = unknown > 0 && !!price;
@@ -150,29 +147,30 @@ export function Indicators({ d }: { d: ClientDetail }) {
   const due = t.overdueCount
     ? `${money(t.overdueNet)} po terminie`
     : t.noTransferCount
-      ? `${t.noTransferCount} FV bez przelewu`
+      ? `${t.noTransferCount} FV bez wpłaty`
       : t.dueCount
-      ? `${money(t.dueNet)} do zapłaty`
-      : t.uncheckedCount
-        ? `${t.uncheckedCount} FV do sprawdzenia`
-        : "0 zł";
+        ? `${money(t.dueNet)} do zapłaty`
+        : t.uncheckedCount
+          ? `${t.uncheckedCount} FV do sprawdzenia`
+          : "0 zł";
 
   return (
-    <div className="grid grid-cols-2 divide-[var(--c-brand-soft-border)] bg-[var(--c-card-band)] md:grid-cols-3 xl:grid-cols-5 xl:divide-x">
+    <div className="grid grid-cols-2 gap-6 bg-[#EAF4FB] px-4 py-[26px] md:grid-cols-3 md:px-12 xl:grid-cols-5">
       <Indicator
         label="Następny wynajem"
-        value={n ? `${weekdayShort(n.startsAt)} ${dm(n.startsAt)} · ${n.time ?? "godz. do ustalenia"}` : r.forecast[0] ? `≈ ${dm(r.forecast[0])}` : "—"}
+        value={n ? `${weekdayShort(n.startsAt)} ${dm(n.startsAt)} · ${n.time ?? "godz. ?"}` : r.forecast[0] ? `≈ ${dm(r.forecast[0])}` : "—"}
         sub={
-          n
-            ? (
-                <>
-                  {`${n.deviceName}${n.heads ? ` ${n.heads} gł.` : ""}`}
-                  {n.smsSentAt && <span className="text-[var(--c-ok)]"> · SMS {dm(n.smsSentAt)} ✓</span>}
-                </>
-              )
-            : r.forecast[0]
-              ? "prognoza z rytmu — brak rezerwacji"
-              : "brak zaplanowanych"
+          n ? (
+            <>
+              {`${n.deviceName}${n.heads ? ` ${n.heads} gł.` : ""}`}
+              {n.time ? "" : " · godz. do ustalenia"}
+              {n.smsSentAt && <span className="font-semibold text-[#2F7A68]"> · SMS {dm(n.smsSentAt)} ✓</span>}
+            </>
+          ) : r.forecast[0] ? (
+            "prognoza z rytmu — brak rezerwacji"
+          ) : (
+            "brak zaplanowanych"
+          )
         }
       />
       <Indicator
@@ -191,7 +189,7 @@ export function Indicators({ d }: { d: ClientDetail }) {
         label="Wynajmy"
         value={
           <>
-            {d.summary.rentalsTotal} <span className="text-[18px] text-[var(--c-muted)]">· {d.summary.rentals12m} w 12 mies.</span>
+            {d.summary.rentalsTotal} <span className="text-[17px] font-normal">· {d.summary.rentals12m} w 12 mies.</span>
           </>
         }
         sub={planned ? `+ ${planned} ${planned === 1 ? "zaplanowany" : "zaplanowane"} (${plannedRows.map((h) => dm(h.at)).reverse().join(", ")})` : "brak zaplanowanych"}
@@ -205,7 +203,7 @@ export function Indicators({ d }: { d: ClientDetail }) {
         label="Należności"
         warn={warn}
         value={due}
-        sub={t.paymentsAsOf ? `wpłaty z okresu ${t.paymentsFrom ? `${dm(t.paymentsFrom)}–` : "do "}${dm(t.paymentsAsOf)}` : "brak wgranych wyciągów z banku"}
+        sub={t.paymentsAsOf ? `wpłaty z okresu ${t.paymentsFrom ? `${dm(t.paymentsFrom)}–` : "do "}${dm(t.paymentsAsOf)}` : "wpłaty z banku: brak danych"}
       />
     </div>
   );
@@ -238,64 +236,65 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
 
   const [title, ...rest] = (step?.text ?? "").split("\n");
   const derived = d.overview.nextStep;
-  if (edit) {
-    return (
-      <div className="flex flex-col gap-2 bg-[var(--c-card-next)] px-6 py-5 text-white">
-        <div className="card-display text-[20px] font-medium">Następny krok</div>
-        <textarea
-          rows={3}
-          className="w-full border border-white/40 bg-white px-3 py-2 text-[14px] text-[var(--c-text)] outline-none"
-          placeholder={"Pierwsza linia = krok, kolejne = kontekst"}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <input type="date" className={`${INPUT} w-auto`} value={due} onChange={(e) => setDue(e.target.value)} />
-          <span className="flex-grow" />
-          <button type="button" onClick={() => setEdit(false)} className="h-11 border border-white/60 px-4 text-[15px] font-semibold">
-            Anuluj
-          </button>
-          <button type="button" disabled={busy} onClick={() => void save()} className="h-11 bg-[var(--c-terra)] px-5 text-[15px] font-semibold text-white hover:brightness-95">
-            Zapisz
-          </button>
-        </div>
-      </div>
-    );
-  }
-  if (!step) {
-    return (
-      <div className="flex flex-wrap items-center gap-6 border border-dashed border-[var(--c-terra)] bg-white px-6 py-5">
-        <div className="card-display w-[150px] text-[20px] font-medium text-[var(--c-navy)]">Następny krok</div>
-        <div className="min-w-0 flex-grow text-[14px] text-[var(--c-muted)]">
-          {derived ? (
-            <>
-              Z zadań i sygnałów: <span className="text-[var(--c-text)]">{derived.text}</span>
-              {derived.at ? ` · ${dm(derived.at)}` : ""}
-            </>
-          ) : (
-            "Nie ustalono następnego kroku."
-          )}
-        </div>
-        <button type="button" onClick={() => setEdit(true)} className="h-11 whitespace-nowrap bg-[var(--c-terra)] px-5 text-[15px] font-semibold text-white hover:brightness-95">
-          Ustaw następny krok
-        </button>
-      </div>
-    );
-  }
-  const overdue = step.dueAt && new Date(step.dueAt).getTime() < new Date().setHours(0, 0, 0, 0);
+  const r = d.rhythm;
+  const footer = [r.forecast.length ? `prognoza: ${r.forecast.map((x) => dm(x)).join(", ")}` : null, r.rhythmDays ? `rytm co ${r.rhythmDays} dni` : null, r.churnRisk ? `ryzyko odejścia: ${r.churnRisk.level}` : null]
+    .filter(Boolean)
+    .join(" · ");
+  const overdue = step?.dueAt && new Date(step.dueAt).getTime() < new Date().setHours(0, 0, 0, 0);
+
   return (
-    <div className="flex flex-wrap items-center gap-6 bg-[var(--c-card-next)] px-6 py-5 text-white">
-      <div className="card-display w-[150px] text-[20px] font-medium">Następny krok</div>
-      <div className="flex min-w-0 flex-grow basis-[320px] flex-col gap-1">
-        <button type="button" onClick={() => setEdit(true)} className="text-left text-[18px] font-semibold hover:underline" title="Zmień">
-          {title}
-          {step.dueAt && <span className={`font-normal ${overdue ? "bg-white/20 px-1" : "opacity-90"}`}> · {overdue ? "zaległe od " : "do "}{dm(step.dueAt)}</span>}
-        </button>
-        {rest.join(" ").trim() && <div className="text-[15px] text-[var(--c-card-band)]">{rest.join(" ").trim()}</div>}
+    <div className="flex flex-col gap-3 bg-[#2B5B82] px-[34px] py-[30px]">
+      <div className="text-[12px] uppercase tracking-[0.18em] text-[#CFE3F2]">
+        Następny krok
+        {step?.dueAt && !edit && <span className={overdue ? "text-white" : ""}> · {overdue ? "zaległe od" : "do"} {dm(step.dueAt)}</span>}
       </div>
-      <button type="button" onClick={() => onTask(title, step.dueAt)} className="h-11 whitespace-nowrap bg-[var(--c-terra)] px-5 text-[15px] font-semibold text-white hover:brightness-95">
-        Utwórz zadanie
-      </button>
+      {edit ? (
+        <>
+          <textarea
+            rows={3}
+            className="w-full border border-[#46749A] bg-white px-3 py-2 text-[16px] text-[#333333] outline-none"
+            placeholder={"Pierwsza linia = krok, kolejne = kontekst"}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          <div className="flex flex-wrap items-center gap-3 border-t border-[#46749A] pt-2">
+            <input type="date" className={`${INPUT} w-auto`} value={due} onChange={(e) => setDue(e.target.value)} />
+            <span className="flex-grow" />
+            <button type="button" onClick={() => setEdit(false)} className="h-[46px] border border-[#CFE3F2] px-[18px] text-[15px] text-white">
+              Anuluj
+            </button>
+            <button type="button" disabled={busy} onClick={() => void save()} className={BTN_TERRA}>
+              Zapisz
+            </button>
+          </div>
+        </>
+      ) : step ? (
+        <>
+          <button type="button" onClick={() => setEdit(true)} className="card-display text-left text-[24px] font-medium leading-[1.3] text-white hover:underline" title="Zmień">
+            {title}
+          </button>
+          {rest.join(" ").trim() && <div className="text-[16px] leading-[1.5] text-[#EAF4FB]">{rest.join(" ").trim()}</div>}
+          <div className="flex flex-wrap items-center gap-3 border-t border-[#46749A] pt-2">
+            <button type="button" onClick={() => onTask(title, step.dueAt)} className={BTN_TERRA}>
+              Utwórz zadanie dla Ani →
+            </button>
+            {footer && <span className="text-[14px] text-[#CFE3F2]">{footer}</span>}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="card-display text-[24px] font-medium leading-[1.3] text-white">Nie ustalono następnego kroku</div>
+          <div className="text-[16px] leading-[1.5] text-[#EAF4FB]">
+            {derived ? `Z zadań i sygnałów: ${derived.text}${derived.at ? ` · ${dm(derived.at)}` : ""}` : "Wpisz, co dalej z tym klientem — agent też może go zaproponować."}
+          </div>
+          <div className="flex flex-wrap items-center gap-3 border-t border-[#46749A] pt-2">
+            <button type="button" onClick={() => setEdit(true)} className={BTN_TERRA}>
+              Ustaw następny krok →
+            </button>
+            {footer && <span className="text-[14px] text-[#CFE3F2]">{footer}</span>}
+          </div>
+        </>
+      )}
     </div>
   );
 }

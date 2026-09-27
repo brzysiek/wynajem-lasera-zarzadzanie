@@ -8,10 +8,11 @@ import { PERSON_ROLE_LABEL, type PersonRole } from "@/lib/clients/profile-fields
 import { monthsLabel } from "@/lib/clients/rhythm";
 import { ContactForm, api } from "../client-forms";
 import { FieldsEditor, boolInput, dateInput, type FieldDef } from "./fields-editor";
-import { LINK, Missing, Row, Section, Tag, dm, dmy, money } from "./kit";
+import { LINK, Missing, Quote, Row, Section, dm, dmy, money } from "./kit";
+import { isConfirmingSource } from "./sources";
 
-// Lewa kolumna karty (460 px) wg karta-klienta-wzor.html: Dane firmy,
-// Osoby, Paszport dostawy, Profil gabinetu, Zgody i komunikacja, Powiązania
+// Lewa kolumna karty (440 px) wg projektu Main.dc.html: Dane firmy, Osoby,
+// Paszport dostawy, Profil gabinetu, Zgody i komunikacja, Powiązania
 // i aliasy. Każda sekcja edytowana w miejscu (PATCH /api/clients/:id).
 
 type Props = { d: ClientDetail; onChanged: (next: ClientDetail) => void; notify: (text: string, error?: boolean) => void };
@@ -87,12 +88,9 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
     notify(data.updated?.length ? `Uzupełniono z rejestrów: ${data.updated.join(", ")}.` : "Rejestry nie zwróciły nowych danych (pola zmienione ręcznie zostają).");
   }
 
+  const nipSrc = d.cardFacts.nipInvoiceCount > 0 ? [`${d.cardFacts.nipInvoiceCount} FV`] : src("nip");
   return (
-    <Section
-      title="Dane firmy"
-      meta={verified ? `zweryfikowano ${dmy(verified)}` : undefined}
-      action={!edit && <EditLink onClick={() => setEdit(true)} />}
-    >
+    <Section title="Dane firmy" action={!edit && <EditLink onClick={() => setEdit(true)} />}>
       {edit ? (
         <FieldsEditor
           clientId={d.id}
@@ -107,48 +105,46 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
         />
       ) : (
         <>
-          <Row label="Pełna nazwa" sources={src("name")}>
+          <Row label="Pełna nazwa" labelWidth={124} src={src("name")}>
             {d.name}
           </Row>
-          <Row label="Nazwa robocza" sources={src("shortName")}>
-            {p.shortName ? `${p.shortName}${d.aliases.length ? " (tak w kalendarzach)" : ""}` : <Missing>uzupełnij</Missing>}
+          <Row label="Nazwa robocza" labelWidth={124} src={src("shortName")}>
+            {p.shortName ?? <Missing>uzupełnij</Missing>}
           </Row>
-          <Row label="Forma" sources={src(d.fieldMeta.legalForm ? "legalForm" : "businessStartDate")}>
-            {p.legalForm || p.businessStartDate ? (
-              [p.legalForm, p.businessStartDate ? `działalność od ${dmy(p.businessStartDate)}` : null].filter(Boolean).join(" · ")
+          <Row label="Forma" labelWidth={124} src={src(d.fieldMeta.legalForm ? "legalForm" : "businessStartDate")}>
+            {p.legalForm || p.businessStartDate ? [p.legalForm, p.businessStartDate ? `od ${dmy(p.businessStartDate)}` : null].filter(Boolean).join(" · ") : <Missing>do sprawdzenia</Missing>}
+          </Row>
+          <Row label="NIP" labelWidth={124} src={nipSrc}>
+            {d.nip ? formatNip(d.nip) : <Missing>brak</Missing>}
+          </Row>
+          <Row label="REGON" labelWidth={124} src={src("regon")}>
+            {p.regon ?? <Missing>uzupełnij po NIP</Missing>}
+          </Row>
+          <Row label="PKD" labelWidth={124} src={src("pkd")}>
+            {mainPkd ? (
+              <span title={otherPkd.length ? `także: ${otherPkd.join(", ")}` : undefined}>
+                {mainPkd.code}
+                {mainPkd.name ? ` ${mainPkd.name}` : ""}
+                {otherPkd.length ? <span className="text-[#767C82]"> (+{otherPkd.length})</span> : null}
+              </span>
             ) : (
-              <Missing>CEIDG – do sprawdzenia</Missing>
+              <Missing>do sprawdzenia</Missing>
             )}
           </Row>
-          <Row label="NIP" sources={src("nip")}>
-            {d.nip ? (
-              <>
-                <span className="">{formatNip(d.nip)}</span>
-                {d.cardFacts.nipInvoiceCount > 0 && ` · zgodny z ${d.cardFacts.nipInvoiceCount} FV`}
-              </>
-            ) : (
-              <Missing>brak NIP</Missing>
-            )}
-          </Row>
-          <Row label="REGON" sources={src("regon")}>
-            {p.regon ? <span className="">{p.regon}</span> : <Missing>uzupełnij po NIP</Missing>}
-          </Row>
-          <Row label="PKD" sources={src("pkd")}>
-            {mainPkd ? `${mainPkd.code}${mainPkd.name ? ` ${mainPkd.name}` : ""}${otherPkd.length ? ` (+ ${otherPkd.join(", ")})` : ""}` : <Missing>CEIDG – do sprawdzenia</Missing>}
-          </Row>
-          <Row label="Adres" sources={src("street")}>
+          <Row label="Adres" labelWidth={124} src={src("street")}>
             {d.street || d.city ? [d.street, [d.zip, d.city].filter(Boolean).join(" ")].filter(Boolean).join(", ") : <Missing>brak adresu</Missing>}
           </Row>
-          <Row label="Status VAT" sources={src("vatStatus")}>
-            {p.vatStatus ? `${p.vatStatus}${p.bankAccounts.length ? ` · ${p.bankAccounts.length} ${p.bankAccounts.length === 1 ? "rachunek" : "rachunki"} na Białej liście` : ""}` : <Missing>Biała lista – do sprawdzenia</Missing>}
+          <Row label="Status VAT" labelWidth={124} src={p.vatStatus ? src("vatStatus") : ["bialalista"]}>
+            {p.vatStatus ? `${p.vatStatus}${p.bankAccounts.length ? ` · ${p.bankAccounts.length} rach.` : ""}` : <Missing>do sprawdzenia</Missing>}
           </Row>
-          {!isAgent && d.nip && (
-            <div className="border-t border-[var(--c-divider)] pt-2.5">
+          <div className="flex flex-wrap gap-x-5 pt-3 text-[14px] text-[#767C82]">
+            {verified && <span>zweryfikowano {dmy(verified)}</span>}
+            {!isAgent && d.nip && (
               <button type="button" onClick={() => void enrich()} disabled={enriching} className={LINK} title="Biała lista MF i CEIDG po NIP — pola zmienione ręcznie zostają">
                 {enriching ? "Pobieranie z rejestrów…" : "Uzupełnij po NIP (Biała lista, CEIDG)"}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
     </Section>
@@ -159,6 +155,7 @@ function CompanySection({ d, onChanged, notify, isAgent }: Props & { isAgent: bo
 
 function PeopleSection({ d, onChanged, notify }: Props) {
   const [editing, setEditing] = useState<string | "new" | null>(null);
+  const confirmed = (c: ClientDetail["contacts"][number], field: string) => !!c.fieldMeta[field] && isConfirmingSource(c.fieldMeta[field].source);
   return (
     <Section
       title="Osoby"
@@ -183,67 +180,76 @@ function PeopleSection({ d, onChanged, notify }: Props) {
           }}
         />
       )}
-      {d.contacts.length === 0 && editing !== "new" && <p className="text-[14px] text-[var(--c-muted)]">Brak osób kontaktowych.</p>}
-      {d.contacts.map((c) =>
-        editing === c.id ? (
-          <ContactForm
-            key={c.id}
-            clientId={d.id}
-            contact={c}
-            onCancel={() => setEditing(null)}
-            onSaved={(n) => {
-              setEditing(null);
-              onChanged(n);
-              notify("Zapisano osobę.");
-            }}
-          />
-        ) : (
-          <div key={c.id} className="flex flex-col gap-2 border border-[var(--c-divider)] bg-[var(--c-inner)] p-3.5">
-            <div className="flex items-center justify-between gap-2">
-              <button type="button" onClick={() => setEditing(c.id)} className="text-left text-[15px] font-semibold hover:text-[var(--c-brand-deep)]" title="Edytuj osobę">
+      {d.contacts.length === 0 && editing !== "new" && <p className="text-[15px] text-[#5C6166]">Brak osób kontaktowych.</p>}
+      {d.contacts.map((c) => {
+        if (editing === c.id)
+          return (
+            <ContactForm
+              key={c.id}
+              clientId={d.id}
+              contact={c}
+              onCancel={() => setEditing(null)}
+              onSaved={(n) => {
+                setEditing(null);
+                onChanged(n);
+                notify("Zapisano osobę.");
+              }}
+            />
+          );
+        const roles = [...c.roles.map((r) => PERSON_ROLE_LABEL[r as PersonRole] ?? r), ...(!c.roles.length && c.role ? [c.role] : [])];
+        const extra = [c.salutation ? `Zwrot „${c.salutation}”` : null, c.preferredChannel, c.roles.includes("invoices") ? "faktury mailem" : null].filter(Boolean).join(" · ");
+        const trained = c.trainedOn.length || c.roles.includes("owner") || c.roles.includes("cosmetologist");
+        if (c.isPrimary)
+          return (
+            <div key={c.id} className="flex flex-col gap-2 border-l-[3px] border-[#2F7A68] bg-[#EEF6F2] px-[22px] py-5">
+              <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#2F7A68]">{["Osoba główna", ...roles].join(" · ")}</div>
+              <button type="button" onClick={() => setEditing(c.id)} className="card-display text-left text-[21px] font-medium text-[#1F5E4F] hover:underline" title="Edytuj osobę">
                 {personName(c) || c.email || "Osoba bez nazwy"}
               </button>
-              <div className="flex flex-wrap justify-end gap-1.5">
-                {c.isPrimary && <Tag tone="ok">osoba główna</Tag>}
-                {c.roles.map((r) => (
-                  <Tag key={r} tone="info">
-                    {PERSON_ROLE_LABEL[r as PersonRole] ?? r}
-                  </Tag>
-                ))}
-                {!c.roles.length && c.role && <Tag tone="info">{c.role}</Tag>}
-              </div>
+              {c.phone && (
+                <div className="text-[16px] tabular-nums text-[#333333]">
+                  <a href={`tel:${c.phone}`} className="text-[#333333] hover:text-[#1B6FA8]">
+                    {formatPhone(c.phone)}
+                  </a>{" "}
+                  {confirmed(c, "phone") && <span className="text-[13px] font-semibold text-[#2F7A68]">✓ potwierdzony</span>}
+                </div>
+              )}
+              {c.phone2 && (
+                <div className="text-[16px] tabular-nums text-[#333333]">
+                  {formatPhone(c.phone2)} <span className="text-[13px] text-[#767C82]">{c.phone2Label ?? "drugi"}</span>
+                </div>
+              )}
+              {c.email && (
+                <div className="break-all text-[16px] text-[#333333]">
+                  {c.email} {(c.roles.includes("invoices") || c.email === d.profile.invoiceEmail) && <span className="text-[13px] font-semibold text-[#2F7A68]">✓ faktury</span>}
+                </div>
+              )}
+              {extra && <div className="text-[15px] text-[#4A4A4A]">{extra}</div>}
+              {trained && (
+                <div className="text-[15px] text-[#4A4A4A]">
+                  Przeszkolona: {c.trainedOn.length ? c.trainedOn.map((t) => `${t.device}${t.date ? ` · ${dmy(t.date)}` : ""}`).join(", ") : <Missing>data</Missing>}
+                </div>
+              )}
             </div>
-            {c.phone && (
-              <a href={`tel:${c.phone}`} className=" text-[14px] hover:text-[var(--c-brand-deep)]">
-                {formatPhone(c.phone)}
-              </a>
-            )}
-            {c.phone2 && (
-              <a href={`tel:${c.phone2}`} className=" text-[14px] hover:text-[var(--c-brand-deep)]">
-                {formatPhone(c.phone2)} · {c.phone2Label ?? "drugi"}
-              </a>
-            )}
-            {c.email && <div className="break-all text-[14px]">{c.email}</div>}
-            {(c.salutation || c.preferredChannel || c.roles.includes("invoices")) && (
-              <div className="text-[14px] text-[var(--c-text-2)]">
-                {[c.salutation ? `Zwrot: „${c.salutation}”` : null, c.preferredChannel ? `kanał: ${c.preferredChannel}` : null, c.roles.includes("invoices") ? "faktury mailem" : null]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </div>
-            )}
-            {(c.trainedOn.length > 0 || c.roles.includes("owner") || c.roles.includes("cosmetologist")) && (
-              <div className="text-[14px] text-[var(--c-text-2)]">
-                Przeszkolona:{" "}
-                {c.trainedOn.length ? (
-                  c.trainedOn.map((t) => `${t.device}${t.date ? ` · ${dmy(t.date)}` : ""}`).join(", ")
-                ) : (
-                  <Missing>data szkolenia</Missing>
-                )}
-              </div>
-            )}
+          );
+        return (
+          <div key={c.id} className="flex flex-col gap-1 border border-dashed border-[#C3C4C7] px-[22px] py-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <button type="button" onClick={() => setEditing(c.id)} className="text-left text-[17px] font-medium text-[#1B6FA8] hover:underline" title="Edytuj osobę">
+                {personName(c) || c.email || c.phone || "Osoba bez nazwy"}
+              </button>
+              {roles.length ? (
+                <span className="text-right text-[12px] uppercase tracking-[0.12em] text-[#5C6166]">{roles.join(" · ")}</span>
+              ) : (
+                <span className="text-[12px] uppercase tracking-[0.12em] text-[#B8612F]">do potwierdzenia</span>
+              )}
+            </div>
+            {c.phone && <div className="text-[16px] tabular-nums text-[#333333]">{formatPhone(c.phone)}</div>}
+            {c.email && <div className="break-all text-[16px] text-[#333333]">{c.email}</div>}
+            {extra && <div className="text-[14px] text-[#767C82]">{extra}</div>}
           </div>
-        ),
-      )}
+        );
+      })}
     </Section>
   );
 }
@@ -282,7 +288,7 @@ function DeliverySection({ d, onChanged, notify, isAgent }: Props & { isAgent: b
   const next = d.overview.nextRental;
   const nextDay = next ? dm(next.startsAt) : null;
   return (
-    <Section title="Paszport dostawy" meta="dla kierowcy / instalatora" action={!edit && <EditLink onClick={() => setEdit(true)} />}>
+    <Section title="Paszport dostawy" sub="Dla kierowcy i instalatora." action={!edit && <EditLink onClick={() => setEdit(true)} />}>
       {edit ? (
         <FieldsEditor
           clientId={d.id}
@@ -297,17 +303,17 @@ function DeliverySection({ d, onChanged, notify, isAgent }: Props & { isAgent: b
         />
       ) : (
         <>
-          <Row label="Adres dostawy">{p.deliveryAddress ?? (company ? `${company} (= adres firmy)` : <Missing>uzupełnij</Missing>)}</Row>
-          <Row label="Standardowa godz.">
+          <Row label="Adres dostawy">{p.deliveryAddress ?? (company || <Missing>uzupełnij</Missing>)}</Row>
+          <Row label="Godzina">
             {d.cardFacts.usualStartTime ? `${d.cardFacts.usualStartTime.time} (z rezerwacji ${dm(d.cardFacts.usualStartTime.fromAt)})` : <Missing>brak rezerwacji z godziną</Missing>}
           </Row>
-          <Row label="Odległość z bazy">{d.distanceKm ? `${Number(d.distanceKm).toLocaleString("pl-PL")} km` : <Missing>auto z mapy – brak</Missing>}</Row>
+          <Row label="Odległość">{d.distanceKm ? `${Number(d.distanceKm).toLocaleString("pl-PL")} km` : <Missing>auto z mapy</Missing>}</Row>
           <Row label="Transport">
-            {d.transportPriceNet && Number(d.transportPriceNet) > 0 ? `${money(Number(d.transportPriceNet))} netto` : <Missing>uzupełnij cenę transportu</Missing>}
+            {d.transportPriceNet && Number(d.transportPriceNet) > 0 ? `${money(Number(d.transportPriceNet))} netto` : <Missing>uzupełnij w warunkach</Missing>}
           </Row>
-          <Row label="Wejście / piętro">{n?.entrance || n?.floor ? [n.entrance, n.floor].filter(Boolean).join(" · ") : <Missing>uzupełnia kierowca{nextDay ? ` przy ${nextDay}` : ""}</Missing>}</Row>
+          <Row label="Wejście / piętro">{n?.entrance || n?.floor ? [n.entrance, n.floor].filter(Boolean).join(" · ") : <Missing>uzupełnia kierowca{nextDay ? ` ${nextDay}` : ""}</Missing>}</Row>
           <Row label="Parking">{n?.parking ?? <Missing>uzupełnia kierowca</Missing>}</Row>
-          <Row label="Zasilanie">{n?.power ?? <Missing>gniazdo, bezpiecznik – uzupełnia instalator</Missing>}</Row>
+          <Row label="Zasilanie">{n?.power ?? <Missing>uzupełnia instalator</Missing>}</Row>
           {n?.receiver && <Row label="Kto odbiera">{n.receiver}</Row>}
         </>
       )}
@@ -374,19 +380,19 @@ function ProfileSection({ d, onChanged, notify }: Props) {
         />
       ) : (
         <>
-          <Row label="Typ">{d.clinicType ? CLINIC_TYPE_LABEL[d.clinicType] : <Missing>uzupełnij</Missing>}</Row>
-          <Row label="Usługi">{p.services.length ? p.services.join(", ") : <Missing>WWW / Booksy / Fresha – do sprawdzenia</Missing>}</Row>
-          <Row label="Godziny">{p.openingHours ?? <Missing>Google / Fresha – do sprawdzenia</Missing>}</Row>
+          <Row label="Typ">{d.clinicType ? CLINIC_TYPE_LABEL[d.clinicType].toLowerCase() : <Missing>uzupełnij</Missing>}</Row>
+          <Row label="Usługi">{p.services.length ? p.services.join(", ") : <Missing>do sprawdzenia</Missing>}</Row>
+          <Row label="Godziny">{p.openingHours ?? <Missing>do sprawdzenia</Missing>}</Row>
           <Row label="Online">
             {links.length ? (
               links.map(({ k, v }, i) => {
                 const url = href(k, v);
-                const text = k === "instagram" ? `Instagram ${v.startsWith("@") ? v : ""}`.trim() : LINK_LABEL[k];
+                const text = LINK_LABEL[k];
                 return (
                   <span key={k}>
                     {i > 0 && " · "}
                     {url ? (
-                      <a href={url} target="_blank" rel="noreferrer" className="text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+                      <a href={url} target="_blank" rel="noreferrer" className="text-[#1B6FA8] hover:text-[#0C3450]">
                         {text}
                       </a>
                     ) : (
@@ -399,7 +405,7 @@ function ProfileSection({ d, onChanged, notify }: Props) {
               <Missing>brak</Missing>
             )}
           </Row>
-          <Row label="Własne urządzenia">{p.ownDevices ?? <Missing>nieznane – zapytać</Missing>}</Row>
+          <Row label="Własne urządzenia">{p.ownDevices ?? <Missing>zapytać</Missing>}</Row>
           <Row label="Sezonowość">
             {p.seasonality ?? (d.rhythm.seasonalBreak.length ? `przerwa ${monthsLabel(d.rhythm.seasonalBreak)} (z historii wynajmów)` : <Missing>brak danych</Missing>)}
           </Row>
@@ -437,8 +443,8 @@ function ConsentsSection({ d, onChanged, notify }: Props) {
     "googleReview.askedAt": dateInput(p.googleReview?.askedAt),
     "googleReview.given": boolInput(p.googleReview?.given),
   };
-  const smsText =
-    p.smsReminders === false ? "nie" : p.smsReminders === true || lastSms ? `tak – działa${lastSms ? ` (ostatni ${dmy(lastSms)})` : ""}` : null;
+  const smsOn = p.smsReminders === true || (p.smsReminders === null && !!lastSms);
+  const smsText = p.smsReminders === false ? "nie" : smsOn ? `✓ tak${lastSms ? ` (ostatni ${dmy(lastSms)})` : ""}` : null;
   const consent = mc && (mc.email !== null || mc.sms !== null) ? [mc.email !== null ? `e-mail: ${mc.email ? "tak" : "nie"}` : null, mc.sms !== null ? `SMS: ${mc.sms ? "tak" : "nie"}` : null, mc.date ? dmy(mc.date) : null, mc.source].filter(Boolean).join(" · ") : null;
   return (
     <Section title="Zgody i komunikacja" action={!edit && <EditLink onClick={() => setEdit(true)} />}>
@@ -456,16 +462,16 @@ function ConsentsSection({ d, onChanged, notify }: Props) {
         />
       ) : (
         <>
-          <Row label="SMS z przypomnieniem" labelWidth={200}>
+          <Row label="SMS-przypomnienia" labelWidth={190} valueClass={smsOn ? "font-semibold text-[#2F7A68]" : "text-[#333333]"}>
             {smsText ?? <Missing>nie ustalono</Missing>}
           </Row>
-          <Row label="Mailing / oferty" labelWidth={200}>
+          <Row label="Mailing / oferty" labelWidth={190}>
             {consent ?? <Missing>brak zapisanej zgody</Missing>}
           </Row>
-          <Row label="Nie kontaktować" labelWidth={200}>
-            {d.statusOverride === "NIE_KONTAKTOWAC" ? <span className="font-semibold text-[var(--c-red)]">tak</span> : "nie"}
+          <Row label="Nie kontaktować" labelWidth={190}>
+            {d.statusOverride === "NIE_KONTAKTOWAC" ? <span className="text-[#B8612F]">tak</span> : "nie"}
           </Row>
-          <Row label="Ostatni kontakt" labelWidth={200}>
+          <Row label="Ostatni kontakt" labelWidth={190}>
             {d.overview.lastContact ? `${dmy(d.overview.lastContact.at)} · ${d.overview.lastContact.label}` : <Missing>brak</Missing>}
           </Row>
         </>
@@ -490,58 +496,52 @@ function LinksSection({
   onDialog: (k: "merge" | "split" | "archive") => void;
 }) {
   const manual = d.lineage.some((l) => l.kind === "SPLIT_FROM");
+  const other = (l: ClientDetail["lineage"][number]) =>
+    l.otherId ? (
+      <Link href={`/klienci/${l.otherId}`} className="text-[#1B6FA8] underline decoration-[#82B7DA] hover:text-[#0C3450]">
+        „{l.otherName}”
+      </Link>
+    ) : (
+      `„${l.otherName}”`
+    );
   return (
-    <Section title="Powiązania i aliasy">
-      <div className="text-[14px] text-[var(--c-muted)]">
-        {d.aliases.length ? "Tytuły z kalendarzy, które automatycznie trafiają do tej karty:" : "Brak aliasów z kalendarzy — przypisz wydarzenia w Klienci → Dopasowania."}
+    <Section title="Powiązania i aliasy" gap="gap-3">
+      <div className="text-[15px] text-[#5C6166]">
+        {d.aliases.length ? "Tytuły z kalendarzy, które same trafiają do tej karty:" : "Brak aliasów z kalendarzy — przypisz wydarzenia w Klienci → Dopasowania."}
       </div>
       {d.aliases.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {d.aliases.map((a) => (
-            <span key={a} className="bg-[var(--c-card-neutral)] px-2 py-[3px] text-[14px]">
+            <span key={a} className="bg-[#EAF4FB] px-2.5 py-1 text-[14px] text-[#1B6FA8]">
               {a}
             </span>
           ))}
         </div>
       )}
       {d.lineage.map((l, i) => (
-        <div key={i} className="border-t border-[var(--c-divider)] pt-2.5 text-[14px]">
-          {l.kind === "SPLIT_FROM" && (
-            <>
-              Wydzielona {dmy(l.at)} z rekordu{" "}
-              {l.otherId ? (
-                <Link href={`/klienci/${l.otherId}`} className="text-[var(--c-brand)] hover:underline">
-                  „{l.otherName}”
-                </Link>
-              ) : (
-                `„${l.otherName}”`
-              )}
-              . Przypisanie ręczne: synchronizacja go nie zmienia.
-            </>
-          )}
-          {l.kind === "SPLIT_TO" && (
-            <>
-              {dmy(l.at)} wydzielono z tej karty klienta{" "}
-              {l.otherId ? (
-                <Link href={`/klienci/${l.otherId}`} className="text-[var(--c-brand)] hover:underline">
-                  „{l.otherName}”
-                </Link>
-              ) : (
-                `„${l.otherName}”`
-              )}
-              .
-            </>
-          )}
-          {l.kind === "MERGED_FROM" && (
-            <>
-              {dmy(l.at)} scalono tu duplikat „{l.otherName}” (w archiwum).
-            </>
-          )}
+        <div key={i} className="mt-1.5">
+          <Quote>
+            {l.kind === "SPLIT_FROM" && (
+              <>
+                Wydzielona {dmy(l.at)} z rekordu {other(l)}. Przypisanie ręczne: synchronizacja go nie zmienia.
+              </>
+            )}
+            {l.kind === "SPLIT_TO" && (
+              <>
+                {dmy(l.at)} wydzielono z tej karty klienta {other(l)}.
+              </>
+            )}
+            {l.kind === "MERGED_FROM" && (
+              <>
+                {dmy(l.at)} scalono tu duplikat „{l.otherName}” (w archiwum).
+              </>
+            )}
+          </Quote>
         </div>
       ))}
-      {!manual && d.hubspotCompanyId && <div className="border-t border-[var(--c-divider)] pt-2.5 text-[14px] text-[var(--c-text-2)]">Rekord z HubSpota (firma {d.hubspotCompanyId}).</div>}
+      {!manual && d.hubspotCompanyId && <div className="text-[15px] text-[#5C6166]">Rekord z HubSpota (firma {d.hubspotCompanyId}).</div>}
       {!d.archive && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--c-divider)] pt-2.5">
+        <div className="flex flex-wrap gap-x-5 gap-y-1 pt-1">
           <button type="button" onClick={() => onDialog("merge")} className={LINK}>
             Scal duplikat
           </button>
@@ -561,7 +561,7 @@ function LinksSection({
             </a>
           )}
           {isAdmin && (
-            <button type="button" onClick={() => onDialog("archive")} className="text-[14px] text-[var(--c-muted)] hover:text-[var(--c-red)] hover:underline">
+            <button type="button" onClick={() => onDialog("archive")} className="text-[15px] text-[#767C82] hover:text-[#B8612F]">
               Archiwizuj
             </button>
           )}
@@ -573,7 +573,7 @@ function LinksSection({
 
 export function CardLeft(props: Props & { isAdmin: boolean; isAgent: boolean; pendingProposals: number; onDialog: (k: "merge" | "split" | "archive") => void }) {
   return (
-    <div className="flex w-full shrink-0 flex-col gap-4 xl:w-[460px]">
+    <div className="flex w-full shrink-0 flex-col gap-10 xl:w-[440px]">
       <CompanySection {...props} />
       <PeopleSection {...props} />
       <DeliverySection {...props} />

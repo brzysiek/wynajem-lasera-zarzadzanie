@@ -1,17 +1,18 @@
 "use client";
 
-import { useContext, useMemo, useState } from "react";
+import { useContext, useMemo, useState, type ReactNode } from "react";
 import type { ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { cardQuality } from "@/lib/clients/card-quality";
 import { AgentModeContext, INPUT, api } from "../client-forms";
-import { BTN_OUTLINE, BTN_PRIMARY, Heading, LINK, Missing, Pill, Section, Tag, dm, dmy, money, num } from "./kit";
+import { BTN_OUTLINE, BTN_PRIMARY, FilterLink, LABEL, LINK, Missing, Quote, Section, dm, dmy, money, num } from "./kit";
 import { TermsSection, agreedTotal } from "./card-terms";
 
-// Prawa kolumna karty wg karta-klienta-wzor.html: Rytm współpracy (siatka
-// lata × miesiące), Oś zdarzeń z filtrami i szybką notatką, Faktury
-// i płatności, Szanse sprzedaży, Jakość danych.
+// Prawa kolumna karty wg projektu Main.dc.html: Następny krok (blok na górze),
+// Rytm współpracy, Szanse sprzedaży (kafle), Oś zdarzeń, Warunki handlowe,
+// Faktury i płatności (sekcja kremowa), Jakość danych.
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+const GRID = { gridTemplateColumns: "56px repeat(12, minmax(0, 1fr))" };
 
 // ------------------------------------------------------------------ Rytm współpracy
 
@@ -19,19 +20,18 @@ function RhythmSection({ d }: { d: ClientDetail }) {
   const r = d.rhythm;
   const dc = r.deviceConfig;
   const risk = r.churnRisk;
-  const riskColor = risk?.level === "niskie" ? "var(--c-ok)" : "var(--c-warn-text)";
   const price = agreedTotal(d).total;
   const year = new Date().getFullYear();
   const invoicedThisYear = d.transactions.filter((t) => t.invoice && new Date(t.date).getFullYear() === year && t.net);
   const avgInvoice = invoicedThisYear.length ? invoicedThisYear.reduce((s, t) => s + (t.net ?? 0), 0) / invoicedThisYear.length : null;
   return (
-    <Section title="Rytm współpracy" wide gap="gap-4" action={<Legend />}>
+    <Section title="Rytm współpracy" gap="gap-4" action={<Legend />}>
       {r.grid.length === 0 ? (
-        <p className="text-[14px] text-[var(--c-muted)]">Brak wynajmów — rytm pojawi się po pierwszych rezerwacjach.</p>
+        <p className="text-[15px] text-[#5C6166]">Brak wynajmów — rytm pojawi się po pierwszych rezerwacjach.</p>
       ) : (
         <div className="overflow-x-auto">
-          <div className="flex min-w-[560px] flex-col gap-1.5">
-            <div className="grid gap-1.5 text-[14px] text-[var(--c-muted)]" style={{ gridTemplateColumns: "56px repeat(12, minmax(0, 1fr))" }}>
+          <div className="flex min-w-[560px] flex-col gap-1">
+            <div className="grid gap-1 text-[12px] tracking-[0.12em] text-[#767C82]" style={GRID}>
               <span />
               {ROMAN.map((m) => (
                 <span key={m} className="text-center">
@@ -40,21 +40,21 @@ function RhythmSection({ d }: { d: ClientDetail }) {
               ))}
             </div>
             {r.grid.map((g) => (
-              <div key={g.year} className="grid items-center gap-1.5" style={{ gridTemplateColumns: "56px repeat(12, minmax(0, 1fr))" }}>
-                <span className=" text-[14px] text-[var(--c-text-2)]">{g.year}</span>
+              <div key={g.year} className="grid items-center gap-1" style={GRID}>
+                <span className="text-[15px] text-[#5C6166]">{g.year}</span>
                 {g.months.map((m, i) => {
                   const count = m.realized + m.planned + m.proposed;
                   const cls =
                     m.realized > 0
-                      ? "bg-[var(--c-brand)] text-white"
+                      ? "bg-[#1B6FA8] text-white"
                       : m.planned > 0
-                        ? "border-2 border-[var(--c-brand)] bg-white text-[var(--c-brand)]"
+                        ? "border-2 border-[#1B6FA8] bg-white text-[#1B6FA8]"
                         : m.proposed > 0
-                          ? "border-2 border-dashed border-[var(--c-terra)] bg-white text-[var(--c-warn-text)]"
-                          : "bg-[var(--c-card-neutral)]";
+                          ? "border-2 border-dashed border-[#E08A5C] bg-white text-[#B8612F]"
+                          : "bg-[#F4F5F6]";
                   const title = [m.realized ? `zrealizowane: ${m.realized}` : null, m.planned ? `zaplanowane: ${m.planned}` : null, m.proposed ? "proponowany termin" : null].filter(Boolean).join(", ");
                   return (
-                    <div key={i} title={title || undefined} className={`box-border flex h-[34px] items-center justify-center text-[14px] font-semibold ${cls}`}>
+                    <div key={i} title={title || undefined} className={`box-border flex h-9 items-center justify-center text-[13px] font-medium ${cls}`}>
                       {count > 1 ? count : ""}
                     </div>
                   );
@@ -64,18 +64,18 @@ function RhythmSection({ d }: { d: ClientDetail }) {
           </div>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3 border-t border-[var(--c-divider)] pt-3.5 md:grid-cols-4">
-        <Stat label="Urządzenie" value={dc ? `${dc.family}${dc.heads ? ` · ${dc.always ? "zawsze " : ""}${dc.heads} ${dc.heads === 1 ? "głowica" : "głowice"}` : ""}` : "—"} sub={dc?.models.map((m) => `${m.name} ${m.count}×`).join(" · ")} />
+      <div className="grid grid-cols-2 gap-4 border-t border-[#E4E7EA] pt-4 md:grid-cols-4">
+        <Stat label="Urządzenie" value={dc ? `${dc.family}${dc.heads ? ` · ${dc.heads} ${dc.heads === 1 ? "głowica" : "głowice"}` : ""}` : "—"} sub={dc?.models.map((m) => `${m.name} ${m.count}×`).join(" · ")} />
         <Stat label="Czas" value={d.cardFacts.typicalDays ? `${d.cardFacts.typicalDays} ${d.cardFacts.typicalDays === 1 ? "dzień" : "dni"}` : "—"} sub="wg rezerwacji w panelu" />
         <Stat
           label={price ? "Cena ustalona" : `Cena (${year})`}
           value={price ? `${money(price)} netto` : avgInvoice ? `≈ ${money(Math.round(avgInvoice))} netto` : "—"}
-          sub={price ? (d.transportPriceNet ? "wynajem + transport, cena ustalona" : "wynajem (bez transportu), cena ustalona") : avgInvoice ? "średnia z faktur" : "brak faktur w tym roku"}
+          sub={price ? (d.transportPriceNet ? "wynajem + transport" : "wynajem (bez transportu)") : avgInvoice ? "średnia z faktur" : "brak faktur w tym roku"}
         />
         <Stat
           label="Ryzyko odejścia"
-          value={risk ? risk.level : "—"}
-          color={risk ? riskColor : undefined}
+          value={risk ? `● ${risk.level}` : "—"}
+          valueClass={risk ? (risk.level === "niskie" ? "font-semibold text-[#2F7A68]" : "font-semibold text-[#B8612F]") : undefined}
           sub={r.lastPlannedAt ? `terminy zajęte do ${dm(r.lastPlannedAt)}` : risk ? `ostatni wynajem ${dm(risk.lastAt)}` : "za mało wynajmów"}
         />
       </div>
@@ -84,34 +84,164 @@ function RhythmSection({ d }: { d: ClientDetail }) {
 }
 
 function Legend() {
-  const box = "h-3 w-3 box-border";
+  const box = "box-border h-3 w-3";
   return (
-    <div className="hidden gap-4 text-[14px] text-[var(--c-text-2)] sm:flex">
+    <div className="hidden gap-[18px] text-[14px] text-[#4A4A4A] sm:flex">
       <span className="flex items-center gap-1.5">
-        <span className={`${box} bg-[var(--c-brand)]`} />
+        <span className={`${box} bg-[#1B6FA8]`} />
         zrealizowany
       </span>
       <span className="flex items-center gap-1.5">
-        <span className={`${box} border-2 border-[var(--c-brand)] bg-white`} />
+        <span className={`${box} border-2 border-[#1B6FA8]`} />
         zaplanowany
       </span>
       <span className="flex items-center gap-1.5">
-        <span className={`${box} border-2 border-dashed border-[var(--c-terra)] bg-white`} />
+        <span className={`${box} border-2 border-dashed border-[#E08A5C]`} />
         proponowany
       </span>
     </div>
   );
 }
 
-function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string | null; color?: string }) {
+function Stat({ label, value, sub, valueClass = "font-medium text-[#1B6FA8]" }: { label: string; value: string; sub?: string | null; valueClass?: string }) {
   return (
     <div>
-      <div className="text-[14px] text-[var(--c-muted)]">{label}</div>
-      <div className="text-[16px] font-semibold text-[var(--c-brand)]" style={color ? { color } : undefined}>
-        {value}
-      </div>
-      {sub && <div className="text-[14px] text-[var(--c-muted)]">{sub}</div>}
+      <div className={LABEL}>{label}</div>
+      <div className={`text-[17px] ${valueClass}`}>{value}</div>
+      {sub && <div className="text-[14px] text-[#5C6166]">{sub}</div>}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ Szanse sprzedaży (kafle)
+
+const STAGES = [
+  { value: "pomysl", label: "pomysł" },
+  { value: "rozmowa", label: "rozmowa" },
+  { value: "oferta", label: "oferta" },
+  { value: "decyzja", label: "czeka na decyzję" },
+  { value: "wygrana", label: "wygrana" },
+  { value: "przegrana", label: "przegrana" },
+];
+const CHANCES: Record<string, string> = { wysoka: "wysoka", srednia: "średnia", niska: "niska", sprawdzic: "sprawdzić" };
+const stageLabel = (s: string) => STAGES.find((x) => x.value === s)?.label ?? s;
+
+function Tile({ no, label, title, children, actions }: { no: number; label: string; title: string; children: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2 bg-[#EAF4FB] p-[22px]">
+      <div className="text-[13px] uppercase tracking-[0.16em] text-[#82B7DA]">
+        {String(no).padStart(2, "0")} · {label}
+      </div>
+      <div className="card-display text-[19px] font-medium text-[#1B6FA8]">{title}</div>
+      <div className="text-[15px] leading-[1.5] text-[#4A4A4A]">{children}</div>
+      {actions}
+    </div>
+  );
+}
+
+function OpportunitiesSection({ d, onChanged, notify }: { d: ClientDetail; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
+  const agent = useContext(AgentModeContext);
+  const [adding, setAdding] = useState(false);
+  const [f, setF] = useState({ device: "", stage: "rozmowa", chance: "", returnAt: "", note: "" });
+  const [busy, setBusy] = useState(false);
+  const open = d.opportunities.filter((o) => !o.closedAt);
+  const review = d.profile.googleReview;
+  const showReview = !!review?.askedAt && review.given !== true;
+
+  async function save() {
+    setBusy(true);
+    const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}/opportunities`, "POST", f);
+    setBusy(false);
+    if (!ok) return notify(data.message ?? "Nie udało się dodać szansy.", true);
+    setAdding(false);
+    setF({ device: "", stage: "rozmowa", chance: "", returnAt: "", note: "" });
+    onChanged(data.detail);
+  }
+  async function close(id: string, stage: "wygrana" | "przegrana") {
+    const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}/opportunities/${id}`, "PATCH", { stage });
+    if (!ok) return notify(data.message ?? "Nie udało się zamknąć szansy.", true);
+    onChanged(data.detail);
+  }
+
+  return (
+    <Section
+      title="Szanse sprzedaży"
+      gap="gap-4"
+      action={
+        !agent &&
+        !adding && (
+          <button type="button" onClick={() => setAdding(true)} className={LINK}>
+            + dodaj szansę
+          </button>
+        )
+      }
+    >
+      {adding && (
+        <div className="flex flex-col gap-2 border border-[#A9D2EC] bg-white p-4">
+          <input className={INPUT} placeholder="Urządzenie / temat, np. Cooltech – modelowanie ciała" value={f.device} onChange={(e) => setF({ ...f, device: e.target.value })} />
+          <div className="grid grid-cols-3 gap-2">
+            <select className={INPUT} value={f.stage} onChange={(e) => setF({ ...f, stage: e.target.value })}>
+              {STAGES.slice(0, 4).map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <select className={INPUT} value={f.chance} onChange={(e) => setF({ ...f, chance: e.target.value })}>
+              <option value="">szansa…</option>
+              {Object.entries(CHANCES).map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <input className={INPUT} type="date" title="Wrócić" value={f.returnAt} onChange={(e) => setF({ ...f, returnAt: e.target.value })} />
+          </div>
+          <textarea className="w-full border border-[#C3C4C7] px-3 py-2 text-[15px] outline-none focus:border-[#1B6FA8]" rows={2} placeholder="Opis" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
+          <div className="flex justify-end gap-2.5">
+            <button type="button" className={BTN_OUTLINE} onClick={() => setAdding(false)}>
+              Anuluj
+            </button>
+            <button type="button" className={BTN_PRIMARY} disabled={busy || !f.device.trim()} onClick={() => void save()}>
+              Dodaj
+            </button>
+          </div>
+        </div>
+      )}
+      {open.length === 0 && !showReview && !adding ? (
+        <p className="text-[15px] text-[#5C6166]">Brak otwartych szans.</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {open.map((o, i) => (
+            <Tile
+              key={o.id}
+              no={i + 1}
+              label={o.chance ? CHANCES[o.chance] ?? o.chance : stageLabel(o.stage)}
+              title={o.device}
+              actions={
+                !agent && (
+                  <div className="flex gap-4 pt-1 text-[14px]">
+                    <button type="button" className="text-[#1B6FA8] hover:text-[#0C3450]" onClick={() => void close(o.id, "wygrana")}>
+                      wygrana
+                    </button>
+                    <button type="button" className="text-[#767C82] hover:text-[#B8612F]" onClick={() => void close(o.id, "przegrana")}>
+                      zamknij
+                    </button>
+                  </div>
+                )
+              }
+            >
+              {[o.note, o.lastContact ? `Ostatni kontakt ${dmy(o.lastContact)}.` : null, o.returnAt ? `Wrócić ${dmy(o.returnAt)}.` : null].filter(Boolean).join(" ") || stageLabel(o.stage)}
+            </Tile>
+          ))}
+          {showReview && (
+            <Tile no={open.length + 1} label="sprawdzić" title="Opinia w Google">
+              Prośba wysłana {dmy(review!.askedAt)}. {review!.given === false ? "Nie wystawiła." : "Nie wiadomo, czy wystawiła."}
+            </Tile>
+          )}
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -120,12 +250,14 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
 type Filter = "all" | "rentals" | "invoices" | "comm" | "notes";
 type Item = { key: string; at: string; title: string; sub: string | null; tag: string; dot: "filled" | "outline"; color: string; group: Exclude<Filter, "all">; item?: ClientHistoryItem; hidden?: string | null };
 
-const HIDDEN_LABEL: Record<string, string> = { ENGINEERING: "ukryty · inżynieria", EXCLUDED: "ukryty · wykluczona domena", MANUAL: "ukryty ręcznie" };
+const HIDDEN_LABEL: Record<string, string> = { ENGINEERING: "ukryty · inżynieria", EXCLUDED: "ukryty · wykluczona", MANUAL: "ukryty" };
+const BLUE = "#1B6FA8";
+const TERRA = "#E08A5C";
+const GREY = "#767C82";
 
 function timelineItems(d: ClientDetail, withHidden = false): Item[] {
   const out: Item[] = [];
-  // Adnotacje wzoru: „Pierwszy wynajem”, „pierwszy po przerwie” (odstęp
-  // dłuższy niż 2,5 × rytm).
+  // Adnotacje: „Pierwszy wynajem”, „pierwszy po przerwie” (odstęp > 2,5 × rytm).
   const realizedAt = d.history
     .filter((h) => (h.kind === "rental" && !h.deleted && !h.upcoming && h.eventType === "WYNAJEM") || (h.kind === "history" && h.eventType === "WYNAJEM"))
     .map((h) => h.at)
@@ -149,30 +281,26 @@ function timelineItems(d: ClientDetail, withHidden = false): Item[] {
       out.push({
         key: `r-${h.id}`,
         at: h.at,
-        title: planned
-          ? `Rezerwacja ${h.time ?? "(godz. do ustalenia)"} · ${h.deviceName}`
-          : h.eventType === "SZKOLENIE"
-            ? `Szkolenie · ${h.deviceName}`
-            : realizedTitle(h.at, h.deviceName),
-        sub: [h.totalNet ? `${money(h.totalNet)} netto` : null, planned ? null : h.settled ? "rozliczony" : null].filter(Boolean).join(" · ") || null,
+        title: planned ? `Rezerwacja${h.time ? ` ${h.time}` : ""} · ${h.deviceName}` : h.eventType === "SZKOLENIE" ? `Szkolenie · ${h.deviceName}` : realizedTitle(h.at, h.deviceName),
+        sub: [planned && !h.time ? "godz. do ustalenia" : null, h.totalNet ? `${money(h.totalNet)} netto` : null, planned ? null : h.settled ? "rozliczony" : null].filter(Boolean).join(" · ") || null,
         tag: planned ? "zaplanowany" : "wynajem",
         dot: planned ? "outline" : "filled",
-        color: "var(--c-brand)",
+        color: BLUE,
         group: "rentals",
         item: h,
       });
     } else if (h.kind === "history") {
-      out.push({ key: `h-${h.id}`, at: h.at, title: h.eventType === "SZKOLENIE" ? `Szkolenie · ${h.deviceName}` : realizedTitle(h.at, h.deviceName), sub: `z kalendarza: ${h.title}`, tag: "wynajem", dot: "filled", color: "var(--c-brand)", group: "rentals" });
+      out.push({ key: `h-${h.id}`, at: h.at, title: h.eventType === "SZKOLENIE" ? `Szkolenie · ${h.deviceName}` : realizedTitle(h.at, h.deviceName), sub: `z kalendarza: ${h.title}`, tag: "wynajem", dot: "filled", color: BLUE, group: "rentals" });
     } else if (h.kind === "invoice") {
       const tx = invByNumber.get(h.number);
       out.push({
         key: `i-${h.id}`,
         at: h.at,
         title: `FV ${h.number}`,
-        sub: [`${money(h.totalNet, 2)} netto`, tx?.invoice?.totalGross ? `${money(tx.invoice.totalGross, 2)} brutto` : null, tx ? tx.status.label.toLowerCase() : null].filter(Boolean).join(" / "),
+        sub: [`${money(h.totalNet, 2)} netto`, tx?.invoice?.totalGross ? `${money(tx.invoice.totalGross, 2)} brutto` : null, tx ? tx.status.label.charAt(0).toLowerCase() + tx.status.label.slice(1) : null].filter(Boolean).join(" / "),
         tag: "faktura",
         dot: "filled",
-        color: "var(--c-navy)",
+        color: TERRA,
         group: "invoices",
       });
     } else if (h.kind === "email") {
@@ -183,13 +311,13 @@ function timelineItems(d: ClientDetail, withHidden = false): Item[] {
         sub: h.snippet ? `„${h.snippet.slice(0, 110)}${h.snippet.length > 110 ? "…" : ""}”` : null,
         tag: h.hidden ? HIDDEN_LABEL[h.hidden] ?? "ukryty" : "mail",
         dot: h.hidden ? "outline" : "filled",
-        color: "var(--c-muted)",
+        color: GREY,
         group: "comm",
         item: h,
         hidden: h.hidden ?? null,
       });
     } else if (h.kind === "message") {
-      out.push({ key: `m-${h.id}`, at: h.at, title: `${h.channel === "SMS" ? "SMS" : "E-mail z panelu"}${h.failed ? " (nie wysłano)" : ""}`, sub: h.body.slice(0, 120), tag: h.channel === "SMS" ? "sms" : "mail", dot: "filled", color: "var(--c-muted)", group: "comm", item: h });
+      out.push({ key: `m-${h.id}`, at: h.at, title: `${h.channel === "SMS" ? "SMS" : "E-mail z panelu"}${h.failed ? " (nie wysłano)" : ""}`, sub: h.body.slice(0, 120), tag: h.channel === "SMS" ? "sms" : "mail", dot: "filled", color: GREY, group: "comm", item: h });
     } else if (h.kind === "activity") {
       out.push({
         key: `a-${h.id}`,
@@ -198,7 +326,7 @@ function timelineItems(d: ClientDetail, withHidden = false): Item[] {
         sub: [h.body, h.userName].filter(Boolean).join(" — ") || null,
         tag: h.type === "NOTE" ? "notatka" : "rozmowa",
         dot: "outline",
-        color: "var(--c-muted)",
+        color: GREY,
         group: "notes",
         item: h,
       });
@@ -212,12 +340,12 @@ function timelineItems(d: ClientDetail, withHidden = false): Item[] {
       sub: [t.assigneeName, t.status === "DONE" ? `wykonane${t.completedAt ? ` ${dm(t.completedAt)}` : ""}` : t.dueDate ? `termin ${dm(t.dueDate)}` : "otwarte"].filter(Boolean).join(" · "),
       tag: "zadanie",
       dot: "outline",
-      color: "var(--c-muted)",
+      color: GREY,
       group: "notes",
     });
   }
   for (const o of d.opportunities) {
-    out.push({ key: `o-${o.id}`, at: o.lastContact ?? o.createdAt, title: o.device, sub: o.note, tag: "szansa", dot: "outline", color: "var(--c-muted)", group: "notes" });
+    out.push({ key: `o-${o.id}`, at: o.lastContact ?? o.createdAt, title: o.device, sub: o.note, tag: "szansa", dot: "outline", color: TERRA, group: "notes" });
   }
   return out.sort((a, b) => b.at.localeCompare(a.at));
 }
@@ -230,6 +358,7 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
   const [showHidden, setShowHidden] = useState(false);
   const agent = useContext(AgentModeContext);
   const all = useMemo(() => timelineItems(d, showHidden), [d, showHidden]);
+  const items = all.filter((i) => filter === "all" || i.group === filter);
 
   async function toggleHidden(messageId: string, hidden: boolean) {
     const { ok, data } = await api<{ detail: ClientDetail | null }>(`/api/emails/${messageId}/hide`, "POST", { hidden });
@@ -237,9 +366,6 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
     if (data.detail) onChanged(data.detail);
     notify(hidden ? "Wątek ukryty w historii klienta." : "Wątek znów widoczny.");
   }
-  const items = all.filter((i) => filter === "all" || i.group === filter);
-  const rentalsCount = d.summary.rentalsTotal;
-
   async function addNote() {
     if (!note.trim()) return;
     setSaving(true);
@@ -258,26 +384,29 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
     { k: "comm", label: "Maile i SMS" },
     { k: "notes", label: "Notatki i zadania" },
   ];
+  const clickable = (i: Item) => !!i.item && (i.item.kind === "email" || i.item.kind === "message" || i.item.kind === "activity");
 
   return (
-    <section className="flex flex-col gap-3.5 border border-[var(--c-border)] bg-white p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <Heading>Oś zdarzeń</Heading>
-        <div className="flex flex-wrap gap-1.5">
+    <Section
+      title="Oś zdarzeń"
+      gap="gap-3"
+      action={
+        <div className="flex flex-wrap gap-5">
           {FILTERS.map((f) => (
-            <Pill key={f.k} on={filter === f.k} onClick={() => setFilter(f.k)}>
+            <FilterLink key={f.k} on={filter === f.k} onClick={() => setFilter(f.k)}>
               {f.label}
-            </Pill>
+            </FilterLink>
           ))}
         </div>
-      </div>
-      <div className="flex gap-2.5 border border-[var(--c-divider)] bg-[var(--c-inner)] px-3 py-2.5">
-        <label htmlFor="card-note" className="self-center text-[14px] text-[var(--c-muted)]">
+      }
+    >
+      <div className="flex items-center gap-2.5 py-3">
+        <label htmlFor="card-note" className={LABEL}>
           Notatka
         </label>
         <input
           id="card-note"
-          className="h-9 min-w-0 flex-grow border border-[var(--c-btn-border)] bg-white px-2.5 text-[14px] outline-none focus:border-[var(--c-brand)]"
+          className="h-11 min-w-0 flex-grow border border-[#C3C4C7] bg-white px-3 text-[15px] outline-none focus:border-[#1B6FA8]"
           placeholder="Dodaj notatkę z rozmowy…"
           value={note}
           disabled={saving}
@@ -287,74 +416,75 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
           }}
         />
         {note.trim() && (
-          <button type="button" onClick={() => void addNote()} disabled={saving} className="h-9 bg-[var(--c-brand)] px-3 text-[14px] font-semibold text-white hover:bg-[var(--c-brand-deep)]">
+          <button type="button" onClick={() => void addNote()} disabled={saving} className={BTN_PRIMARY}>
             Zapisz
           </button>
         )}
       </div>
-      {items.length === 0 && <p className="text-[14px] text-[var(--c-muted)]">Brak zdarzeń w tym widoku.</p>}
-      {items.slice(0, limit).map((i) => (
-        <div
-          key={i.key}
-          className={`grid items-start gap-3 border-t border-[var(--c-divider)] py-2.5 ${i.item && (i.item.kind === "email" || i.item.kind === "message" || i.item.kind === "activity") ? "cursor-pointer hover:bg-[var(--c-inner)]" : ""}`}
-          style={{ gridTemplateColumns: "92px 18px minmax(0, 1fr) auto" }}
-          onClick={() => i.item && (i.item.kind === "email" || i.item.kind === "message" || i.item.kind === "activity") && onOpenItem(i.item)}
-        >
-          <div className="pt-0.5 text-[14px] text-[var(--c-text-2)]">{dmy(i.at)}</div>
+      {items.length === 0 && <p className="text-[15px] text-[#5C6166]">Brak zdarzeń w tym widoku.</p>}
+      <div className="flex flex-col">
+        {items.slice(0, limit).map((i) => (
           <div
-            className="mt-1 box-border h-3 w-3 rounded-full"
-            style={i.dot === "filled" ? { background: i.color } : { border: `2px solid ${i.color}`, background: "#FFFFFF" }}
-          />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <div className="text-[14px] font-medium">{i.title}</div>
-            {i.sub && <div className="break-words text-[14px] text-[var(--c-muted)]">{i.sub}</div>}
+            key={i.key}
+            className={`grid items-start gap-3.5 border-b border-[#E4E7EA] py-3.5 ${clickable(i) ? "cursor-pointer hover:bg-white" : ""}`}
+            style={{ gridTemplateColumns: "100px 16px minmax(0, 1fr) auto" }}
+            onClick={() => clickable(i) && onOpenItem(i.item!)}
+          >
+            <div className="text-[15px] tabular-nums text-[#5C6166]">{dmy(i.at)}</div>
+            <div className="mt-[7px] box-border h-2.5 w-2.5" style={i.dot === "filled" ? { background: i.color } : { border: `2px solid ${i.color}` }} />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <div className="text-[16px] font-semibold text-[#2B2B2B]">{i.title}</div>
+              {i.sub && <div className="break-words text-[15px] text-[#5C6166]">{i.sub}</div>}
+            </div>
+            <span className="flex flex-col items-end gap-1">
+              <span className="whitespace-nowrap text-[12px] uppercase tracking-[0.12em] text-[#767C82]">{i.tag}</span>
+              {!agent && i.item?.kind === "email" && (
+                <button
+                  type="button"
+                  className="text-[13px] text-[#767C82] hover:text-[#1B6FA8]"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void toggleHidden(i.item!.id, !i.hidden);
+                  }}
+                >
+                  {i.hidden ? "pokaż" : "ukryj"}
+                </button>
+              )}
+            </span>
           </div>
-          <span className="flex flex-col items-end gap-1">
-            <Tag tone="neutral">{i.tag}</Tag>
-            {!agent && i.item?.kind === "email" && (
-              <button
-                type="button"
-                className="text-[14px] text-[var(--c-muted)] hover:text-[var(--c-brand-deep)] hover:underline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void toggleHidden(i.item!.id, !i.hidden);
-                }}
-              >
-                {i.hidden ? "pokaż" : "ukryj"}
-              </button>
-            )}
-          </span>
-        </div>
-      ))}
-      {d.hiddenThreads.length > 0 && (
-        <button type="button" onClick={() => setShowHidden((v) => !v)} className={`${LINK} self-start`}>
-          {showHidden ? "Schowaj ukryte wątki" : `Pokaż ukryte wątki (${d.hiddenThreads.length}) — inżynieria, wykluczone domeny, ukryte ręcznie`}
-        </button>
-      )}
-      {items.length > limit ? (
-        <button type="button" onClick={() => setLimit((l) => l + 30)} className={`${LINK} self-start`}>
-          Pokaż więcej ({items.length - limit})
-        </button>
-      ) : (
-        <button type="button" onClick={onShowAll} className={`${LINK} self-start`}>
-          Pokaż całą historię ({rentalsCount} {rentalsCount === 1 ? "wynajem" : "wynajmów"}, maile, faktury, SMS)
-        </button>
-      )}
-    </section>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1 pt-1">
+        {items.length > limit ? (
+          <button type="button" onClick={() => setLimit((l) => l + 30)} className={LINK}>
+            Pokaż więcej ({items.length - limit}) →
+          </button>
+        ) : (
+          <button type="button" onClick={onShowAll} className={LINK}>
+            Pokaż całą historię →
+          </button>
+        )}
+        {d.hiddenThreads.length > 0 && (
+          <button type="button" onClick={() => setShowHidden((v) => !v)} className="text-[15px] text-[#767C82] hover:text-[#1B6FA8]">
+            {showHidden ? "Schowaj ukryte wątki" : `Ukryte wątki (${d.hiddenThreads.length})`}
+          </button>
+        )}
+      </div>
+    </Section>
   );
 }
 
 // ------------------------------------------------------------------ Faktury i płatności
 
-// Zieleń = opłacona; terakota = po terminie / bez faktury (do zrobienia);
-// nie sprawdzono i oczekuje — neutralnie.
-function statusTone(kind: string): "warn" | "ok" | "neutral" {
-  if (kind === "ZAPLACONA" || kind === "GOTOWKA") return "ok";
-  if (kind === "PO_TERMINIE" || kind === "BRAK_PRZELEWU" || kind === "BEZ_FAKTURY") return "warn";
-  return "neutral";
+// Zieleń = opłacona; terakota = po terminie / bez przelewu / bez faktury
+// (do zrobienia); nie sprawdzono i oczekuje — neutralnie.
+function statusColor(kind: string): string {
+  if (kind === "ZAPLACONA" || kind === "GOTOWKA") return "font-semibold text-[#2F7A68]";
+  if (kind === "PO_TERMINIE" || kind === "BRAK_PRZELEWU" || kind === "BEZ_FAKTURY") return "text-[#B8612F]";
+  return "text-[#767C82]";
 }
 
-function CashForm({ d, fakturowniaId, onDone, onCancel, notify }: { d: ClientDetail; fakturowniaId: number; onDone: (n: ClientDetail) => void; onCancel: () => void; notify: (t: string, e?: boolean) => void }) {
+function CashForm({ fakturowniaId, onDone, onCancel, notify }: { fakturowniaId: number; onDone: (n: ClientDetail) => void; onCancel: () => void; notify: (t: string, e?: boolean) => void }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [receivedBy, setReceivedBy] = useState("");
   const [busy, setBusy] = useState(false);
@@ -367,13 +497,13 @@ function CashForm({ d, fakturowniaId, onDone, onCancel, notify }: { d: ClientDet
     notify("Oznaczono: opłacona gotówką.");
   }
   return (
-    <div className="mt-2 flex flex-wrap items-end gap-2 border border-[var(--c-border)] bg-white p-3">
-      <label className="flex flex-col gap-1 text-[14px] text-[var(--c-muted)]">
-        Data zapłaty
+    <div className="my-2 flex flex-wrap items-end gap-2.5 bg-white p-4">
+      <label className="flex flex-col gap-1">
+        <span className={LABEL}>Data zapłaty</span>
         <input type="date" className={INPUT} value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
-      <label className="flex min-w-[200px] flex-grow flex-col gap-1 text-[14px] text-[var(--c-muted)]">
-        Kto przyjął
+      <label className="flex min-w-[200px] flex-grow flex-col gap-1">
+        <span className={LABEL}>Kto przyjął</span>
         <input className={INPUT} placeholder="np. kierowca Marek" value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} />
       </label>
       <button type="button" className={BTN_OUTLINE} onClick={onCancel}>
@@ -382,7 +512,6 @@ function CashForm({ d, fakturowniaId, onDone, onCancel, notify }: { d: ClientDet
       <button type="button" className={BTN_PRIMARY} disabled={busy || !date} onClick={() => void save()}>
         Opłacona gotówką
       </button>
-      <span className="w-full text-[14px] text-[var(--c-muted)]">{d.name} — wpis trafi do dziennika zmian.</span>
     </div>
   );
 }
@@ -392,6 +521,7 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
   const [cashFor, setCashFor] = useState<number | null>(null);
   const rows = d.transactions.filter((t) => t.invoice).slice(0, 6);
   const t = d.txTotals;
+  const cols = { gridTemplateColumns: "120px 110px minmax(0, 1fr) 190px 70px" };
 
   async function undoCash(fakturowniaId: number) {
     if (!window.confirm("Cofnąć oznaczenie „opłacona gotówką”?")) return;
@@ -400,18 +530,35 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
     if (data.detail) onChanged(data.detail);
   }
 
+  const summary = [
+    d.overview.typicalPayment ? `Płaci: ${d.overview.typicalPayment}.` : null,
+    t.overdueCount ? `${t.overdueCount} po terminie (${money(t.overdueNet)}).` : null,
+    t.noTransferCount ? `${t.noTransferCount} bez przelewu w okresie wyciągów — jeśli zapłacono gotówką, oznacz „gotówka”; inaczej przypomnij o płatności.` : null,
+    t.uncheckedCount ? `${t.uncheckedCount} nie sprawdzono (poza okresem wyciągów).` : null,
+    t.paymentsAsOf ? `Wpłaty z okresu ${t.paymentsFrom ? `${dm(t.paymentsFrom)}–` : "do "}${dm(t.paymentsAsOf)}.` : "Brak wgranych wyciągów z banku.",
+    d.profile.invoiceEmail ? `E-mail do faktur: ${d.profile.invoiceEmail}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <Section title="Faktury i płatności" wide gap="gap-2.5" tone="invoices">
+    <section className="flex flex-col gap-2.5 bg-[#FBF0E7] px-[30px] py-7">
+      <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-4">
+        <h2 className="card-display m-0 self-start border-b-2 border-[#E08A5C] pb-1.5 text-[24px] font-medium leading-tight text-[#0C3450]">Faktury i płatności</h2>
+        <button type="button" onClick={onShowAll} className={LINK}>
+          Wszystkie wynajmy i faktury →
+        </button>
+      </div>
       {rows.length === 0 ? (
-        <p className="text-[14px] text-[var(--c-muted)]">Brak faktur w panelu.</p>
+        <p className="text-[15px] text-[#5C6166]">Brak faktur w panelu.</p>
       ) : (
-        <div className="mt-2 overflow-x-auto">
-          <div className="min-w-[600px]">
-            <div className="grid gap-2 border-b border-[var(--c-divider)] pb-1.5 text-[14px] text-[var(--c-muted)]" style={{ gridTemplateColumns: "120px 110px minmax(0, 1fr) 190px 90px" }}>
+        <div className="overflow-x-auto">
+          <div className="min-w-[620px]">
+            <div className={`grid gap-3 border-b border-[#E6D5C6] pb-2 ${LABEL}`} style={cols}>
               <span>Numer</span>
               <span>Sprzedaż</span>
-              <span>Netto / brutto (zł)</span>
-              <span>Status</span>
+              <span>Netto / brutto</span>
+              <span>Wpłata</span>
               <span />
             </div>
             {rows.map((r) => {
@@ -419,24 +566,24 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
               const unpaid = !["ZAPLACONA", "GOTOWKA"].includes(r.status.kind);
               return (
                 <div key={r.key}>
-                  <div className="mt-2.5 grid items-center gap-2 text-[15px]" style={{ gridTemplateColumns: "120px 110px minmax(0, 1fr) 190px 90px" }}>
+                  <div className="grid items-baseline gap-3 border-b border-[#E6D5C6] py-1.5 text-[16px] tabular-nums text-[#333333]" style={cols}>
                     <span className="truncate">{r.invoice!.number}</span>
                     <span>{dmy(r.date)}</span>
-                    <span className="whitespace-nowrap" title="netto / brutto, zł">
-                      <span className="font-semibold text-[var(--c-brand)]">{r.net != null ? num(r.net, 2) : "—"}</span>
-                      {r.invoice!.totalGross != null && <span className="text-[var(--c-muted)]"> / {num(r.invoice!.totalGross, 2)}</span>}
+                    <span className="whitespace-nowrap">
+                      {r.net != null ? num(r.net, 2) : "—"}
+                      {r.invoice!.totalGross != null ? ` / ${num(r.invoice!.totalGross, 2)}` : ""} zł
                     </span>
-                    <span title={r.status.label}>
-                      <Tag tone={statusTone(r.status.kind)}>{r.status.label.charAt(0).toLowerCase() + r.status.label.slice(1)}</Tag>
+                    <span className={`text-[14px] ${statusColor(r.status.kind)}`} title={r.status.label}>
+                      {r.status.kind === "NIE_SPRAWDZONO" && !t.paymentsAsOf ? "brak danych z banku" : r.status.label.charAt(0).toLowerCase() + r.status.label.slice(1)}
                     </span>
-                    <span className="text-right">
+                    <span className="text-right text-[14px]">
                       {!agent && unpaid && cashFor !== r.invoice!.fakturowniaInvoiceId && (
-                        <button type="button" className={LINK} onClick={() => setCashFor(r.invoice!.fakturowniaInvoiceId)}>
+                        <button type="button" className="text-[#1B6FA8] hover:text-[#0C3450]" onClick={() => setCashFor(r.invoice!.fakturowniaInvoiceId)}>
                           gotówka
                         </button>
                       )}
                       {!agent && cash && (
-                        <button type="button" className="text-[14px] text-[var(--c-muted)] hover:underline" onClick={() => void undoCash(r.invoice!.fakturowniaInvoiceId)}>
+                        <button type="button" className="text-[#767C82] hover:text-[#B8612F]" onClick={() => void undoCash(r.invoice!.fakturowniaInvoiceId)}>
                           cofnij
                         </button>
                       )}
@@ -444,7 +591,6 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
                   </div>
                   {cashFor === r.invoice!.fakturowniaInvoiceId && (
                     <CashForm
-                      d={d}
                       fakturowniaId={r.invoice!.fakturowniaInvoiceId}
                       notify={notify}
                       onCancel={() => setCashFor(null)}
@@ -460,154 +606,10 @@ function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: ClientDetail;
           </div>
         </div>
       )}
-      <div className="border-t border-[var(--c-divider)] pt-2.5 text-[14px] text-[var(--c-text-2)]">
-        {[
-          d.overview.typicalPayment ? `Płaci: ${d.overview.typicalPayment}.` : null,
-          t.overdueCount ? `${t.overdueCount} po terminie (${money(t.overdueNet)}).` : null,
-          t.noTransferCount
-            ? `${t.noTransferCount} bez przelewu w okresie wyciągów (${money(t.noTransferNet)}) — jeśli zapłacono gotówką, oznacz „gotówka”; inaczej przypomnij o płatności.`
-            : null,
-          t.uncheckedCount
-            ? `${t.uncheckedCount} ${t.uncheckedCount === 1 ? "faktura" : "faktur"} nie sprawdzono — poza okresem wgranych wyciągów (wystawione przed ${t.paymentsFrom ? dmy(t.paymentsFrom) : "01.09.2026"} albo termin mniej niż 5 dni przed końcem wyciągu).`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" ")}
+      <div className="mt-2">
+        <Quote tone="terra">{summary}</Quote>
       </div>
-      <div className="text-[14px] text-[var(--c-text-2)]">
-        {t.paymentsAsOf ? `Wpłaty z okresu ${t.paymentsFrom ? `${dm(t.paymentsFrom)}–` : "do "}${dm(t.paymentsAsOf)} (wyciągi z banku)` : "Brak wgranych wyciągów z banku"}
-      </div>
-      <button type="button" onClick={onShowAll} className={`${LINK} self-start`}>
-        Wszystkie wynajmy i faktury →
-      </button>
-    </Section>
-  );
-}
-
-// ------------------------------------------------------------------ Szanse sprzedaży
-
-const STAGES = [
-  { value: "pomysl", label: "pomysł" },
-  { value: "rozmowa", label: "rozmowa" },
-  { value: "oferta", label: "oferta" },
-  { value: "decyzja", label: "czeka na decyzję" },
-  { value: "wygrana", label: "wygrana" },
-  { value: "przegrana", label: "przegrana" },
-];
-const CHANCES = [
-  { value: "wysoka", label: "wysoka", color: "var(--c-brand)" },
-  { value: "srednia", label: "średnia", color: "var(--c-muted)" },
-  { value: "niska", label: "niska", color: "var(--c-muted)" },
-  { value: "sprawdzic", label: "sprawdzić", color: "var(--c-warn-text)" },
-];
-const stageLabel = (s: string) => STAGES.find((x) => x.value === s)?.label ?? s;
-
-function OpportunitiesSection({ d, onChanged, notify }: { d: ClientDetail; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
-  const agent = useContext(AgentModeContext);
-  const [adding, setAdding] = useState(false);
-  const [f, setF] = useState({ device: "", stage: "rozmowa", chance: "", returnAt: "", note: "" });
-  const [busy, setBusy] = useState(false);
-  const open = d.opportunities.filter((o) => !o.closedAt);
-  const review = d.profile.googleReview;
-
-  async function save() {
-    setBusy(true);
-    const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}/opportunities`, "POST", f);
-    setBusy(false);
-    if (!ok) return notify(data.message ?? "Nie udało się dodać szansy.", true);
-    setAdding(false);
-    setF({ device: "", stage: "rozmowa", chance: "", returnAt: "", note: "" });
-    onChanged(data.detail);
-  }
-  async function close(id: string, stage: "wygrana" | "przegrana") {
-    const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}/opportunities/${id}`, "PATCH", { stage });
-    if (!ok) return notify(data.message ?? "Nie udało się zamknąć szansy.", true);
-    onChanged(data.detail);
-  }
-
-  return (
-    <Section
-      title="Szanse sprzedaży"
-      wide
-      gap="gap-2.5"
-      action={
-        !agent &&
-        !adding && (
-          <button type="button" onClick={() => setAdding(true)} className={LINK}>
-            + dodaj
-          </button>
-        )
-      }
-    >
-      {adding && (
-        <div className="flex flex-col gap-2 border border-[var(--c-brand)] p-3">
-          <input className={INPUT} placeholder="Urządzenie / temat, np. Cooltech – modelowanie ciała" value={f.device} onChange={(e) => setF({ ...f, device: e.target.value })} />
-          <div className="grid grid-cols-3 gap-2">
-            <select className={INPUT} value={f.stage} onChange={(e) => setF({ ...f, stage: e.target.value })}>
-              {STAGES.slice(0, 4).map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-            <select className={INPUT} value={f.chance} onChange={(e) => setF({ ...f, chance: e.target.value })}>
-              <option value="">szansa…</option>
-              {CHANCES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-            <input className={INPUT} type="date" title="Wrócić" value={f.returnAt} onChange={(e) => setF({ ...f, returnAt: e.target.value })} />
-          </div>
-          <textarea className="w-full border border-[var(--c-border)] px-3 py-2 text-sm outline-none focus:border-[var(--c-brand)]" rows={2} placeholder="Opis" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} />
-          <div className="flex justify-end gap-2">
-            <button type="button" className={BTN_OUTLINE} onClick={() => setAdding(false)}>
-              Anuluj
-            </button>
-            <button type="button" className={BTN_PRIMARY} disabled={busy || !f.device.trim()} onClick={() => void save()}>
-              Dodaj
-            </button>
-          </div>
-        </div>
-      )}
-      {open.length === 0 && !review?.askedAt && !adding && <p className="text-[14px] text-[var(--c-muted)]">Brak otwartych szans.</p>}
-      {open.map((o) => {
-        const ch = CHANCES.find((c) => c.value === o.chance);
-        return (
-          <div key={o.id} className="group flex flex-col gap-1 border border-[var(--c-divider)] bg-[var(--c-inner)] p-3">
-            <div className="flex justify-between gap-2">
-              <span className="text-[14px] font-semibold">{o.device}</span>
-              <span className="text-[14px] font-semibold" style={{ color: ch?.color ?? "var(--c-muted)" }}>
-                {ch?.label ?? stageLabel(o.stage)}
-              </span>
-            </div>
-            <div className="text-[14px] text-[var(--c-text-2)]">
-              {[o.note, `etap: ${stageLabel(o.stage)}`, o.lastContact ? `ostatni kontakt ${dmy(o.lastContact)}` : null, o.returnAt ? `wrócić ${dmy(o.returnAt)}` : null].filter(Boolean).join(" · ")}
-            </div>
-            {!agent && (
-              <div className="hidden gap-3 text-[14px] group-hover:flex">
-                <button type="button" className={LINK} onClick={() => void close(o.id, "wygrana")}>
-                  wygrana
-                </button>
-                <button type="button" className="text-[14px] text-[var(--c-muted)] hover:underline" onClick={() => void close(o.id, "przegrana")}>
-                  zamknij bez sprzedaży
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })}
-      {review?.askedAt && review.given !== true && (
-        <div className="flex flex-col gap-1 border border-[var(--c-divider)] bg-[var(--c-inner)] p-3">
-          <div className="flex justify-between">
-            <span className="text-[14px] font-semibold">Opinia w Google</span>
-            <span className="text-[14px] font-semibold text-[var(--c-warn-text)]">sprawdzić</span>
-          </div>
-          <div className="text-[14px] text-[var(--c-text-2)]">Prośba wysłana {dmy(review.askedAt)}. {review.given === false ? "Nie wystawiła." : "Nie wiadomo, czy wystawiła."}</div>
-        </div>
-      )}
-    </Section>
+    </section>
   );
 }
 
@@ -631,34 +633,36 @@ function QualitySection({ d, onShowData }: { d: ClientDetail; onShowData: () => 
     fieldSources: [...Object.values(d.fieldMeta), ...d.contacts.flatMap((c) => Object.values(c.fieldMeta))].map((m) => m.source),
   });
   return (
-    <section className="flex flex-col gap-3.5 border border-[var(--c-border)] bg-white p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <Heading>Jakość danych</Heading>
-        <div className="flex items-center gap-2.5">
-          <div className="h-2 w-[200px] max-w-[40vw] bg-[var(--c-divider)]">
-            <div className="h-2 bg-[var(--c-ok)]" style={{ width: `${q.percent}%` }} />
+    <Section
+      title="Jakość danych"
+      gap="gap-3.5"
+      action={
+        <div className="flex items-center gap-3">
+          <div className="h-1.5 w-[220px] max-w-[40vw] bg-[#E3F1EC]">
+            <div className="h-1.5 bg-[#2F7A68]" style={{ width: `${q.percent}%` }} />
           </div>
-          <span className="card-display text-[22px] font-medium text-[var(--c-ok)]">{q.percent}%</span>
+          <span className="text-[22px] text-[#2F7A68]">{q.percent}%</span>
         </div>
-      </div>
-      <div className="grid grid-cols-1 gap-4 text-[14px] md:grid-cols-3">
-        <div className="flex flex-col gap-1.5">
-          <div className="font-semibold text-[var(--c-ok)]">✓ Potwierdzone</div>
-          <div className="text-[var(--c-text-2)]">{q.confirmed.length ? q.confirmed.join(" · ") : "—"}</div>
+      }
+    >
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div>
+          <div className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.12em] text-[#2F7A68]">✓ Potwierdzone</div>
+          <div className="text-[15px] leading-[1.5] text-[#4A4A4A]">{q.confirmed.length ? q.confirmed.join(" · ") : "—"}</div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <div className="font-semibold text-[var(--c-warn-text)]">Brakuje</div>
-          <div className="text-[var(--c-text-2)]">{q.missing.length ? q.missing.join(" · ") : "nic — komplet"}</div>
+        <div>
+          <div className={`mb-1.5 ${LABEL}`}>Brakuje</div>
+          <div className="text-[15px] leading-[1.5] text-[#4A4A4A]">{q.missing.length ? q.missing.join(" · ") : "nic — komplet"}</div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <div className="font-semibold">Źródła</div>
-          <div className="text-[var(--c-text-2)]">{q.sources.length ? q.sources.join(" · ") : <Missing>brak</Missing>}</div>
+        <div>
+          <div className={`mb-1.5 ${LABEL}`}>Źródła</div>
+          <div className="text-[15px] leading-[1.5] text-[#4A4A4A]">{q.sources.length ? q.sources.join(" · ") : <Missing>brak</Missing>}</div>
         </div>
       </div>
       <button type="button" onClick={onShowData} className={`${LINK} self-start`}>
         Wszystkie dane, kwalifikacja i notatki →
       </button>
-    </section>
+    </Section>
   );
 }
 
@@ -668,22 +672,23 @@ export function CardRight({
   notify,
   onOpenItem,
   onTab,
+  top,
 }: {
   d: ClientDetail;
   onChanged: (n: ClientDetail) => void;
   notify: (t: string, e?: boolean) => void;
   onOpenItem: (h: ClientHistoryItem) => void;
   onTab: (t: "transakcje" | "komunikacja" | "dane") => void;
+  top?: ReactNode; // blok „Następny krok”
 }) {
   return (
-    <div className="flex w-full min-w-0 flex-grow flex-col gap-4">
+    <div className="flex w-full min-w-0 flex-grow flex-col gap-11">
+      {top}
       <RhythmSection d={d} />
+      <OpportunitiesSection d={d} onChanged={onChanged} notify={notify} />
       <TimelineSection d={d} onChanged={onChanged} notify={notify} onOpenItem={onOpenItem} onShowAll={() => onTab("komunikacja")} />
-      <div className="grid grid-cols-1 gap-6">
-        <TermsSection d={d} onChanged={onChanged} notify={notify} />
-        <InvoicesSection d={d} onShowAll={() => onTab("transakcje")} onChanged={onChanged} notify={notify} />
-        <OpportunitiesSection d={d} onChanged={onChanged} notify={notify} />
-      </div>
+      <TermsSection d={d} onChanged={onChanged} notify={notify} />
+      <InvoicesSection d={d} onShowAll={() => onTab("transakcje")} onChanged={onChanged} notify={notify} />
       <QualitySection d={d} onShowData={() => onTab("dane")} />
     </div>
   );
