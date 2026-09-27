@@ -204,10 +204,12 @@ export async function countLeadWork(userId: string, now = new Date()): Promise<n
 // „Rezerwacje do spięcia”: podpowiedź wynajmu dla sygnału „Rezerwacja” bez
 // wynajmu — ten sam klient albo telefon / e-mail, termin ±14 dni od zgłoszonego.
 export async function loadLinkSuggestions(rows: LeadRow[]): Promise<Record<string, { id: string; startsAt: string; title: string; deviceName: string; clientId: string | null }>> {
-  const todo = rows.filter((r) => r.stage === "REZERWACJA" && !r.rentalId);
+  const todo = rows.filter((r) => (r.stage === "REZERWACJA" || (r.stage === "WYGRANA" && new Date(r.createdAt) >= FUNNEL_FROM)) && !r.rentalId);
   if (!todo.length) return {};
+  // Wygrane bez wynajmu szukają też w starszych (odbytych) wynajmach z 2026.
+  const since = todo.some((r) => r.stage === "WYGRANA") ? FUNNEL_FROM : new Date(Date.now() - 45 * 86_400_000);
   const rentals = await prisma.rental.findMany({
-    where: { deletedInGoogle: false, lead: null, startsAt: { gte: new Date(Date.now() - 45 * 86_400_000) } },
+    where: { deletedInGoogle: false, lead: null, startsAt: { gte: since } },
     orderBy: { startsAt: "asc" },
     select: { id: true, startsAt: true, title: true, clientId: true, contactPhoneCache: true, contactEmailCache: true, device: { select: { name: true } } },
   });

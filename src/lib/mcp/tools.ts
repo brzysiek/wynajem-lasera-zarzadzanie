@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { callQueueIds } from "@/lib/leads/funnel";
+import { OPEN_STAGES, callQueueIds } from "@/lib/leads/funnel";
 import { normalizePolishPhone } from "@/lib/reminders";
 import type { AgentCtx } from "@/lib/agent-api/handler";
 import { AgentApiError } from "@/lib/agent-api/handler";
@@ -264,12 +264,16 @@ export const TOOLS: McpTool[] = [
   {
     name: "sygnaly_lista",
     title: "Lista sygnałów",
-    description: "Sygnały (zapytania) od najnowszych, z paginacją. Filtry: etap, typ, wpłynęło od, do obdzwonienia, klient, szukaj.",
+    description:
+      "Sygnały (zapytania) od najnowszych, z paginacją. Filtry: etap, typ, wpłynęło od, do obdzwonienia, duplikaty, klient, szukaj. " +
+      "Pola lejka: nextActionAt + nextStepType (PIERWSZY_KONTAKT, PONOWNA_PROBA, ODDZWONI, FOLLOW_UP_OFERTY, DOPYTAC, INNE) + nextStepNote, attempts (nieodebrane próby), " +
+      "followUpNo, lastContactAt, maxStage (najdalszy osiągnięty etap), sourceRef (odnośnik źródła, np. gmail:<id>). Wygrana liczy się tylko z wynajmem (rentalId).",
     inputSchema: obj({
       etap: s("Etap.", { enum: ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA", "PRZEGRANA"] }),
-      typ: s("Typ.", { enum: ["POBRANIE_CENNIKA", "KONTAKT", "REZERWACJA_WWW", "SZKOLENIE_WWW", "TELEFON", "EMAIL", "INNE"] }),
+      typ: s("Typ.", { enum: ["POBRANIE_CENNIKA", "KONTAKT", "REZERWACJA_WWW", "SZKOLENIE_WWW", "TELEFON", "EMAIL", "OLX", "POLECENIE", "INNE"] }),
       od: s("Wpłynęło od RRRR-MM-DD."),
       do_obdzwonienia: b("Tylko lista „Do obdzwonienia”."),
+      duplikaty: b("Tylko otwarte sygnały klientów, którzy mają ich więcej niż jeden (do zgłoszenia archiwizacji duplikatu)."),
       klient_id: s("ID klienta."),
       q: s("Szukaj."),
       ...PAGE,
@@ -280,12 +284,15 @@ export const TOOLS: McpTool[] = [
       const q = str(a, "q")?.toLowerCase() ?? "";
       const all = await loadLeadRows();
       const queue = callQueueIds(all, new Date());
+      const openByClient = new Map<string, number>();
+      for (const r of all) if (r.clientId && OPEN_STAGES.includes(r.stage)) openByClient.set(r.clientId, (openByClient.get(r.clientId) ?? 0) + 1);
       const rows = all.filter(
         (r) =>
           (!str(a, "etap") || r.stage === str(a, "etap")) &&
           (!str(a, "typ") || r.type === str(a, "typ")) &&
           (!from || new Date(r.createdAt) >= from) &&
           (a.do_obdzwonienia !== true || queue.has(r.id)) &&
+          (a.duplikaty !== true || (!!r.clientId && OPEN_STAGES.includes(r.stage) && (openByClient.get(r.clientId) ?? 0) > 1)) &&
           (!str(a, "klient_id") || r.clientId === str(a, "klient_id")) &&
           (!q || [r.title, r.person, r.email, r.phone, r.clientName, r.city].filter(Boolean).join(" ").toLowerCase().includes(q)),
       );
@@ -1060,6 +1067,10 @@ export const TOOLS: McpTool[] = [
       "zrodlo_ceny (OFERTA | UMOWA | USTALENIE | HISTORIA), odnosnik (np. „oferta 30.10.2025”, mail) — jedna propozycja = jedna komórka tabeli cen; po akceptacji panel sam przelicza przyszłe rezerwacje klienta (ręcznych kwot nie rusza); transport, faktura, płatność i impulsy zgłaszaj rodzajem pole " +
       "(transportPriceNet, invoiceMode FULL/PARTIAL/NONE, invoicePartDefault, paymentForm, paymentTermDays, pulsesCharged, pulseRateNet). " +
       "Dla adres_dostawy (paszport dostawy): klient_id, adres_id (zmiana istniejącego — z narzędzia klient) albo bez niego (nowy adres: nazwa + miejscowosc/kod), pola: nazwa, ulica, kod, miejscowosc, wejscie, pietro, parking, prad, odbiera, godziny, typowa_godzina, uwagi_biura, domyslny (true). " +
+      "Lejek sygnałów: sygnal_nowy (sygnał z maila / telefonu — zrodlo_sygnalu EMAIL | TELEFON | OLX | POLECENIE | INNE, klient_id albo imie / telefon / email, opcjonalnie urzadzenia, termin RRRR-MM-DD, dni, notatka, odnosnik np. gmail:<id> — duplikat odnośnika jest odrzucany); " +
+      "powod_przegranej (sygnal_id, powod: ODLEGLOSC, CENA, KUPILA_URZADZENIE, TERMIN_ZAJETY, BRAK_KONTAKTU, TYLKO_CENNIK, POZA_BRANZA, INNE_URZADZENIE, INNE + notatka); " +
+      "krok_sygnalu (sygnal_id, termin RRRR-MM-DD[THH:MM], rodzaj_kroku, notatka); powiazanie_wynajmu (sygnal_id, wynajem_id z kalendarz_wynajmy — wynajem bez sygnału). " +
+      "Duplikat sygnału zgłaszaj rodzajem archiwizacja (sygnal_id, powod DUPLIKAT). " +
       "Zawsze zrodlo, pewnosc, paczka; opcjonalnie klasa (np. miasto_slownik) — klasy zatwierdzone na stałe wykonują się od razu. " +
       "Odrzucone wcześniej zmiany są blokowane (dostaniesz komentarz odrzucenia).",
     inputSchema: obj({ propozycje: { type: "array", items: { type: "object" }, description: "Lista propozycji (maks. 500)." } }, ["propozycje"]),

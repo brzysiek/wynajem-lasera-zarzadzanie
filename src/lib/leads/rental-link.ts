@@ -6,7 +6,8 @@ import { FUNNEL_FROM, nextWorkdayAt10 } from "@/lib/leads/funnel";
 // Lejek ↔ kalendarz (wniosek 18, decyzja 5): wynajem klienta z otwartym
 // sygnałem → sygnał „Rezerwacja” z powiązanym wynajmem; wynajem zakończony →
 // „Wygrana”; wynajem anulowany (usunięty z kalendarza) → z powrotem „Oferta
-// wysłana” z krokiem „dopytać” na jutro. Wołane po synchronizacji kalendarzy
+// wysłana” z krokiem „dopytać” na jutro; wygrana bez wynajmu → powiązanie
+// z odbytym wynajmem klienta. Wołane po synchronizacji kalendarzy
 // (cron), po zapisie rezerwacji w panelu i przy otwarciu Sygnałów.
 
 const OPEN = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"] as const;
@@ -86,6 +87,40 @@ export async function syncLeadsWithRentals(now = new Date()): Promise<{ linked: 
       linked++;
     }
   }
+  // 4) Wygrane bez wynajmu (ustawione ręcznie przed lejkiem albo przez
+  // import): powiązanie z odbytym wynajmem klienta po dacie zapytania. Etap
+  // bez zmian — wygrana zaczyna się liczyć w raporcie.
+  const wonLoose = await prisma.lead.findMany({
+    where: { archivedAt: null, stage: "WYGRANA", rentalId: null, createdAt: { gte: FUNNEL_FROM } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, clientId: true, createdAt: true, contactPhone: true, contactEmail: true },
+  });
+  if (wonLoose.length) {
+    const past = await prisma.rental.findMany({
+      where: { deletedInGoogle: false, lead: null, startsAt: { gte: FUNNEL_FROM }, endsAt: { lt: now } },
+      orderBy: { startsAt: "asc" },
+      select: { id: true, clientId: true, startsAt: true, contactPhoneCache: true, contactEmailCache: true, device: { select: { name: true } } },
+    });
+    const taken = new Set<string>();
+    for (const l of wonLoose) {
+      const phone = digits(l.contactPhone);
+      const email = l.contactEmail?.toLowerCase() ?? null;
+      const r = past.find(
+        (x) =>
+          !taken.has(x.id) &&
+          x.startsAt >= new Date(l.createdAt.getTime() - 86_400_000) &&
+          ((l.clientId && x.clientId === l.clientId) || (!!phone && digits(x.contactPhoneCache) === phone) || (!!email && x.contactEmailCache?.toLowerCase() === email)),
+      );
+      if (!r) continue;
+      taken.add(r.id);
+      await prisma.$transaction([
+        prisma.lead.update({ where: { id: l.id }, data: { rentalId: r.id } }),
+        prisma.leadActivity.create({ data: { leadId: l.id, clientId: l.clientId, type: "STAGE_CHANGE", body: `Wygrana powiązana z wynajmem: ${r.device.name} ${fmt(r.startsAt)}` } }),
+      ]);
+      linked++;
+    }
+  }
+
   if (linked || won || cancelled) logInfo("leads_rentals_synced", { linked, won, cancelled });
   return { linked, won, cancelled };
 }

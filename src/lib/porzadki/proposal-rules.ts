@@ -6,6 +6,9 @@ import { parseArchiveInput, type ArchiveInput } from "./archive-rules";
 import { parseSplitInput } from "../clients/split-rules";
 import { parseExclusionList } from "./exclusion-rules";
 import { PRICE_SOURCES, isTermsDevice } from "../clients/terms-rules";
+import { LOST_REASON_KEYS, LOST_REASON_LABEL, TYPE_KEYS, type LostReasonKey } from "../leads/labels";
+import { DEVICE_INTEREST_KEYS, type DeviceInterestKey } from "../clients/labels";
+import type { LeadTypeKey } from "../leads/parse-deal";
 
 export const PROPOSAL_KIND_LABEL = {
   FIELD: "pole klienta",
@@ -17,6 +20,10 @@ export const PROPOSAL_KIND_LABEL = {
   EXCLUSION: "lista wykluczeń domen",
   CLIENT_PRICE: "cena klienta (warunki handlowe)",
   DELIVERY_ADDRESS: "adres dostawy (paszport)",
+  SIGNAL_NEW: "nowy sygnał (lejek)",
+  LOST_REASON: "powód przegranej",
+  LEAD_STEP: "następny krok sygnału",
+  RENTAL_LINK: "powiązanie sygnału z wynajmem",
 } as const;
 export type ProposalKind = keyof typeof PROPOSAL_KIND_LABEL;
 
@@ -44,7 +51,37 @@ const KIND_ALIASES: Record<string, ProposalKind> = {
   client_price: "CLIENT_PRICE",
   adres_dostawy: "DELIVERY_ADDRESS",
   delivery_address: "DELIVERY_ADDRESS",
+  sygnal_nowy: "SIGNAL_NEW",
+  powod_przegranej: "LOST_REASON",
+  krok_sygnalu: "LEAD_STEP",
+  powiazanie_wynajmu: "RENTAL_LINK",
 };
+
+export type SignalNewProposal = {
+  type: LeadTypeKey;
+  clientId: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  deviceInterest: DeviceInterestKey[];
+  requestedFrom: string | null; // RRRR-MM-DD
+  requestedDays: number | null;
+  message: string | null;
+  sourceRef: string | null;
+};
+export type LostReasonProposal = { lostReason: LostReasonKey; lostNote: string | null };
+export type LeadStepProposal = { at: string; stepType: string; note: string | null };
+export type RentalLinkProposal = { rentalId: string };
+
+const LEAD_STEP_TYPES = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA", "FOLLOW_UP_OFERTY", "ODDZWONI", "DOPYTAC", "INNE"];
+const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ł/g, "l").replace(/[^a-z]+/g, " ").trim();
+function lostReasonOf(v: unknown): LostReasonKey | null {
+  if (typeof v !== "string") return null;
+  if ((LOST_REASON_KEYS as string[]).includes(v)) return v as LostReasonKey;
+  const f = fold(v);
+  const hit = LOST_REASON_KEYS.find((k) => fold(LOST_REASON_LABEL[k]) === f || fold(LOST_REASON_LABEL[k]).startsWith(f));
+  return hit ?? null;
+}
 
 // Adres dostawy od agenta: polskie klucze → pola ClientDeliveryAddress.
 const ADDRESS_KEYS: Record<string, string> = {
@@ -97,7 +134,11 @@ export function normalizeClass(v: unknown): string | null {
 export function parseProposalItem(item: Record<string, unknown>): { ok: true; value: ParsedProposal } | { ok: false; message: string } {
   const rawKind = str(item.rodzaj ?? item.kind, 32)?.toLowerCase();
   const kind = rawKind ? KIND_ALIASES[rawKind] : undefined;
-  if (!kind) return { ok: false, message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie, dopasowanie_platnosci, wykluczenie, cennik_klienta albo adres_dostawy." };
+  if (!kind)
+    return {
+      ok: false,
+      message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie, dopasowanie_platnosci, wykluczenie, cennik_klienta, adres_dostawy, sygnal_nowy, powod_przegranej, krok_sygnalu albo powiazanie_wynajmu.",
+    };
   const provenance = parseProvenance(item, { required: true });
   if (!provenance.ok) return provenance;
   if (!provenance.value.batch) return { ok: false, message: "Podaj paczkę (paczka)." };
@@ -114,6 +155,50 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
     const contactId = kind === "CONTACT_FIELD" ? str(item.osoba_id ?? item.contactId, 64) : null;
     if (kind === "CONTACT_FIELD" && !contactId) return { ok: false, message: "Podaj osoba_id." };
     return { ok: true, value: { ...base, kind, contactId, field, proposed: item.proponowane ?? item.proposed ?? null } };
+  }
+  if (kind === "SIGNAL_NEW") {
+    const typeRaw = str(item.zrodlo_sygnalu ?? item.typ ?? item.type, 32)?.toUpperCase() ?? "EMAIL";
+    const type = (TYPE_KEYS as string[]).includes(typeRaw) ? (typeRaw as LeadTypeKey) : null;
+    if (!type) return { ok: false, message: "zrodlo_sygnalu: EMAIL, TELEFON, OLX, POLECENIE albo INNE." };
+    const devRaw = item.urzadzenia ?? item.urzadzenie ?? [];
+    const devices = (Array.isArray(devRaw) ? devRaw : [devRaw]).filter((x): x is string => typeof x === "string").map((x) => x.toUpperCase());
+    if (devices.some((d) => !(DEVICE_INTEREST_KEYS as string[]).includes(d))) return { ok: false, message: `urzadzenie: ${DEVICE_INTEREST_KEYS.join(", ")}.` };
+    const proposed: SignalNewProposal = {
+      type,
+      clientId,
+      contactName: str(item.imie ?? item.osoba ?? item.contactName, 191),
+      contactPhone: str(item.telefon ?? item.contactPhone, 32),
+      contactEmail: str(item.email ?? item.contactEmail, 191)?.toLowerCase() ?? null,
+      deviceInterest: devices as DeviceInterestKey[],
+      requestedFrom: str(item.termin ?? item.requestedFrom, 10),
+      requestedDays: Number.isInteger(Number(item.dni)) && Number(item.dni) > 0 ? Number(item.dni) : null,
+      message: str(item.notatka ?? item.message, 2000),
+      sourceRef: str(item.odnosnik ?? item.sourceRef, 191),
+    };
+    if (!clientId && !proposed.contactName && !proposed.contactPhone && !proposed.contactEmail) return { ok: false, message: "Podaj klient_id albo imie / telefon / email." };
+    if (proposed.requestedFrom && !/^\d{4}-\d{2}-\d{2}$/.test(proposed.requestedFrom)) return { ok: false, message: "termin: RRRR-MM-DD." };
+    return { ok: true, value: { ...base, kind, field: proposed.sourceRef, proposed } };
+  }
+  if (kind === "LOST_REASON" || kind === "LEAD_STEP" || kind === "RENTAL_LINK") {
+    const leadId = str(item.sygnal_id ?? item.leadId, 64);
+    if (!leadId) return { ok: false, message: "Podaj sygnal_id." };
+    if (kind === "LOST_REASON") {
+      const reason = lostReasonOf(item.powod ?? item.lostReason);
+      if (!reason || reason === "ARCHIWUM_IMPORTU") return { ok: false, message: "powod: ODLEGLOSC (za daleko), CENA, KUPILA_URZADZENIE, TERMIN_ZAJETY, BRAK_KONTAKTU, TYLKO_CENNIK, POZA_BRANZA, INNE_URZADZENIE albo INNE (z notatką)." };
+      const note = str(item.notatka ?? item.lostNote, 2000);
+      if (reason === "INNE" && !note) return { ok: false, message: "Przy powodzie INNE dodaj notatkę." };
+      return { ok: true, value: { ...base, kind, leadId, field: "lostReason", proposed: { lostReason: reason, lostNote: note } satisfies LostReasonProposal } };
+    }
+    if (kind === "LEAD_STEP") {
+      const at = str(item.termin ?? item.at, 16);
+      if (!at || !/^\d{4}-\d{2}-\d{2}/.test(at)) return { ok: false, message: "termin: RRRR-MM-DD (opcjonalnie z godziną RRRR-MM-DDTHH:MM)." };
+      const stepType = str(item.rodzaj_kroku ?? item.stepType, 20)?.toUpperCase() ?? "INNE";
+      if (!LEAD_STEP_TYPES.includes(stepType)) return { ok: false, message: `rodzaj_kroku: ${LEAD_STEP_TYPES.join(", ")}.` };
+      return { ok: true, value: { ...base, kind, leadId, field: "nextStep", proposed: { at, stepType, note: str(item.notatka ?? item.note, 500) } satisfies LeadStepProposal } };
+    }
+    const rentalId = str(item.wynajem_id ?? item.rentalId, 64);
+    if (!rentalId) return { ok: false, message: "Podaj wynajem_id (z kalendarz_wynajmy)." };
+    return { ok: true, value: { ...base, kind, leadId, field: "rentalId", proposed: { rentalId } satisfies RentalLinkProposal } };
   }
   if (kind === "CLIENT_PRICE") {
     if (!clientId) return { ok: false, message: "Podaj klient_id." };

@@ -372,6 +372,18 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
     if (data.detail) onChanged(data.detail);
     notify(hidden ? "Wątek ukryty w historii klienta." : "Wątek znów widoczny.");
   }
+  // Lejek (pkt 7): sygnał z wątku Gmail — źródło E-mail, odnośnik = wątek.
+  async function leadFromEmail(item: ClientHistoryItem) {
+    if (item.kind !== "email") return;
+    const { ok, data } = await api<{ id: string }>("/api/leads", "POST", {
+      type: "EMAIL",
+      clientId: d.id,
+      sourceRef: `gmail:${item.id}`,
+      message: [item.subject, item.snippet].filter(Boolean).join(" — ").slice(0, 2000) || null,
+    });
+    if (!ok) return notify(data.message ?? "Nie udało się utworzyć sygnału.", true);
+    notify("Utworzono sygnał z maila — jest w Sygnałach (pierwszy kontakt w 4 h rob.).");
+  }
   async function addNote() {
     if (!note.trim()) return;
     setSaving(true);
@@ -454,6 +466,19 @@ function TimelineSection({ d, onChanged, notify, onOpenItem, onShowAll }: { d: C
                   }}
                 >
                   {i.hidden ? "pokaż" : "ukryj"}
+                </button>
+              )}
+              {!agent && i.item?.kind === "email" && !i.hidden && (
+                <button
+                  type="button"
+                  className="whitespace-nowrap text-[12px] text-[#767C82] hover:text-[#1B6FA8]"
+                  title="Utwórz sygnał z tego maila (Sygnały → Na dziś)"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void leadFromEmail(i.item!);
+                  }}
+                >
+                  + sygnał
                 </button>
               )}
             </span>

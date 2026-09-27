@@ -301,9 +301,9 @@ export function NaDzisView({
         </section>
 
         <section>
-          <H2 tag={d.toLink.length ? <Tag tone="warn">bez wynajmu</Tag> : undefined}>Rezerwacje do spięcia z kalendarzem</H2>
+          <H2 tag={d.toLink.length ? <Tag tone="warn">bez wynajmu</Tag> : undefined}>Rezerwacje i wygrane do spięcia z kalendarzem</H2>
           {d.toLink.length === 0 ? (
-            <p className="border border-[#E3E6E9] bg-white px-4 py-3 text-[13px] text-[#5C6166]">Każda rezerwacja ma wynajem w kalendarzu.</p>
+            <p className="border border-[#E3E6E9] bg-white px-4 py-3 text-[13px] text-[#5C6166]">Każda rezerwacja i wygrana ma wynajem w kalendarzu.</p>
           ) : (
             <div className="border border-[#E3E6E9] bg-white">
               {d.toLink.map((f) => {
@@ -317,6 +317,7 @@ export function NaDzisView({
                   >
                     <button type="button" onClick={() => onOpen(r.id)} className="min-w-0 text-left">
                       <span className="font-semibold text-[#0C3450] hover:underline">{who(r)}</span>
+                      {r.stage === "WYGRANA" && <span className="ml-2 text-[11px] text-[#2F7A68]">wygrana</span>}
                       <div className="truncate text-[12px] text-[#5C6166]">
                         {[devicesLabel(r), r.requestedFrom ? d2(new Date(r.requestedFrom)) : null, r.city].filter(Boolean).join(" · ")}
                       </div>

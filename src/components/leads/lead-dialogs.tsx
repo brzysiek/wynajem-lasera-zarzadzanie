@@ -106,12 +106,26 @@ export function LostDialog({
   );
 }
 
-const NEW_TYPES: LeadTypeKey[] = ["TELEFON", "EMAIL", "INNE"];
+const NEW_TYPES: LeadTypeKey[] = ["TELEFON", "EMAIL", "OLX", "POLECENIE", "INNE"];
 
 // Nowy sygnał z panelu — np. telefon od klientki. Albo istniejący klient,
 // albo dane osoby (klient powstanie automatycznie, jeśli jej nie ma w bazie).
-export function NewLeadDialog({ clients, onClose, onCreated }: { clients: ReviewClient[]; onClose: () => void; onCreated: (id: string) => void }) {
-  const [type, setType] = useState<LeadTypeKey>("TELEFON");
+export function NewLeadDialog({
+  clients,
+  onClose,
+  onCreated,
+  initialType = "TELEFON",
+  title = "Nowy sygnał",
+}: {
+  clients: ReviewClient[];
+  onClose: () => void;
+  onCreated: (id: string) => void;
+  initialType?: LeadTypeKey;
+  title?: string;
+}) {
+  const [type, setType] = useState<LeadTypeKey>(initialType);
+  // Odnośnik źródła: ID wątku Gmail / numer telefonu / link OLX (lejek, pkt 7).
+  const [sourceRef, setSourceRef] = useState("");
   const [client, setClient] = useState<ReviewClient | null>(null);
   const [picker, setPicker] = useState(false);
   const [f, setF] = useState({ contactName: "", contactPhone: "", contactEmail: "", requestedFrom: "", requestedDays: "", location: "", message: "" });
@@ -131,6 +145,7 @@ export function NewLeadDialog({ clients, onClose, onCreated }: { clients: Review
       requestedDays: f.requestedDays || null,
       location: f.location,
       message: f.message,
+      sourceRef: sourceRef || null,
     });
     setSaving(false);
     if (!ok) return setError(data.message ?? "Nie udało się dodać sygnału.");
@@ -138,8 +153,8 @@ export function NewLeadDialog({ clients, onClose, onCreated }: { clients: Review
   }
 
   return (
-    <Modal title="Nowy sygnał" onClose={onClose} width={500}>
-      <div className="flex gap-1.5">
+    <Modal title={title} onClose={onClose} width={500}>
+      <div className="flex flex-wrap gap-1.5">
         {NEW_TYPES.map((t) => (
           <button
             key={t}
@@ -152,6 +167,15 @@ export function NewLeadDialog({ clients, onClose, onCreated }: { clients: Review
           </button>
         ))}
       </div>
+
+      {type !== "INNE" && (
+        <input
+          className={INPUT}
+          placeholder={type === "EMAIL" ? "Odnośnik: temat / ID wątku Gmail (opcjonalnie)" : type === "TELEFON" ? "Odnośnik: numer, z którego dzwoniła (opcjonalnie)" : type === "OLX" ? "Odnośnik: link do ogłoszenia / wiadomości OLX" : "Kto polecił (opcjonalnie)"}
+          value={sourceRef}
+          onChange={(e) => setSourceRef(e.target.value)}
+        />
+      )}
 
       <div className="relative rounded-[10px] border border-[var(--c-border)] p-3">
         {client ? (

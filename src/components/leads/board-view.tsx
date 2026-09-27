@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { LeadRow } from "@/lib/leads/load";
 import { BOARD_STAGES, LOST_REASON_LABEL, STAGE_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
@@ -51,6 +52,7 @@ export function BoardView({
   onOpen,
   onMove,
   onLost,
+  canArchive2025 = false,
 }: {
   rows: LeadRow[];
   archived: LeadRow[];
@@ -61,9 +63,11 @@ export function BoardView({
   onOpen: (id: string) => void;
   onMove: (id: string, stage: LeadStageKey) => void;
   onLost: (id: string) => void;
+  canArchive2025?: boolean;
 }) {
   const [period, setPeriod] = useState<Period>("2026");
   const [owner, setOwner] = useState<Owner>("all");
+  const old2025 = rows.filter((r) => ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(r.stage) && new Date(r.createdAt) < FUNNEL_FROM).length;
   const [dragId, setDragId] = useState<string | null>(null);
   const [drop, setDrop] = useState<LeadStageKey | "LOST" | null>(null);
   const [open, setOpen] = useState<Set<LeadStageKey>>(new Set());
@@ -125,6 +129,11 @@ export function BoardView({
             ...(byName("Tomek") ? ([["tomek", "Tomek"]] as [Owner, string][]) : []),
           ]}
         />
+        {canArchive2025 && old2025 > 0 && (
+          <Link href="/sygnaly/archiwum-2025" className="ml-auto text-[12.5px] text-[#1B6FA8] hover:underline">
+            Otwarte sprzed 2026: {old2025} → przejrzyj i przenieś do archiwum 2025
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">

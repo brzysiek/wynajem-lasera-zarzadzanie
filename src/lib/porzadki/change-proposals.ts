@@ -12,7 +12,21 @@ import type { ArchiveInput } from "@/lib/porzadki/archive-rules";
 import { PorzadkiError, type Actor } from "@/lib/porzadki/proposals";
 import { addExclusions } from "@/lib/porzadki/exclusions";
 import { applyPaymentMatch, describePaymentMatch, type PaymentMatchInput } from "@/lib/invoicing/bank-transfers";
-import { parseProposalItem, type ChangeProposalStatus, type ClientPriceProposal, type DeliveryAddressProposal, type ParsedProposal, type ProposalKind } from "@/lib/porzadki/proposal-rules";
+import {
+  parseProposalItem,
+  type ChangeProposalStatus,
+  type ClientPriceProposal,
+  type DeliveryAddressProposal,
+  type LeadStepProposal,
+  type LostReasonProposal,
+  type ParsedProposal,
+  type ProposalKind,
+  type RentalLinkProposal,
+  type SignalNewProposal,
+} from "@/lib/porzadki/proposal-rules";
+import { createLead, updateLead } from "@/lib/leads/actions";
+import { LOST_REASON_LABEL } from "@/lib/leads/labels";
+import { NEXT_STEP_LABEL, type NextStepType } from "@/lib/leads/funnel";
 import { upsertClientPrice } from "@/lib/clients/terms";
 import { createAddress, updateAddress } from "@/lib/clients/delivery";
 import { formatAddressLine, parseAddressInput } from "@/lib/clients/delivery-rules";
@@ -56,11 +70,18 @@ export type ChangeProposalRow = {
 // --- zgłaszanie ---
 
 // Wartość w panelu teraz (JSON, jak w dzienniku) — do porównań i widoku.
-async function currentFor(p: { kind: string; clientId: string | null; contactId: string | null; field: string | null }): Promise<string | null> {
+async function currentFor(p: { kind: string; clientId: string | null; contactId: string | null; field: string | null; leadId?: string | null }): Promise<string | null> {
   if (p.kind === "FIELD" && p.clientId && p.field) {
     const c = await prisma.client.findUnique({ where: { id: p.clientId } });
     if (!c) throw new PorzadkiError("Nie znaleziono klienta.", 404);
     return toLogValue((c as unknown as Record<string, unknown>)[p.field]);
+  }
+  if ((p.kind === "LOST_REASON" || p.kind === "LEAD_STEP" || p.kind === "RENTAL_LINK") && p.leadId) {
+    const l = await prisma.lead.findUnique({ where: { id: p.leadId }, select: { stage: true, lostReason: true, lostNote: true, nextActionAt: true, nextStepType: true, rentalId: true } });
+    if (!l) throw new PorzadkiError("Sygnał nie istnieje.", 404);
+    if (p.kind === "LOST_REASON") return l.stage === "PRZEGRANA" ? toLogValue({ lostReason: l.lostReason, lostNote: l.lostNote }) : toLogValue(`etap: ${l.stage}`);
+    if (p.kind === "LEAD_STEP") return l.nextActionAt ? toLogValue(`${l.nextActionAt.toISOString().slice(0, 16)} ${l.nextStepType ?? ""}`.trim()) : null;
+    return l.rentalId ? toLogValue(l.rentalId) : null;
   }
   if (p.kind === "CLIENT_PRICE" && p.clientId && p.field) {
     const [device, days] = p.field.split("|");
@@ -99,6 +120,29 @@ async function normalizeProposedAsync(p: ParsedProposal): Promise<unknown> {
       buyerName: invoice.buyerName,
       transfer: { date: transfer.bookedAt.toISOString().slice(0, 10), amount: transfer.amount.toString(), description: transfer.description.slice(0, 160) },
     };
+  }
+  if (p.kind === "LOST_REASON" || p.kind === "LEAD_STEP" || p.kind === "RENTAL_LINK") {
+    // Sygnał — w kolejce przy kliencie sygnału.
+    const l = await prisma.lead.findUnique({ where: { id: p.leadId! }, select: { clientId: true, stage: true } });
+    if (!l) throw new PorzadkiError("Sygnał nie istnieje.", 404);
+    if (!p.clientId) p.clientId = l.clientId;
+    if (p.kind === "LEAD_STEP" && (l.stage === "WYGRANA" || l.stage === "PRZEGRANA")) throw new PorzadkiError("Sygnał jest zamknięty — następny krok tylko dla otwartych.");
+    if (p.kind === "RENTAL_LINK") {
+      const r = await prisma.rental.findUnique({ where: { id: (p.proposed as RentalLinkProposal).rentalId }, select: { id: true, lead: { select: { id: true } } } });
+      if (!r) throw new PorzadkiError("Wynajem nie istnieje (wynajem_id z kalendarz_wynajmy).", 404);
+      if (r.lead && r.lead.id !== p.leadId) throw new PorzadkiError("Ten wynajem jest już powiązany z innym sygnałem.");
+    }
+    return p.proposed;
+  }
+  if (p.kind === "SIGNAL_NEW") {
+    const v = p.proposed as SignalNewProposal;
+    const phone = v.contactPhone ? normalizePolishPhone(v.contactPhone) : null;
+    if (v.contactPhone && !phone) throw new PorzadkiError("Nieprawidłowy numer telefonu.");
+    if (v.sourceRef) {
+      const dup = await prisma.lead.findFirst({ where: { sourceRef: v.sourceRef }, select: { id: true } });
+      if (dup) throw new PorzadkiError(`Sygnał z tego źródła już jest (${dup.id}).`);
+    }
+    return { ...v, contactPhone: phone };
   }
   if (p.kind === "CLIENT_PRICE") {
     const v = p.proposed as ClientPriceProposal;
@@ -187,7 +231,8 @@ export async function submitProposals(items: unknown[], author: Actor): Promise<
       });
 
       // Klasa zatwierdzona na stałe — tylko zmiany pól, wykonanie od razu.
-      if (p.changeClass && autoClasses.has(p.changeClass) && (p.kind === "FIELD" || p.kind === "CONTACT_FIELD")) {
+      // Klasy na stałe: zmiany pól i nowe sygnały z maili (np. „sygnał z maila formularza w kontakt@”).
+      if (p.changeClass && autoClasses.has(p.changeClass) && (p.kind === "FIELD" || p.kind === "CONTACT_FIELD" || p.kind === "SIGNAL_NEW")) {
         const res = await execute(row.id, null);
         await prisma.changeProposal.update({
           where: { id: row.id },
@@ -225,6 +270,59 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
   if (p.kind === "CONTACT_FIELD") {
     const r = await patchContact(p.clientId!, p.contactId!, { [p.field!]: value, ...provenance }, actor, { approvedById });
     return r.ok ? { ok: true } : { ok: false, message: r.message };
+  }
+  if (p.kind === "SIGNAL_NEW") {
+    const v = value as SignalNewProposal;
+    const day = v.requestedFrom ? new Date(`${v.requestedFrom}T09:00:00`) : null;
+    try {
+      const id = await createLead(
+        { type: v.type, clientId: v.clientId, contactName: v.contactName, contactPhone: v.contactPhone, contactEmail: v.contactEmail, deviceInterest: v.deviceInterest, requestedFrom: day, requestedDays: v.requestedDays, message: v.message, location: null, sourceRef: v.sourceRef },
+        actor.userId,
+      );
+      await prisma.leadActivity.create({ data: { leadId: id, type: "SYSTEM", body: `Sygnał z propozycji agenta (źródło: ${p.source})`, userId: actor.userId || null } });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (p.kind === "LOST_REASON") {
+    const v = value as LostReasonProposal;
+    const l = await prisma.lead.findUnique({ where: { id: p.leadId! }, select: { stage: true, clientId: true } });
+    if (!l) return { ok: false, message: "Sygnał nie istnieje." };
+    try {
+      if (l.stage === "PRZEGRANA") {
+        await prisma.$transaction([
+          prisma.lead.update({ where: { id: p.leadId! }, data: { lostReason: v.lostReason, lostNote: v.lostNote } }),
+          prisma.leadActivity.create({ data: { leadId: p.leadId!, clientId: l.clientId, type: "STAGE_CHANGE", body: `Powód przegranej: ${LOST_REASON_LABEL[v.lostReason]}${v.lostNote ? ` — ${v.lostNote}` : ""} (propozycja agenta)`, userId: actor.userId || null } }),
+        ]);
+      } else {
+        await updateLead(p.leadId!, { stage: "PRZEGRANA", lostReason: v.lostReason, lostNote: v.lostNote }, actor.userId);
+      }
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (p.kind === "LEAD_STEP") {
+    const v = value as LeadStepProposal;
+    const at = v.at.length > 10 ? new Date(v.at) : new Date(`${v.at}T10:00:00`);
+    if (Number.isNaN(at.getTime())) return { ok: false, message: "Nieprawidłowy termin." };
+    const l = await prisma.lead.findUnique({ where: { id: p.leadId! }, select: { clientId: true } });
+    await prisma.$transaction([
+      prisma.lead.update({ where: { id: p.leadId! }, data: { nextActionAt: at, nextStepType: v.stepType, nextStepNote: v.note } }),
+      prisma.leadActivity.create({
+        data: { leadId: p.leadId!, clientId: l?.clientId ?? null, type: "SYSTEM", body: `Następny krok (propozycja agenta): ${NEXT_STEP_LABEL[v.stepType as NextStepType] ?? v.stepType}, ${at.toLocaleString("pl-PL")}${v.note ? ` — ${v.note}` : ""}`, userId: actor.userId || null },
+      }),
+    ]);
+    return { ok: true };
+  }
+  if (p.kind === "RENTAL_LINK") {
+    try {
+      await updateLead(p.leadId!, { rentalId: (value as RentalLinkProposal).rentalId }, actor.userId);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
   }
   if (p.kind === "CLIENT_PRICE") {
     const v = value as { device: string; days: number; priceNet: string | null; source: string; sourceRef: string | null };

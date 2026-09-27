@@ -73,13 +73,14 @@ describe("Na dziś i Do obdzwonienia", () => {
     lead({ id: "stycz", createdAt: new Date(2026, 0, 13), type: "REZERWACJA_WWW", nextActionAt: at(28, 8), nextStepType: "PIERWSZY_KONTAKT" }),
     lead({ id: "rez", stage: "REZERWACJA", firstContactAt: at(21) }),
     lead({ id: "wygrana", stage: "WYGRANA", rentalId: "r1" }),
+    lead({ id: "wygrana-luzem", stage: "WYGRANA", createdAt: at(22) }),
   ];
 
   it("Na dziś bez sygnałów sprzed 2026; nowe tylko z 30 dni; rezerwacje bez wynajmu", () => {
     const d = buildNaDzis(leads, now);
     expect(d.due.map((l) => l.id)).toEqual(["zalegly", "dzis"]);
     expect(d.fresh.map((l) => l.id)).toEqual(["nowy"]);
-    expect(d.toLink.map((l) => l.id)).toEqual(["rez"]);
+    expect(d.toLink.map((l) => l.id)).toEqual(["rez", "wygrana-luzem"]);
   });
 
   it("kolejka: zaległe → rezerwacje WWW → cennik; bez rezerwacji i sprzed 2026", () => {

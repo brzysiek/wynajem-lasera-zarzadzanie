@@ -290,6 +290,11 @@ Większe porządki zgłaszaj jako **paczkę propozycji**, nie bezpośrednimi zmi
     "zrodlo_ceny": "OFERTA", "odnosnik": "oferta 30.10.2025", "zrodlo": "mail 30.10.2025", "pewnosc": "wysoka", "paczka": "P-2026-09-27-14A" }
   ```
 - **`adres_dostawy`**: paszport dostawy. `adres_id` (z narzędzia `klient`, `delivery.addresses`) zmienia istniejący adres. Bez niego powstaje nowy adres: podaj `nazwa` i `miejscowosc` albo `kod`. Pola: `nazwa`, `ulica`, `kod`, `miejscowosc`, `wejscie`, `pietro`, `parking`, `prad`, `odbiera`, `godziny`, `typowa_godzina`, `uwagi_biura`, `domyslny` (`true`). Po akceptacji panel sam liczy km i minuty od bazy.
+- **`sygnal_nowy`**: sygnał z maila albo telefonu (lejek). `zrodlo_sygnalu`: `EMAIL`, `TELEFON`, `OLX`, `POLECENIE` albo `INNE`. Podaj `klient_id` albo `imie` / `telefon` / `email`. Opcjonalnie: `urzadzenia` (lista), `termin` (RRRR-MM-DD), `dni`, `notatka`, `odnosnik` (np. `gmail:<id wiadomości>`). Drugi sygnał z tym samym odnośnikiem jest odrzucany. Treści maila nie przepisuj — wystarczy temat i o co pyta.
+- **`powod_przegranej`**: `sygnal_id` i `powod`: `ODLEGLOSC` (za daleko), `CENA`, `KUPILA_URZADZENIE`, `TERMIN_ZAJETY`, `BRAK_KONTAKTU`, `TYLKO_CENNIK`, `POZA_BRANZA`, `INNE_URZADZENIE` albo `INNE` (wtedy `notatka` jest obowiązkowa).
+- **`krok_sygnalu`**: następny krok. `sygnal_id`, `termin` (RRRR-MM-DD albo RRRR-MM-DDTHH:MM), `rodzaj_kroku` (`PIERWSZY_KONTAKT`, `PONOWNA_PROBA`, `FOLLOW_UP_OFERTY`, `ODDZWONI`, `DOPYTAC`, `INNE`), `notatka`.
+- **`powiazanie_wynajmu`**: `sygnal_id` i `wynajem_id` (z `kalendarz_wynajmy`; wynajem nie może mieć już sygnału). Po akceptacji otwarty sygnał przechodzi na „Rezerwacja”, a wygrana zaczyna się liczyć w raporcie.
+- **Duplikaty sygnałów**: `sygnaly_lista` z `duplikaty: true` pokazuje otwarte sygnały klientów, którzy mają ich kilka. Zbędny zgłaszasz rodzajem `archiwizacja` z `sygnal_id` i powodem `DUPLIKAT`. Nic nie scala się samo.
 
 **Rezerwacje bez kwoty** (`rezerwacje_bez_kwoty`, tylko odczyt): przyszłe wynajmy bez rozliczenia z proponowaną kwotą (`plan`: warunki klienta albo cennik, transport, faktura, płatność; `ready: false` z powodem). Kwoty wpisuje panel sam po akceptacji warunków klienta — agent zgłasza tylko `cennik_klienta` i pola warunków. Filtr `tylko_bez_warunkow`.
 

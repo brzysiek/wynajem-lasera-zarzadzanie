@@ -244,6 +244,11 @@ function splitName(full: string | null) {
 // klient tworzony automatycznie z podanych danych, jak przy formularzach
 // (chyba że e-mail / telefon już jest w bazie — wtedy podpinamy istniejącego).
 export async function createLead(input: NewLeadInput, userId: string): Promise<string> {
+  // Ten sam mail / numer nie zakłada drugiego sygnału.
+  if (input.sourceRef) {
+    const dup = await prisma.lead.findFirst({ where: { sourceRef: input.sourceRef, archivedAt: null }, select: { id: true, title: true } });
+    if (dup) throw new LeadError(`Sygnał z tego źródła już jest: „${dup.title}”.`);
+  }
   let clientId = input.clientId;
   let contactId: string | null = null;
   if (clientId) {

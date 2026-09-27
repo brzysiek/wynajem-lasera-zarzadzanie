@@ -90,3 +90,21 @@ describe("normalizeClass", () => {
     expect(normalizeClass("  ")).toBeNull();
   });
 });
+
+describe("propozycje lejka (etap L4)", () => {
+  const prov = { zrodlo: "notatki", pewnosc: "wysoka", paczka: "P-L4" };
+  it("sygnal_nowy z maila", () => {
+    const r = parseProposalItem({ rodzaj: "sygnal_nowy", email: "Ola@Example.com", urzadzenie: "lightsheer", odnosnik: "gmail:abc", notatka: "pyta o termin", ...prov });
+    expect(r.ok && r.value).toMatchObject({ kind: "SIGNAL_NEW", field: "gmail:abc", proposed: { type: "EMAIL", contactEmail: "ola@example.com", deviceInterest: ["LIGHTSHEER"] } });
+    expect(parseProposalItem({ rodzaj: "sygnal_nowy", ...prov }).ok).toBe(false);
+  });
+  it("powod_przegranej po etykiecie, INNE z notatką", () => {
+    const r = parseProposalItem({ rodzaj: "powod_przegranej", sygnal_id: "l1", powod: "za daleko", ...prov });
+    expect(r.ok && r.value.proposed).toEqual({ lostReason: "ODLEGLOSC", lostNote: null });
+    expect(parseProposalItem({ rodzaj: "powod_przegranej", sygnal_id: "l1", powod: "INNE", ...prov }).ok).toBe(false);
+  });
+  it("krok_sygnalu i powiazanie_wynajmu", () => {
+    expect(parseProposalItem({ rodzaj: "krok_sygnalu", sygnal_id: "l1", termin: "2026-10-05", rodzaj_kroku: "oddzwoni", ...prov })).toMatchObject({ ok: true, value: { leadId: "l1", proposed: { at: "2026-10-05", stepType: "ODDZWONI" } } });
+    expect(parseProposalItem({ rodzaj: "powiazanie_wynajmu", sygnal_id: "l1", wynajem_id: "r1", ...prov })).toMatchObject({ ok: true, value: { kind: "RENTAL_LINK", proposed: { rentalId: "r1" } } });
+  });
+});

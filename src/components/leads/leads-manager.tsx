@@ -136,7 +136,7 @@ export function LeadsManager({
   const [view, setView] = useState<View>("today");
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [intent, setIntent] = useState<CardIntent>(null);
-  const [showNew, setShowNew] = useState(false);
+  const [showNew, setShowNew] = useState<false | "new" | "mail">(false);
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -288,7 +288,7 @@ export function LeadsManager({
   async function linkRental(leadId: string, rentalId: string) {
     const { ok, data } = await api(`/api/leads/${leadId}`, "PATCH", { rentalId });
     if (!ok) return setToast({ text: data.message ?? "Nie udało się powiązać.", error: true });
-    setToast({ text: "Powiązano z wynajmem — etap: Rezerwacja." });
+    setToast({ text: "Powiązano z wynajmem." });
     refresh();
   }
 
@@ -401,7 +401,16 @@ export function LeadsManager({
               </button>
             )}
             {!readOnly && (
-              <button type="button" onClick={() => setShowNew(true)} className="h-[34px] rounded-lg bg-[var(--c-brand)] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]">
+              <button
+                type="button"
+                onClick={() => setShowNew("mail")}
+                className="h-[34px] rounded-lg border border-[#C9D3DC] bg-white px-3 text-[13px] text-[#0C3450] transition-colors hover:border-[var(--c-brand)]"
+              >
+                + Sygnał z maila / telefonu
+              </button>
+            )}
+            {!readOnly && (
+              <button type="button" onClick={() => setShowNew("new")} className="h-[34px] rounded-lg bg-[var(--c-brand)] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]">
                 + Nowy sygnał
               </button>
             )}
@@ -457,6 +466,7 @@ export function LeadsManager({
                   onOpen={(id) => open(id)}
                   onMove={(id, stage) => void moveTo(id, stage)}
                   onLost={(id) => setLostIds([id])}
+                  canArchive2025={isAdmin}
                 />
               )}
 
@@ -630,6 +640,8 @@ export function LeadsManager({
       {showNew && (
         <NewLeadDialog
           clients={clients}
+          initialType={showNew === "mail" ? "EMAIL" : "TELEFON"}
+          title={showNew === "mail" ? "Sygnał z maila / telefonu" : "Nowy sygnał"}
           onClose={() => setShowNew(false)}
           onCreated={(id) => {
             setShowNew(false);

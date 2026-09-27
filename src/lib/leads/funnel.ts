@@ -196,7 +196,7 @@ const isOpen = (l: FunnelLead) => OPEN_STAGES.includes(l.stage);
 const in2026 = (l: FunnelLead) => l.createdAt >= FUNNEL_FROM;
 
 // „Na dziś”: zaległe i dzisiejsze kroki (po pierwszym kontakcie), nowe bez
-// kontaktu z 30 dni, rezerwacje bez wynajmu. Tylko sygnały z 2026.
+// kontaktu z 30 dni, rezerwacje i wygrane bez wynajmu. Tylko sygnały z 2026.
 export function buildNaDzis<T extends FunnelLead>(leads: T[], now: Date) {
   const eod = endOfDay(now);
   const from30 = new Date(now.getTime() - 30 * 86_400_000);
@@ -205,7 +205,11 @@ export function buildNaDzis<T extends FunnelLead>(leads: T[], now: Date) {
     .filter((l) => l.firstContactAt && l.nextActionAt && l.nextActionAt <= eod && l.stage !== "REZERWACJA")
     .sort((a, b) => a.nextActionAt!.getTime() - b.nextActionAt!.getTime());
   const fresh = open.filter((l) => !l.firstContactAt && l.createdAt >= from30).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  const toLink = open.filter((l) => l.stage === "REZERWACJA" && !l.rentalId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  // Do powiązania: rezerwacje bez wynajmu i wygrane bez wynajmu (wygrana
+  // liczy się w raporcie dopiero z wynajmem w kalendarzu).
+  const toLink = leads
+    .filter((l) => in2026(l) && !l.rentalId && (l.stage === "REZERWACJA" || l.stage === "WYGRANA"))
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   return { due, fresh, toLink };
 }
 

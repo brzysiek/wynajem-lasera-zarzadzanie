@@ -9,8 +9,10 @@ import { ARCHIVE_REASON_LABEL, FIELD_LABEL, type ArchiveReasonKey } from "@/lib/
 import { CONFIDENCE_LABEL, type Confidence } from "@/lib/changelog/provenance";
 import { readable } from "./changelog-panel";
 import { PRICE_SOURCE_LABEL, TERMS_DEVICE_LABEL } from "@/lib/clients/terms-rules";
+import { LOST_REASON_LABEL, TYPE_LABEL } from "@/lib/leads/labels";
 import { BTN, BTN_PRIMARY, ErrorNote, INPUT, SELECT_PILL, fmtDateTime } from "./shared";
 import { BlobsPanel } from "./blobs-panel";
+import { LeadDuplicatesPanel } from "./lead-duplicates-panel";
 
 // Porządki → Propozycje: kolejka zmian zgłoszonych przez agenta, pogrupowana
 // w paczki. ADMIN: akceptuj / odrzuć (pojedynczo i hurtem), popraw wartość,
@@ -83,6 +85,26 @@ function describe(p: ChangeProposalRow): { what: string; from: string | null; to
       .filter(([k]) => k !== "addressId" && k !== "label")
       .map(([k, x]) => `${ADDRESS_FIELD_LABEL[k] ?? k}: ${x === null ? "—" : x === true ? "tak" : String(x)}`);
     return { what: `adres dostawy: ${String(v.label ?? "")}${v.addressId ? "" : " (nowy)"}`, from: readable(p.currentValue), to: parts.join(" · ") };
+  }
+  if (p.kind === "SIGNAL_NEW") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { type: string; contactName: string | null; contactEmail: string | null; contactPhone: string | null; deviceInterest: string[]; message: string | null; sourceRef: string | null }) : null;
+    return {
+      what: `nowy sygnał · ${v ? (TYPE_LABEL[v.type as keyof typeof TYPE_LABEL] ?? v.type) : ""}`,
+      from: null,
+      to: [v?.contactName, v?.contactEmail, v?.contactPhone, v?.deviceInterest?.join(", "), v?.message ? `„${v.message.slice(0, 120)}”` : null, v?.sourceRef ? `źródło: ${v.sourceRef}` : null].filter(Boolean).join(" · "),
+    };
+  }
+  if (p.kind === "LOST_REASON") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { lostReason: string; lostNote: string | null }) : null;
+    return { what: `powód przegranej: ${p.leadTitle ?? "sygnał"}`, from: readable(p.currentValue), to: v ? `${LOST_REASON_LABEL[v.lostReason as keyof typeof LOST_REASON_LABEL] ?? v.lostReason}${v.lostNote ? ` — ${v.lostNote}` : ""}` : "—" };
+  }
+  if (p.kind === "LEAD_STEP") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { at: string; stepType: string; note: string | null }) : null;
+    return { what: `następny krok: ${p.leadTitle ?? "sygnał"}`, from: readable(p.currentValue), to: v ? `${v.at.replace("T", " ")} · ${v.stepType.toLowerCase().replace(/_/g, " ")}${v.note ? ` — ${v.note}` : ""}` : "—" };
+  }
+  if (p.kind === "RENTAL_LINK") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { rentalId: string }) : null;
+    return { what: `powiąż z wynajmem: ${p.leadTitle ?? "sygnał"}`, from: readable(p.currentValue), to: v?.rentalId ?? "—" };
   }
   if (p.kind === "MERGE") {
     const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { duplicateId: string }) : null;
@@ -204,6 +226,7 @@ export function ProposalsQueue({ canDecide, initialClientId }: { canDecide: bool
   return (
     <div className="flex flex-col gap-3">
       <BlobsPanel />
+      <LeadDuplicatesPanel />
       <div className="flex flex-wrap items-center gap-2">
         {(["PENDING", "ACCEPTED", "REJECTED", ""] as const).map((s) => (
           <button key={s || "all"} type="button" className={SELECT_PILL(status === s)} onClick={() => setStatus(s)}>
