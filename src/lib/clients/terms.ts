@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { recordChanges, type ChangeActor, type ChangeEntry } from "@/lib/changelog/record";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { warsawYmd } from "@/lib/clients/day-route";
+import { syncFutureRentalsToTermsSafe } from "@/lib/clients/terms-backfill";
 import {
   PRICE_SOURCES,
   TERMS_DEVICE_LABEL,
@@ -107,6 +108,7 @@ export async function upsertClientPrice(
       { entity: "CLIENT", entityId: clientId, operation: "FIELD_CHANGE", clientId, field: label(row), before: old?.priceNet.toString() ?? null, after: row.priceNet?.toFixed(2) ?? null },
     ]);
   });
+  await syncFutureRentalsToTermsSafe(clientId, { userId: actor.approvedById ?? actor.userId });
   return { ok: true };
 }
 

@@ -277,10 +277,18 @@ export function ProposalsQueue({ canDecide, initialClientId }: { canDecide: bool
                   {list.length} {list.length === 1 ? "propozycja" : "propozycji"}
                   {pend.length ? ` · oczekuje ${pend.length}` : ""}
                 </span>
+                {canDecide && pend.length > 1 && (
+                  <button type="button" className={`${BTN_PRIMARY} ml-auto h-7 text-[12.5px]`} disabled={busy} onClick={() => void decide(pend.map((r) => r.id), "accept")}>
+                    Akceptuj paczkę ({pend.length})
+                  </button>
+                )}
               </div>
               {list.map((r, i) => {
                 const d = describe(r);
                 const conflict = conflicts.get(r.id);
+                // „Akceptuj klienta” — przy pierwszej propozycji klienta w paczce,
+                // gdy ma ich kilka: wszystkie oczekujące tego klienta (widoczne).
+                const clientPend = r.clientId && list.findIndex((x) => x.clientId === r.clientId) === i ? pendingVisible.filter((x) => x.clientId === r.clientId) : [];
                 return (
                   <div key={r.id} className={`flex items-start gap-3 px-4 py-3 ${i > 0 ? "border-t border-[var(--c-border)]" : ""}`}>
                     {canDecide && r.status === "PENDING" && <input type="checkbox" className="mt-1" checked={selected.has(r.id)} onChange={(e) => toggle([r.id], e.target.checked)} />}
@@ -297,6 +305,11 @@ export function ProposalsQueue({ canDecide, initialClientId }: { canDecide: bool
                           {PROPOSAL_KIND_LABEL[r.kind]} · {d.what}
                         </span>
                         <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ${CONF_TONE[r.confidence] ?? ""}`}>{CONFIDENCE_LABEL[r.confidence as Confidence] ?? r.confidence}</span>
+                        {canDecide && clientPend.length > 1 && (
+                          <button type="button" className="ml-2 text-[12px] font-semibold text-[var(--c-brand)] hover:underline disabled:opacity-40" disabled={busy} onClick={() => void decide(clientPend.map((x) => x.id), "accept")}>
+                            Akceptuj klienta ({clientPend.length})
+                          </button>
+                        )}
                         {r.changeClass && (
                           <span className="ml-1.5 rounded-full bg-[var(--c-purple-soft)] px-2 py-0.5 text-[11px] text-[var(--c-purple-deep)]">
                             {r.changeClass}

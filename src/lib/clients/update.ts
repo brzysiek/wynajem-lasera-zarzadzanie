@@ -1,6 +1,9 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { syncClientFieldsToDefault } from "@/lib/clients/delivery";
+import { syncFutureRentalsToTermsSafe } from "@/lib/clients/terms-backfill";
+
+const TERMS_FIELDS = ["transportPriceNet", "paymentForm", "invoiceMode", "invoicePartDefault", "pulsesCharged", "pulseRateNet"] as const;
 import { normalizePolishPhone } from "@/lib/reminders";
 import { parseClientPatch, parseContactInput } from "@/lib/clients/validate";
 import { CLIENT_CACHE_KEYS, CONTACT_CACHE_KEYS, refreshFutureRentalCaches } from "@/lib/clients/refresh";
@@ -92,6 +95,9 @@ export async function patchClient(
   const refreshedRentals = touchesRentals ? await refreshFutureRentalCaches({ clientId: id, clientFields: true }) : 0;
   // Stare pola paszportu dostawy → adres domyślny (ClientDeliveryAddress).
   if (changes.some((c) => c.field === "deliveryAddress" || c.field === "deliveryNotes" || c.field === "openingHours")) await syncClientFieldsToDefault(id);
+  // Warunki handlowe → przyszłe rezerwacje klienta (bez ręcznych kwot). Autor
+  // wpisu = zatwierdzający ADMIN, gdy zmiana przyszła z propozycji agenta.
+  if (changes.some((c) => (TERMS_FIELDS as readonly string[]).includes(c.field))) await syncFutureRentalsToTermsSafe(id, { userId: opts.approvedById ?? actor.userId });
   // Nowy / zmieniony NIP → uzupełnienie z Białej listy i CEIDG w tle
   // (błąd rejestru nie wpływa na zapis).
   if (changes.some((c) => c.field === "nip") && parsed.data.nip) {

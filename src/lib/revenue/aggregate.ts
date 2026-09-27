@@ -18,6 +18,9 @@ export type RevenueRow = {
   endDate: string;
   durationDays: number; // rentalDurationDays, inclusive
   totalNet: number; // RentalFinance.totalNet (netto, bez VAT)
+  // Część netto na fakturze (0 = bez FV; warunki klienta „część” — etap C).
+  // Opcjonalne: starsze wiersze / testy bez pola liczą się jako bez FV.
+  invoiceNet?: number;
   paymentMethod: RevenuePaymentMethod;
   pulsePending: boolean; // pulseCalculationStatus === "PENDING"
   hubspotContactId: string | null;
@@ -204,6 +207,13 @@ export function computePaymentSplit(rows: RevenueRow[]): PaymentSplit {
     sum: sums[method],
     pct: total > 0 ? round((sums[method] / total) * 100) : 0,
   }));
+}
+
+// --- netto z FV i bez FV (wniosek 14, prognoza netto) ---
+export function computeInvoiceSplit(rows: RevenueRow[]): { withInvoice: number; withoutInvoice: number } {
+  const withInvoice = rows.reduce((s, r) => s + Math.min(r.invoiceNet ?? 0, r.totalNet), 0);
+  const total = rows.reduce((s, r) => s + r.totalNet, 0);
+  return { withInvoice: round(withInvoice), withoutInvoice: round(total - withInvoice) };
 }
 
 // --- sygnalizacja niepewnych cen (sekcja 10) ---

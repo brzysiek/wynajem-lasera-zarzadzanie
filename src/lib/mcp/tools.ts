@@ -16,6 +16,7 @@ import { addLeadNote } from "@/lib/leads/actions";
 import { loadHistoryReview } from "@/lib/history/review-load";
 import { loadFvWithoutInvoice } from "@/lib/invoicing/fv-check-load";
 import { termsWarnings } from "@/lib/clients/terms";
+import { loadRentalsWithoutAmount } from "@/lib/clients/terms-backfill";
 import { formatAddressLine } from "@/lib/clients/delivery-rules";
 import { invoiceNetOf, positionsSummary } from "@/lib/clients/terms-rules";
 import { listArchive } from "@/lib/porzadki/archive";
@@ -206,6 +207,21 @@ export const TOOLS: McpTool[] = [
       const d = await loadClientDetail(req(a, "id"));
       if (!d) throw new AgentApiError("Nie znaleziono klienta.", 404);
       return d;
+    },
+  },
+  {
+    name: "rezerwacje_bez_kwoty",
+    title: "Rezerwacje bez kwoty",
+    description:
+      "Przyszłe rezerwacje (wynajmy) bez rozliczenia, z proponowaną kwotą: plan.baseSource = CLIENT_TERMS (tabela cen klienta) albo PRICE_LIST (cennik ogólny), transport z warunków (2 urządzenia jednego dnia = 1 kurs), " +
+      "faktura i płatność wg warunków; plan.ready = false z powodem (np. nie wiadomo, 1 czy 2 głowice); plan = null — rezerwacja bez klienta. " +
+      "Tylko odczyt: kwoty wpisuje panel sam po akceptacji warunków klienta (propozycje cennik_klienta i pole transportPriceNet / invoiceMode / paymentForm) albo biuro na stronie Klienci → Kwoty wg warunków. " +
+      "Filtr: tylko_bez_warunkow = klienci bez tabeli cen (do rozpisania).",
+    inputSchema: obj({ tylko_bez_warunkow: b("Tylko rezerwacje klientów bez tabeli cen."), ...PAGE }),
+    readOnly: true,
+    run: async (a) => {
+      const rows = await loadRentalsWithoutAmount();
+      return paginate(a.tylko_bez_warunkow === true ? rows.filter((r) => r.clientId && !r.clientHasPrices) : rows, page(a));
     },
   },
   {
@@ -1038,7 +1054,7 @@ export const TOOLS: McpTool[] = [
       "Dla wykluczenia (lista wykluczeń domen): wartosci (lista domen albo adresów, maks. 500), typ (wyklucz | ukrywaj), dopisek — po akceptacji maile z nich nie trafiają do panelu. " +
       "Dla dopasowania_platnosci (przelew z wyciągu → faktura): przelew_id i faktura_id z narzędzia platnosci; po akceptacji faktura jest zapłacona z datą przelewu. " +
       "Dla cennik_klienta (warunki handlowe): klient_id, urzadzenie (LS_1G, LS_2G, ET400, ALMA_DYEVL, ALMA_DYEVL_IPIXEL, ALMA_IPIXEL, COOLTECH, RESURFX, OBSERV, SZKOLENIE), dni (1, 2, 3, 7…), cena (netto za wynajem) albo usun: true, " +
-      "zrodlo_ceny (OFERTA | UMOWA | USTALENIE | HISTORIA), odnosnik (np. „oferta 30.10.2025”, mail) — jedna propozycja = jedna komórka tabeli cen; transport, faktura, płatność i impulsy zgłaszaj rodzajem pole " +
+      "zrodlo_ceny (OFERTA | UMOWA | USTALENIE | HISTORIA), odnosnik (np. „oferta 30.10.2025”, mail) — jedna propozycja = jedna komórka tabeli cen; po akceptacji panel sam przelicza przyszłe rezerwacje klienta (ręcznych kwot nie rusza); transport, faktura, płatność i impulsy zgłaszaj rodzajem pole " +
       "(transportPriceNet, invoiceMode FULL/PARTIAL/NONE, invoicePartDefault, paymentForm, paymentTermDays, pulsesCharged, pulseRateNet). " +
       "Dla adres_dostawy (paszport dostawy): klient_id, adres_id (zmiana istniejącego — z narzędzia klient) albo bez niego (nowy adres: nazwa + miejscowosc/kod), pola: nazwa, ulica, kod, miejscowosc, wejscie, pietro, parking, prad, odbiera, godziny, typowa_godzina, uwagi_biura, domyslny (true). " +
       "Zawsze zrodlo, pewnosc, paczka; opcjonalnie klasa (np. miasto_slownik) — klasy zatwierdzone na stałe wykonują się od razu. " +

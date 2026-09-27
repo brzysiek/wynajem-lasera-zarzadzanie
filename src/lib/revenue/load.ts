@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import type { RevenueRow, UnpricedRental } from "@/lib/revenue/aggregate";
 import type { Period } from "@/lib/revenue/period";
+import { invoiceNetOf } from "@/lib/clients/terms-rules";
 
 // YYYY-MM-DD wg lokalnych składowych daty (serwer działa w Europe/Warsaw —
 // tak samo jak rentalDurationDays / reszta aplikacji).
@@ -42,6 +43,8 @@ export async function loadRevenueRows(period: Period): Promise<RevenueRow[]> {
           paymentMethod: true,
           pulseCalculationStatus: true,
           confirmedAt: true,
+          vatApplicable: true,
+          invoiceNet: true,
         },
       },
     },
@@ -60,6 +63,7 @@ export async function loadRevenueRows(period: Period): Promise<RevenueRow[]> {
       endDate: localDateKey(r.endsAt),
       durationDays: rentalDurationDays(r.startsAt, r.endsAt),
       totalNet: Number(r.finance.totalNet),
+      invoiceNet: invoiceNetOf({ vatApplicable: r.finance.vatApplicable, invoiceNet: r.finance.invoiceNet != null ? Number(r.finance.invoiceNet) : null, totalNet: Number(r.finance.totalNet) }),
       paymentMethod: r.finance.paymentMethod === "CASH" ? "CASH" : "TRANSFER",
       pulsePending: r.finance.pulseCalculationStatus === "PENDING",
       hubspotContactId: r.hubspotContactId,

@@ -12,6 +12,7 @@ import {
   computeConfirmationSplit,
   computeDeviceBreakdown,
   computeDurationHistogram,
+  computeInvoiceSplit,
   computeKpis,
   computePaymentSplit,
   pendingPriceCount,
@@ -104,6 +105,7 @@ export function RevenueDashboard({
   const [tab, setTab] = useState<"urzadzenia" | "klienci" | "heatmap">("urzadzenia");
 
   const kpis = useMemo(() => computeKpis(rows), [rows]);
+  const invoiceSplit = useMemo(() => computeInvoiceSplit(rows), [rows]);
   const confirmation = useMemo(() => computeConfirmationSplit(rows), [rows]);
   const devices = useMemo(() => computeDeviceBreakdown(rows, period.dayCount), [rows, period.dayCount]);
   const insight = useMemo(() => bestWorstUtilization(devices), [devices]);
@@ -240,6 +242,7 @@ export function RevenueDashboard({
           <KpiCard
             label="Przychód netto"
             amount={fmtPln(kpis.revenueNet)}
+            sub={`na FV ${fmtPln(invoiceSplit.withInvoice)} · bez FV ${fmtPln(invoiceSplit.withoutInvoice)}`}
             trend={showTrend ? <TrendChip value={trendPct(kpis.revenueNet, comparison!.revenueNet)} vsLabel={comparison!.label} /> : null}
           />
           <KpiCard
@@ -411,6 +414,11 @@ function RevenueNotice({ pending, unpriced }: { pending: number; unpriced: Unpri
                 </b>{" "}
                 nie {nUn === 1 ? "ma" : "mają"} wpisanej kwoty — {nUn === 1 ? "nie wchodzi" : "nie wchodzą"} do
                 sumy przychodu:
+              </p>
+              <p className="mb-1">
+                <Link href="/klienci/warunki" className="font-semibold underline">
+                  Uzupełnij kwoty wg warunków klientów →
+                </Link>
               </p>
               <ul>
                 {unpriced.map((r) => (

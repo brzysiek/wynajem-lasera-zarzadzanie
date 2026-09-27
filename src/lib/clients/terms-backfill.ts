@@ -3,7 +3,8 @@ import { recordChanges, type ChangeEntry } from "@/lib/changelog/record";
 import { saveRentalFinance } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { warsawYmd } from "@/lib/clients/day-route";
-import { deviceCodeFor, parseInvoiceMode, positionsSummary } from "@/lib/clients/terms-rules";
+import { deviceCodeFor, invoiceDefaults, parseInvoiceMode, positionsSummary } from "@/lib/clients/terms-rules";
+import { logError } from "@/lib/logger";
 import { compareWithTerms, planBackfill, type BackfillPlan, type PlanTerms } from "@/lib/clients/terms-backfill-rules";
 
 // Kwoty wg warunków (karta klienta, etap D): przyszłe rezerwacje bez
@@ -217,4 +218,171 @@ export async function applyBackfill(rentalIds: string[], actor: { userId: string
   }
   await recordChanges(prisma, actor, entries);
   return { done, skipped };
+}
+
+// Po zapisie / akceptacji warunków klienta (tabela cen, transport, faktura,
+// płatność, impulsy): przyszłe rezerwacje tego klienta dostają kwoty z
+// warunków — bez rozliczenia: plan jak wyżej; z ceną z cennika albo z
+// warunków: przeliczenie. Ręczne kwoty (MANUAL), potwierdzone przez kierowcę
+// i z wystawioną fakturą — bez zmian (ręczne trafiają na listę rozbieżności).
+export async function syncFutureRentalsToTerms(clientId: string, actor: { userId: string }, today = new Date()): Promise<{ filled: number; updated: number; manual: number }> {
+  const out = { filled: 0, updated: 0, manual: 0 };
+  const c = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { transportPriceNet: true, paymentForm: true, invoiceMode: true, invoicePartDefault: true, prices: { select: { device: true, days: true, priceNet: true } } },
+  });
+  if (!c || c.prices.length === 0) return out;
+  const terms: PlanTerms = {
+    prices: c.prices.map((p) => ({ device: p.device, days: p.days, priceNet: Number(p.priceNet) })),
+    transportNet: c.transportPriceNet != null ? Number(c.transportPriceNet) : null,
+    paymentForm: c.paymentForm,
+    invoiceMode: parseInvoiceMode(c.invoiceMode),
+    invoicePartDefault: c.invoicePartDefault != null ? Number(c.invoicePartDefault) : null,
+  };
+  const inv = invoiceDefaults(terms.invoiceMode, terms.invoicePartDefault);
+  const pay = terms.paymentForm === "GOTOWKA" ? "CASH" : terms.paymentForm === "PRZELEW" ? "TRANSFER" : null;
+  const [rentals, priceRules] = await Promise.all([
+    prisma.rental.findMany({
+      where: { clientId, deletedInGoogle: false, eventType: "WYNAJEM", startsAt: { gt: today } },
+      orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+      select: { id: true, title: true, description: true, clientId: true, eventType: true, startsAt: true, endsAt: true, transportPrice: true, device: { select: { pricingCategory: true, variantOptions: true } }, finance: true },
+    }),
+    prisma.priceRule.findMany({ select: { pricingCategory: true, variant: true, durationDays: true, priceNet: true } }),
+  ]);
+  const priceList = priceRules.map((p) => ({ category: p.pricingCategory, variant: p.variant, days: p.durationDays, priceNet: Number(p.priceNet) }));
+  const isFixed = (f: NonNullable<(typeof rentals)[number]["finance"]>) =>
+    f.baseRentalPriceSource === "MANUAL" || f.baseRentalPriceSource === "PULSE_CALCULATED" || f.confirmedAt != null || f.fakturowniaInvoiceId != null;
+  // Dzień z transportem: najpierw rezerwacje, których nie ruszamy.
+  const dayTaken = new Set(rentals.filter((r) => r.finance && isFixed(r.finance) && Number(r.finance.transportPriceNet ?? 0) > 0).map((r) => warsawYmd(r.startsAt)));
+  const entries: ChangeEntry[] = [];
+  const summary = (f: { baseRentalPriceNet: unknown; transportPriceNet: unknown; totalNet: unknown }) =>
+    `wynajem ${Number(f.baseRentalPriceNet)} · transport ${Number(f.transportPriceNet ?? 0)} · razem ${Number(f.totalNet)}`;
+
+  for (const r of rentals) {
+    const day = warsawYmd(r.startsAt);
+    const f = r.finance;
+    if (f && isFixed(f)) {
+      if (f.baseRentalPriceSource === "MANUAL") out.manual++;
+      continue;
+    }
+    const days = rentalDurationDays(r.startsAt, r.endsAt);
+    let input: Parameters<typeof saveRentalFinance>[1];
+    if (!f) {
+      const variantOptions = Array.isArray(r.device.variantOptions) ? (r.device.variantOptions as unknown[]).filter((v): v is string => typeof v === "string") : [];
+      const plan = planBackfill({ title: r.title, description: r.description, category: r.device.pricingCategory, variantOptions, days }, terms, priceList, dayTaken.has(day));
+      if (!plan.ready) continue;
+      input = { deviceVariant: plan.variant, vatApplicable: plan.vatApplicable, paymentMethod: plan.paymentMethod, transportPriceNet: String(plan.transportNet), invoiceNet: plan.invoicePart != null ? String(plan.invoicePart) : "" };
+    } else {
+      const transport = terms.transportNet != null ? (dayTaken.has(day) ? 0 : terms.transportNet) : f.transportPriceNet != null ? Number(f.transportPriceNet) : null;
+      input = {
+        deviceVariant: f.deviceVariant,
+        vatApplicable: inv ? inv.vatApplicable : f.vatApplicable,
+        vatRate: f.vatRate.toString(),
+        paymentMethod: pay ?? f.paymentMethod,
+        transportPriceNet: transport != null ? String(transport) : "",
+        transportPaidSeparately: f.transportPaidSeparately,
+        transportVatApplicable: f.transportVatApplicable,
+        transportPaymentMethod: f.transportPaymentMethod,
+        invoiceNet: inv ? (inv.invoiceNet != null ? String(inv.invoiceNet) : "") : f.invoiceNet != null ? f.invoiceNet.toString() : "",
+      };
+    }
+    const res = await saveRentalFinance(r, input);
+    if (!res.ok) continue;
+    const after = await prisma.rentalFinance.findUnique({ where: { rentalId: r.id } });
+    if (!after) continue;
+    if (Number(after.transportPriceNet ?? 0) > 0) dayTaken.add(day);
+    const changed = !f || !f.totalNet.equals(after.totalNet) || String(f.invoiceNet ?? "") !== String(after.invoiceNet ?? "") || f.vatApplicable !== after.vatApplicable || f.paymentMethod !== after.paymentMethod;
+    if (!changed) continue;
+    if (f) out.updated++;
+    else out.filled++;
+    entries.push({ entity: "RENTAL", entityId: r.id, operation: "FIELD_CHANGE", clientId, field: "rozliczenie wg warunków klienta", before: f ? summary(f) : null, after: summary(after) });
+  }
+  if (entries.length) await recordChanges(prisma, actor, entries);
+  return out;
+}
+
+// Wersja „w tle” dla zapisów, które nie mogą się wywrócić przez przeliczenie.
+export async function syncFutureRentalsToTermsSafe(clientId: string, actor: { userId: string }): Promise<{ filled: number; updated: number; manual: number } | null> {
+  try {
+    return await syncFutureRentalsToTerms(clientId, actor);
+  } catch (err) {
+    logError("terms_sync_failed", err, { clientId });
+    return null;
+  }
+}
+
+// MCP rezerwacje_bez_kwoty: wszystkie przyszłe rezerwacje bez rozliczenia —
+// z proponowaną kwotą (warunki klienta, a bez nich cennik ogólny) i źródłem.
+export type WithoutAmountRow = {
+  rentalId: string;
+  title: string;
+  startsAt: string;
+  deviceName: string;
+  days: number;
+  clientId: string | null;
+  clientName: string | null;
+  clientHasPrices: boolean;
+  plan: BackfillPlan | null; // null = rezerwacja bez klienta
+  positions: string | null;
+};
+
+export async function loadRentalsWithoutAmount(today = new Date()): Promise<WithoutAmountRow[]> {
+  const rentals = await prisma.rental.findMany({
+    where: { deletedInGoogle: false, eventType: "WYNAJEM", startsAt: { gt: today }, finance: { is: null } },
+    orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+    select: { id: true, title: true, description: true, startsAt: true, endsAt: true, clientId: true, device: { select: { name: true, pricingCategory: true, variantOptions: true } } },
+  });
+  const clientIds = [...new Set(rentals.map((r) => r.clientId).filter((x): x is string => !!x))];
+  const [clients, priceRules, withTransport] = await Promise.all([
+    prisma.client.findMany({
+      where: { id: { in: clientIds } },
+      select: { id: true, name: true, shortName: true, transportPriceNet: true, paymentForm: true, invoiceMode: true, invoicePartDefault: true, prices: { select: { device: true, days: true, priceNet: true } } },
+    }),
+    prisma.priceRule.findMany({ select: { pricingCategory: true, variant: true, durationDays: true, priceNet: true } }),
+    // Dni, w które klient ma już rezerwację z transportem (1 kurs).
+    prisma.rental.findMany({
+      where: { deletedInGoogle: false, startsAt: { gt: today }, clientId: { in: clientIds }, finance: { transportPriceNet: { gt: 0 } } },
+      select: { clientId: true, startsAt: true },
+    }),
+  ]);
+  const byId = new Map(clients.map((c) => [c.id, c]));
+  const priceList = priceRules.map((p) => ({ category: p.pricingCategory, variant: p.variant, days: p.durationDays, priceNet: Number(p.priceNet) }));
+  const dayTaken = new Set(withTransport.map((r) => `${r.clientId}|${warsawYmd(r.startsAt)}`));
+  return rentals.map((r) => {
+    const c = r.clientId ? byId.get(r.clientId) : undefined;
+    const days = rentalDurationDays(r.startsAt, r.endsAt);
+    let plan: BackfillPlan | null = null;
+    if (c) {
+      const key = `${c.id}|${warsawYmd(r.startsAt)}`;
+      const variantOptions = Array.isArray(r.device.variantOptions) ? (r.device.variantOptions as unknown[]).filter((v): v is string => typeof v === "string") : [];
+      plan = planBackfill(
+        { title: r.title, description: r.description, category: r.device.pricingCategory, variantOptions, days },
+        {
+          prices: c.prices.map((p) => ({ device: p.device, days: p.days, priceNet: Number(p.priceNet) })),
+          transportNet: c.transportPriceNet != null ? Number(c.transportPriceNet) : null,
+          paymentForm: c.paymentForm,
+          invoiceMode: parseInvoiceMode(c.invoiceMode),
+          invoicePartDefault: c.invoicePartDefault != null ? Number(c.invoicePartDefault) : null,
+        },
+        priceList,
+        dayTaken.has(key),
+      );
+      if (plan.ready && plan.transportNet > 0) dayTaken.add(key);
+    }
+    return {
+      rentalId: r.id,
+      title: r.title,
+      startsAt: r.startsAt.toISOString(),
+      deviceName: r.device.name,
+      days,
+      clientId: c?.id ?? null,
+      clientName: c ? (c.shortName ?? c.name) : null,
+      clientHasPrices: !!c && c.prices.length > 0,
+      plan,
+      positions:
+        plan?.ready
+          ? positionsSummary({ eventType: "WYNAJEM", baseNet: plan.baseNet, transportNet: plan.transportNet, pulseSurchargeNet: null, pulsesPending: r.device.pricingCategory === "ALMA_HARMONY", capNet: null, membraneNet: null })
+          : null,
+    };
+  });
 }

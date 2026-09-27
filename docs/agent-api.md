@@ -33,7 +33,7 @@ Panel ma serwer MCP: `https://panel.wynajemlasera.pl/api/mcp`. Po podłączeniu 
 
 **Narzędzia.** Odpowiadają trasom opisanym niżej:
 
-- **Odczyt:** `reguly_porzadkow`, `klienci_lista`, `klient`, `uwagi_kierowcow`, `sygnaly_lista`, `sygnal`, `kalendarz_wynajmy`, `dopasowania`, `faktury`, `fv_bez_faktury`, `archiwum`, `dziennik`, `wnioski_lista`, `wniosek`, `uwagi_lista`, `zadania_lista`, `osoby_biura`.
+- **Odczyt:** `reguly_porzadkow`, `klienci_lista`, `klient`, `uwagi_kierowcow`, `rezerwacje_bez_kwoty`, `sygnaly_lista`, `sygnal`, `kalendarz_wynajmy`, `dopasowania`, `faktury`, `fv_bez_faktury`, `archiwum`, `dziennik`, `wnioski_lista`, `wniosek`, `uwagi_lista`, `zadania_lista`, `osoby_biura`.
 - **Zapis:** `klient_zmien`, `osoba_zmien`, `osoba_dodaj`, `klienci_scal`, `przenies_do_klientow`, `notatka_klient`, `notatka_sygnal`, `zadanie_utworz` (pole `dla` przyjmuje id albo imię, np. „Ania”), `zadanie_zmien` (tylko własne zadania), `zadanie_komentarz`, `wniosek_utworz`, `wniosek_zmien`, `wniosek_komentarz`, `uwaga_utworz`, `uwaga_zmien`, `dziennik_wpis`, `propozycje_dodaj`, `propozycje_lista`, `dopasowanie_decyzja`; odczyt także `podejrzane_zlepki`.
 
 ---
@@ -281,6 +281,8 @@ Większe porządki zgłaszaj jako **paczkę propozycji**, nie bezpośrednimi zmi
   - `cena`: netto za wynajem, albo `usun: true` (wraca cennik ogólny);
   - `zrodlo_ceny` (`OFERTA`, `UMOWA`, `USTALENIE`, `HISTORIA`) i `odnosnik` (np. „oferta 30.10.2025”).
 
+  Po akceptacji panel sam przelicza przyszłe rezerwacje klienta wg warunków (bez rozliczenia i z ceną z cennika / warunków). Kwot wpisanych ręcznie nie zmienia — trafiają na listę „Kwota inna niż w warunkach” dla biura.
+
   Transport, fakturę, płatność i impulsy zgłaszasz rodzajem `pole`: `transportPriceNet`, `invoiceMode` (`FULL` / `PARTIAL` / `NONE`), `invoicePartDefault`, `paymentForm`, `paymentTermDays`, `pulsesCharged`, `pulseRateNet`.
 
   ```json
@@ -288,6 +290,8 @@ Większe porządki zgłaszaj jako **paczkę propozycji**, nie bezpośrednimi zmi
     "zrodlo_ceny": "OFERTA", "odnosnik": "oferta 30.10.2025", "zrodlo": "mail 30.10.2025", "pewnosc": "wysoka", "paczka": "P-2026-09-27-14A" }
   ```
 - **`adres_dostawy`**: paszport dostawy. `adres_id` (z narzędzia `klient`, `delivery.addresses`) zmienia istniejący adres. Bez niego powstaje nowy adres: podaj `nazwa` i `miejscowosc` albo `kod`. Pola: `nazwa`, `ulica`, `kod`, `miejscowosc`, `wejscie`, `pietro`, `parking`, `prad`, `odbiera`, `godziny`, `typowa_godzina`, `uwagi_biura`, `domyslny` (`true`). Po akceptacji panel sam liczy km i minuty od bazy.
+
+**Rezerwacje bez kwoty** (`rezerwacje_bez_kwoty`, tylko odczyt): przyszłe wynajmy bez rozliczenia z proponowaną kwotą (`plan`: warunki klienta albo cennik, transport, faktura, płatność; `ready: false` z powodem). Kwoty wpisuje panel sam po akceptacji warunków klienta — agent zgłasza tylko `cennik_klienta` i pola warunków. Filtr `tylko_bez_warunkow`.
 
 **Uwagi kierowców** (`uwagi_kierowcow`, tylko odczyt): wpisy kierowców po dostawie i odbiorze, z klientem, adresem, wynajmem i datą. Filtry: `klient_id`, `od`.
 

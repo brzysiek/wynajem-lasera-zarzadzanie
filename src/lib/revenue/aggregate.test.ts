@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeInvoiceSplit,
   bestWorstClientAvg,
   bestWorstUtilization,
   computeClientBreakdown,
@@ -240,5 +241,12 @@ describe("bestWorstClientAvg", () => {
   it("mniej niż 2 nazwanych klientów → null", () => {
     const rows = [row({ hubspotContactId: "c1" }), row({ hubspotContactId: null })];
     expect(bestWorstClientAvg(computeClientBreakdown(rows, new Set()))).toBeNull();
+  });
+});
+
+describe("computeInvoiceSplit (netto z FV / bez FV)", () => {
+  it("część na FV liczy się tylko do kwoty invoiceNet", () => {
+    const row = (totalNet: number, invoiceNet?: number) => ({ totalNet, invoiceNet }) as unknown as RevenueRow;
+    expect(computeInvoiceSplit([row(920, 0), row(1500, 1500), row(1100, 500), row(700)])).toEqual({ withInvoice: 2000, withoutInvoice: 2220 });
   });
 });

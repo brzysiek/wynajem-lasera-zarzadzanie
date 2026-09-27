@@ -68,10 +68,10 @@ export function TermsSection({ d, onChanged, notify }: { d: ClientDetail; onChan
         <TermsEditor
           d={d}
           onCancel={() => setEdit(false)}
-          onSaved={(n) => {
+          onSaved={(n, note) => {
             setEdit(false);
             onChanged(n);
-            notify("Zapisano warunki handlowe.");
+            notify(`Zapisano warunki handlowe.${note ? ` ${note}` : ""}`);
           }}
         />
       ) : (
@@ -218,7 +218,7 @@ type PriceDraft = {
   sourceRef: string;
 };
 
-function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () => void; onSaved: (n: ClientDetail) => void }) {
+function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () => void; onSaved: (n: ClientDetail, note?: string) => void }) {
   const p = d.profile;
   const legacy = p.agreedPrice != null && d.terms.prices.length === 0 ? Number(p.agreedPrice) : null;
   const [rows, setRows] = useState<PriceDraft[]>(() =>
@@ -270,7 +270,7 @@ function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () =
     setError(null);
     const faChanged = !file && !removeFile && p.frameAgreement && (f.signedAt !== (p.frameAgreement.signedAt ?? "") || f.note !== (p.frameAgreement.note ?? ""));
     // Najpierw ceny (walidacja tabeli), potem pola klienta.
-    let { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}/prices`, "PUT", {
+    let { ok, data } = await api<{ detail: ClientDetail; synced?: { filled: number; updated: number; manual: number } | null }>(`/api/clients/${d.id}/prices`, "PUT", {
       prices: rows.map((r) => ({
         device: r.device,
         days: Number(r.days),
@@ -279,6 +279,7 @@ function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () =
         sourceRef: r.sourceRef || null,
       })),
     });
+    const synced = ok ? data.synced : null;
     if (ok) {
       ({ ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}`, "PATCH", {
         transportPriceNet: f.transport,
@@ -315,7 +316,13 @@ function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () =
     }
     setBusy(false);
     if (!ok) return setError(data.message ?? "Nie udało się zapisać.");
-    onSaved(data.detail);
+    const n = synced ? synced.filled + synced.updated : 0;
+    onSaved(
+      data.detail,
+      synced && (n || synced.manual)
+        ? [n ? `Przyszłe rezerwacje wg warunków: ${n}.` : null, synced.manual ? `Ręcznych kwot bez zmian: ${synced.manual} (Klienci → Kwoty wg warunków).` : null].filter(Boolean).join(" ")
+        : undefined,
+    );
   }
 
   const label = "flex flex-col gap-1 text-[11px] uppercase tracking-[0.12em] text-[#5C6166]";
