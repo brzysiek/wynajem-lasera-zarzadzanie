@@ -779,9 +779,42 @@ model Client {
   legacyHubspotTag String? // surowa wartość HubSpot „tagi” — tylko do wglądu
   hubspotSnapshot  Json?
 
+  // Karta klienta, sekcja 3 (prompt-code-karta-klienta.md, model pól
+  // karta-klienta-model-pol.html). Wszystkie opcjonalne; walidacja i
+  // kształty JSON: src/lib/clients/profile-fields.ts.
+  shortName          String? // nazwa robocza („MiWiNi”)
+  regon              String?   @db.VarChar(14)
+  legalForm          String?   @db.VarChar(64) // JDG, sp. z o.o. …
+  businessStartDate  DateTime?
+  pkd                Json? // [{ code, name?, main? }]
+  vatStatus          String?   @db.VarChar(32) // Czynny / Zwolniony / Niezarejestrowany
+  bankAccounts       Json? // [numer rachunku] — z Białej listy
+  deliveryAddress    String?   @db.Text // adres dostawy (gabinet ≠ siedziba)
+  deliveryNotes      Json? // { entrance, floor, parking, power, receiver }
+  services           Json? // [usługa]
+  openingHours       String?   @db.Text
+  links              Json? // { www, instagram, facebook, booksy, fresha }
+  ownDevices         String?   @db.Text
+  seasonality        String?   @db.Text
+  agreedPrice        Decimal?  @db.Decimal(10, 2) // cena ustalona netto
+  paymentTerms       String?   @db.Text // forma i termin płatności
+  invoiceEmail       String?
+  frameAgreement     Json? // { url, name, signedAt, note } — skan umowy ramowej / kaucji
+  marketingConsent   Json? // { email, sms, date, source }
+  smsReminders       Boolean?
+  googleReview       Json? // { askedAt, given }
+  nextStepText       String?   @db.Text // „Następny krok” (baner na karcie)
+  nextStepDueAt      DateTime?
+  // Pochodzenie pól: { [pole]: { source, sourceRef, verifiedAt, verifiedBy,
+  // lockedManual } }. lockedManual = synchronizacja z HubSpotem i
+  // uzupełnianie po NIP nie nadpisują pola.
+  fieldMeta          Json?
+  enrichedAt         DateTime? // ostatnie uzupełnienie po NIP (Biała lista / CEIDG)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  opportunities ClientOpportunity[]
   contacts ClientContact[]
   rentals  Rental[]
   history  RentalHistory[]
@@ -820,6 +853,14 @@ model ClientContact {
   hubspotContactId String? @unique
   hubspotSnapshot  Json?
 
+  // Karta klienta, sekcja 3: role jako tagi (owner / decides / invoices /
+  // reception / cosmetologist), kanał, forma zwracania się, szkolenia.
+  roles            Json?
+  preferredChannel String?  @db.VarChar(64)
+  salutation       String? // „Pani Basiu”
+  trainedOn        Json? // [{ device, date }]
+  fieldMeta        Json? // pochodzenie pól, jak Client.fieldMeta
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -830,6 +871,30 @@ model ClientContact {
   @@index([email])
   @@index([phone])
   @@map("client_contacts")
+}
+
+// Szanse sprzedaży klienta (karta, sekcja „Szanse sprzedaży”; MCP
+// szansa_dodaj). Np. „Cooltech – modelowanie ciała”, oferta 03.2025,
+// wrócić 02.2027.
+model ClientOpportunity {
+  id          String    @id @default(cuid())
+  clientId    String
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  device      String // urządzenie / temat szansy
+  stage       String    @db.VarChar(32) // pomysl | rozmowa | oferta | decyzja | wygrana | przegrana
+  chance      String?   @db.VarChar(16) // wysoka | srednia | niska | sprawdzic
+  lastContact DateTime?
+  returnAt    DateTime? // kiedy wrócić
+  note        String?   @db.Text
+  source      String?   @db.Text // źródło (agent: wymagane)
+  createdById String?
+  closedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([clientId])
+  @@index([returnAt])
+  @@map("client_opportunities")
 }
 
 // ---------------------------------------------------------------------------

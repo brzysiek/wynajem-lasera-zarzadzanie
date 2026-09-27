@@ -95,7 +95,7 @@ export function AgentTokensPanel({ userId }: { userId: string }) {
           <li key={t.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
             <span className={`font-medium ${t.revokedAt ? "text-gray-400 line-through" : "text-gray-900"}`}>{t.name}</span>
             {t.kind === "OAUTH" ? (
-              <span className="rounded-full bg-[#EAF4FB] px-2 py-0.5 text-[11px] font-medium text-[#1B6FA8]">konektor (OAuth)</span>
+              <span className="rounded-full bg-[#DDEDEA] px-2 py-0.5 text-[11px] font-medium text-[#0E5C58]">konektor (OAuth)</span>
             ) : (
               <code className="text-xs text-gray-500">{t.prefix}…</code>
             )}
@@ -124,7 +124,7 @@ export function AgentTokensPanel({ userId }: { userId: string }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Nazwa tokenu, np. Claude — porządki"
-          className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-[#1B6FA8] focus:outline-none"
+          className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-[#0E5C58] focus:outline-none"
         />
         <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" aria-label="Ważność">
           {VALIDITY.map((d) => (
@@ -133,7 +133,7 @@ export function AgentTokensPanel({ userId }: { userId: string }) {
             </option>
           ))}
         </select>
-        <button type="button" disabled={busy} onClick={() => void create()} className="rounded-md bg-[#1B6FA8] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50">
+        <button type="button" disabled={busy} onClick={() => void create()} className="rounded-md bg-[#0E5C58] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#083F3C] disabled:opacity-50">
           Utwórz token
         </button>
         <button type="button" onClick={() => setShowCalls((v) => !v)} className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">

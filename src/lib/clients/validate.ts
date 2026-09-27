@@ -3,6 +3,7 @@
 // z src/lib/reminders.ts — ta sama co SMS).
 import { normalizeNip, parseDistanceKm, parseMoney } from "./hubspot-import";
 import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_KEYS, SOURCE_LABEL, type DeviceInterestKey } from "./labels";
+import { parseClientProfilePatch, parseContactProfilePatch, type ClientProfilePatch, type ContactProfilePatch } from "./profile-fields";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 type Deps = { normalizePhone: (raw: string) => string | null };
@@ -29,7 +30,8 @@ export type ClientPatch = Partial<{
   deviceInterests: DeviceInterestKey[];
   statusOverride: "NIE_KONTAKTOWAC" | null;
   notes: string | null;
-}>;
+}> &
+  ClientProfilePatch;
 
 // Tylko pola obecne w body — PATCH zmienia wyłącznie to, co przyszło.
 export function parseClientPatch(body: Record<string, unknown>): Result<ClientPatch> {
@@ -81,7 +83,10 @@ export function parseClientPatch(body: Record<string, unknown>): Result<ClientPa
     out.statusOverride = v;
   }
   if ("notes" in body) out.notes = typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
-  return { ok: true, data: out };
+  // Nowe pola karty (sekcja 3) — src/lib/clients/profile-fields.ts.
+  const profile = parseClientProfilePatch(body);
+  if (!profile.ok) return profile;
+  return { ok: true, data: { ...out, ...profile.data } };
 }
 
 export type ContactInput = Partial<{
@@ -93,7 +98,8 @@ export type ContactInput = Partial<{
   email: string | null;
   role: string | null;
   isPrimary: boolean;
-}>;
+}> &
+  ContactProfilePatch;
 
 export function parseContactInput(body: Record<string, unknown>, deps: Deps, opts: { requireName?: boolean } = {}): Result<ContactInput> {
   const out: ContactInput = {};
@@ -114,6 +120,9 @@ export function parseContactInput(body: Record<string, unknown>, deps: Deps, opt
     out.email = email;
   }
   if ("isPrimary" in body) out.isPrimary = body.isPrimary === true;
+  const profile = parseContactProfilePatch(body);
+  if (!profile.ok) return profile;
+  Object.assign(out, profile.data);
   if (opts.requireName && !out.firstName && !out.lastName && !out.email && !out.phone) {
     return { ok: false, message: "Podaj przynajmniej imię, telefon albo e-mail osoby." };
   }

@@ -44,11 +44,11 @@ type UploadHistoryRow = {
 const C = {
   surface: "#FFFFFF",
   border: "#E9EDF1",
-  text: "#4A4A4A",
-  muted: "#6F7378",
+  text: "#14191F",
+  muted: "#56606B",
   faint: "#9AA1A8",
-  brand: "#1B6FA8",
-  brandSoft: "#EAF4FB",
+  brand: "#0E5C58",
+  brandSoft: "#DDEDEA",
   accent: "#E08A5C",
   amber: "#B06000",
   amberSoft: "#FEF7E0",
@@ -320,7 +320,7 @@ export function InvoicesManager({
                     ].join("\n")
                   : "Jeszcze nie wgrano żadnego wyciągu."
               }
-              className="flex-none rounded-lg bg-[#1B6FA8] px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#14567F] disabled:opacity-50 disabled:hover:bg-[#1B6FA8]"
+              className="flex-none rounded-lg bg-[#0E5C58] px-4 py-2.5 text-[13px] font-bold text-white transition-colors hover:bg-[#083F3C] disabled:opacity-50 disabled:hover:bg-[#0E5C58]"
             >
               {uploading ? "Przetwarzanie…" : "Wgraj plik"}
             </button>
@@ -347,7 +347,7 @@ export function InvoicesManager({
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="rounded-md border border-[#E9EDF1] px-2 py-1 text-[13px] text-[#4A4A4A] transition-colors hover:border-[#D3DAE1] focus:border-[#1B6FA8] focus:outline-none"
+              className="rounded-md border border-[#E9EDF1] px-2 py-1 text-[13px] text-[#14191F] transition-colors hover:border-[#D3DAE1] focus:border-[#0E5C58] focus:outline-none"
             />
           </label>
           <label className="flex items-center gap-1.5 text-[13px]">
@@ -356,7 +356,7 @@ export function InvoicesManager({
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className="rounded-md border border-[#E9EDF1] px-2 py-1 text-[13px] text-[#4A4A4A] transition-colors hover:border-[#D3DAE1] focus:border-[#1B6FA8] focus:outline-none"
+              className="rounded-md border border-[#E9EDF1] px-2 py-1 text-[13px] text-[#14191F] transition-colors hover:border-[#D3DAE1] focus:border-[#0E5C58] focus:outline-none"
             />
           </label>
           <span className="text-[13px]">
@@ -462,7 +462,7 @@ export function InvoicesManager({
                           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:pointer-events-none ${
                             r.paidAt
                               ? "bg-[#E7F6EF] text-[#1E9E6B] hover:bg-[#D2EFE2]"
-                              : "bg-[#E9EDF1] text-[#6F7378] hover:bg-[#D3DAE1]"
+                              : "bg-[#E9EDF1] text-[#56606B] hover:bg-[#D3DAE1]"
                           }`}
                         >
                           {r.paidAt ? "zapłacona" : "niezapłacona"}
@@ -485,7 +485,7 @@ export function InvoicesManager({
                             href={`${BASE_PATH}/api/fakturownia/invoices/${r.id}/pdf`}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-md px-2 py-1 text-[12px] font-medium whitespace-nowrap transition-colors hover:bg-[#EAF4FB]"
+                            className="rounded-md px-2 py-1 text-[12px] font-medium whitespace-nowrap transition-colors hover:bg-[#DDEDEA]"
                             style={{ color: C.brand }}
                           >
                             PDF
@@ -495,7 +495,7 @@ export function InvoicesManager({
                               type="button"
                               onClick={() => void handleCreateDraft(r)}
                               disabled={busyId === r.id}
-                              className="rounded-md px-2 py-1 text-[12px] font-medium whitespace-nowrap text-[#1B6FA8] transition-colors hover:bg-[#EAF4FB] disabled:opacity-50"
+                              className="rounded-md px-2 py-1 text-[12px] font-medium whitespace-nowrap text-[#0E5C58] transition-colors hover:bg-[#DDEDEA] disabled:opacity-50"
                             >
                               Szkic maila
                             </button>

@@ -29,6 +29,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (isAgent) {
     if (!(await agentMayAssign(typeof body?.assigneeId === "string" ? body.assigneeId : null))) return NextResponse.json({ message: AGENT_ASSIGNEE_MESSAGE }, { status: 400 });
     assigneeId = body.assigneeId;
+  } else if (typeof body?.assigneeId === "string" && body.assigneeId !== session.user.id) {
+    // Karta klienta: „Zadanie dla Ani” — biuro przypisuje zadanie innej osobie biura.
+    const assignee = await prisma.user.findFirst({ where: { id: body.assigneeId, role: { in: ["ADMIN", "STAFF"] } }, select: { id: true } });
+    if (!assignee) return NextResponse.json({ message: "Zadanie można przypisać tylko osobie z biura." }, { status: 400 });
+    assigneeId = assignee.id;
   }
   const task = await prisma.task.create({ data: { title, notes, dueDate: due, clientId: id, authorId: session.user.id, assigneeId } });
   if (isAgent) {

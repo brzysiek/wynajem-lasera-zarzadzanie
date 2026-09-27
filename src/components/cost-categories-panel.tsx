@@ -158,7 +158,7 @@ function ScopeSection({
         <button
           type="submit"
           disabled={adding || !newName.trim()}
-          className="rounded-md bg-[#1B6FA8] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          className="rounded-md bg-[#0E5C58] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
         >
           + Dodaj
         </button>

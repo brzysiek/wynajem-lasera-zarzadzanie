@@ -198,7 +198,7 @@ function CalendarWeekRow({
             title={canEdit ? "Nowa rezerwacja" : undefined}
             className={`border-b border-r border-gray-300 p-1.5 pt-1 ${canEdit ? "cursor-pointer hover:bg-gray-50" : ""} ${
               isOver
-                ? "bg-[#EAF4FB]"
+                ? "bg-[#DDEDEA]"
                 : isToday
                   ? "bg-[#FBF0E7]"
                   : isPastDay(day)
@@ -543,14 +543,14 @@ export function CalendarView({
               <button
                 type="button"
                 onClick={() => setMode("month")}
-                className={`px-3 py-2 text-sm font-medium ${mode === "month" ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+                className={`px-3 py-2 text-sm font-medium ${mode === "month" ? "bg-[#0E5C58] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
               >
                 Miesiąc
               </button>
               <button
                 type="button"
                 onClick={() => setMode("week")}
-                className={`px-3 py-2 text-sm font-medium ${mode === "week" ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+                className={`px-3 py-2 text-sm font-medium ${mode === "week" ? "bg-[#0E5C58] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
               >
                 Tydzień
               </button>
@@ -559,7 +559,7 @@ export function CalendarView({
               <button
                 type="button"
                 onClick={() => openCreate()}
-                className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F]"
+                className="rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white hover:bg-[#083F3C]"
               >
                 + Nowa rezerwacja
               </button>
@@ -590,7 +590,7 @@ export function CalendarView({
               w sidebarze), bo przesłania filtr urządzeń: łatwo by było się
               zdziwić "gdzie reszta wynajmów". */}
           {driverViewId && (
-            <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-[#9CC5E0] bg-[#EAF4FB] px-3 py-2 text-sm text-[#14567F]">
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-[#9CC5E0] bg-[#DDEDEA] px-3 py-2 text-sm text-[#083F3C]">
               <span>
                 Widok kierowcy: <b>{drivers.find((d) => d.id === driverViewId)?.name ?? "…"}</b> — pokazuje tylko jego
                 wynajmy, niezależnie od zaznaczonych urządzeń.
@@ -598,7 +598,7 @@ export function CalendarView({
               <button
                 type="button"
                 onClick={() => setDriverView(null)}
-                className="flex-none rounded-md border border-[#9CC5E0] bg-white px-2 py-1 text-xs font-semibold text-[#14567F] hover:bg-[#F2F7FB]"
+                className="flex-none rounded-md border border-[#9CC5E0] bg-white px-2 py-1 text-xs font-semibold text-[#083F3C] hover:bg-[#F2F7FB]"
               >
                 Wyłącz
               </button>

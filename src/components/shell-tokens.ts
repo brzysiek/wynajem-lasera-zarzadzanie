@@ -1,27 +1,38 @@
 import type { CSSProperties } from "react";
 
-// Paleta i krój pisma ramy aplikacji (docs/prompt-claude-code-powloka-aplikacji.md,
-// sekcja 3) — topbar, sidebar, prawy pasek ikon, rama wysuwanego panelu.
-// Ta sama paleta co wynajemlasera.pl (patrz np. strona produktowa Alma
-// Harmony) — #1B6FA8 / #E08A5C / Jost.
+// Paleta i krój pisma ramy aplikacji — topbar, sidebar, prawy pasek ikon,
+// rama wysuwanego panelu. Od 27.09.2026 tokeny ze wzoru karty klienta
+// (prompt-code-karta-klienta.md, sekcja 1): akcent zieleń #0E5C58, tło
+// #F3F5F7, tekst #14191F, krój Public Sans. Wcześniej #1B6FA8 / Jost.
 export const SHELL = {
-  brand: "#1B6FA8",
-  brandSoft: "#EAF4FB",
-  brandDeep: "#14567F",
-  accent: "#E08A5C",
-  accentSoft: "#FBF0E7",
-  // Lekko błękitne (nie białe/szare) tło sidebaru — celowo "żywsze" niż
-  // dawne prawie-białe #FAFCFD, żeby lewy pasek miał wyczuwalny kolor marki
-  // nawet gdy żadna pozycja nie jest aktywna.
-  sidebarBg: "#EFF6FB",
-  sidebarText: "#5B6167",
-  sidebarTextDim: "#9AA1A8",
-  bg: "#F2F4F6",
+  brand: "#0E5C58",
+  brandSoft: "#DDEDEA",
+  brandDeep: "#083F3C",
+  accent: "#C2620A",
+  accentSoft: "#FDF1E1",
+  sidebarBg: "#FFFFFF",
+  sidebarText: "#3F4852",
+  sidebarTextDim: "#8A94A0",
+  bg: "#F3F5F7",
   surface: "#FFFFFF",
-  border: "#E9EDF1",
-  text: "#4A4A4A",
-  textMuted: "#6F7378",
-  textFaint: "#9AA1A8",
+  border: "#DDE2E8",
+  text: "#14191F",
+  textMuted: "#56606B",
+  textFaint: "#8A94A0",
+} as const;
+
+// Dodatkowe tokeny wzoru karty: linie podziału, tło wewnętrzne, tekst
+// drugorzędny (ciemniejszy), obramowanie przycisków, ostrzeżenie.
+export const TOKENS = {
+  divider: "#EDF0F3",
+  inner: "#F7F9FA",
+  textSecondary: "#3F4852",
+  buttonBorder: "#CBD2DA",
+  brandSoftBorder: "#B9D8D3",
+  warnBg: "#FDF1E1",
+  warnBorder: "#F2D2A6",
+  warnText: "#5E2C02",
+  warnTextSoft: "#7A3A04",
 } as const;
 
 // Paleta "premium" dla TREŚCI stron (dashboardy, tabele, formularze) — ten
@@ -34,8 +45,8 @@ export const SHELL = {
 // każdym komponencie, żeby paleta się nie rozjeżdżała między stronami.
 export const APP = {
   ...SHELL,
-  navy: "#0C3450",
-  navySoft: "#DCEAF4",
+  navy: "#14191F",
+  navySoft: "#EDF0F3",
   gold: "#B5851E",
   goldSoft: "#FBF3E1",
   purple: "#7C3AED",
@@ -55,7 +66,7 @@ export const APP = {
 // odcienia tego samego koloru dla kontrastu.
 export const APP_DEEP = {
   green: "#15754F",
-  accent: "#8A4414",
+  accent: "#7A3A04",
   gold: "#8A6414",
   purple: "#5B2BB5",
 } as const;
@@ -112,10 +123,18 @@ export const APP_CSS_VARS = {
   "--c-accent-deep": APP_DEEP.accent,
   "--c-gold-deep": APP_DEEP.gold,
   "--c-purple-deep": APP_DEEP.purple,
+  "--c-divider": TOKENS.divider,
+  "--c-inner": TOKENS.inner,
+  "--c-text-2": TOKENS.textSecondary,
+  "--c-btn-border": TOKENS.buttonBorder,
+  "--c-brand-soft-border": TOKENS.brandSoftBorder,
+  "--c-warn-bg": TOKENS.warnBg,
+  "--c-warn-border": TOKENS.warnBorder,
+  "--c-warn-text": TOKENS.warnText,
+  "--c-warn-text-2": TOKENS.warnTextSoft,
 } as CSSProperties;
 
-// Klasa na kontener, który ma renderować się krojem Jost (--font-jost,
-// wystawionym w layout.tsx). Odkąd Jost jest krojem całej aplikacji
-// (globals.css), ten helper jest już w większości zbędny — zostaje dla
-// miejsc, które chcą go jawnie wymusić niezależnie od dziedziczenia.
-export const SHELL_FONT_STYLE: CSSProperties = { fontFamily: "var(--font-jost)" };
+// Krój ramy aplikacji — Public Sans (--font-app, src/app/fonts/fonts.css).
+// Jest krojem całego panelu (globals.css), więc helper zostaje tylko dla
+// miejsc, które wymuszają go jawnie.
+export const SHELL_FONT_STYLE: CSSProperties = { fontFamily: "var(--font-app)" };

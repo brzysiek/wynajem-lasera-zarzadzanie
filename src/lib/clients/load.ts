@@ -7,6 +7,8 @@ import { interestsFromText } from "@/lib/history/invoices";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { buildTransactions, rentalRhythmDays, transactionTotals, typicalPayment, type TxRental, type TxTotals } from "@/lib/clients/transactions";
 import { paymentLabel, type PaymentStatus } from "@/lib/clients/payment-status";
+import { loadCardExtras, profileDto, type ClientProfileDto, type FieldMetaDto, type LineageDto, type OpportunityDto } from "@/lib/clients/card-extras";
+import type { PersonRole, TrainedOn } from "@/lib/clients/profile-fields";
 import { computeRhythm, headsFromText, monthsLabel, type ClientRhythm, type RhythmRental } from "@/lib/clients/rhythm";
 import { loadPaymentCoverage } from "@/lib/invoicing/bank-transfers";
 import { gmailSummary } from "@/lib/gmail/sync";
@@ -239,6 +241,12 @@ export type ClientContactDto = {
   isPrimary: boolean;
   hubspotContactId: string | null;
   rentalsCount: number;
+  // Karta klienta, sekcja 3.
+  roles: PersonRole[];
+  preferredChannel: string | null;
+  salutation: string | null;
+  trainedOn: TrainedOn[];
+  fieldMeta: FieldMetaDto;
 };
 
 export type ClientHistoryItem =
@@ -310,6 +318,24 @@ export type ClientDetail = {
   // albo HUBSPOT_PORTAL_ID w .env.
   hubspotUrl: string | null;
   contacts: ClientContactDto[];
+  // Karta klienta, sekcja 3: nowe pola, pochodzenie pól, szanse, powiązania.
+  profile: ClientProfileDto;
+  fieldMeta: FieldMetaDto;
+  opportunities: OpportunityDto[];
+  lineage: LineageDto;
+  // Fakty do karty: zgodność NIP z fakturami, typowa godzina i czas wynajmu,
+  // ostatni SMS.
+  cardFacts: {
+    nipInvoiceCount: number;
+    usualStartTime: { time: string; fromAt: string } | null;
+    typicalDays: number | null;
+    lastSmsAt: string | null;
+    // Przychód 12 mies.: znane kwoty (faktury, rozliczenia) + liczba
+    // wynajmów bez kwoty (z kalendarzy) do szacunku z ceny ustalonej.
+    revenue12m: { known: number; withoutAmount: number };
+  };
+  // Zadania klienta (oś zdarzeń na karcie) — otwarte i ostatnie zamknięte.
+  tasks: { id: string; title: string; status: string; dueDate: string | null; completedAt: string | null; createdAt: string; assigneeName: string | null }[];
   summary: {
     status: ClientStatus;
     rentals12m: number;
@@ -335,7 +361,7 @@ export type ClientDetail = {
     title: string;
     details: string | null;
     net: number | null;
-    invoice: { id: string; fakturowniaInvoiceId: number; number: string; issueDate: string } | null;
+    invoice: { id: string; fakturowniaInvoiceId: number; number: string; issueDate: string; totalGross: number | null } | null;
     status: { kind: PaymentStatus["kind"]; label: string; days: number | null; paidAt: string | null };
   }[];
   txTotals: TxTotals;
@@ -351,7 +377,7 @@ export type ClientDetail = {
   overview: {
     revenue12m: number;
     avg12m: number | null;
-    nextRental: { startsAt: string; deviceName: string } | null;
+    nextRental: { startsAt: string; deviceName: string; heads: number | null; smsSentAt: string | null } | null;
     favoriteDeviceName: string | null;
     favoriteDeviceCount: number;
     realizedCount: number;
@@ -654,6 +680,24 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       })),
     ...c.history.filter((h) => h.kind === "WYNAJEM").map((h) => ({ at: h.startsAt, device: h.device.name, heads: headsFromText(`${h.title} ${h.description ?? ""}`) })),
   ];
+  // Typowa godzina dostawy: najczęstsza godzina startu wynajmów z panelu
+  // (Europe/Warsaw); źródło = najbliższy (albo ostatni) wynajem z tą godziną.
+  const hm = (d: Date) => new Intl.DateTimeFormat("pl-PL", { timeZone: "Europe/Warsaw", hour: "2-digit", minute: "2-digit" }).format(d);
+  const timed = c.rentals.filter((r) => !r.deletedInGoogle && r.eventType === "WYNAJEM").map((r) => ({ at: r.startsAt, t: hm(r.startsAt) })).filter((x) => x.t !== "00:00");
+  const timeCounts = new Map<string, number>();
+  for (const x of timed) timeCounts.set(x.t, (timeCounts.get(x.t) ?? 0) + 1);
+  const topTime = [...timeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const topTimeRental = topTime ? (timed.filter((x) => x.t === topTime && x.at > today).sort((a, b) => a.at.getTime() - b.at.getTime())[0] ?? timed.find((x) => x.t === topTime)) : null;
+  const durations = [
+    ...c.rentals.filter((r) => !r.deletedInGoogle && r.eventType === "WYNAJEM").map((r) => rentalDurationDays(r.startsAt, r.endsAt)),
+    ...c.history.filter((h) => h.kind === "WYNAJEM").map((h) => rentalDurationDays(h.startsAt, h.endsAt)),
+  ].sort((a, b) => a - b);
+  const nipInvoiceCount = c.nip ? await prisma.clientInvoice.count({ where: { clientId: c.id, buyerTaxNo: c.nip } }) : 0;
+  const lastSms = c.rentals
+    .flatMap((r) => r.messages)
+    .filter((m) => m.channel === "SMS" && m.status === "SENT" && m.sentAt)
+    .map((m) => m.sentAt!.getTime());
+  const extras = await loadCardExtras(c.id, [c.fieldMeta, ...c.contacts.map((p) => p.fieldMeta)]);
   const rhythm = computeRhythm({ realized: rhythmRentals.filter((x) => x.at <= today), planned: rhythmRentals.filter((x) => x.at > today), today });
   const deviceCounts = new Map<string, number>();
   for (const r of txRentals) if (r.startsAt <= today) deviceCounts.set(r.deviceName, (deviceCounts.get(r.deviceName) ?? 0) + 1);
@@ -668,6 +712,12 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
     take: 5,
     select: { title: true, dueDate: true, leadId: true },
+  });
+  const clientTasks = await prisma.task.findMany({
+    where: { clientId: id },
+    orderBy: { createdAt: "desc" },
+    take: 40,
+    select: { id: true, title: true, status: true, dueDate: true, completedAt: true, createdAt: true, assignee: { select: { name: true } } },
   });
   const steps = [
     ...c.leads
@@ -701,6 +751,32 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       const primaryHs = c.contacts.find((p) => p.hubspotContactId)?.hubspotContactId;
       return primaryHs ? getHubspotContactUrl(primaryHs) : null;
     })(),
+    profile: profileDto(c),
+    fieldMeta: extras.withNames(c.fieldMeta),
+    opportunities: extras.opportunities,
+    lineage: extras.lineage,
+    cardFacts: {
+      nipInvoiceCount,
+      usualStartTime: topTime && topTimeRental ? { time: topTime, fromAt: topTimeRental.at.toISOString() } : null,
+      typicalDays: durations.length ? durations[Math.floor(durations.length / 2)] : null,
+      lastSmsAt: lastSms.length ? new Date(Math.max(...lastSms)).toISOString() : null,
+      revenue12m: (() => {
+        const rows = txRows.filter((x) => x.date >= yearAgo && x.date <= today);
+        return {
+          known: Math.round(rows.filter((x) => x.net != null).reduce((s, x) => s + (x.net ?? 0), 0) * 100) / 100,
+          withoutAmount: rows.filter((x) => x.net == null && x.source !== "faktura").length,
+        };
+      })(),
+    },
+    tasks: clientTasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      dueDate: t.dueDate?.toISOString() ?? null,
+      completedAt: t.completedAt?.toISOString() ?? null,
+      createdAt: t.createdAt.toISOString(),
+      assigneeName: t.assignee?.name ?? null,
+    })),
     contacts: c.contacts.map((p) => ({
       id: p.id,
       firstName: p.firstName,
@@ -713,6 +789,11 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       isPrimary: p.isPrimary,
       hubspotContactId: p.hubspotContactId,
       rentalsCount: p._count.rentals,
+      roles: Array.isArray(p.roles) ? (p.roles as PersonRole[]) : [],
+      preferredChannel: p.preferredChannel,
+      salutation: p.salutation,
+      trainedOn: Array.isArray(p.trainedOn) ? (p.trainedOn as TrainedOn[]) : [],
+      fieldMeta: extras.withNames(p.fieldMeta),
     })),
     summary: {
       status: summary.status,
@@ -758,7 +839,19 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     overview: {
       revenue12m,
       avg12m: finished12.length ? Math.round((revenue12m / finished12.length) * 100) / 100 : null,
-      nextRental: next ? { startsAt: next.startsAt.toISOString(), deviceName: next.device.name } : null,
+      nextRental: next
+        ? {
+            startsAt: next.startsAt.toISOString(),
+            deviceName: next.device.name,
+            heads: next.finance?.deviceVariant === "double" ? 2 : next.finance?.deviceVariant?.startsWith("single") ? 1 : headsFromText(next.title),
+            smsSentAt:
+              next.messages
+                .filter((m) => m.channel === "SMS" && m.status !== "FAILED" && m.sentAt)
+                .map((m) => m.sentAt!.toISOString())
+                .sort()
+                .pop() ?? null,
+          }
+        : null,
       favoriteDeviceName: fav?.[0] ?? null,
       favoriteDeviceCount: fav?.[1] ?? 0,
       realizedCount: realizedDates.length,

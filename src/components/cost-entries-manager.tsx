@@ -25,14 +25,14 @@ type CostRow = {
 // Paleta premium (src/components/shell-tokens.ts) — spójna z resztą
 // dashboardów Finanse.
 const C = {
-  bg: "#F2F4F6",
+  bg: "#F3F5F7",
   surface: "#FFFFFF",
   border: "#E9EDF1",
-  text: "#4A4A4A",
-  muted: "#6F7378",
+  text: "#14191F",
+  muted: "#56606B",
   faint: "#9AA1A8",
-  brand: "#1B6FA8",
-  brandSoft: "#EAF4FB",
+  brand: "#0E5C58",
+  brandSoft: "#DDEDEA",
   accent: "#E08A5C",
   purple: "#7C3AED",
   purpleSoft: "#F3EBFF",

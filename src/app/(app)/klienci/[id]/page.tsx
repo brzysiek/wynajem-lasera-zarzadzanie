@@ -7,9 +7,11 @@ import { ClientFullCard } from "@/components/clients/card/client-full-card";
 import { AgentModeProvider } from "@/components/clients/client-forms";
 import type { CardTab } from "@/components/clients/card/tab-overview";
 
-const TABS: CardTab[] = ["przeglad", "transakcje", "komunikacja", "dane"];
+const TABS: CardTab[] = ["karta", "przeglad", "transakcje", "komunikacja", "dane"];
 
-// Pełna karta klienta z zakładkami (docs/crm/prompt-claude-code-crm-3b-karta-klienta.md).
+// Pełna karta klienta: domyślnie układ wg karta-klienta-wzor.html
+// (prompt-code-karta-klienta.md, sekcja 2); dawne zakładki pod ?tab=
+// (przeglad, transakcje, komunikacja, dane).
 // ADMIN/STAFF/AGENT, jak cały moduł Klienci; KIEROWCA przekierowany.
 export default async function ClientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const session = await requireClientsPageAccess();
@@ -22,7 +24,7 @@ export default async function ClientPage({ params, searchParams }: { params: Pro
       <ClientFullCard
         key={id}
         initial={detail}
-        initialTab={TABS.includes(tab as CardTab) ? (tab as CardTab) : "przeglad"}
+        initialTab={TABS.includes(tab as CardTab) ? (tab as CardTab) : "karta"}
         isAdmin={session.user.role === "ADMIN"}
         isAgent={session.user.role === "AGENT"}
         mergeOptions={mergeOptions}

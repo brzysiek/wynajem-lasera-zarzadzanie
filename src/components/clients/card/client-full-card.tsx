@@ -18,6 +18,9 @@ import { SplitDialog } from "./split-dialog";
 import { ArchiveDialog } from "@/components/porzadki/archive-dialog";
 import { ARCHIVE_REASON_LABEL, type ArchiveReasonKey } from "@/lib/porzadki/labels";
 import type { ReviewClient } from "@/lib/history/review-load";
+import { CardHeader, Indicators, NextStepBanner, TaskDialog } from "./card-header";
+import { CardLeft } from "./card-left";
+import { CardRight } from "./card-right";
 
 // Pełna karta klienta /klienci/[id] z zakładkami (docs/crm/prompt-claude-code-crm-3b-karta-klienta.md,
 // wygląd: docs/crm/zrzuty/karta-*.png). Nagłówek wspólny dla zakładek,
@@ -26,6 +29,7 @@ import type { ReviewClient } from "@/lib/history/review-load";
 export const LIST_URL_KEY = "wl_clients_list_search";
 
 const TABS: { key: CardTab; label: string }[] = [
+  { key: "karta", label: "Karta" },
   { key: "przeglad", label: "Przegląd" },
   { key: "transakcje", label: "Wynajmy i faktury" },
   { key: "komunikacja", label: "Komunikacja" },
@@ -65,6 +69,7 @@ export function ClientFullCard({
   const [dialog, setDialog] = useState<"archive" | "merge" | "split" | null>(null);
   const [splitTo, setSplitTo] = useState<string | null>(null);
   const [backHref, setBackHref] = useState("/klienci");
+  const [task, setTask] = useState<{ title: string; due: string | null } | null>(null);
 
   useEffect(() => {
     try {
@@ -85,7 +90,7 @@ export function ClientFullCard({
   const switchTab = useCallback((t: CardTab) => {
     setTab(t);
     const url = new URL(window.location.href);
-    if (t === "przeglad") url.searchParams.delete("tab");
+    if (t === "karta") url.searchParams.delete("tab");
     else url.searchParams.set("tab", t);
     window.history.replaceState(null, "", url.toString());
   }, []);
@@ -115,13 +120,139 @@ export function ClientFullCard({
     "flex h-10 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-4 text-[14px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40";
   const soft = `${btn} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`;
 
+  const toastEl = toast && (
+    <p
+      role="status"
+      className={`rounded-lg px-3 py-2 text-[13px] ${toast.error ? "bg-[var(--c-red-soft)] text-[var(--c-red)]" : "bg-[var(--c-green-soft)] text-[var(--c-green-deep)]"}`}
+    >
+      {toast.text}
+    </p>
+  );
+  const dialogs = (
+    <>
+      {emailIds && <EmailViewer messageIds={emailIds} onClose={() => setEmailIds(null)} />}
+      {task && (
+        <TaskDialog
+          d={d}
+          initialTitle={task.title}
+          initialDue={task.due}
+          onClose={() => setTask(null)}
+          onDone={(n) => {
+            setTask(null);
+            setD(n);
+            notify("Utworzono zadanie.");
+          }}
+        />
+      )}
+      {dialog === "archive" && (
+        <ArchiveDialog
+          type="client"
+          ids={[d.id]}
+          label={d.name}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            setDialog(null);
+            notify("Zarchiwizowano. Klient zniknął z list; przywrócisz go tutaj albo w Porządki → Archiwum.");
+            void reload();
+          }}
+        />
+      )}
+      {dialog === "split" && (
+        <SplitDialog
+          source={d}
+          onClose={() => setDialog(null)}
+          onDone={(next, newClientId) => {
+            setDialog(null);
+            setD(next);
+            setSplitTo(newClientId);
+            notify("Wydzielono do nowego klienta. Wpis jest w dzienniku.");
+          }}
+        />
+      )}
+      {dialog === "merge" && (
+        <MergeDialog
+          target={d}
+          clients={mergeOptions}
+          onClose={() => setDialog(null)}
+          onMerged={(next) => {
+            setDialog(null);
+            setD(next);
+            notify("Scalono. Duplikat jest w archiwum (powód: duplikat).");
+          }}
+        />
+      )}
+    </>
+  );
+
+  // Karta wg wzoru (karta-klienta-wzor.html) — domyślny widok.
+  if (tab === "karta") {
+    return (
+      <div style={APP_CSS_VARS} className="-mx-4 -mt-6 flex flex-col gap-5 bg-[var(--c-bg)] px-4 pb-10 pt-8 text-[var(--c-text)] md:-mx-[30px] md:-mt-[26px] md:px-10">
+        {d.archive && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">
+            <b className="font-semibold">W archiwum</b>
+            <span>
+              {d.archive.reason ? ARCHIVE_REASON_LABEL[d.archive.reason as ArchiveReasonKey] ?? d.archive.reason : ""}
+              {d.archive.note ? ` — ${d.archive.note}` : ""} · od {new Date(d.archive.at).toLocaleDateString("pl-PL")}
+            </span>
+            {isAdmin && (
+              <button
+                type="button"
+                className="ml-auto font-semibold underline"
+                onClick={async () => {
+                  const { ok, data } = await api("/api/porzadki/archiwum/przywroc", "POST", { type: "client", ids: [d.id] });
+                  if (!ok) return notify(data.message ?? "Nie udało się przywrócić.", true);
+                  notify("Przywrócono z archiwum.");
+                  void reload();
+                }}
+              >
+                Przywróć
+              </button>
+            )}
+          </div>
+        )}
+        <CardHeader d={d} backHref={backHref} isAgent={isAgent} onSms={() => setSms((v) => !v)} onTask={() => setTask({ title: "", due: null })} />
+        {sms && (
+          <div className="max-w-[560px]">
+            <SmsComposer
+              recipients={smsRecipients}
+              clientName={d.name}
+              onCancel={() => setSms(false)}
+              onSent={() => {
+                setSms(false);
+                notify("SMS wysłany.");
+                void reload();
+              }}
+            />
+          </div>
+        )}
+        {splitTo && (
+          <p className="rounded-lg bg-[var(--c-brand-soft)] px-3 py-2 text-[13px] text-[var(--c-brand-deep)]">
+            Nowy klient z wydzielonych osób:{" "}
+            <Link href={`/klienci/${splitTo}`} className="font-semibold underline">
+              otwórz kartę →
+            </Link>
+          </p>
+        )}
+        {toastEl}
+        <Indicators d={d} />
+        <NextStepBanner d={d} onChanged={setD} notify={notify} onTask={(title, due) => setTask({ title, due })} />
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
+          <CardLeft d={d} onChanged={setD} notify={notify} isAdmin={isAdmin} isAgent={isAgent} pendingProposals={pendingProposals} onDialog={setDialog} />
+          <CardRight d={d} onChanged={setD} notify={notify} onOpenItem={openItem} onTab={switchTab} />
+        </div>
+        {dialogs}
+      </div>
+    );
+  }
+
   return (
     <div style={APP_CSS_VARS} className="text-[var(--c-text)]">
       {/* Nagłówek */}
       <div className="-mx-4 -mt-6 border-b border-[var(--c-border)] bg-white px-4 pt-5 md:-mx-[30px] md:-mt-[26px] md:px-[30px]">
-        <Link href={backHref} className="text-[13px] font-medium text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
-          ← Klienci
-        </Link>
+        <button type="button" onClick={() => switchTab("karta")} className="text-[13px] font-medium text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+          ← Karta klienta
+        </button>
         {d.archive && (
           <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">
             <b className="font-semibold">W archiwum</b>
@@ -308,14 +439,7 @@ export function ClientFullCard({
             </Link>
           </p>
         )}
-        {toast && (
-          <p
-            role="status"
-            className={`mb-4 rounded-lg px-3 py-2 text-[13px] ${toast.error ? "bg-[var(--c-red-soft)] text-[var(--c-red)]" : "bg-[var(--c-green-soft)] text-[var(--c-green-deep)]"}`}
-          >
-            {toast.text}
-          </p>
-        )}
+        {toastEl && <div className="mb-4">{toastEl}</div>}
         {tab === "przeglad" && <TabOverview d={d} onTab={switchTab} onOpenItem={openItem} />}
         {tab === "transakcje" && <TabTransactions d={d} isAdmin={isAdmin} />}
         {tab === "komunikacja" && <TabCommunication
@@ -329,44 +453,7 @@ export function ClientFullCard({
         {tab === "dane" && <TabData d={d} onChanged={setD} notify={notify} isAdmin={isAdmin} />}
       </div>
 
-      {emailIds && <EmailViewer messageIds={emailIds} onClose={() => setEmailIds(null)} />}
-      {dialog === "archive" && (
-        <ArchiveDialog
-          type="client"
-          ids={[d.id]}
-          label={d.name}
-          onClose={() => setDialog(null)}
-          onDone={() => {
-            setDialog(null);
-            notify("Zarchiwizowano. Klient zniknął z list; przywrócisz go tutaj albo w Porządki → Archiwum.");
-            void reload();
-          }}
-        />
-      )}
-      {dialog === "split" && (
-        <SplitDialog
-          source={d}
-          onClose={() => setDialog(null)}
-          onDone={(next, newClientId) => {
-            setDialog(null);
-            setD(next);
-            setSplitTo(newClientId);
-            notify("Wydzielono do nowego klienta. Wpis jest w dzienniku.");
-          }}
-        />
-      )}
-      {dialog === "merge" && (
-        <MergeDialog
-          target={d}
-          clients={mergeOptions}
-          onClose={() => setDialog(null)}
-          onMerged={(next) => {
-            setDialog(null);
-            setD(next);
-            notify("Scalono. Duplikat jest w archiwum (powód: duplikat).");
-          }}
-        />
-      )}
+      {dialogs}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { isLocked, readFieldMeta } from "@/lib/clients/profile-fields";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizePolishPhone } from "@/lib/reminders";
@@ -178,9 +179,13 @@ async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContex
   let ref = findExisting(base, deal, ctx)?.ref ?? null;
   if (!ref && (base.email || base.phone)) ref = await createClientForLead(base, ctx);
   // Telefon z formularza, którego brakuje osobie kontaktowej — uzupełniamy.
+  // Pole zmienione ręcznie w panelu (lockedManual) zostaje, jak jest.
   if (ref && base.phone && !ref.phone) {
-    await prisma.clientContact.update({ where: { id: ref.id }, data: { phone: base.phone } });
-    ref.phone = base.phone;
+    const meta = await prisma.clientContact.findUnique({ where: { id: ref.id }, select: { fieldMeta: true } });
+    if (!isLocked(readFieldMeta(meta?.fieldMeta), "phone")) {
+      await prisma.clientContact.update({ where: { id: ref.id }, data: { phone: base.phone } });
+      ref.phone = base.phone;
+    }
   }
   const emailed = await repliedByEmail(ref?.clientId ?? null, base.createdAt);
   const plan = applyImportRules(base, {

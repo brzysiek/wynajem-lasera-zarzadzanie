@@ -31,6 +31,8 @@ import { listSuspectedBlobs } from "@/lib/clients/blob-load";
 import { listAutoClasses, listChangeProposals, submitProposals } from "@/lib/porzadki/change-proposals";
 import { listPaymentsForAgent, loadPaymentCoverage } from "@/lib/invoicing/bank-transfers";
 import { invoicePaymentStatus, paymentLabel } from "@/lib/clients/payment-status";
+import { dropNullJson } from "@/lib/clients/profile-fields";
+import { addOpportunity } from "@/lib/clients/opportunities";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
 // co panel i API agenta (src/lib/permissions.ts): odczyt + zapisy agenta,
@@ -143,7 +145,10 @@ export const TOOLS: McpTool[] = [
   {
     name: "klient",
     title: "Karta klienta",
-    description: "Pełna karta klienta: dane, osoby, wynajmy i faktury, komunikacja, historia.",
+    description:
+      "Pełna karta klienta: dane, osoby (z rolami, zwrotem, kanałem, szkoleniami), wynajmy i faktury (status wpłaty z wyciągów), komunikacja, historia; " +
+      "profile = nowe pola karty (REGON, forma, PKD, VAT, paszport dostawy, profil gabinetu, zgody, następny krok); fieldMeta = pochodzenie każdego pola " +
+      "(source, sourceRef, verifiedAt, verifiedBy, lockedManual); rhythm = pola liczone (rytm, dzień tygodnia, urządzenie, przerwa, prognoza, ryzyko); opportunities = szanse sprzedaży.",
     inputSchema: obj({ id: s("ID klienta.") }, ["id"]),
     readOnly: true,
     run: async (a) => {
@@ -350,6 +355,35 @@ export const TOOLS: McpTool[] = [
     },
   },
   {
+    name: "szansa_dodaj",
+    title: "Dodaj szansę sprzedaży",
+    description:
+      "Dodaje szansę sprzedaży na karcie klienta (sekcja „Szanse sprzedaży”): urzadzenie (temat, np. „Cooltech – modelowanie ciała”), etap (pomysl | rozmowa | oferta | decyzja), " +
+      "szansa (wysoka | srednia | niska | sprawdzic), ostatni_kontakt i wrocic (RRRR-MM-DD), opis. Wpis w dzienniku. Wymagane: zrodlo, pewnosc, paczka.",
+    inputSchema: obj(
+      {
+        klient_id: s("ID klienta."),
+        urzadzenie: s("Urządzenie / temat szansy."),
+        etap: s("Etap.", { enum: ["pomysl", "rozmowa", "oferta", "decyzja"] }),
+        szansa: s("Ocena szansy.", { enum: ["wysoka", "srednia", "niska", "sprawdzic"] }),
+        ostatni_kontakt: s("Ostatni kontakt RRRR-MM-DD."),
+        wrocic: s("Kiedy wrócić RRRR-MM-DD."),
+        opis: s("Opis (skąd wiadomo, co ustalono)."),
+        ...PROVENANCE,
+      },
+      ["klient_id", "urzadzenie", "zrodlo", "pewnosc", "paczka"],
+    ),
+    readOnly: false,
+    run: async (a, agent) => {
+      const prov = parseProvenance(a, { required: true });
+      if (!prov.ok) throw new AgentApiError(prov.message);
+      if (!prov.value.batch) throw new AgentApiError("Podaj paczkę zmiany (paczka).");
+      const r = await addOpportunity(req(a, "klient_id"), withoutKeys(a, ["klient_id", "zrodlo", "pewnosc", "paczka"]), { userId: agent.userId, provenance: prov.value });
+      if (!r.ok) throw new AgentApiError(r.message, r.status);
+      return { id: r.id };
+    },
+  },
+  {
     name: "platnosci",
     title: "Wpłaty z wyciągów bankowych",
     description:
@@ -477,7 +511,11 @@ export const TOOLS: McpTool[] = [
     name: "klient_zmien",
     title: "Zmień dane klienta",
     description:
-      "Zmienia dane klienta; każda zmiana pola trafia do dziennika (przed → po). Pola: name, nip, street, zip, city, country, clinicType, source (źródło pozyskania, nie zmiany), deviceInterests, statusOverride. Wymagane: zrodlo, pewnosc, paczka.",
+      "Zmienia dane klienta; każda zmiana pola trafia do dziennika (przed → po) i do pochodzenia pola (zrodlo). Pola: name, nip, street, zip, city, country, clinicType, " +
+      "source (źródło pozyskania, nie zmiany), deviceInterests, statusOverride oraz nowe pola karty: shortName, regon, legalForm, businessStartDate, pkd, vatStatus, bankAccounts, " +
+      "deliveryAddress, deliveryNotes, services, openingHours, links, ownDevices, seasonality, invoiceEmail, marketingConsent, smsReminders, googleReview, " +
+      "nextStepText + nextStepDueAt (baner „Następny krok”; pierwsza linia = krok, dalsze = kontekst). null czyści pole. " +
+      "Warunki handlowe (agreedPrice, paymentTerms, frameAgreement) tylko przez propozycje_dodaj. Wymagane: zrodlo, pewnosc, paczka.",
     inputSchema: obj(
       {
         klient_id: s("ID klienta."),
@@ -491,6 +529,26 @@ export const TOOLS: McpTool[] = [
         source: s("Źródło pozyskania.", { enum: ["FORMULARZ_WWW", "TELEFON", "POLECENIE", "GOOGLE_ADS", "META", "POWRACAJACY", "INNE"] }),
         deviceInterests: { type: "array", items: { type: "string", enum: ["LIGHTSHEER", "LIGHTSHEER_ET400", "ALMA_HARMONY", "COOLTECH", "RESURFX", "OBSERV", "SZKOLENIE"] }, description: "Zainteresowania (pełna lista)." },
         statusOverride: { type: ["string", "null"], enum: ["NIE_KONTAKTOWAC", null], description: "„Nie kontaktować” albo null." },
+        shortName: s("Nazwa robocza, np. MiWiNi."),
+        regon: s("REGON (9 albo 14 cyfr)."),
+        legalForm: s("Forma prawna, np. JDG, sp. z o.o."),
+        businessStartDate: s("Data rozpoczęcia działalności RRRR-MM-DD."),
+        pkd: { type: ["array", "null"], items: { type: "object", properties: { code: { type: "string" }, name: { type: "string" }, main: { type: "boolean" } } }, description: "PKD: [{ code: \"96.02.Z\", name, main }] — pierwszy główny." },
+        vatStatus: s("Status VAT: Czynny / Zwolniony / Niezarejestrowany."),
+        bankAccounts: { type: ["array", "null"], items: { type: "string" }, description: "Rachunki (26 cyfr)." },
+        deliveryAddress: s("Adres dostawy (gdy inny niż adres firmy)."),
+        deliveryNotes: { type: ["object", "null"], properties: { entrance: { type: "string" }, floor: { type: "string" }, parking: { type: "string" }, power: { type: "string" }, receiver: { type: "string" } }, description: "Paszport dostawy." },
+        services: { type: ["array", "null"], items: { type: "string" }, description: "Usługi gabinetu (tagi)." },
+        openingHours: s("Godziny otwarcia."),
+        links: { type: ["object", "null"], properties: { www: { type: "string" }, instagram: { type: "string" }, facebook: { type: "string" }, booksy: { type: "string" }, fresha: { type: "string" } }, description: "Kanały online." },
+        ownDevices: s("Własne urządzenia gabinetu / konkurencja."),
+        seasonality: s("Sezonowość, np. depilacja X–VI, przerwa VII–VIII."),
+        invoiceEmail: s("E-mail do faktur."),
+        marketingConsent: { type: ["object", "null"], properties: { email: { type: "boolean" }, sms: { type: "boolean" }, date: { type: "string" }, source: { type: "string" } }, description: "Zgoda marketingowa." },
+        smsReminders: { type: ["boolean", "null"], description: "SMS-przypomnienia o wynajmie." },
+        googleReview: { type: ["object", "null"], properties: { askedAt: { type: "string" }, given: { type: "boolean" } }, description: "Opinia Google: prośba (data) i czy wystawiona." },
+        nextStepText: { type: ["string", "null"], description: "Następny krok (baner na karcie)." },
+        nextStepDueAt: { type: ["string", "null"], description: "Termin następnego kroku RRRR-MM-DD." },
         ...PROVENANCE,
       },
       ["klient_id", "zrodlo", "pewnosc", "paczka"],
@@ -505,7 +563,9 @@ export const TOOLS: McpTool[] = [
   {
     name: "osoba_zmien",
     title: "Zmień osobę kontaktową",
-    description: "Zmienia osobę kontaktową klienta (imię, nazwisko, telefony, e-mail, rola, osoba główna). Wymagane: zrodlo, pewnosc, paczka.",
+    description:
+      "Zmienia osobę kontaktową klienta (imię, nazwisko, telefony, e-mail, rola opisowa, osoba główna) oraz: roles (owner / decides / invoices / reception / cosmetologist), " +
+      "preferredChannel, salutation (np. „Pani Basiu”), trainedOn [{ device, date }]. Wymagane: zrodlo, pewnosc, paczka.",
     inputSchema: obj(
       {
         klient_id: s("ID klienta."),
@@ -518,6 +578,10 @@ export const TOOLS: McpTool[] = [
         email: s("E-mail."),
         role: s("Rola, np. właścicielka."),
         isPrimary: b("true = ustaw jako osobę główną."),
+        roles: { type: ["array", "null"], items: { type: "string", enum: ["owner", "decides", "invoices", "reception", "cosmetologist"] }, description: "Role jako tagi." },
+        preferredChannel: s("Preferowany kanał, np. SMS i telefon."),
+        salutation: s("Forma zwracania się, np. Pani Basiu."),
+        trainedOn: { type: ["array", "null"], items: { type: "object", properties: { device: { type: "string" }, date: { type: "string" } } }, description: "Szkolenia z urządzeń." },
         ...PROVENANCE,
       },
       ["klient_id", "osoba_id", "zrodlo", "pewnosc", "paczka"],
@@ -549,7 +613,7 @@ export const TOOLS: McpTool[] = [
       if (!client) throw new AgentApiError("Nie znaleziono klienta.", 404);
       const isPrimary = client._count.contacts === 0;
       const created = await prisma.$transaction(async (tx) => {
-        const c = await tx.clientContact.create({ data: { ...parsed.data, clientId, isPrimary } });
+        const c = await tx.clientContact.create({ data: { ...dropNullJson(parsed.data), clientId, isPrimary } });
         await recordChanges(tx, { userId: agent.userId, provenance: prov.value }, [
           { entity: "CONTACT", entityId: c.id, clientId, operation: "CREATE", before: "null", after: toLogValue({ ...parsed.data, isPrimary }) },
         ]);
@@ -823,7 +887,7 @@ export const TOOLS: McpTool[] = [
     title: "Zgłoś propozycje zmian",
     description:
       "Zgłasza hurtem propozycje do akceptacji administratora (Porządki → Propozycje). Każda: rodzaj (pole | osoba | archiwizacja | scalenie | wydzielenie | dopasowanie_platnosci), klient_id, " +
-      "dla pola: pole + proponowane; dla osoby: osoba_id + pole + proponowane; dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id; " +
+      "dla pola: pole + proponowane (także nowe pola karty jak w klient_zmien oraz agreedPrice, paymentTerms, frameAgreement); dla osoby: osoba_id + pole + proponowane (także roles, preferredChannel, salutation, trainedOn); dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id; " +
       "dla wydzielenia (rodzaj: wydzielenie; klient-zlepek → nowy klient): osoby_ids, nazwa, opcjonalnie nip, ulica, kod, miasto, " +
       "invoiceNip (faktury z tym NIP-em nabywcy przechodzą; bez niego — faktury z NIP-em nowego klienta), historyKeys (klucze grup z kalendarzy z narzędzia dopasowania). " +
       "Nowy klient nie dziedziczy źródła ani tagu HubSpot zlepka. " +

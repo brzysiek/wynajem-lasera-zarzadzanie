@@ -1,3 +1,4 @@
+import { CLIENT_JSON_FIELDS, dropNullJson } from "@/lib/clients/profile-fields";
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
@@ -22,10 +23,10 @@ export async function POST(req: NextRequest) {
   const { deviceInterests, ...clientData } = client.data;
   const created = await prisma.client.create({
     data: {
-      ...clientData,
+      ...dropNullJson(clientData, CLIENT_JSON_FIELDS),
       name: clientData.name as string,
       ...(deviceInterests?.length ? { deviceInterests } : {}),
-      contacts: { create: { ...contact.data, isPrimary: true } },
+      contacts: { create: { ...dropNullJson(contact.data), isPrimary: true } },
     },
     select: { id: true },
   });

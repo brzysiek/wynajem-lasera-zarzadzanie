@@ -7,7 +7,7 @@ import { rhythmLabel } from "@/lib/clients/transactions";
 import { fmtDate, fmtMoney } from "../ui";
 import { EventRow, Panel, Tile } from "./shared";
 
-export type CardTab = "przeglad" | "transakcje" | "komunikacja" | "dane";
+export type CardTab = "karta" | "przeglad" | "transakcje" | "komunikacja" | "dane";
 
 const OPEN_STAGES = new Set(["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"]);
 

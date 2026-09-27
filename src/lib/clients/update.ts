@@ -7,6 +7,29 @@ import { AGENT_CLIENT_FIELDS } from "@/lib/permissions";
 import { changedFields } from "@/lib/changelog/diff";
 import { parseProvenance } from "@/lib/changelog/provenance";
 import { fieldEntries, recordChanges } from "@/lib/changelog/record";
+import { enrichClient } from "@/lib/clients/enrich";
+import { logWarn } from "@/lib/logger";
+import { CLIENT_JSON_FIELDS, CONTACT_JSON_FIELDS, readFieldMeta, stampFieldMeta } from "@/lib/clients/profile-fields";
+
+// Pola JSON: null w PATCH = wyczyść (Prisma.DbNull).
+function jsonNulls<T extends Record<string, unknown>>(data: T, keys: readonly string[]): T {
+  const out: Record<string, unknown> = { ...data };
+  for (const k of keys) if (k in out && out[k] === null) out[k] = Prisma.DbNull;
+  return out as T;
+}
+
+// Pochodzenie zmienionych pól (sekcja 3 karty): źródło z provenance albo
+// „panel” / „agent”; zmiana ręczna blokuje pole dla synchronizacji.
+function stamp(meta: unknown, fields: string[], actor: UpdateActor, provenance: { source: string | null; batch: string | null }) {
+  if (!fields.length) return undefined;
+  return stampFieldMeta(readFieldMeta(meta), fields, {
+    source: provenance.source ?? (actor.role === "AGENT" ? "agent" : "panel"),
+    sourceRef: provenance.batch,
+    by: actor.userId,
+    at: new Date(),
+    lock: true,
+  }) as unknown as Prisma.InputJsonValue;
+}
 
 // Zmiana danych klienta i osoby kontaktowej — wspólna dla panelu
 // (PATCH /api/clients/...) i API agenta (PATCH /api/agent/klienci/...).
@@ -40,12 +63,14 @@ export async function patchClient(
   if (!current) return { ok: false, status: 404, message: "Nie znaleziono klienta." };
   const changes = changedFields(current as unknown as Record<string, unknown>, parsed.data);
 
+  const fieldMeta = stamp(current.fieldMeta, changes.map((c) => c.field), actor, provenance.value);
   await prisma.$transaction(async (tx) => {
     await tx.client.update({
       where: { id },
       data: {
-        ...rest,
+        ...(jsonNulls(rest, CLIENT_JSON_FIELDS) as Prisma.ClientUpdateInput),
         ...(deviceInterests ? { deviceInterests: deviceInterests.length ? deviceInterests : Prisma.DbNull } : {}),
+        ...(fieldMeta ? { fieldMeta } : {}),
       },
     });
     await recordChanges(tx, { userId: actor.userId, provenance: provenance.value, approvedById: opts.approvedById }, fieldEntries("CLIENT", id, id, changes));
@@ -53,6 +78,11 @@ export async function patchClient(
 
   const touchesRentals = CLIENT_CACHE_KEYS.some((k) => k in parsed.data);
   const refreshedRentals = touchesRentals ? await refreshFutureRentalCaches({ clientId: id, clientFields: true }) : 0;
+  // Nowy / zmieniony NIP → uzupełnienie z Białej listy i CEIDG w tle
+  // (błąd rejestru nie wpływa na zapis).
+  if (changes.some((c) => c.field === "nip") && parsed.data.nip) {
+    void enrichClient(id, { userId: actor.role === "AGENT" ? null : actor.userId }).catch((err) => logWarn("client_enrich_after_nip_failed", { clientId: id, message: err instanceof Error ? err.message : String(err) }));
+  }
   return { ok: true, refreshedRentals, changed: changes.length };
 }
 
@@ -75,9 +105,13 @@ export async function patchContact(
   const { isPrimary, ...data } = parsed.data;
   const changes = changedFields(contact as unknown as Record<string, unknown>, { ...data, ...(isPrimary ? { isPrimary: true } : {}) });
 
+  const fieldMeta = stamp(contact.fieldMeta, changes.map((c) => c.field).filter((f) => f !== "isPrimary"), actor, provenance.value);
   await prisma.$transaction(async (tx) => {
     if (isPrimary) await tx.clientContact.updateMany({ where: { clientId }, data: { isPrimary: false } });
-    await tx.clientContact.update({ where: { id: contactId }, data: { ...data, ...(isPrimary ? { isPrimary: true } : {}) } });
+    await tx.clientContact.update({
+      where: { id: contactId },
+      data: { ...(jsonNulls(data, CONTACT_JSON_FIELDS) as Prisma.ClientContactUpdateInput), ...(isPrimary ? { isPrimary: true } : {}), ...(fieldMeta ? { fieldMeta } : {}) },
+    });
     await recordChanges(tx, { userId: actor.userId, provenance: provenance.value, approvedById: opts.approvedById }, fieldEntries("CONTACT", contactId, clientId, changes));
   });
 

@@ -38,7 +38,7 @@ export type TxRow = {
   title: string;
   details: string | null;
   net: number | null;
-  invoice: { id: string; fakturowniaInvoiceId: number; number: string; issueDate: Date } | null;
+  invoice: { id: string; fakturowniaInvoiceId: number; number: string; issueDate: Date; totalGross: number | null } | null;
   status: PaymentStatus;
 };
 
@@ -99,7 +99,7 @@ export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], to
       title: r.deviceName,
       details: r.details,
       net: inv ? inv.totalNet : r.totalNet,
-      invoice: inv ? { id: inv.id, fakturowniaInvoiceId: inv.fakturowniaInvoiceId, number: inv.number, issueDate: inv.issueDate } : null,
+      invoice: inv ? { id: inv.id, fakturowniaInvoiceId: inv.fakturowniaInvoiceId, number: inv.number, issueDate: inv.issueDate, totalGross: inv.totalGross ?? null } : null,
       status: inv ? invStatus(inv, r.cashConfirmed) : rentalWithoutInvoiceStatus(r, today),
     };
   });
@@ -113,7 +113,7 @@ export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], to
       title: inv.positions?.split(";")[0]?.trim() || "Faktura",
       details: null,
       net: inv.totalNet,
-      invoice: { id: inv.id, fakturowniaInvoiceId: inv.fakturowniaInvoiceId, number: inv.number, issueDate: inv.issueDate },
+      invoice: { id: inv.id, fakturowniaInvoiceId: inv.fakturowniaInvoiceId, number: inv.number, issueDate: inv.issueDate, totalGross: inv.totalGross ?? null },
       status: invStatus(inv, false),
     });
   }

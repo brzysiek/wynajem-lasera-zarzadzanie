@@ -1,3 +1,4 @@
+import { dropNullJson } from "@/lib/clients/profile-fields";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth-guards";
 import { OFFICE_AND_AGENT } from "@/lib/permissions";
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const isPrimary = client._count.contacts === 0 || parsed.data.isPrimary === true;
   await prisma.$transaction(async (tx) => {
     if (isPrimary) await tx.clientContact.updateMany({ where: { clientId: id }, data: { isPrimary: false } });
-    const created = await tx.clientContact.create({ data: { ...parsed.data, clientId: id, isPrimary } });
+    const created = await tx.clientContact.create({ data: { ...dropNullJson(parsed.data), clientId: id, isPrimary } });
     await recordChanges(tx, { userId: session.user.id, provenance: provenance.value }, [
       { entity: "CONTACT", entityId: created.id, clientId: id, operation: "CREATE", before: "null", after: toLogValue({ ...parsed.data, isPrimary }) },
     ]);

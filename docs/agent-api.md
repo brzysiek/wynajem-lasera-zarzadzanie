@@ -140,7 +140,26 @@ Zwraca pełną kartę klienta: dane, osoby, wynajmy i faktury, komunikację i hi
 
 ### `PATCH /api/agent/klienci/:id`
 
-Zmienia dane klienta. Każde zmienione pole trafia do dziennika z wartością przed i po.
+Zmienia dane klienta. Każde zmienione pole trafia do dziennika z wartością przed i po oraz do pochodzenia pola (`fieldMeta`: źródło, data weryfikacji, kto). Pole zmienione w panelu albo przez agenta ma `lockedManual = true`, więc synchronizacja z HubSpotem i uzupełnianie po NIP go nie nadpisują.
+
+**Nowe pola karty** (MCP: `klient_zmien`):
+
+- tożsamość: `shortName`, `regon`, `legalForm`, `businessStartDate`, `pkd` (`[{ code, name, main }]`), `vatStatus`, `bankAccounts`;
+- paszport dostawy: `deliveryAddress`, `deliveryNotes` (`{ entrance, floor, parking, power, receiver }`);
+- profil gabinetu: `services`, `openingHours`, `links` (`{ www, instagram, facebook, booksy, fresha }`), `ownDevices`, `seasonality`;
+- zgody: `invoiceEmail`, `marketingConsent` (`{ email, sms, date, source }`), `smsReminders`, `googleReview` (`{ askedAt, given }`);
+- baner „Następny krok”: `nextStepText` (pierwsza linia to krok, dalsze to kontekst) i `nextStepDueAt`.
+
+Warunki handlowe (`agreedPrice`, `paymentTerms`, `frameAgreement`) zgłaszasz tylko propozycją `pole`.
+
+Osoba (MCP: `osoba_zmien`) ma dodatkowo:
+
+- `roles`: `owner`, `decides`, `invoices`, `reception`, `cosmetologist`;
+- `preferredChannel`;
+- `salutation`, np. „Pani Basiu”;
+- `trainedOn`: `[{ device, date }]`.
+
+Szanse sprzedaży dodajesz narzędziem MCP `szansa_dodaj`. Pola: `urzadzenie`, `etap`, `szansa`, `ostatni_kontakt`, `wrocic`, `opis`, a do tego `zrodlo`, `pewnosc` i `paczka`.
 
 **Wymagane:**
 

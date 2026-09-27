@@ -104,7 +104,7 @@ export function FakturowniaPanel({ initiallyConfigured }: { initiallyConfigured:
             value={account}
             onChange={(event) => setAccount(event.target.value)}
             autoComplete="off"
-            className="w-full flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            className="w-full flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
           />
           <input
             type="password"
@@ -112,7 +112,7 @@ export function FakturowniaPanel({ initiallyConfigured }: { initiallyConfigured:
             value={token}
             onChange={(event) => setToken(event.target.value)}
             autoComplete="off"
-            className="w-full flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            className="w-full flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
           />
           <input
             type="text"
@@ -121,13 +121,13 @@ export function FakturowniaPanel({ initiallyConfigured }: { initiallyConfigured:
             value={departmentId}
             onChange={(event) => setDepartmentId(event.target.value)}
             autoComplete="off"
-            className="w-full flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            className="w-full flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
           />
         </div>
         <button
           type="submit"
           disabled={isSaving || !token || !account || !departmentId}
-          className="self-start rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
+          className="self-start rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white hover:bg-[#083F3C] disabled:opacity-50"
         >
           {isSaving ? "Zapisywanie…" : "Zapisz"}
         </button>

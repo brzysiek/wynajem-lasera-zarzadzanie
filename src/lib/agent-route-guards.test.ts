@@ -63,7 +63,7 @@ const AGENT_WRITES = [
 
 // Narzędzia MCP — dokładna lista; nowe narzędzie trzeba świadomie dopisać.
 const MCP_TOOLS = [
-  "reguly_porzadkow", "klienci_lista", "klient", "sygnaly_lista", "sygnal", "kalendarz_wynajmy", "dopasowania", "faktury", "platnosci",
+  "reguly_porzadkow", "klienci_lista", "klient", "sygnaly_lista", "sygnal", "kalendarz_wynajmy", "dopasowania", "faktury", "platnosci", "szansa_dodaj",
   "fv_bez_faktury", "archiwum", "dziennik", "wnioski_lista", "wniosek", "uwagi_lista", "zadania_lista", "osoby_biura",
   "klient_zmien", "osoba_zmien", "osoba_dodaj", "klienci_scal", "przenies_do_klientow", "notatka_klient", "notatka_sygnal",
   "zadanie_utworz", "zadanie_zmien", "zadanie_komentarz", "wniosek_utworz", "wniosek_zmien", "wniosek_komentarz",
@@ -215,7 +215,8 @@ describe("trasy API a rola AGENT", () => {
     const tools = readFileSync(join(__dirname, "mcp", "tools.ts"), "utf8");
     const names = [...tools.matchAll(/^\s{4}name: "([a-z_]+)",$/gm)].map((m) => m[1]);
     expect(names.sort()).toEqual([...MCP_TOOLS].sort());
-    for (const forbidden of ["sms", "sendSms", "archiveRecords", "deleteArchived", "restoreRecords", "rental.create", "rental.update", "rental.delete", "@/lib/integrations/fakturownia", "@/lib/integrations/szybkisms", "gmail.compose", ".delete(", "deleteMany"]) {
+    // Wysyłka SMS (pole danych smsReminders / zgoda SMS to nie wysyłka).
+    for (const forbidden of ["sms/send", "sendSms", "@/lib/sms", "queueSms", "archiveRecords", "deleteArchived", "restoreRecords", "rental.create", "rental.update", "rental.delete", "@/lib/integrations/fakturownia", "@/lib/integrations/szybkisms", "gmail.compose", ".delete(", "deleteMany"]) {
       expect(tools, forbidden).not.toContain(forbidden);
     }
     const server = readFileSync(join(__dirname, "oauth", "server.ts"), "utf8");

@@ -13,6 +13,7 @@ import {
   type SourceKey,
 } from "@/lib/clients/labels";
 import type { ClientContactDto, ClientDetail } from "@/lib/clients/load";
+import { PERSON_ROLES, PERSON_ROLE_LABEL, type PersonRole } from "@/lib/clients/profile-fields";
 import { applySmsPlaceholders } from "@/lib/sms-template";
 
 // Formularze modułu Klienci: dane klienta, osoba kontaktowa, notatka, SMS i
@@ -46,10 +47,10 @@ export function AgentModeProvider({ agent, children }: { agent: boolean; childre
   return <AgentModeContext.Provider value={agent}>{children}</AgentModeContext.Provider>;
 }
 
-type Provenance = { changeSource: string; changeConfidence: "" | "HIGH" | "MEDIUM" | "LOW"; changeBatch: string };
-const EMPTY_PROVENANCE: Provenance = { changeSource: "", changeConfidence: "", changeBatch: "" };
+export type Provenance = { changeSource: string; changeConfidence: "" | "HIGH" | "MEDIUM" | "LOW"; changeBatch: string };
+export const EMPTY_PROVENANCE: Provenance = { changeSource: "", changeConfidence: "", changeBatch: "" };
 
-function ProvenanceFields({ value, onChange }: { value: Provenance; onChange: (next: Provenance) => void }) {
+export function ProvenanceFields({ value, onChange }: { value: Provenance; onChange: (next: Provenance) => void }) {
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-dashed border-[var(--c-brand)] bg-[var(--c-brand-soft)] p-2.5">
       <p className="text-xs font-semibold text-[var(--c-brand-deep)]">Skąd ta zmiana? (trafi do dziennika zmian)</p>
@@ -76,7 +77,7 @@ function ProvenanceFields({ value, onChange }: { value: Provenance; onChange: (n
   );
 }
 
-function FormError({ message }: { message: string | null }) {
+export function FormError({ message }: { message: string | null }) {
   if (!message) return null;
   return <p className="rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">{message}</p>;
 }
@@ -266,6 +267,10 @@ export function ContactForm({
     email: contact?.email ?? "",
     role: contact?.role ?? "",
     isPrimary: contact?.isPrimary ?? false,
+    roles: (contact?.roles ?? []) as PersonRole[],
+    salutation: contact?.salutation ?? "",
+    preferredChannel: contact?.preferredChannel ?? "",
+    trainedOn: (contact?.trainedOn ?? []).map((t) => `${t.device}${t.date ? `; ${t.date}` : ""}`).join("\n"),
   });
   const [showPhone2, setShowPhone2] = useState(Boolean(contact?.phone2));
   const [saving, setSaving] = useState(false);
@@ -276,7 +281,15 @@ export function ContactForm({
   async function save() {
     setSaving(true);
     setError(null);
-    const body = { ...f, isPrimary: f.isPrimary || undefined, ...(agent ? prov : {}) };
+    const trainedOn = f.trainedOn
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const [device, date] = l.split(";").map((x) => x.trim());
+        return { device, date: date || null };
+      });
+    const body = { ...f, trainedOn: trainedOn.length ? trainedOn : null, roles: f.roles.length ? f.roles : null, isPrimary: f.isPrimary || undefined, ...(agent ? prov : {}) };
     const { ok, data } = contact
       ? await api<{ detail: ClientDetail; refreshedRentals: number }>(`/api/clients/${clientId}/contacts/${contact.id}`, "PATCH", body)
       : await api<{ detail: ClientDetail; refreshedRentals: number }>(`/api/clients/${clientId}/contacts`, "POST", body);
@@ -315,7 +328,36 @@ export function ContactForm({
         </button>
       )}
       <input className={INPUT} placeholder="E-mail" inputMode="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
-      <input className={INPUT} placeholder="Rola, np. właścicielka, kosmetolog" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} />
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Role osoby">
+        {PERSON_ROLES.map((r) => {
+          const on = f.roles.includes(r);
+          return (
+            <button
+              key={r}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setF({ ...f, roles: on ? f.roles.filter((x) => x !== r) : [...f.roles, r] })}
+              className={`h-7 rounded-full border px-2.5 text-xs transition-colors ${
+                on ? "border-[var(--c-brand)] bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)]" : "border-[var(--c-border)] text-[var(--c-text)] hover:border-[var(--c-brand)]"
+              }`}
+            >
+              {PERSON_ROLE_LABEL[r]}
+            </button>
+          );
+        })}
+      </div>
+      <input className={INPUT} placeholder="Rola opisowa (opcjonalnie), np. właścicielka, księgowa" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} />
+      <div className="grid grid-cols-2 gap-2">
+        <input className={INPUT} placeholder="Zwrot, np. Pani Basiu" value={f.salutation} onChange={(e) => setF({ ...f, salutation: e.target.value })} />
+        <input className={INPUT} placeholder="Kanał, np. SMS i telefon" value={f.preferredChannel} onChange={(e) => setF({ ...f, preferredChannel: e.target.value })} />
+      </div>
+      <textarea
+        rows={2}
+        className="w-full resize-y rounded-lg border border-[var(--c-border)] px-3 py-2 text-sm outline-none focus:border-[var(--c-brand)]"
+        placeholder={"Szkolenia: urządzenie; RRRR-MM-DD (każde w osobnej linii)"}
+        value={f.trainedOn}
+        onChange={(e) => setF({ ...f, trainedOn: e.target.value })}
+      />
       {!contact?.isPrimary && (
         <label className="flex items-center gap-2 text-[13px]">
           <input type="checkbox" checked={f.isPrimary} onChange={(e) => setF({ ...f, isPrimary: e.target.checked })} />

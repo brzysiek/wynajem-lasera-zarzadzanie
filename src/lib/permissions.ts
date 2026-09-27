@@ -64,4 +64,30 @@ export const AGENT_CLIENT_FIELDS = [
   "source",
   "deviceInterests",
   "statusOverride",
+  // Karta klienta, sekcja 3 (bez warunków handlowych — te agent tylko
+  // proponuje: PROPOSAL_ONLY_CLIENT_FIELDS w src/lib/clients/profile-fields.ts).
+  "shortName",
+  "regon",
+  "legalForm",
+  "businessStartDate",
+  "pkd",
+  "vatStatus",
+  "bankAccounts",
+  "deliveryAddress",
+  "deliveryNotes",
+  "services",
+  "openingHours",
+  "links",
+  "ownDevices",
+  "seasonality",
+  "invoiceEmail",
+  "marketingConsent",
+  "smsReminders",
+  "googleReview",
+  "nextStepText",
+  "nextStepDueAt",
 ] as const;
+
+// Pola, które agent może zgłosić w propozycji (akceptuje ADMIN), ale nie
+// zmienić sam: AGENT_CLIENT_FIELDS + warunki handlowe.
+export const AGENT_PROPOSAL_CLIENT_FIELDS = [...AGENT_CLIENT_FIELDS, "agreedPrice", "paymentTerms", "frameAgreement"] as const;

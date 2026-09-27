@@ -107,7 +107,7 @@ function InviteForm({
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -117,7 +117,7 @@ function InviteForm({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -125,7 +125,7 @@ function InviteForm({
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as Role)}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
           >
             <option value="STAFF">Pracownik</option>
             <option value="ADMIN">Administrator</option>
@@ -138,7 +138,7 @@ function InviteForm({
           <select
             value={gender}
             onChange={(e) => setGender(e.target.value as Gender | "")}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
           >
             <option value="">— nie ustawiono —</option>
             <option value="F">Kobieta</option>
@@ -169,7 +169,7 @@ function InviteForm({
         <button
           type="submit"
           disabled={isSaving}
-          className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
+          className="rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white hover:bg-[#083F3C] disabled:opacity-50"
         >
           {isSaving ? "Wysyłanie…" : "Wyślij zaproszenie"}
         </button>
@@ -283,7 +283,7 @@ function EditForm({
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -293,7 +293,7 @@ function EditForm({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -302,7 +302,7 @@ function EditForm({
             value={role}
             onChange={(e) => setRole(e.target.value as Role)}
             disabled={isSelf}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
           >
             <option value="STAFF">Pracownik</option>
             <option value="ADMIN">Administrator</option>
@@ -316,7 +316,7 @@ function EditForm({
           <select
             value={gender}
             onChange={(e) => setGender(e.target.value as Gender | "")}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
           >
             <option value="">— nie ustawiono —</option>
             <option value="F">Kobieta</option>
@@ -365,7 +365,7 @@ function EditForm({
               onChange={(e) => setHourlyRate(e.target.value)}
               inputMode="decimal"
               placeholder="np. 30"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
             />
             <span className="text-xs text-gray-400">
               Do wyliczenia kosztu pracy w Finanse → Koszty. Widoczne wyłącznie dla ADMINA — nigdy dla samego kierowcy.
@@ -395,7 +395,7 @@ function EditForm({
                 onChange={(e) => setPassword(e.target.value)}
                 minLength={8}
                 autoComplete="new-password"
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -406,7 +406,7 @@ function EditForm({
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 minLength={8}
                 autoComplete="new-password"
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
               />
             </label>
           </div>
@@ -427,7 +427,7 @@ function EditForm({
         <button
           type="submit"
           disabled={isSaving}
-          className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
+          className="rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white hover:bg-[#083F3C] disabled:opacity-50"
         >
           {isSaving ? "Zapisywanie…" : "Zapisz"}
         </button>
@@ -512,7 +512,7 @@ function UserRow({
           )}
           {user.canActAsDriver && user.role !== "KIEROWCA" && (
             <span
-              className="ml-2 rounded-full bg-[#EAF4FB] px-2 py-0.5 text-xs font-medium text-[#1B6FA8]"
+              className="ml-2 rounded-full bg-[#DDEDEA] px-2 py-0.5 text-xs font-medium text-[#0E5C58]"
               title={DRIVER_VIEW_HINT}
             >
               podgląd kierowcy
@@ -625,7 +625,7 @@ export function UsersPanel({ users, currentUserId }: { users: User[]; currentUse
               setWarning(null);
               setIsInviting(true);
             }}
-            className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F]"
+            className="rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white hover:bg-[#083F3C]"
           >
             Zaproś użytkownika
           </button>

@@ -19,7 +19,7 @@ export default async function FakturowniaIntegrationPage() {
 
       <InvoiceHistoryImportPanel configured={fakturowniaConfigured} />
 
-      <div className="mb-6 rounded-lg border border-[#CFE0F0] bg-[#EAF4FB] p-4 text-sm text-[#14567F]">
+      <div className="mb-6 rounded-lg border border-[#CFE0F0] bg-[#DDEDEA] p-4 text-sm text-[#083F3C]">
         Konfiguracja poniżej ustawia tylko dane dostępowe do Fakturowni (token, konto, dział wystawiający). Samo
         wystawianie faktur z panelu wynajmu dodamy w kolejnym kroku — czeka jeszcze na ustalenie tytułu/opisu pozycji
         na fakturze. Do KSeF faktury nie będą wysyłane — apka nigdy nie ustawia tej flagi przy tworzeniu faktury.

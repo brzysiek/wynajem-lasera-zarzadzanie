@@ -199,7 +199,7 @@ function ReminderOptionRow({
               href={`/ustawienia/szablony-sms#template-${template.templateId}`}
               target="_blank"
               rel="noreferrer"
-              className="flex-none text-xs font-medium text-[#1B6FA8] hover:underline"
+              className="flex-none text-xs font-medium text-[#0E5C58] hover:underline"
             >
               Edytuj →
             </Link>
@@ -335,7 +335,7 @@ function ClientMessageComposer({ rental, device, templates }: { rental: Rental; 
         <select
           value={templateId}
           onChange={(e) => applyTemplate(e.target.value)}
-          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
         >
           <option value="">— własna wiadomość —</option>
           {templates.map((t) => (
@@ -348,13 +348,13 @@ function ClientMessageComposer({ rental, device, templates }: { rental: Rental; 
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="Numer telefonu"
-          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
         />
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           rows={4}
-          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
         />
         {sendError && <p className="text-xs text-red-700">{sendError}</p>}
         {sendSuccess && <p className="text-xs text-green-700">Wysłano.</p>}
@@ -362,7 +362,7 @@ function ClientMessageComposer({ rental, device, templates }: { rental: Rental; 
           type="button"
           onClick={handleSend}
           disabled={!canSend}
-          className="self-start rounded-md bg-[#1B6FA8] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
+          className="self-start rounded-md bg-[#0E5C58] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#083F3C] disabled:opacity-50"
         >
           {isSending ? "Wysyłanie…" : "Wyślij SMS"}
         </button>
@@ -611,7 +611,7 @@ function ContactSection({
                 href={contact.url}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-1 inline-block text-[#1B6FA8] hover:underline"
+                className="mt-1 inline-block text-[#0E5C58] hover:underline"
               >
                 Otwórz w HubSpot ↗
               </a>
@@ -644,7 +644,7 @@ function ContactSection({
           }
         }}
         placeholder="Imię, nazwisko, firma, telefon lub e-mail (min. 3 znaki)…"
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
       />
       {isSearching && <p className="mt-1 text-xs text-gray-400">Szukanie…</p>}
       {error && <p className="mt-1 text-xs text-red-700">{error}</p>}
@@ -933,7 +933,7 @@ export function RentalForm({
                         type="button"
                         onClick={() => setEventType(t)}
                         className={`px-3 py-2 text-sm font-medium ${
-                          eventType === t ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
+                          eventType === t ? "bg-[#0E5C58] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
                         }`}
                       >
                         {t === "WYNAJEM" ? "Wynajem" : "Szkolenie"}
@@ -948,7 +948,7 @@ export function RentalForm({
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   required
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                 />
               </label>
             </div>
@@ -963,7 +963,7 @@ export function RentalForm({
                   value={deviceId}
                   onChange={(e) => setDeviceId(e.target.value)}
                   required
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                 >
                   {devices
                     .filter((d) => d.active || d.id === deviceId)
@@ -981,7 +981,7 @@ export function RentalForm({
                   value={startsAt.slice(0, 10)}
                   onChange={(e) => setStartsAt(`${e.target.value}T00:00`)}
                   required
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                 />
               </label>
               <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -991,7 +991,7 @@ export function RentalForm({
                   value={endsAt.slice(0, 10)}
                   onChange={(e) => setEndsAt(`${e.target.value}T00:00`)}
                   required
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                 />
               </label>
             </div>
@@ -1029,7 +1029,7 @@ export function RentalForm({
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     rows={3}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                   />
                 </div>
               </details>
@@ -1054,7 +1054,7 @@ export function RentalForm({
                     onChange={(e) => setInternalNotes(e.target.value)}
                     rows={2}
                     placeholder="np. domofon nie działa — dzwonić na telefon po przyjeździe"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                   />
                   <span className="mt-1 block text-xs text-gray-400">Widoczna dla kierowcy jako „Uwaga z biura”.</span>
                 </div>
@@ -1087,7 +1087,7 @@ export function RentalForm({
                   <select
                     value={driverId}
                     onChange={(e) => setDriverId(e.target.value)}
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                   >
                     <option value="">— brak —</option>
                     {driverOptions.map((d) => (
@@ -1105,7 +1105,7 @@ export function RentalForm({
                   <select
                     value={vehicleId}
                     onChange={(e) => setVehicleId(e.target.value)}
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                   >
                     <option value="">— brak —</option>
                     {vehicleOptions.map((v) => (
@@ -1128,7 +1128,7 @@ export function RentalForm({
                     onChange={(e) => setDeliveryAddress(e.target.value)}
                     rows={2}
                     placeholder="Uzupełnia się automatycznie z adresu klienta, jeśli jest dostępny"
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                   />
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1138,7 +1138,7 @@ export function RentalForm({
                       type="time"
                       value={deliveryTime}
                       onChange={(e) => setDeliveryTime(e.target.value)}
-                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-gray-700">
@@ -1147,7 +1147,7 @@ export function RentalForm({
                       type="time"
                       value={pickupTime}
                       onChange={(e) => setPickupTime(e.target.value)}
-                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                     />
                   </label>
                 </div>
@@ -1159,7 +1159,7 @@ export function RentalForm({
                     value={contactDistanceKm}
                     onChange={(e) => setContactDistanceKm(e.target.value)}
                     placeholder="np. 12,5"
-                    className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                    className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#0E5C58] focus:outline-none"
                   />
                   <span className="text-xs text-gray-400">
                     Wpisz raz przy danym adresie — używane do wyliczenia kosztu paliwa (Finanse → Koszty).
@@ -1262,7 +1262,7 @@ export function RentalForm({
             <button
               type="submit"
               disabled={isSaving}
-              className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
+              className="rounded-md bg-[#0E5C58] px-3 py-2 text-sm font-medium text-white hover:bg-[#083F3C] disabled:opacity-50"
             >
               {isSaving ? "Zapisywanie…" : "Zapisz"}
             </button>

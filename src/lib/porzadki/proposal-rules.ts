@@ -1,6 +1,6 @@
 // Kolejka propozycji zmian — czyste reguły (vitest, bez @/): rodzaje,
 // dozwolone pola, walidacja zgłoszenia od agenta.
-import { AGENT_CLIENT_FIELDS } from "../permissions";
+import { AGENT_PROPOSAL_CLIENT_FIELDS } from "../permissions";
 import { parseProvenance, type Provenance } from "../changelog/provenance";
 import { parseArchiveInput, type ArchiveInput } from "./archive-rules";
 import { parseSplitInput } from "../clients/split-rules";
@@ -18,7 +18,7 @@ export type ProposalKind = keyof typeof PROPOSAL_KIND_LABEL;
 export const PROPOSAL_STATUS_LABEL = { PENDING: "oczekuje", ACCEPTED: "zaakceptowana", REJECTED: "odrzucona" } as const;
 export type ChangeProposalStatus = keyof typeof PROPOSAL_STATUS_LABEL;
 
-export const CONTACT_PROPOSAL_FIELDS = ["firstName", "lastName", "phone", "phone2", "phone2Label", "email", "role"] as const;
+export const CONTACT_PROPOSAL_FIELDS = ["firstName", "lastName", "phone", "phone2", "phone2Label", "email", "role", "roles", "preferredChannel", "salutation", "trainedOn"] as const;
 
 const KIND_ALIASES: Record<string, ProposalKind> = {
   pole: "FIELD",
@@ -76,7 +76,7 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
   if (kind === "FIELD" || kind === "CONTACT_FIELD") {
     if (!clientId) return { ok: false, message: "Podaj klient_id." };
     const field = str(item.pole ?? item.field, 64);
-    const allowed: readonly string[] = kind === "FIELD" ? AGENT_CLIENT_FIELDS : CONTACT_PROPOSAL_FIELDS;
+    const allowed: readonly string[] = kind === "FIELD" ? AGENT_PROPOSAL_CLIENT_FIELDS : CONTACT_PROPOSAL_FIELDS;
     if (!field || !allowed.includes(field)) return { ok: false, message: `pole: ${allowed.join(", ")}.` };
     if (!("proponowane" in item) && !("proposed" in item)) return { ok: false, message: "Podaj proponowane (może być null)." };
     const contactId = kind === "CONTACT_FIELD" ? str(item.osoba_id ?? item.contactId, 64) : null;

@@ -3,6 +3,7 @@ import { importCalendarHistory } from "@/lib/history/calendar-import";
 import { importInvoiceHistory } from "@/lib/history/invoice-import";
 import { getFakturowniaConfigStatus } from "@/lib/integrations/fakturownia";
 import { logWarn, logError, logInfo } from "@/lib/logger";
+import { enrichStaleClients } from "@/lib/clients/enrich";
 
 // Codzienny cron historii klienta (prompt 3, 2.1 i 3): dopisuje wydarzenia,
 // które wypadły z 30-dniowego okna synchronizacji kalendarzy (jeśli nie ma
@@ -34,6 +35,14 @@ export async function POST(req: NextRequest) {
       logError("history_cron_invoices_failed", err);
       out.invoices = { error: err instanceof Error ? err.message : String(err) };
     }
+  }
+  // Karta klienta, sekcja 5: co miesiąc uzupełnianie po NIP (Biała lista,
+  // CEIDG) — codziennie porcja klientów nieuzupełnianych od 30 dni.
+  try {
+    out.enrich = await enrichStaleClients(20);
+  } catch (err) {
+    logError("history_cron_enrich_failed", err);
+    out.enrich = { error: err instanceof Error ? err.message : String(err) };
   }
   if (!failed) logInfo("history_cron_ok", out);
   return NextResponse.json(out, { status: failed ? 500 : 200 });

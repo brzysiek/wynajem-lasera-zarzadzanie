@@ -50,7 +50,7 @@ export async function recordChanges(db: Db, actor: ChangeActor, entries: ChangeE
   const p = actor.provenance ?? null;
   await db.changeLog.createMany({
     data: entries.map((e) => ({
-      userId: actor.userId,
+      userId: actor.userId || null, // "" = zmiana systemowa (np. uzupełnianie po NIP z crona)
       clientId: e.clientId && names.has(e.clientId) ? e.clientId : null,
       clientName: e.clientId ? (names.get(e.clientId) ?? null) : null,
       entity: e.entity,

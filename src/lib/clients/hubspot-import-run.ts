@@ -1,3 +1,4 @@
+import { isLocked, readFieldMeta } from "@/lib/clients/profile-fields";
 import { prisma } from "@/lib/prisma";
 import { normalizePolishPhone } from "@/lib/reminders";
 import { logInfo } from "@/lib/logger";
@@ -207,7 +208,11 @@ async function linkRentals(): Promise<RentalLinkResult> {
   });
   const latestByClient = new Map<string, (typeof withDistance)[number]["contactDistanceKm"]>();
   for (const r of withDistance) if (!latestByClient.has(r.clientId as string)) latestByClient.set(r.clientId as string, r.contactDistanceKm);
+  // Odległość wpisana ręcznie w panelu (lockedManual) zostaje.
+  const metas = await prisma.client.findMany({ where: { id: { in: [...latestByClient.keys()] } }, select: { id: true, fieldMeta: true } });
+  const locked = new Set(metas.filter((m) => isLocked(readFieldMeta(m.fieldMeta), "distanceKm")).map((m) => m.id));
   for (const [clientId, distanceKm] of latestByClient) {
+    if (locked.has(clientId)) continue;
     await prisma.client.update({ where: { id: clientId }, data: { distanceKm } });
   }
 
