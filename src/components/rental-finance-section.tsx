@@ -14,7 +14,7 @@ import {
   type PreviewPulseTier,
 } from "@/lib/pricing/preview";
 import type { ClientTermsDto } from "@/lib/clients/terms";
-import { clientPriceFor, deviceCodeFor, invoiceDefaults, termsDeviation } from "@/lib/clients/terms-rules";
+import { TERMS_DEVICE_LABEL, clientOnlyVariant, clientPriceFor, deviceCodeFor, invoiceDefaults, termsDeviation } from "@/lib/clients/terms-rules";
 
 export type FinancePayload = {
   deviceVariant: string | null;
@@ -30,6 +30,8 @@ export type FinancePayload = {
   transportPaymentMethod: PaymentMethod;
   // Część netto na FV („” = całość); pominięte = domyślna z warunków klienta.
   invoiceNet?: string;
+  // Kwota na FV do ustalenia (warunki „część” bez kwoty, wniosek 17).
+  invoiceNetPending?: boolean;
 };
 
 function fmt(n: number): string {
@@ -319,6 +321,7 @@ export function RentalFinanceSection({
   const [vatApplicable, setVatApplicable] = useState<boolean>(initialFinance?.vatApplicable ?? false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialFinance?.paymentMethod ?? "CASH");
   const [invoicePart, setInvoicePart] = useState<string>(initialFinance?.invoiceNet ?? "");
+  const [invoicePending, setInvoicePending] = useState<boolean>(initialFinance?.invoiceNetPending ?? false);
 
   // --- transport ---
   // Podpowiedź: warunki klienta (a gdy inna jego rezerwacja tego dnia już ma
@@ -355,11 +358,24 @@ export function RentalFinanceSection({
         if (inv) {
           setVatApplicable(inv.vatApplicable);
           setInvoicePart(inv.invoiceNet != null ? String(inv.invoiceNet) : "");
+          setInvoicePending(inv.pending);
         }
         if (clientTerms.paymentForm === "GOTOWKA") setPaymentMethod("CASH");
         if (clientTerms.paymentForm === "PRZELEW") setPaymentMethod("TRANSFER");
       }
     }
+  }
+
+  // Wariant z tabeli klienta (wniosek 17, pkt 3): klient ma w warunkach jeden
+  // wariant tego urządzenia — nowa rezerwacja bez wybranego wariantu dostaje
+  // go od razu; przy innym wariancie — podpowiedź „ustaw”.
+  const termsOnly = clientTerms && !isSzkolenie ? clientOnlyVariant(clientTerms.prices, pricingCategory) : null;
+  const termsVariant = termsOnly?.variant && deviceVariantOptions.includes(termsOnly.variant) ? termsOnly.variant : null;
+  const variantKey = !initialFinance && termsVariant ? `${clientTerms?.clientId}|${termsVariant}` : null;
+  const [appliedVariantKey, setAppliedVariantKey] = useState<string | null>(null);
+  if (variantKey !== appliedVariantKey) {
+    setAppliedVariantKey(variantKey);
+    if (variantKey && !deviceVariant) setDeviceVariant(termsVariant!);
   }
 
   const showFilledTransport = !transportManual && hintAmount != null;
@@ -436,13 +452,14 @@ export function RentalFinanceSection({
       transportPaymentMethod: transportPayment,
       // Puste przy nowym rozliczeniu = niech serwer podstawi część z warunków.
       invoiceNet: !vatApplicable ? "" : invoicePart.trim() || (initialFinance || clientTerms ? "" : undefined),
+      invoiceNetPending: vatApplicable && invoicePending && !invoicePart.trim(),
     });
     // onChange celowo pomijamy w deps — rodzic przekazuje stabilną referencję.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     effVariant, isFlex, priceIsManual, manualPrice, manualMode, isSzkolenie, base.priceNet, overrideNote,
     vatApplicable, vatRate, paymentMethod,
-    effTransportPrice, transportSeparateEff, transportVat, transportPayment, invoicePart, clientTerms,
+    effTransportPrice, transportSeparateEff, transportVat, transportPayment, invoicePart, invoicePending, clientTerms,
   ]);
 
   const badge = isFlex
@@ -497,6 +514,22 @@ export function RentalFinanceSection({
               </option>
             ))}
           </select>
+          {termsVariant && deviceVariant !== termsVariant && deviceVariant !== FLEX_VARIANT && (
+            <span className="text-xs text-[#B8612F]">
+              W warunkach klienta tylko: {TERMS_DEVICE_LABEL[termsOnly!.code]}
+              {clientPriceFor(clientTerms!.prices, termsOnly!.code, durationDays) != null ? ` (${fmt(clientPriceFor(clientTerms!.prices, termsOnly!.code, durationDays)!)} zł)` : ""}.{" "}
+              <button
+                type="button"
+                className="font-medium text-[#1B6FA8] hover:underline"
+                onClick={() => {
+                  setDeviceVariant(termsVariant);
+                  setManualMode(false);
+                }}
+              >
+                Ustaw ten wariant
+              </button>
+            </span>
+          )}
         </label>
       )}
 
@@ -650,13 +683,22 @@ export function RentalFinanceSection({
                 value={invoicePart}
                 onChange={(e) => setInvoicePart(e.target.value)}
                 inputMode="decimal"
-                placeholder={`całość (${fmt(totals.net)} zł)`}
+                placeholder={invoicePending ? "do ustalenia" : `całość (${fmt(totals.net)} zł)`}
                 className="w-40 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
               />
               <span className="text-xs text-gray-400">
                 Puste = całość na fakturze. Kwota = tylko ta część na FV (VAT od niej), reszta bez faktury
                 {clientTerms?.invoiceMode === "PARTIAL" ? " — wg warunków klienta: część" : ""}.
               </span>
+              {invoicePending && !invoicePart.trim() && (
+                <span className="rounded-md border border-[#E6CDB8] bg-[#FBF0E7] px-2.5 py-1.5 text-xs font-medium text-[#B8612F]">
+                  Ustal kwotę na FV — warunki klienta: część, bez ustalonej kwoty. Wpisz ją wyżej albo{" "}
+                  <button type="button" className="text-[#1B6FA8] hover:underline" onClick={() => setInvoicePending(false)}>
+                    FV na całość
+                  </button>
+                  .
+                </span>
+              )}
             </label>
           )}
           <div className="flex flex-col gap-1 text-sm text-gray-700">
@@ -707,7 +749,11 @@ export function RentalFinanceSection({
         <div className="flex justify-between">
           <span className="text-gray-500">Na FV (netto)</span>
           <span className="font-semibold text-gray-900">
-            {fmt(!vatApplicable ? 0 : Math.min(parseAmount(invoicePart) ?? totals.net, totals.net))} zł
+            {vatApplicable && invoicePending && !invoicePart.trim() ? (
+              <span className="text-[#B8612F]">do ustalenia</span>
+            ) : (
+              `${fmt(!vatApplicable ? 0 : Math.min(parseAmount(invoicePart) ?? totals.net, totals.net))} zł`
+            )}
           </span>
         </div>
 

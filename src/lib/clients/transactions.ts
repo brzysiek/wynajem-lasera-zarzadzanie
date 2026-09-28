@@ -14,6 +14,7 @@ export type TxRental = {
   cashConfirmed: boolean; // gotówka odebrana (RentalFinance: CASH + confirmedAt)
   positions?: string | null; // „wynajem 850 · transport 70” (etap C)
   onInvoiceNet?: number | null; // netto na fakturę (0 = bez FV)
+  onInvoicePending?: boolean; // warunki „część” bez kwoty — FV do ustalenia
 };
 
 export type TxInvoice = {
@@ -47,6 +48,7 @@ export type TxRow = {
   positions: string | null;
   rentalNet: number | null;
   onInvoiceNet: number | null;
+  onInvoicePending: boolean;
   invoice: { id: string; fakturowniaInvoiceId: number; number: string; issueDate: Date; totalGross: number | null } | null;
   status: PaymentStatus;
 };
@@ -115,6 +117,7 @@ export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], to
       positions: r.positions ?? null,
       rentalNet: r.totalNet,
       onInvoiceNet: r.onInvoiceNet ?? null,
+      onInvoicePending: !inv && !!r.onInvoicePending,
       invoice: inv ? { id: inv.id, fakturowniaInvoiceId: inv.fakturowniaInvoiceId, number: inv.number, issueDate: inv.issueDate, totalGross: inv.totalGross ?? null } : null,
       status: inv ? invStatus(inv, r.cashConfirmed) : rentalWithoutInvoiceStatus(r, today),
     };
@@ -132,6 +135,7 @@ export function buildTransactions(rentals: TxRental[], invoices: TxInvoice[], to
       positions: inv.positions,
       rentalNet: null,
       onInvoiceNet: inv.totalNet,
+      onInvoicePending: false,
       invoice: { id: inv.id, fakturowniaInvoiceId: inv.fakturowniaInvoiceId, number: inv.number, issueDate: inv.issueDate, totalGross: inv.totalGross ?? null },
       status: invStatus(inv, false),
     });

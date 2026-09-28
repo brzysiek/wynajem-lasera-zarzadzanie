@@ -7,8 +7,8 @@ import { syncFutureRentalsToTermsSafe } from "@/lib/clients/terms-backfill";
 import {
   PRICE_SOURCES,
   TERMS_DEVICE_LABEL,
-  clientPriceFor,
   deviceCodeFor,
+  expectedClientPrice,
   isTermsDevice,
   parseInvoiceMode,
   termsDeviation,
@@ -195,10 +195,14 @@ export async function termsWarnings(rentals: RentalForCheck[]): Promise<Map<stri
   for (const r of withFinance) {
     const list = byClient.get(r.clientId!);
     if (!list) continue;
-    const code = deviceCodeFor(r.eventType, r.device.pricingCategory, r.finance!.deviceVariant);
-    const expected = clientPriceFor(list, code, rentalDurationDays(r.startsAt, r.endsAt));
-    const dev = termsDeviation(Number(r.finance!.baseRentalPriceNet), expected);
-    if (dev) out.set(r.id, `Cena wynajmu ${Number(r.finance!.baseRentalPriceNet)} zł różni się o ${Math.round(dev.pct * 100)}% od warunków klienta (${dev.expected} zł)`);
+    // Brak ceny dla tego wariantu, a klient ma w tabeli tylko inny — porównanie z nim.
+    const exp = expectedClientPrice(list, r.eventType, r.device.pricingCategory, r.finance!.deviceVariant, rentalDurationDays(r.startsAt, r.endsAt));
+    const dev = termsDeviation(Number(r.finance!.baseRentalPriceNet), exp?.priceNet ?? null);
+    if (dev)
+      out.set(
+        r.id,
+        `Cena wynajmu ${Number(r.finance!.baseRentalPriceNet)} zł różni się o ${Math.round(dev.pct * 100)}% od warunków klienta (${exp!.otherVariant ? `${TERMS_DEVICE_LABEL[exp!.code]}: ` : ""}${dev.expected} zł)${exp!.otherVariant ? " — klient nie ma w warunkach tego wariantu" : ""}`,
+      );
   }
   return out;
 }

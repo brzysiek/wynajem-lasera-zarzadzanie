@@ -425,6 +425,10 @@ model RentalFinance {
   // --- kwota na fakturę (etap C): null = całość (gdy VAT), liczba = część
   // netto na FV (warunki „część”, np. Kolber); bez VAT zawsze 0 na FV.
   invoiceNet Decimal? @db.Decimal(10, 2)
+  // Warunki „część” bez ustalonej kwoty (wniosek 17): VAT tak, ale kwota na FV
+  // do ustalenia — nie liczymy jej jako „całość na FV”. Czyści ją wpisanie
+  // części albo świadome „FV na całość” w formularzu.
+  invoiceNetPending Boolean @default(false)
 
   // --- suma WYNAJMU — przeliczana i zapisywana po każdej zmianie, NIE ufać wartości z klienta ---
   // Gdy transportPaidSeparately = false, zawiera też transport (jak dawniej).

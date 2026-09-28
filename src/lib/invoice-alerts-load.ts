@@ -23,7 +23,7 @@ export async function loadInvoiceAlerts(): Promise<InvoiceAlert[]> {
       title: true,
       endsAt: true,
       device: { select: { name: true, color: true } },
-      finance: { select: { totalNet: true, totalGross: true, vatApplicable: true, invoiceNet: true, vatRate: true } },
+      finance: { select: { totalNet: true, totalGross: true, vatApplicable: true, invoiceNet: true, invoiceNetPending: true, vatRate: true } },
     },
   });
 
@@ -34,7 +34,7 @@ export async function loadInvoiceAlerts(): Promise<InvoiceAlert[]> {
     deviceName: r.device.name,
     deviceColor: r.device.color,
     // Faktura na część (warunki klienta) — brutto samej części.
-    amount: formatPln(
+    amount: r.finance?.vatApplicable && r.finance.invoiceNetPending ? "kwota na FV do ustalenia" : formatPln(
       r.finance?.vatApplicable
         ? r.finance.invoiceNet != null && r.finance.invoiceNet.lessThan(r.finance.totalNet)
           ? round2(r.finance.invoiceNet.times(r.finance.vatRate.div(100).plus(1)))

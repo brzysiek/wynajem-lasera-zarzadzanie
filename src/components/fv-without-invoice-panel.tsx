@@ -149,7 +149,7 @@ export function FvWithoutInvoicePanel({ canLink }: { canLink: boolean }) {
                     <span className="font-semibold" style={{ color: APP.text }} title="Brutto wynajmu · netto na fakturę (część z warunków klienta albo całość)">
                       {fmtPln(r.totalGross)}
                       <span className="ml-1.5 text-[12px] font-normal" style={{ color: APP.textMuted }}>
-                        · na FV {fmtPln(r.invoiceNet)} netto
+                        · {r.invoiceNet != null ? `na FV ${fmtPln(r.invoiceNet)} netto` : "kwota na FV do ustalenia"}
                       </span>
                     </span>
                     <span className="text-[12px] font-semibold" style={{ color: r.daysSinceEnd > 7 ? APP.red : APP.textMuted }}>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeClass, parseProposalItem } from "./proposal-rules";
+import { normalizeClass, parseProposalItem, silentClearMessage } from "./proposal-rules";
 
 const prov = { zrodlo: "Biała lista", pewnosc: "wysoka", paczka: "P-1" };
 
@@ -106,5 +106,15 @@ describe("propozycje lejka (etap L4)", () => {
   it("krok_sygnalu i powiazanie_wynajmu", () => {
     expect(parseProposalItem({ rodzaj: "krok_sygnalu", sygnal_id: "l1", termin: "2026-10-05", rodzaj_kroku: "oddzwoni", ...prov })).toMatchObject({ ok: true, value: { leadId: "l1", proposed: { at: "2026-10-05", stepType: "ODDZWONI" } } });
     expect(parseProposalItem({ rodzaj: "powiazanie_wynajmu", sygnal_id: "l1", wynajem_id: "r1", ...prov })).toMatchObject({ ok: true, value: { kind: "RENTAL_LINK", proposed: { rentalId: "r1" } } });
+  });
+});
+
+describe("pole: brak cichego czyszczenia (wniosek 17)", () => {
+  it("podana wartość, a po walidacji null → błąd; jawne null / pusty tekst → czyszczenie", () => {
+    expect(silentClearMessage("transportPriceNet", 70, null)).toMatch(/nie rozpoznano/);
+    expect(silentClearMessage("transportPriceNet", 70, "70.00")).toBeNull();
+    expect(silentClearMessage("transportPriceNet", null, null)).toBeNull();
+    expect(silentClearMessage("transportPriceNet", "  ", null)).toBeNull();
+    expect(silentClearMessage("pulsesCharged", false, false)).toBeNull();
   });
 });

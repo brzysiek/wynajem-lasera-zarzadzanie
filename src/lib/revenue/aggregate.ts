@@ -21,6 +21,9 @@ export type RevenueRow = {
   // Część netto na fakturze (0 = bez FV; warunki klienta „część” — etap C).
   // Opcjonalne: starsze wiersze / testy bez pola liczą się jako bez FV.
   invoiceNet?: number;
+  // Warunki „część” bez ustalonej kwoty — FV do ustalenia (wniosek 17): ani
+  // „z FV”, ani „bez FV”, liczone osobno.
+  invoicePending?: boolean;
   paymentMethod: RevenuePaymentMethod;
   pulsePending: boolean; // pulseCalculationStatus === "PENDING"
   hubspotContactId: string | null;
@@ -210,10 +213,17 @@ export function computePaymentSplit(rows: RevenueRow[]): PaymentSplit {
 }
 
 // --- netto z FV i bez FV (wniosek 14, prognoza netto) ---
-export function computeInvoiceSplit(rows: RevenueRow[]): { withInvoice: number; withoutInvoice: number } {
-  const withInvoice = rows.reduce((s, r) => s + Math.min(r.invoiceNet ?? 0, r.totalNet), 0);
-  const total = rows.reduce((s, r) => s + r.totalNet, 0);
-  return { withInvoice: round(withInvoice), withoutInvoice: round(total - withInvoice) };
+export function computeInvoiceSplit(rows: RevenueRow[]): { withInvoice: number; withoutInvoice: number; pendingInvoice: number; pendingCount: number } {
+  const settled = rows.filter((r) => !r.invoicePending);
+  const pending = rows.filter((r) => r.invoicePending);
+  const withInvoice = settled.reduce((s, r) => s + Math.min(r.invoiceNet ?? 0, r.totalNet), 0);
+  const total = settled.reduce((s, r) => s + r.totalNet, 0);
+  return {
+    withInvoice: round(withInvoice),
+    withoutInvoice: round(total - withInvoice),
+    pendingInvoice: round(pending.reduce((s, r) => s + r.totalNet, 0)),
+    pendingCount: pending.length,
+  };
 }
 
 // --- sygnalizacja niepewnych cen (sekcja 10) ---

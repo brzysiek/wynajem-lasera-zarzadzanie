@@ -55,6 +55,55 @@ export function clientPriceFor(prices: ClientPriceRow[], code: TermsDeviceCode |
   return prices.find((p) => p.device === code && p.days === days)?.priceNet ?? null;
 }
 
+// Kody z tabeli klienta w danej kategorii cennika (np. LightSheer: LS_1G / LS_2G).
+export function clientCodesInCategory(prices: ClientPriceRow[], category: DevicePricingCategory | null): TermsDeviceCode[] {
+  if (!category) return [];
+  return [...new Set(prices.map((p) => p.device))].filter(isTermsDevice).filter((c) => TERMS_DEVICES.find((d) => d.code === c)?.category === category);
+}
+
+// Jedyny wariant tej kategorii w tabeli klienta (wniosek 17, pkt 3) — null,
+// gdy klient ma kilka albo żadnego.
+export function clientOnlyVariant(prices: ClientPriceRow[], category: DevicePricingCategory | null): { code: TermsDeviceCode; variant: string | null } | null {
+  const codes = clientCodesInCategory(prices, category);
+  if (codes.length !== 1) return null;
+  return { code: codes[0], variant: TERMS_DEVICES.find((d) => d.code === codes[0])!.variant };
+}
+
+// Cena z warunków do porównania z rezerwacją: ten sam wariant, a gdy klient
+// ma w tabeli tylko inny wariant tego urządzenia — ten (wniosek 17, pkt 2:
+// Estetic, rezerwacja „2 głowice” z cennika, klient ma tylko LS 1 głowica).
+// Taryfa elastyczna (impulsy) — bez porównania.
+export function expectedClientPrice(
+  prices: ClientPriceRow[],
+  eventType: "WYNAJEM" | "SZKOLENIE",
+  category: DevicePricingCategory | null,
+  variant: string | null,
+  days: number,
+): { priceNet: number; code: TermsDeviceCode; otherVariant: boolean } | null {
+  const code = deviceCodeFor(eventType, category, variant);
+  const own = clientPriceFor(prices, code, days);
+  if (own != null) return { priceNet: own, code: code!, otherVariant: false };
+  if (eventType === "SZKOLENIE" || variant === "single_flex") return null;
+  const only = clientOnlyVariant(prices, category);
+  if (!only || only.code === code) return null;
+  const p = clientPriceFor(prices, only.code, days);
+  return p != null ? { priceNet: p, code: only.code, otherVariant: true } : null;
+}
+
+// Wariant do rozliczenia rezerwacji już policzonej (nie ręcznie): Alma — gdy
+// obecny wariant nie ma ceny klienta, a klient ma w tabeli jeden wariant Almy
+// z ceną na tyle dni (Pawlik: z cennika „iPixel”, w warunkach Dye-VL + iPixel).
+// LightSheer bez zmian — 1 czy 2 głowice to decyzja przy rezerwacji, różnica
+// trafia na listę rozbieżności.
+export function termsVariantFor(category: DevicePricingCategory | null, current: string | null, variantOptions: string[], prices: ClientPriceRow[], days: number): string | null {
+  if (category !== "ALMA_HARMONY") return current;
+  if (clientPriceFor(prices, deviceCodeFor("WYNAJEM", category, current), days) != null) return current;
+  const only = clientOnlyVariant(prices, category);
+  if (!only?.variant || only.variant === current) return current;
+  if (variantOptions.length && !variantOptions.includes(only.variant)) return current;
+  return clientPriceFor(prices, only.code, days) != null ? only.variant : current;
+}
+
 // ------------------------------------------------------------------ faktura
 
 export type InvoiceMode = "FULL" | "PARTIAL" | "NONE";
@@ -71,12 +120,15 @@ export function invoiceNetOf(f: { vatApplicable: boolean; invoiceNet: number | n
   return f.invoiceNet != null && f.invoiceNet < f.totalNet ? f.invoiceNet : f.totalNet;
 }
 
-// Domyślne ustawienia faktury nowej rezerwacji wg warunków klienta.
-export function invoiceDefaults(mode: InvoiceMode | null, partDefault: number | null): { vatApplicable: boolean; invoiceNet: number | null } | null {
-  if (mode === "NONE") return { vatApplicable: false, invoiceNet: null };
-  if (mode === "FULL") return { vatApplicable: true, invoiceNet: null };
-  // „Część” bez ustalonej kwoty — nic nie podstawiamy (nie zgadujemy całości).
-  if (mode === "PARTIAL") return partDefault != null ? { vatApplicable: true, invoiceNet: partDefault } : null;
+// Domyślne ustawienia faktury rezerwacji wg warunków klienta. „Część” bez
+// ustalonej kwoty: VAT tak, kwota na FV do ustalenia (pending) — nie
+// zgadujemy całości (wniosek 17, pkt 1: Kolber, Garcia).
+export type InvoiceDefaults = { vatApplicable: boolean; invoiceNet: number | null; pending: boolean };
+
+export function invoiceDefaults(mode: InvoiceMode | null, partDefault: number | null): InvoiceDefaults | null {
+  if (mode === "NONE") return { vatApplicable: false, invoiceNet: null, pending: false };
+  if (mode === "FULL") return { vatApplicable: true, invoiceNet: null, pending: false };
+  if (mode === "PARTIAL") return partDefault != null ? { vatApplicable: true, invoiceNet: partDefault, pending: false } : { vatApplicable: true, invoiceNet: null, pending: true };
   return null;
 }
 

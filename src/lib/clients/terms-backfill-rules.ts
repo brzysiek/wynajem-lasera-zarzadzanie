@@ -3,7 +3,7 @@
 // nie da się ustalić. Plus porównanie wpisanych kwot z warunkami. Czysty moduł.
 import type { DevicePricingCategory } from "@prisma/client";
 import { headsFromText } from "./rhythm";
-import { clientPriceFor, deviceCodeFor, invoiceDefaults, termsDeviation, type ClientPriceRow, type InvoiceMode, type TermsDeviceCode } from "./terms-rules";
+import { clientPriceFor, deviceCodeFor, expectedClientPrice, invoiceDefaults, termsDeviation, type ClientPriceRow, type InvoiceMode, type TermsDeviceCode } from "./terms-rules";
 
 export type PlanTerms = {
   prices: ClientPriceRow[];
@@ -31,6 +31,7 @@ export type BackfillPlan =
       transportNet: number;
       vatApplicable: boolean;
       invoicePart: number | null;
+      invoicePending: boolean; // „część” bez kwoty — FV do ustalenia
       paymentMethod: "CASH" | "TRANSFER";
       totalNet: number;
     }
@@ -74,7 +75,7 @@ export function planBackfill(
   const baseNet = own ?? list;
   if (baseNet == null) return { ready: false, reason: `brak ceny dla ${r.days} ${r.days === 1 ? "dnia" : "dni"} (ani w warunkach, ani w cenniku)` };
   const transportNet = transportTaken ? 0 : (terms.transportNet ?? 0);
-  const inv = invoiceDefaults(terms.invoiceMode, terms.invoicePartDefault) ?? { vatApplicable: false, invoiceNet: null };
+  const inv = invoiceDefaults(terms.invoiceMode, terms.invoicePartDefault) ?? { vatApplicable: false, invoiceNet: null, pending: false };
   return {
     ready: true,
     variant: v.variant,
@@ -84,22 +85,27 @@ export function planBackfill(
     transportNet,
     vatApplicable: inv.vatApplicable,
     invoicePart: inv.invoiceNet,
+    invoicePending: inv.pending,
     paymentMethod: terms.paymentForm === "PRZELEW" ? "TRANSFER" : "CASH",
     totalNet: Math.round((baseNet + transportNet) * 100) / 100,
   };
 }
 
-// Wpisana kwota vs warunki: cena wynajmu (tylko gdy klient ma cenę dla tego
-// urządzenia i liczby dni) i transport (0 przy drugim urządzeniu tego dnia).
+// Wpisana kwota vs warunki: cena wynajmu (gdy klient ma cenę dla tego
+// urządzenia i liczby dni — albo tylko inny wariant tego urządzenia, wtedy
+// porównanie z nim) i transport (0 przy drugim urządzeniu tego dnia).
 export function compareWithTerms(
-  actual: { baseNet: number; transportNet: number | null; code: TermsDeviceCode | null; days: number },
+  actual: { baseNet: number; transportNet: number | null; category: DevicePricingCategory | null; variant: string | null; days: number },
   terms: PlanTerms,
   transportTakenByOther: boolean,
-): { base: { expected: number; pct: number } | null; transport: { expected: number } | null; big: boolean } | null {
-  const expectedBase = clientPriceFor(terms.prices, actual.code, actual.days);
-  const base = expectedBase != null && Math.abs(actual.baseNet - expectedBase) >= 0.01 ? { expected: expectedBase, pct: (actual.baseNet - expectedBase) / expectedBase } : null;
+): { base: { expected: number; pct: number; otherVariant: TermsDeviceCode | null } | null; transport: { expected: number } | null; big: boolean } | null {
+  const exp = expectedClientPrice(terms.prices, "WYNAJEM", actual.category, actual.variant, actual.days);
+  const base =
+    exp != null && Math.abs(actual.baseNet - exp.priceNet) >= 0.01
+      ? { expected: exp.priceNet, pct: (actual.baseNet - exp.priceNet) / exp.priceNet, otherVariant: exp.otherVariant ? exp.code : null }
+      : null;
   const expectedTransport = terms.transportNet == null ? null : transportTakenByOther ? 0 : terms.transportNet;
   const transport = expectedTransport != null && Math.abs((actual.transportNet ?? 0) - expectedTransport) >= 0.01 ? { expected: expectedTransport } : null;
   if (!base && !transport) return null;
-  return { base, transport, big: !!(base && termsDeviation(actual.baseNet, expectedBase)) };
+  return { base, transport, big: !!(base && termsDeviation(actual.baseNet, base.expected)) };
 }

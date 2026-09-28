@@ -616,7 +616,9 @@ export function InvoicesSection({ d, onShowAll, onChanged, notify }: { d: Client
                     </span>
                     <span className="min-w-0 text-[11.5px] text-[#5C6166]">{r.positions ?? r.details ?? "—"}</span>
                     <span className="text-right">{total != null ? num(total) : "—"}</span>
-                    <span className="text-right">{r.onInvoiceNet != null ? num(r.onInvoiceNet) : "—"}</span>
+                    <span className="text-right">
+                      {r.onInvoicePending ? <span className="text-[11.5px] text-[#B8612F]" title="Warunki klienta: część na FV, bez ustalonej kwoty">do ustalenia</span> : r.onInvoiceNet != null ? num(r.onInvoiceNet) : "—"}
+                    </span>
                     <span className="min-w-0 text-[11.5px]">
                       <span
                         className={`inline-block px-1.5 py-px ${

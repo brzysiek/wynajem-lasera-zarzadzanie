@@ -33,6 +33,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (rental.finance.fakturowniaInvoiceId) {
     return bad("Faktura dla tego wynajmu już została wystawiona.");
   }
+  // Warunki „część” bez ustalonej kwoty — faktura poszłaby na całość.
+  if (rental.finance.invoiceNetPending) {
+    return bad("Ustal kwotę na FV w rozliczeniu (warunki klienta: część) — potem wystaw fakturę.");
+  }
 
   const nip = rental.contactNipCache?.trim();
   if (!nip) {

@@ -252,7 +252,7 @@ Większe porządki zgłaszaj jako **paczkę propozycji**, nie bezpośrednimi zmi
 
 **Rodzaje propozycji:**
 
-- **`pole`**: pola jak w `PATCH /klienci/:id`.
+- **`pole`**: pola jak w `PATCH /klienci/:id`. Kwoty (`transportPriceNet`, `invoicePartDefault`, `pulseRateNet`, `agreedPrice`) podajesz liczbą albo tekstem (`70`, `"70,00"`). Pole czyścisz tylko jawnie: `proponowane: null`. Wartość, której panel nie rozpozna, odrzuca propozycję — nie czyści pola.
 - **`osoba`**: `firstName`, `lastName`, `phone`, `phone2`, `phone2Label`, `email`, `role`.
 - **`archiwizacja`**: klient albo sygnał (`sygnal_id`), z polami `powod` i `dopisek`.
 - **`scalenie`**: pole `duplikat_id`.
@@ -295,6 +295,10 @@ Większe porządki zgłaszaj jako **paczkę propozycji**, nie bezpośrednimi zmi
 - **`krok_sygnalu`**: następny krok. `sygnal_id`, `termin` (RRRR-MM-DD albo RRRR-MM-DDTHH:MM), `rodzaj_kroku` (`PIERWSZY_KONTAKT`, `PONOWNA_PROBA`, `FOLLOW_UP_OFERTY`, `ODDZWONI`, `DOPYTAC`, `INNE`), `notatka`.
 - **`powiazanie_wynajmu`**: `sygnal_id` i `wynajem_id` (z `kalendarz_wynajmy`; wynajem nie może mieć już sygnału). Po akceptacji otwarty sygnał przechodzi na „Rezerwacja”, a wygrana zaczyna się liczyć w raporcie.
 - **Duplikaty sygnałów**: `sygnaly_lista` z `duplikaty: true` pokazuje otwarte sygnały klientów, którzy mają ich kilka. Zbędny zgłaszasz rodzajem `archiwizacja` z `sygnal_id` i powodem `DUPLIKAT`. Nic nie scala się samo.
+
+**Faktura „część” bez kwoty** (wniosek 17): rezerwacja klienta z `invoiceMode` `PARTIAL` bez `invoicePartDefault` ma VAT, ale kwota na FV jest do ustalenia. W `kalendarz_wynajmy` ma `invoiceNet: null` i `invoicePending: true`; w Finansach liczy się osobno („FV – kwota nieustalona”). Panel nie wystawi faktury, dopóki biuro nie wpisze kwoty. Lista: Klienci → Kwoty wg warunków.
+
+**Wariant z warunków**: gdy klient ma w tabeli cen tylko jeden wariant urządzenia, nowa rezerwacja dostaje ten wariant; policzona już rezerwacja Almy z innym wariantem z cennika przechodzi na wariant klienta (`priceSource` `CLIENT_TERMS`). LightSheer (1 czy 2 głowice) nie zmienia się sam — cena porównywana jest z jedynym wariantem z tabeli klienta i przy różnicy > 10% rezerwacja ma `termsWarning` i trafia na listę rozbieżności.
 
 **Rezerwacje bez kwoty** (`rezerwacje_bez_kwoty`, tylko odczyt): przyszłe wynajmy bez rozliczenia z proponowaną kwotą (`plan`: warunki klienta albo cennik, transport, faktura, płatność; `ready: false` z powodem). Kwoty wpisuje panel sam po akceptacji warunków klienta — agent zgłasza tylko `cennik_klienta` i pola warunków. Filtr `tylko_bez_warunkow`.
 

@@ -29,6 +29,7 @@ describe("uzupełnienie kwot wg warunków", () => {
       transportNet: 70,
       vatApplicable: false,
       invoicePart: null,
+      invoicePending: false,
       paymentMethod: "CASH",
       totalNet: 920,
     });
@@ -51,11 +52,28 @@ describe("uzupełnienie kwot wg warunków", () => {
     expect(p).toMatchObject({ vatApplicable: true, invoicePart: 500, paymentMethod: "CASH" });
   });
 
+  it("„część” bez kwoty: VAT, FV do ustalenia (Kolber, Garcia)", () => {
+    const p = planBackfill(ls, { ...relaks, invoiceMode: "PARTIAL", invoicePartDefault: null }, list, false);
+    expect(p).toMatchObject({ vatApplicable: true, invoicePart: null, invoicePending: true });
+  });
+
+  it("MiWiNi: po akceptacji ceny LS_2G wariant z tabeli klienta", () => {
+    const miwini: PlanTerms = { ...relaks, prices: [{ device: "LS_2G", days: 1, priceNet: 1000 }] };
+    expect(resolveVariant({ ...ls, title: "MIWINI" }, [])).toHaveProperty("reason");
+    expect(planBackfill({ ...ls, title: "MIWINI" }, miwini, list, false)).toMatchObject({ ready: true, variant: "double", baseNet: 1000, baseSource: "CLIENT_TERMS" });
+  });
+
+  it("Estetic: „2 głowice” z cennika, klient ma tylko 1 głowicę — rozbieżność", () => {
+    const estetic: PlanTerms = { ...relaks, transportNet: 0, prices: [{ device: "LS_1G", days: 2, priceNet: 1300 }] };
+    const c = compareWithTerms({ baseNet: 1900, transportNet: 0, category: "LIGHTSHEER_VARIANT", variant: "double", days: 2 }, estetic, false);
+    expect(c).toMatchObject({ base: { expected: 1300, otherVariant: "LS_1G" }, transport: null, big: true });
+  });
+
   it("porównanie wpisanej kwoty z warunkami", () => {
-    expect(compareWithTerms({ baseNet: 850, transportNet: 70, code: "LS_1G", days: 1 }, relaks, false)).toBeNull();
-    expect(compareWithTerms({ baseNet: 850, transportNet: 0, code: "LS_1G", days: 1 }, relaks, true)).toBeNull();
-    const c = compareWithTerms({ baseNet: 1000, transportNet: 100, code: "LS_1G", days: 1 }, relaks, false);
+    expect(compareWithTerms({ baseNet: 850, transportNet: 70, category: "LIGHTSHEER_VARIANT", variant: "single_standard", days: 1 }, relaks, false)).toBeNull();
+    expect(compareWithTerms({ baseNet: 850, transportNet: 0, category: "LIGHTSHEER_VARIANT", variant: "single_standard", days: 1 }, relaks, true)).toBeNull();
+    const c = compareWithTerms({ baseNet: 1000, transportNet: 100, category: "LIGHTSHEER_VARIANT", variant: "single_standard", days: 1 }, relaks, false);
     expect(c).toMatchObject({ base: { expected: 850 }, transport: { expected: 70 }, big: true });
-    expect(compareWithTerms({ baseNet: 900, transportNet: 70, code: "LS_1G", days: 1 }, relaks, false)).toMatchObject({ big: false });
+    expect(compareWithTerms({ baseNet: 900, transportNet: 70, category: "LIGHTSHEER_VARIANT", variant: "single_standard", days: 1 }, relaks, false)).toMatchObject({ big: false });
   });
 });

@@ -184,6 +184,8 @@ export type RentalFinanceDto = {
   vatRate: string;
   // Część netto na FV (null = całość, gdy VAT) — etap C.
   invoiceNet: string | null;
+  // „Część” bez ustalonej kwoty — kwota na FV do ustalenia (wniosek 17).
+  invoiceNetPending: boolean;
   totalNet: string;
   totalGross: string;
   paymentMethod: PaymentMethod;
@@ -231,6 +233,7 @@ export function financeDto(row: RentalFinance | null): RentalFinanceDto | null {
     vatApplicable: row.vatApplicable,
     vatRate: row.vatRate.toString(),
     invoiceNet: row.invoiceNet ? row.invoiceNet.toString() : null,
+    invoiceNetPending: row.invoiceNetPending,
     totalNet: row.totalNet.toString(),
     totalGross: row.totalGross.toString(),
     paymentMethod: row.paymentMethod,
@@ -285,6 +288,10 @@ export type OfficeFinanceInput = {
   // Część netto na fakturze (warunki „część”); pusta = całość. Klucz
   // nieobecny = bez zmiany (nowe rozliczenie: domyślna część z warunków).
   invoiceNet?: string | number | null;
+  // Kwota na FV do ustalenia (warunki „część” bez kwoty). Klucz nieobecny =
+  // bez zmiany (nowe rozliczenie: wg warunków klienta). Wpisana część zawsze
+  // go czyści.
+  invoiceNetPending?: boolean;
 };
 
 type RentalForFinanceSave = {
@@ -403,6 +410,10 @@ export async function saveRentalFinance(
         : terms?.invoiceMode === "PARTIAL"
           ? terms.invoicePartDefault
           : null;
+  const invoiceNetPending =
+    vatOn &&
+    invoiceNet == null &&
+    ("invoiceNetPending" in input ? Boolean(input.invoiceNetPending) : existing ? existing.invoiceNetPending : terms?.invoiceMode === "PARTIAL" && terms.invoicePartDefault == null);
 
   const computed = recalculateFinance(
     { ...ctx, deviceVariant: variant },
@@ -445,6 +456,7 @@ export async function saveRentalFinance(
     vatRate,
     // Część ≥ sumy = całość (null) — kwota na FV idzie wtedy za sumą.
     invoiceNet: invoiceNet != null && invoiceNet.lessThan(computed.totalNet) ? invoiceNet : null,
+    invoiceNetPending,
     totalNet: computed.totalNet,
     totalGross: computed.totalGross,
     paymentMethod: (input.paymentMethod === "TRANSFER" ? "TRANSFER" : "CASH") as PaymentMethod,

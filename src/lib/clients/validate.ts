@@ -16,6 +16,16 @@ function text(v: unknown): string | null {
   return t === "" ? null : t;
 }
 
+// Pole liczbowe (kwota, km): liczba albo tekst; null / "" = jawne czyszczenie.
+// Inny typ (np. obiekt) → "invalid" zamiast cichego null — propozycja
+// transportPriceNet: 70 czyściła transport (wniosek 17).
+function numText(v: unknown): string | null | "invalid" {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? String(v) : "invalid";
+  if (typeof v === "string") return text(v);
+  return "invalid";
+}
+
 export type ClientPatch = Partial<{
   name: string;
   nip: string | null;
@@ -50,13 +60,14 @@ export function parseClientPatch(body: Record<string, unknown>): Result<ClientPa
     if (key in body) out[key] = text(body[key]);
   }
   if ("transportPriceNet" in body) {
-    const { value, invalid } = parseMoney(text(body.transportPriceNet));
+    const raw = numText(body.transportPriceNet);
+    const { value, invalid } = raw === "invalid" ? { value: null, invalid: true } : parseMoney(raw);
     if (invalid) return { ok: false, message: "Cena transportu musi być liczbą, np. 150." };
     out.transportPriceNet = value;
   }
   if ("distanceKm" in body) {
-    const raw = text(body.distanceKm);
-    const km = parseDistanceKm(raw);
+    const raw = numText(body.distanceKm);
+    const km = raw === "invalid" ? null : parseDistanceKm(raw);
     if (raw && !km) return { ok: false, message: "Odległość musi być liczbą kilometrów." };
     out.distanceKm = km;
   }

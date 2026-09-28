@@ -183,6 +183,7 @@ export type ClientDetail = {
     positions: string | null;
     rentalNet: number | null;
     onInvoiceNet: number | null;
+    onInvoicePending: boolean;
     invoice: { id: string; fakturowniaInvoiceId: number; number: string; issueDate: string; totalGross: number | null } | null;
     status: { kind: PaymentStatus["kind"]; label: string; days: number | null; paidAt: string | null; method: string | null };
   }[];
@@ -257,6 +258,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
               membraneFeeNet: true,
               vatApplicable: true,
               invoiceNet: true,
+              invoiceNetPending: true,
               transportPaidSeparately: true,
             },
           },
@@ -475,7 +477,8 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
                 membraneNet: f.membraneUsed && f.membraneFeeNet ? Number(f.membraneFeeNet) * Math.max(1, f.membraneCount) : null,
               })
             : null,
-          onInvoiceNet: f ? invoiceNetOf({ vatApplicable: f.vatApplicable, invoiceNet: f.invoiceNet != null ? Number(f.invoiceNet) : null, totalNet: Number(f.totalNet) }) : null,
+          onInvoiceNet: f && !(f.vatApplicable && f.invoiceNetPending) ? invoiceNetOf({ vatApplicable: f.vatApplicable, invoiceNet: f.invoiceNet != null ? Number(f.invoiceNet) : null, totalNet: Number(f.totalNet) }) : null,
+          onInvoicePending: !!f && f.vatApplicable && f.invoiceNetPending,
         };
       }),
     ...c.history
@@ -692,6 +695,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       positions: r.positions,
       rentalNet: r.rentalNet,
       onInvoiceNet: r.onInvoiceNet,
+      onInvoicePending: r.onInvoicePending,
       invoice: r.invoice ? { ...r.invoice, issueDate: r.invoice.issueDate.toISOString() } : null,
       status: {
         kind: r.status.kind,

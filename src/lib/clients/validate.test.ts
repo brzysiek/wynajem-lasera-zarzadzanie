@@ -24,6 +24,13 @@ describe("parseClientPatch", () => {
     expect(parseClientPatch({ name: " " }).ok).toBe(false);
     expect(parseClientPatch({ nip: "123" }).ok).toBe(false);
     expect(parseClientPatch({ transportPriceNet: "dużo" }).ok).toBe(false);
+    // Wniosek 17: liczba (propozycja agenta) nie może się zamienić w null.
+    expect(parseClientPatch({ transportPriceNet: 70 })).toEqual({ ok: true, data: { transportPriceNet: "70.00" } });
+    expect(parseClientPatch({ distanceKm: 35 })).toEqual({ ok: true, data: { distanceKm: "35.0" } });
+    expect(parseClientPatch({ transportPriceNet: null })).toEqual({ ok: true, data: { transportPriceNet: null } });
+    expect(parseClientPatch({ transportPriceNet: "" })).toEqual({ ok: true, data: { transportPriceNet: null } });
+    expect(parseClientPatch({ transportPriceNet: { kwota: 70 } }).ok).toBe(false);
+    expect(parseClientPatch({ invoicePartDefault: 500, pulseRateNet: 0.06 })).toEqual({ ok: true, data: { invoicePartDefault: "500.00", pulseRateNet: "0.0600" } });
     expect(parseClientPatch({ distanceKm: "daleko" }).ok).toBe(false);
     expect(parseClientPatch({ source: "TIKTOK" }).ok).toBe(false);
     expect(parseClientPatch({ deviceInterests: ["LIGHTSHEER", "LASER_X"] }).ok).toBe(false);

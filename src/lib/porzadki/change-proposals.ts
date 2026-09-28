@@ -14,6 +14,7 @@ import { addExclusions } from "@/lib/porzadki/exclusions";
 import { applyPaymentMatch, describePaymentMatch, type PaymentMatchInput } from "@/lib/invoicing/bank-transfers";
 import {
   parseProposalItem,
+  silentClearMessage,
   type ChangeProposalStatus,
   type ClientPriceProposal,
   type DeliveryAddressProposal,
@@ -170,16 +171,22 @@ async function normalizeProposedAsync(p: ParsedProposal): Promise<unknown> {
   return { ...input, contactNames: people.map((c) => [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || c.id) };
 }
 
+function notSilentlyCleared(field: string, proposed: unknown, normalized: unknown): unknown {
+  const msg = silentClearMessage(field, proposed, normalized);
+  if (msg) throw new PorzadkiError(msg);
+  return normalized;
+}
+
 function normalizeProposed(p: ParsedProposal): unknown {
   if (p.kind === "FIELD") {
     const r = parseClientPatch({ [p.field!]: p.proposed });
     if (!r.ok) throw new PorzadkiError(r.message);
-    return (r.data as Record<string, unknown>)[p.field!] ?? null;
+    return notSilentlyCleared(p.field!, p.proposed, (r.data as Record<string, unknown>)[p.field!] ?? null);
   }
   if (p.kind === "CONTACT_FIELD") {
     const r = parseContactInput({ [p.field!]: p.proposed }, { normalizePhone: normalizePolishPhone });
     if (!r.ok) throw new PorzadkiError(r.message);
-    return (r.data as Record<string, unknown>)[p.field!] ?? null;
+    return notSilentlyCleared(p.field!, p.proposed, (r.data as Record<string, unknown>)[p.field!] ?? null);
   }
   return p.proposed;
 }

@@ -247,6 +247,11 @@ describe("bestWorstClientAvg", () => {
 describe("computeInvoiceSplit (netto z FV / bez FV)", () => {
   it("część na FV liczy się tylko do kwoty invoiceNet", () => {
     const row = (totalNet: number, invoiceNet?: number) => ({ totalNet, invoiceNet }) as unknown as RevenueRow;
-    expect(computeInvoiceSplit([row(920, 0), row(1500, 1500), row(1100, 500), row(700)])).toEqual({ withInvoice: 2000, withoutInvoice: 2220 });
+    expect(computeInvoiceSplit([row(920, 0), row(1500, 1500), row(1100, 500), row(700)])).toEqual({ withInvoice: 2000, withoutInvoice: 2220, pendingInvoice: 0, pendingCount: 0 });
+  });
+
+  it("FV – kwota nieustalona osobno (Kolber, Garcia)", () => {
+    const rows = [{ totalNet: 1500, invoiceNet: 1500 }, { totalNet: 1100, invoiceNet: 1100, invoicePending: true }, { totalNet: 1270, invoiceNet: 1270, invoicePending: true }] as unknown as RevenueRow[];
+    expect(computeInvoiceSplit(rows)).toEqual({ withInvoice: 1500, withoutInvoice: 0, pendingInvoice: 2370, pendingCount: 2 });
   });
 });

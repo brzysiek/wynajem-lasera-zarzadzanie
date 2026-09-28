@@ -274,3 +274,11 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
   if (clientId === duplicateId) return { ok: false, message: "Duplikat musi być innym klientem." };
   return { ok: true, value: { ...base, kind, proposed: { duplicateId } } };
 }
+
+// Wartość podana, a po walidacji pusta = nierozpoznana (np. liczba w polu
+// kwotowym przed poprawką z wniosku 17) — propozycję odrzucamy, zamiast po
+// akceptacji wyczyścić pole. Czyszczenie tylko jawne: proponowane null albo "".
+export function silentClearMessage(field: string, proposed: unknown, normalized: unknown): string | null {
+  const given = proposed !== null && proposed !== undefined && !(typeof proposed === "string" && proposed.trim() === "");
+  return given && normalized === null ? `${field}: nie rozpoznano wartości ${JSON.stringify(proposed)} — pole wyczyścisz tylko przez proponowane: null.` : null;
+}

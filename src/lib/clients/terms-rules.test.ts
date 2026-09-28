@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientPriceFor, deviceCodeFor, invoiceDefaults, invoiceNetOf, positionsSummary, termsDeviation } from "./terms-rules";
+import { clientPriceFor, deviceCodeFor, expectedClientPrice, invoiceDefaults, invoiceNetOf, positionsSummary, termsDeviation, termsVariantFor } from "./terms-rules";
 
 describe("warunki handlowe", () => {
   it("urządzenie i wariant → kod tabeli cen klienta", () => {
@@ -27,10 +27,11 @@ describe("warunki handlowe", () => {
     expect(invoiceNetOf({ vatApplicable: true, invoiceNet: null, totalNet: 920 })).toBe(920);
     expect(invoiceNetOf({ vatApplicable: true, invoiceNet: 500, totalNet: 1500 })).toBe(500);
     expect(invoiceNetOf({ vatApplicable: true, invoiceNet: 2000, totalNet: 1500 })).toBe(1500);
-    expect(invoiceDefaults("PARTIAL", 500)).toEqual({ vatApplicable: true, invoiceNet: 500 });
-    expect(invoiceDefaults("NONE", null)).toEqual({ vatApplicable: false, invoiceNet: null });
+    expect(invoiceDefaults("PARTIAL", 500)).toEqual({ vatApplicable: true, invoiceNet: 500, pending: false });
+    expect(invoiceDefaults("NONE", null)).toEqual({ vatApplicable: false, invoiceNet: null, pending: false });
     expect(invoiceDefaults(null, null)).toBeNull();
-    expect(invoiceDefaults("PARTIAL", null)).toBeNull();
+    // Kolber, Garcia: „część” bez kwoty — VAT, kwota na FV do ustalenia (nie całość).
+    expect(invoiceDefaults("PARTIAL", null)).toEqual({ vatApplicable: true, invoiceNet: null, pending: true });
   });
 
   it("odchylenie od warunków powyżej 10%", () => {
@@ -46,5 +47,27 @@ describe("warunki handlowe", () => {
       "wynajem 1200 · transport 70 · impulsy po odbiorze",
     );
     expect(positionsSummary({ eventType: "WYNAJEM", baseNet: 750, transportNet: 0, pulseSurchargeNet: null, pulsesPending: false, capNet: 70, membraneNet: null })).toBe("wynajem 750 · nakładka 70");
+  });
+
+  it("cena do porównania: jedyny inny wariant z tabeli klienta (Estetic)", () => {
+    const estetic = [
+      { device: "LS_1G", days: 1, priceNet: 850 },
+      { device: "LS_1G", days: 2, priceNet: 1300 },
+    ];
+    expect(expectedClientPrice(estetic, "WYNAJEM", "LIGHTSHEER_VARIANT", "double", 2)).toEqual({ priceNet: 1300, code: "LS_1G", otherVariant: true });
+    expect(termsDeviation(1900, 1300)).toMatchObject({ expected: 1300 });
+    expect(expectedClientPrice(estetic, "WYNAJEM", "LIGHTSHEER_VARIANT", "single_standard", 2)).toEqual({ priceNet: 1300, code: "LS_1G", otherVariant: false });
+    expect(expectedClientPrice(estetic, "WYNAJEM", "LIGHTSHEER_VARIANT", "single_flex", 1)).toBeNull();
+    expect(expectedClientPrice(estetic, "WYNAJEM", "LIGHTSHEER_VARIANT", "double", 3)).toBeNull();
+    expect(expectedClientPrice([...estetic, { device: "LS_2G", days: 1, priceNet: 1100 }], "WYNAJEM", "LIGHTSHEER_VARIANT", "double", 2)).toBeNull();
+  });
+
+  it("wariant Almy z tabeli klienta (Pawlik); LightSheer bez zmian", () => {
+    const pawlik = [{ device: "ALMA_DYEVL_IPIXEL", days: 1, priceNet: 1200 }];
+    expect(termsVariantFor("ALMA_HARMONY", "er_yag_ipixel", [], pawlik, 1)).toBe("dye_vl_ipixel");
+    expect(termsVariantFor("ALMA_HARMONY", null, ["dye_vl", "dye_vl_ipixel"], pawlik, 1)).toBe("dye_vl_ipixel");
+    expect(termsVariantFor("ALMA_HARMONY", "er_yag_ipixel", ["dye_vl", "er_yag_ipixel"], pawlik, 1)).toBe("er_yag_ipixel");
+    expect(termsVariantFor("ALMA_HARMONY", "er_yag_ipixel", [], pawlik, 2)).toBe("er_yag_ipixel");
+    expect(termsVariantFor("LIGHTSHEER_VARIANT", "double", [], [{ device: "LS_1G", days: 1, priceNet: 850 }], 1)).toBe("double");
   });
 });

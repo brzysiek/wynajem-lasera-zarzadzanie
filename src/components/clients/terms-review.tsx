@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { BackfillRow, LegacyTermsRow, MismatchRow } from "@/lib/clients/terms-backfill";
+import type { BackfillRow, LegacyTermsRow, MismatchRow, PendingInvoiceRow } from "@/lib/clients/terms-backfill";
 import { APP_CSS_VARS } from "@/components/shell-tokens";
 import { api } from "./client-forms";
 
@@ -10,7 +10,7 @@ import { api } from "./client-forms";
 // klientów z tabelą cen — plan (pozycje, razem, FV, płatność) i uzupełnienie
 // zaznaczonych. Dół: rezerwacje z kwotą inną niż w warunkach (dla Ani).
 
-type Review = { backfill: BackfillRow[]; mismatches: MismatchRow[]; clientsWithTerms: number; legacy: LegacyTermsRow[] };
+type Review = { backfill: BackfillRow[]; mismatches: MismatchRow[]; clientsWithTerms: number; legacy: LegacyTermsRow[]; pending: PendingInvoiceRow[] };
 
 const zl = (n: number) => new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2, useGrouping: "always" }).format(n);
 const dmy = (iso: string) => new Date(iso).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -37,6 +37,18 @@ export function TermsReview({ initial, canApply }: { initial: Review; canApply: 
     setMsg({ text: `Uzupełniono ${data.done} ${data.done === 1 ? "rezerwację" : "rezerwacji"}${data.skipped.length ? `, pominięto ${data.skipped.length} (${data.skipped[0].reason}${data.skipped.length > 1 ? "…" : ""})` : ""}.` });
   }
 
+  // Przeliczenie policzonych rezerwacji wg aktualnych zasad (wniosek 17).
+  async function resync() {
+    if (!window.confirm("Przeliczyć przyszłe rezerwacje klientów z warunkami? Ręczne kwoty, potwierdzone i zafakturowane zostają bez zmian.")) return;
+    setBusy(true);
+    setMsg(null);
+    const { ok, data } = await api<{ clients: number; updated: number; manual: number; review: Review }>("/api/clients/terms-backfill/resync", "POST");
+    setBusy(false);
+    if (!ok) return setMsg({ text: data.message ?? "Nie udało się przeliczyć.", error: true });
+    setReview(data.review);
+    setMsg({ text: `Przeliczono: zmienione ${data.updated} rezerwacji u ${data.clients} klientów${data.manual ? `; ręcznych bez zmian: ${data.manual}` : ""}.` });
+  }
+
   const mismatches = onlyBig ? review.mismatches.filter((m) => m.big) : review.mismatches;
   const toggle = (id: string) => setPicked((s) => {
     const n = new Set(s);
@@ -55,7 +67,44 @@ export function TermsReview({ initial, canApply }: { initial: Review; canApply: 
         <p className="mt-1 text-[13px] text-[var(--c-muted)]">
           {review.clientsWithTerms} klientów z tabelą cen (Warunki handlowe na karcie). Brak ceny dla urządzenia / liczby dni = cennik ogólny. Transport: 2 urządzenia jednego dnia = 1 kurs.
         </p>
+        {canApply && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void resync()}
+            className="mt-2 h-8 rounded-lg border border-[var(--c-border)] bg-white px-3 text-[13px] text-[var(--c-navy)] hover:border-[var(--c-brand)] disabled:opacity-40"
+          >
+            Przelicz policzone rezerwacje wg warunków
+          </button>
+        )}
       </div>
+
+      {review.pending.length > 0 && (
+        <section className="rounded-xl border border-[#E6CDB8] bg-[#FBF0E7] px-4 py-4">
+          <h2 className="m-0 text-[17px] font-semibold text-[#B8612F]">
+            FV – kwota do ustalenia <span className="tabular-nums">{review.pending.length}</span>
+          </h2>
+          <p className="mt-1 text-[12.5px] text-[#8A5A3A]">Warunki klienta: część na FV, bez ustalonej kwoty. Wpisz kwotę na FV w rezerwacji (albo „FV na całość”); faktury nie da się wystawić, dopóki kwota jest nieustalona.</p>
+          <ul className="mt-2 divide-y divide-[#EBD9C9] text-[13px]">
+            {review.pending.map((r) => (
+              <li key={r.rentalId} className="flex flex-wrap items-baseline gap-x-3 py-1.5">
+                <span className="tabular-nums">{dmy(r.startsAt)}</span>
+                {r.clientId ? (
+                  <Link href={`/klienci/${r.clientId}`} className="font-medium text-[var(--c-navy)] hover:text-[var(--c-brand)]">
+                    {r.clientName}
+                  </Link>
+                ) : (
+                  <span>{r.title}</span>
+                )}
+                <Link href={`/kalendarz/wynajem/${r.rentalId}?from=/kalendarz`} className="hover:text-[var(--c-brand)]">
+                  {r.deviceName}
+                </Link>
+                <span className="tabular-nums text-[var(--c-muted)]">razem {zl(r.totalNet)} zł netto</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="rounded-xl border border-[var(--c-border)] bg-white px-4 py-4">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -119,7 +168,7 @@ export function TermsReview({ initial, canApply }: { initial: Review; canApply: 
                         </td>
                         <td className={`${TD} text-right font-semibold tabular-nums`}>{zl(r.plan.totalNet)}</td>
                         <td className={`${TD} text-[12.5px]`}>
-                          {r.plan.vatApplicable ? (r.plan.invoicePart != null ? `część ${zl(r.plan.invoicePart)} na FV` : "FV całość") : "bez FV"} · {r.plan.paymentMethod === "CASH" ? "gotówka" : "przelew"}
+                          {r.plan.vatApplicable ? (r.plan.invoicePart != null ? `część ${zl(r.plan.invoicePart)} na FV` : r.plan.invoicePending ? "FV – kwota do ustalenia" : "FV całość") : "bez FV"} · {r.plan.paymentMethod === "CASH" ? "gotówka" : "przelew"}
                         </td>
                       </>
                     ) : (
@@ -179,6 +228,7 @@ export function TermsReview({ initial, canApply }: { initial: Review; canApply: 
                         <span className={m.big ? "font-semibold text-[#B8612F]" : ""}>
                           {zl(m.baseNet)} / {zl(m.expectedBase)}
                           {m.pct != null && ` (${m.pct > 0 ? "+" : ""}${Math.round(m.pct * 100)}%)`}
+                          {m.otherVariant && <span className="block text-[11.5px] font-normal text-[var(--c-muted)]">w warunkach tylko: {m.otherVariant}</span>}
                         </span>
                       ) : (
                         <span className="text-[var(--c-muted)]">{zl(m.baseNet)} · zgodne</span>

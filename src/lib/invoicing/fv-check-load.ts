@@ -18,8 +18,9 @@ export type FvWithoutInvoiceRow = {
   nip: string | null;
   deviceName: string;
   totalGross: string;
-  // Netto na fakturę (część z warunków klienta albo całość).
-  invoiceNet: string;
+  // Netto na fakturę (część z warunków klienta albo całość); null = do
+  // ustalenia (warunki „część” bez kwoty).
+  invoiceNet: string | null;
   paymentMethod: "CASH" | "TRANSFER";
   suggestions: FvSuggestion[];
 };
@@ -45,7 +46,7 @@ export async function loadFvWithoutInvoice(now = new Date()): Promise<FvWithoutI
       contactNameCache: true,
       client: { select: { name: true, nip: true } },
       device: { select: { name: true } },
-      finance: { select: { totalGross: true, totalNet: true, invoiceNet: true, vatApplicable: true, paymentMethod: true } },
+      finance: { select: { totalGross: true, totalNet: true, invoiceNet: true, invoiceNetPending: true, vatApplicable: true, paymentMethod: true } },
     },
   });
   if (rentals.length === 0) return [];
@@ -75,7 +76,8 @@ export async function loadFvWithoutInvoice(now = new Date()): Promise<FvWithoutI
   return open.map((r) => {
     const nip = r.client?.nip ?? r.contactNipCache ?? null;
     const f = r.finance;
-    const onInvoice = f ? invoiceNetOf({ vatApplicable: f.vatApplicable, invoiceNet: f.invoiceNet != null ? Number(f.invoiceNet) : null, totalNet: Number(f.totalNet) }) : 0;
+    const pending = !!f && f.vatApplicable && f.invoiceNetPending;
+    const onInvoice = f && !pending ? invoiceNetOf({ vatApplicable: f.vatApplicable, invoiceNet: f.invoiceNet != null ? Number(f.invoiceNet) : null, totalNet: Number(f.totalNet) }) : pending ? null : 0;
     return {
       rentalId: r.id,
       title: r.title,
@@ -87,7 +89,7 @@ export async function loadFvWithoutInvoice(now = new Date()): Promise<FvWithoutI
       nip,
       deviceName: r.device.name,
       totalGross: r.finance?.totalGross.toString() ?? "0",
-      invoiceNet: onInvoice.toFixed(2),
+      invoiceNet: onInvoice != null ? onInvoice.toFixed(2) : null,
       paymentMethod: r.finance?.paymentMethod ?? "TRANSFER",
       suggestions: candidates.length
         ? suggestInvoices({ startsAt: r.startsAt, endsAt: r.endsAt, clientId: r.clientId, nip, deviceName: r.device.name, invoiceNet: onInvoice }, candidates)

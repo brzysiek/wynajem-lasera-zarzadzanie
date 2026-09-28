@@ -242,7 +242,9 @@ export function RevenueDashboard({
           <KpiCard
             label="Przychód netto"
             amount={fmtPln(kpis.revenueNet)}
-            sub={`na FV ${fmtPln(invoiceSplit.withInvoice)} · bez FV ${fmtPln(invoiceSplit.withoutInvoice)}`}
+            sub={`na FV ${fmtPln(invoiceSplit.withInvoice)} · bez FV ${fmtPln(invoiceSplit.withoutInvoice)}${
+              invoiceSplit.pendingCount ? ` · FV – kwota nieustalona ${fmtPln(invoiceSplit.pendingInvoice)} (${invoiceSplit.pendingCount})` : ""
+            }`}
             trend={showTrend ? <TrendChip value={trendPct(kpis.revenueNet, comparison!.revenueNet)} vsLabel={comparison!.label} /> : null}
           />
           <KpiCard

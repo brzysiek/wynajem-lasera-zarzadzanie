@@ -317,7 +317,7 @@ export const TOOLS: McpTool[] = [
     title: "Kalendarz wynajmów",
     description:
       "Wynajmy i szkolenia w zakresie dat (maks. 93 dni): urządzenie, klient, adres, kierowca, rozliczenie, znacznik FV i faktura; " +
-      "positions = pozycje rozliczenia (wynajem, transport, impulsy, nakładka), invoiceNet = netto na fakturę (0 = bez FV), priceSource (PRICE_LIST / CLIENT_TERMS / MANUAL / PULSE_CALCULATED), termsWarning = cena ≠ warunki klienta (> 10%).",
+      "positions = pozycje rozliczenia (wynajem, transport, impulsy, nakładka), invoiceNet = netto na fakturę (0 = bez FV; null + invoicePending = FV, kwota do ustalenia — warunki „część” bez kwoty), priceSource (PRICE_LIST / CLIENT_TERMS / MANUAL / PULSE_CALCULATED), termsWarning = cena ≠ warunki klienta (> 10%).",
     inputSchema: obj({ od: s("Od RRRR-MM-DD."), do: s("Do RRRR-MM-DD (włącznie).") }, ["od", "do"]),
     readOnly: true,
     run: async (a) => {
@@ -350,6 +350,7 @@ export const TOOLS: McpTool[] = [
               fakturowniaInvoiceNumber: true,
               confirmedAt: true,
               invoiceNet: true,
+              invoiceNetPending: true,
               baseRentalPriceNet: true,
               baseRentalPriceSource: true,
               deviceVariant: true,
@@ -382,7 +383,11 @@ export const TOOLS: McpTool[] = [
           driver: r.driver?.name ?? null,
           fv: r.finance?.vatApplicable ?? false,
           totalNet: r.finance?.totalNet.toString() ?? null,
-          invoiceNet: r.finance ? invoiceNetOf({ vatApplicable: r.finance.vatApplicable, invoiceNet: r.finance.invoiceNet != null ? Number(r.finance.invoiceNet) : null, totalNet: Number(r.finance.totalNet) }) : null,
+          invoiceNet:
+            r.finance && !(r.finance.vatApplicable && r.finance.invoiceNetPending)
+              ? invoiceNetOf({ vatApplicable: r.finance.vatApplicable, invoiceNet: r.finance.invoiceNet != null ? Number(r.finance.invoiceNet) : null, totalNet: Number(r.finance.totalNet) })
+              : null,
+          invoicePending: !!r.finance?.vatApplicable && !!r.finance?.invoiceNetPending,
           positions: r.finance
             ? positionsSummary({
                 eventType: r.eventType,
@@ -1057,7 +1062,7 @@ export const TOOLS: McpTool[] = [
     title: "Zgłoś propozycje zmian",
     description:
       "Zgłasza hurtem propozycje do akceptacji administratora (Porządki → Propozycje). Każda: rodzaj (pole | osoba | archiwizacja | scalenie | wydzielenie | dopasowanie_platnosci | wykluczenie), klient_id, " +
-      "dla pola: pole + proponowane (także nowe pola karty jak w klient_zmien oraz agreedPrice, transportPriceNet, paymentForm, paymentTerms, frameAgreement); dla osoby: osoba_id + pole + proponowane (także roles, preferredChannel, salutation, trainedOn); dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id; " +
+      "dla pola: pole + proponowane (kwoty liczbą albo tekstem; null = wyczyść pole; nierozpoznana wartość odrzuca propozycję) (także nowe pola karty jak w klient_zmien oraz agreedPrice, transportPriceNet, paymentForm, paymentTerms, frameAgreement); dla osoby: osoba_id + pole + proponowane (także roles, preferredChannel, salutation, trainedOn); dla archiwizacji: klient_id albo sygnal_id + powod + dopisek; dla scalenia: duplikat_id; " +
       "dla wydzielenia (rodzaj: wydzielenie; klient-zlepek → nowy klient): osoby_ids, nazwa, opcjonalnie nip, ulica, kod, miasto, " +
       "invoiceNip (faktury z tym NIP-em nabywcy przechodzą; bez niego — faktury z NIP-em nowego klienta), historyKeys (klucze grup z kalendarzy z narzędzia dopasowania). " +
       "Nowy klient nie dziedziczy źródła ani tagu HubSpot zlepka. " +

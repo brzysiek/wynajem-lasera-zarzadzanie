@@ -581,6 +581,9 @@ export function DriverFinancePanel({
               {fmt(cashTotal)} zł
             </div>
             <div className="mt-1.5 text-[12.5px] opacity-85">do odebrania od klientki</div>
+            {finance.vatApplicable && finance.invoiceNetPending && (
+              <div className="mt-1 text-[11px] font-semibold opacity-85">część na FV jeszcze nieustalona — zapytaj biuro przed pobraniem</div>
+            )}
             {pending && (
               <div className="mt-1 text-[11px] font-semibold opacity-85">
                 kwota tymczasowa — uzupełnij liczniki impulsów poniżej

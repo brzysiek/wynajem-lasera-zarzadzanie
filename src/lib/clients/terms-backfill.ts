@@ -3,7 +3,7 @@ import { recordChanges, type ChangeEntry } from "@/lib/changelog/record";
 import { saveRentalFinance } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { warsawYmd } from "@/lib/clients/day-route";
-import { deviceCodeFor, invoiceDefaults, parseInvoiceMode, positionsSummary } from "@/lib/clients/terms-rules";
+import { TERMS_DEVICE_LABEL, invoiceDefaults, parseInvoiceMode, positionsSummary, termsVariantFor } from "@/lib/clients/terms-rules";
 import { logError } from "@/lib/logger";
 import { compareWithTerms, planBackfill, type BackfillPlan, type PlanTerms } from "@/lib/clients/terms-backfill-rules";
 
@@ -37,7 +37,13 @@ export type MismatchRow = {
   transportNet: number | null;
   expectedTransport: number | null;
   big: boolean;
+  // Klient ma w warunkach tylko inny wariant (np. „LightSheer 1 głowica”) —
+  // porównanie z nim.
+  otherVariant: string | null;
 };
+
+// Kwota na FV do ustalenia (warunki „część” bez kwoty) — wniosek 17.
+export type PendingInvoiceRow = { rentalId: string; title: string; startsAt: string; clientId: string | null; clientName: string | null; deviceName: string; totalNet: number };
 
 const SELECT = {
   id: true,
@@ -131,7 +137,7 @@ export type LegacyTermsRow = { clientId: string; clientName: string; agreedPrice
 
 export async function loadTermsReview(
   today = new Date(),
-): Promise<{ backfill: BackfillRow[]; mismatches: MismatchRow[]; clientsWithTerms: number; legacy: LegacyTermsRow[] }> {
+): Promise<{ backfill: BackfillRow[]; mismatches: MismatchRow[]; clientsWithTerms: number; legacy: LegacyTermsRow[]; pending: PendingInvoiceRow[] }> {
   const loaded = await load(today);
   // Dawna „cena ustalona” bez tabeli cen — do rozpisania na urządzenia (karta
   // klienta → Warunki handlowe → Edytuj, albo propozycje agenta cennik_klienta).
@@ -158,8 +164,7 @@ export async function loadTermsReview(
     const k = `${r.clientId}|${warsawYmd(r.startsAt)}`;
     // Transport tego dnia już jest w innej rezerwacji — tu oczekujemy 0.
     const takenByOther = (withTransport.get(k) ?? 0) - (transport && transport > 0 ? 1 : 0) > 0;
-    const code = deviceCodeFor("WYNAJEM", r.device.pricingCategory, f.deviceVariant);
-    const cmp = compareWithTerms({ baseNet: Number(f.baseRentalPriceNet), transportNet: transport, code, days }, t.terms, takenByOther);
+    const cmp = compareWithTerms({ baseNet: Number(f.baseRentalPriceNet), transportNet: transport, category: r.device.pricingCategory, variant: f.deviceVariant, days }, t.terms, takenByOther);
     if (!cmp) continue;
     mismatches.push({
       rentalId: r.id,
@@ -175,9 +180,25 @@ export async function loadTermsReview(
       transportNet: transport,
       expectedTransport: cmp.transport?.expected ?? null,
       big: cmp.big,
+      otherVariant: cmp.base?.otherVariant ? TERMS_DEVICE_LABEL[cmp.base.otherVariant] : null,
     });
   }
-  return { backfill, mismatches, clientsWithTerms: loaded.terms.size, legacy };
+  const pending = (
+    await prisma.rental.findMany({
+      where: { deletedInGoogle: false, startsAt: { gt: today }, finance: { invoiceNetPending: true } },
+      orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+      select: { id: true, title: true, startsAt: true, clientId: true, client: { select: { name: true, shortName: true } }, device: { select: { name: true } }, finance: { select: { totalNet: true } } },
+    })
+  ).map((r) => ({
+    rentalId: r.id,
+    title: r.title,
+    startsAt: r.startsAt.toISOString(),
+    clientId: r.clientId,
+    clientName: r.client ? (r.client.shortName ?? r.client.name) : null,
+    deviceName: r.device.name,
+    totalNet: Number(r.finance!.totalNet),
+  }));
+  return { backfill, mismatches, clientsWithTerms: loaded.terms.size, legacy, pending };
 }
 
 // Wykonanie dla wskazanych rezerwacji — plan liczony od nowa na serwerze;
@@ -208,6 +229,7 @@ export async function applyBackfill(rentalIds: string[], actor: { userId: string
       paymentMethod: r.plan.paymentMethod,
       transportPriceNet: String(r.plan.transportNet),
       invoiceNet: r.plan.invoicePart != null ? String(r.plan.invoicePart) : "",
+      invoiceNetPending: r.plan.invoicePending,
     });
     if (!res.ok) {
       skipped.push({ rentalId: r.rentalId, reason: res.message });
@@ -225,7 +247,12 @@ export async function applyBackfill(rentalIds: string[], actor: { userId: string
 // warunków — bez rozliczenia: plan jak wyżej; z ceną z cennika albo z
 // warunków: przeliczenie. Ręczne kwoty (MANUAL), potwierdzone przez kierowcę
 // i z wystawioną fakturą — bez zmian (ręczne trafiają na listę rozbieżności).
-export async function syncFutureRentalsToTerms(clientId: string, actor: { userId: string }, today = new Date()): Promise<{ filled: number; updated: number; manual: number }> {
+export async function syncFutureRentalsToTerms(
+  clientId: string,
+  actor: { userId: string },
+  today = new Date(),
+  opts: { fillMissing?: boolean } = {},
+): Promise<{ filled: number; updated: number; manual: number }> {
   const out = { filled: 0, updated: 0, manual: 0 };
   const c = await prisma.client.findUnique({
     where: { id: clientId },
@@ -255,8 +282,8 @@ export async function syncFutureRentalsToTerms(clientId: string, actor: { userId
   // Dzień z transportem: najpierw rezerwacje, których nie ruszamy.
   const dayTaken = new Set(rentals.filter((r) => r.finance && isFixed(r.finance) && Number(r.finance.transportPriceNet ?? 0) > 0).map((r) => warsawYmd(r.startsAt)));
   const entries: ChangeEntry[] = [];
-  const summary = (f: { baseRentalPriceNet: unknown; transportPriceNet: unknown; totalNet: unknown }) =>
-    `wynajem ${Number(f.baseRentalPriceNet)} · transport ${Number(f.transportPriceNet ?? 0)} · razem ${Number(f.totalNet)}`;
+  const summary = (f: { baseRentalPriceNet: unknown; transportPriceNet: unknown; totalNet: unknown; deviceVariant: string | null; invoiceNetPending: boolean }) =>
+    `wynajem ${Number(f.baseRentalPriceNet)}${f.deviceVariant ? ` (${f.deviceVariant})` : ""} · transport ${Number(f.transportPriceNet ?? 0)} · razem ${Number(f.totalNet)}${f.invoiceNetPending ? " · FV do ustalenia" : ""}`;
 
   for (const r of rentals) {
     const day = warsawYmd(r.startsAt);
@@ -267,15 +294,32 @@ export async function syncFutureRentalsToTerms(clientId: string, actor: { userId
     }
     const days = rentalDurationDays(r.startsAt, r.endsAt);
     let input: Parameters<typeof saveRentalFinance>[1];
+    if (!f && opts.fillMissing === false) continue;
     if (!f) {
       const variantOptions = Array.isArray(r.device.variantOptions) ? (r.device.variantOptions as unknown[]).filter((v): v is string => typeof v === "string") : [];
       const plan = planBackfill({ title: r.title, description: r.description, category: r.device.pricingCategory, variantOptions, days }, terms, priceList, dayTaken.has(day));
       if (!plan.ready) continue;
-      input = { deviceVariant: plan.variant, vatApplicable: plan.vatApplicable, paymentMethod: plan.paymentMethod, transportPriceNet: String(plan.transportNet), invoiceNet: plan.invoicePart != null ? String(plan.invoicePart) : "" };
+      input = {
+        deviceVariant: plan.variant,
+        vatApplicable: plan.vatApplicable,
+        paymentMethod: plan.paymentMethod,
+        transportPriceNet: String(plan.transportNet),
+        invoiceNet: plan.invoicePart != null ? String(plan.invoicePart) : "",
+        invoiceNetPending: plan.invoicePending,
+      };
     } else {
       const transport = terms.transportNet != null ? (dayTaken.has(day) ? 0 : terms.transportNet) : f.transportPriceNet != null ? Number(f.transportPriceNet) : null;
+      const variantOptions = Array.isArray(r.device.variantOptions) ? (r.device.variantOptions as unknown[]).filter((v): v is string => typeof v === "string") : [];
+      // „Część” bez kwoty: wpisana wcześniej część zostaje; bez niej — FV do ustalenia.
+      const invoice = !inv
+        ? { invoiceNet: f.invoiceNet != null ? f.invoiceNet.toString() : "", invoiceNetPending: f.invoiceNetPending }
+        : inv.pending
+          ? f.invoiceNet != null
+            ? { invoiceNet: f.invoiceNet.toString(), invoiceNetPending: false }
+            : { invoiceNet: "", invoiceNetPending: true }
+          : { invoiceNet: inv.invoiceNet != null ? String(inv.invoiceNet) : "", invoiceNetPending: false };
       input = {
-        deviceVariant: f.deviceVariant,
+        deviceVariant: termsVariantFor(r.device.pricingCategory, f.deviceVariant, variantOptions, terms.prices, days),
         vatApplicable: inv ? inv.vatApplicable : f.vatApplicable,
         vatRate: f.vatRate.toString(),
         paymentMethod: pay ?? f.paymentMethod,
@@ -283,7 +327,7 @@ export async function syncFutureRentalsToTerms(clientId: string, actor: { userId
         transportPaidSeparately: f.transportPaidSeparately,
         transportVatApplicable: f.transportVatApplicable,
         transportPaymentMethod: f.transportPaymentMethod,
-        invoiceNet: inv ? (inv.invoiceNet != null ? String(inv.invoiceNet) : "") : f.invoiceNet != null ? f.invoiceNet.toString() : "",
+        ...invoice,
       };
     }
     const res = await saveRentalFinance(r, input);
@@ -291,13 +335,43 @@ export async function syncFutureRentalsToTerms(clientId: string, actor: { userId
     const after = await prisma.rentalFinance.findUnique({ where: { rentalId: r.id } });
     if (!after) continue;
     if (Number(after.transportPriceNet ?? 0) > 0) dayTaken.add(day);
-    const changed = !f || !f.totalNet.equals(after.totalNet) || String(f.invoiceNet ?? "") !== String(after.invoiceNet ?? "") || f.vatApplicable !== after.vatApplicable || f.paymentMethod !== after.paymentMethod;
+    const changed =
+      !f ||
+      !f.totalNet.equals(after.totalNet) ||
+      String(f.invoiceNet ?? "") !== String(after.invoiceNet ?? "") ||
+      f.invoiceNetPending !== after.invoiceNetPending ||
+      f.vatApplicable !== after.vatApplicable ||
+      f.paymentMethod !== after.paymentMethod ||
+      f.deviceVariant !== after.deviceVariant ||
+      f.baseRentalPriceSource !== after.baseRentalPriceSource;
     if (!changed) continue;
     if (f) out.updated++;
     else out.filled++;
     entries.push({ entity: "RENTAL", entityId: r.id, operation: "FIELD_CHANGE", clientId, field: "rozliczenie wg warunków klienta", before: f ? summary(f) : null, after: summary(after) });
   }
   if (entries.length) await recordChanges(prisma, actor, entries);
+  return out;
+}
+
+// Przeliczenie policzonych już przyszłych rezerwacji wszystkich klientów z
+// tabelą cen (strona Kwoty wg warunków) — po zmianie reguł (wniosek 17:
+// wariant Almy z tabeli klienta, FV do ustalenia). Te same zasady co po
+// zapisie warunków: ręczne, potwierdzone i zafakturowane bez zmian.
+export async function syncAllFutureRentalsToTerms(actor: { userId: string }): Promise<{ clients: number; updated: number; manual: number }> {
+  const clients = await prisma.client.findMany({ where: { archivedAt: null, prices: { some: {} } }, select: { id: true } });
+  const out = { clients: clients.length, updated: 0, manual: 0 };
+  for (const c of clients) {
+    // Rezerwacje bez kwoty zostają do „Uzupełnij zaznaczone” (przegląd wyżej).
+    let r: { updated: number; manual: number } | null = null;
+    try {
+      r = await syncFutureRentalsToTerms(c.id, actor, new Date(), { fillMissing: false });
+    } catch (err) {
+      logError("terms_sync_failed", err, { clientId: c.id });
+    }
+    if (!r) continue;
+    out.updated += r.updated;
+    out.manual += r.manual;
+  }
   return out;
 }
 
