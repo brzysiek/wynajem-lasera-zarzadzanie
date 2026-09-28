@@ -84,6 +84,10 @@ jobs:
 
       - name: Build
         run: npm run build
+        # Lokalnie build trwa ~1,5 min; na runnerze zdarzyło się zawieszenie na
+        # „Collecting build traces” (28.09.2026, 26+ min). Przerwij zamiast
+        # blokować deploy godzinami — wtedy „Re-run failed jobs”.
+        timeout-minutes: 15
         env:
           NEXT_PUBLIC_BASE_PATH: /wynajem
 
@@ -140,6 +144,8 @@ jobs:
 
       - name: Build
         run: npm run build
+        # Zob. build-server-1 — zawieszenie na „Collecting build traces”.
+        timeout-minutes: 15
         env:
           # Empty basePath: server 2 is served at its domain's root, not
           # under /wynajem. Must match BASE_PATH passed to deploy-pull.sh
