@@ -17,6 +17,8 @@ import { ArchiveDialog } from "@/components/porzadki/archive-dialog";
 import { BTN, BTN_PRIMARY, LostDialog } from "./lead-dialogs";
 import { StageChip, TaskIcon, XCircleIcon, fmtRange, fmtWhen } from "./lead-ui";
 import { Dots } from "./funnel-views";
+import { StageTip } from "./stage-tip";
+import type { Playbook } from "@/lib/leads/playbook";
 
 // Karta sygnału (prompt 2, 3.3) — panel boczny z każdego widoku. Szybkie
 // akcje na górze, zawsze widoczne; pod nimi następny krok, rezerwacja, dane
@@ -66,6 +68,7 @@ export function LeadCard({
   onOutcome,
   agent = false,
   canArchive = false,
+  playbook = null,
 }: {
   leadId: string;
   users: { id: string; name: string }[];
@@ -79,6 +82,8 @@ export function LeadCard({
   agent?: boolean;
   // ADMIN: „Archiwizuj” / „Przywróć” (Porządki → Archiwum).
   canArchive?: boolean;
+  // Złote zasady: podpowiedź dla etapu (skrypty, pytania, szkic oferty).
+  playbook?: Playbook | null;
 }) {
   const [d, setD] = useState<LeadDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -376,6 +381,17 @@ export function LeadCard({
           </p>
         )}
 
+        {playbook && (
+          <StageTip
+            leadId={d.id}
+            stage={d.stage}
+            followUpNo={d.followUpNo}
+            playbook={playbook}
+            smsText={phone && noAnswerTpl ? applySmsPlaceholders(noAnswerTpl.body, { clientName: d.clientName ?? d.person }) : null}
+            canAct={!agent}
+            onSendSms={(message) => run(`/api/leads/${leadId}/sms`, "POST", { phone, message }, "SMS wysłany.")}
+          />
+        )}
         {!agent && OPEN_STAGES.includes(d.stage) && d.attempts >= NO_ANSWER_LIMIT && (
           <div className="flex flex-wrap items-center gap-2 border-l-[3px] border-[#E08A5C] bg-[#FBF0E7] px-3 py-2 text-[13px] text-[#B8612F]">
             <span className="flex-grow">
@@ -699,7 +715,9 @@ function CallResult({
   initialMode,
   stage,
   busy,
+  noAnswerTpl,
   phone,
+  clientName,
   unqualified,
   noAnswerCount,
   nextStepType,
@@ -708,6 +726,7 @@ function CallResult({
   onLost,
   onSmsDraft,
   run,
+  sendSms,
 }: {
   leadId: string;
   requestedFrom: string | null;
@@ -734,11 +753,13 @@ function CallResult({
   const chip = (on: boolean) =>
     `rounded-[14px] border px-2.5 py-[3px] text-[12px] transition-colors disabled:opacity-40 ${on ? "border-[#0C3450] bg-[#0C3450] text-white" : "border-[#C9D3DC] bg-white hover:border-[#0C3450]"}`;
   const followUp = nextStepType === "FOLLOW_UP_OFERTY" && followUpNo === 1;
+  // Złote zasady, pkt 3: próby w różne dni i pory — jutro 16:00, potem 8:30.
+  const nextTry = noAnswerCount === 0 ? "jutro 16:00" : noAnswerCount === 1 ? "jutro 8:30" : "jutro 10:00";
   const noAnswerHint = followUp
     ? "Bez odpowiedzi na 1. follow-up → 2. follow-up za 7 dni rob."
     : noAnswerCount >= NO_ANSWER_LIMIT
       ? `Już ${noAnswerCount} próby bez odebrania — kolejna jutro 10:00, ale lepiej SMS albo przegrana „brak kontaktu” (baner wyżej).`
-      : `Próba ${noAnswerCount + 1} z ${NO_ANSWER_LIMIT}, następny krok jutro 10:00.${noAnswerCount + 1 >= NO_ANSWER_LIMIT ? " To ostatnia — potem szkic SMS i propozycja przegranej „brak kontaktu”." : ""}`;
+      : `Próba ${noAnswerCount + 1} z ${NO_ANSWER_LIMIT}, następna: ${nextTry}${phone && noAnswerTpl ? " (SMS z szablonu idzie od razu)" : ""}.${noAnswerCount + 1 >= NO_ANSWER_LIMIT ? " To ostatnia — potem propozycja przegranej „brak kontaktu”." : ""}`;
 
   return (
     <div className="flex flex-col gap-2 border-t border-[var(--c-border)] pt-3">
@@ -754,13 +775,15 @@ function CallResult({
           title={noAnswerHint}
           className={chip(false)}
           onClick={async () => {
-            const ok = await run({ outcome: "no_answer" }, followUp ? "Bez odpowiedzi — 2. follow-up za 7 dni rob." : "Zapisano: nie odebrała. Następny krok: jutro 10:00.");
+            const ok = await run({ outcome: "no_answer" }, followUp ? "Bez odpowiedzi — 2. follow-up za 7 dni rob." : `Zapisano: nie odebrała. Następna próba: ${nextTry}.`);
             if (!ok) return;
-            if (!followUp && noAnswerCount + 1 >= NO_ANSWER_LIMIT && phone) onSmsDraft();
-            else onDone(true);
+            // Złote zasady, pkt 2: nie odebrała → SMS od razu (szablon „lead_no_answer”).
+            if (!followUp && phone && noAnswerTpl) await sendSms(applySmsPlaceholders(noAnswerTpl.body, { clientName }));
+            else if (!followUp && noAnswerCount + 1 >= NO_ANSWER_LIMIT && phone) return onSmsDraft();
+            onDone(true);
           }}
         >
-          {followUp ? "Bez odpowiedzi → 2. follow-up" : "Nie odebrała → jutro"}
+          {followUp ? "Bez odpowiedzi → 2. follow-up" : `Nie odebrała → ${phone && noAnswerTpl ? "SMS + " : ""}${nextTry}`}
         </button>
         <button type="button" className={chip(mode === "callback")} onClick={() => setMode(mode === "callback" ? null : "callback")}>
           Oddzwoni – termin

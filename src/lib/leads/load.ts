@@ -380,3 +380,28 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
 export async function loadStaffUsers(): Promise<{ id: string; name: string }[]> {
   return prisma.user.findMany({ where: { role: { in: ["ADMIN", "STAFF"] } }, orderBy: { name: "asc" }, select: { id: true, name: true } });
 }
+
+// Skrzynka → „Plan dnia” (złote zasady): dzisiejsze wynajmy (z kierowcą),
+// ile sygnałów zalogowana osoba dziś obsłużyła (rozmowa, nieodebrane, mail,
+// SMS, zmiana etapu), a w tygodniu — ile sygnałów doszło do oferty i do
+// rezerwacji (od poniedziałku).
+export type DayProgress = { rentalsToday: number; rentalsWithDriver: number; doneToday: number; weekOffers: number; weekReservations: number };
+
+export async function loadDayProgress(userId: string, now = new Date()): Promise<DayProgress> {
+  const sod = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const eod = new Date(sod.getTime() + 86_400_000);
+  const monday = new Date(sod.getTime() - ((sod.getDay() + 6) % 7) * 86_400_000);
+  const [rentals, done, stageRows] = await Promise.all([
+    prisma.rental.findMany({ where: { deletedInGoogle: false, eventType: "WYNAJEM", startsAt: { gte: sod, lt: eod } }, select: { driverId: true } }),
+    prisma.leadActivity.groupBy({ by: ["leadId"], where: { userId, createdAt: { gte: sod }, leadId: { not: null }, type: { in: ["CALL", "CALL_NO_ANSWER", "EMAIL", "SMS", "STAGE_CHANGE"] } } }),
+    prisma.leadActivity.findMany({ where: { type: "STAGE_CHANGE", createdAt: { gte: monday }, leadId: { not: null } }, select: { leadId: true, body: true } }),
+  ]);
+  const reached = (label: string) => new Set(stageRows.filter((r) => (r.body ?? "").includes(`→ ${label}`)).map((r) => r.leadId)).size;
+  return {
+    rentalsToday: rentals.length,
+    rentalsWithDriver: rentals.filter((r) => r.driverId).length,
+    doneToday: done.length,
+    weekOffers: reached("Oferta wysłana"),
+    weekReservations: reached("Rezerwacja"),
+  };
+}

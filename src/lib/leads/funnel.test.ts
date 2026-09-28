@@ -20,9 +20,10 @@ describe("wynik kontaktu → następny krok", () => {
     expect(p).toMatchObject({ followUpNo: 2, attempts: 0, noAnswerLimit: false });
   });
 
-  it("Nie odebrała → jutro 10:00 (z piątku na poniedziałek); 3. próba = limit", () => {
+  it("Nie odebrała → jutro 16:00, potem 8:30 (z piątku na poniedziałek); 3. próba = limit", () => {
     const p1 = planOutcome(state, "no_answer", at(25, 15));
-    expect(p1.nextActionAt).toEqual(at(28, 10));
+    expect(p1.nextActionAt).toEqual(at(28, 16));
+    expect(planOutcome({ ...state, attempts: 1 }, "no_answer", at(28, 16)).nextActionAt).toEqual(at(29, 8, 30));
     expect(p1).toMatchObject({ attempts: 1, nextStepType: "PONOWNA_PROBA", noAnswerLimit: false, contact: false });
     const p3 = planOutcome({ ...state, attempts: 2 }, "no_answer", at(28, 11));
     expect(p3).toMatchObject({ attempts: 3, noAnswerLimit: true });

@@ -14,6 +14,10 @@ import { useMediaQuery } from "@/components/clients/use-media-query";
 import { LeadCard, type CardIntent } from "./lead-card";
 import { toFunnel, type LinkSuggestion } from "./funnel-views";
 import { InboxView } from "./inbox-view";
+import { Cheatsheet } from "./cheatsheet";
+import type { Playbook } from "@/lib/leads/playbook";
+import type { DayProgress } from "@/lib/leads/load";
+import { applySmsPlaceholders } from "@/lib/sms-template";
 import { ListView } from "./list-view";
 import { BoardView } from "./board-view";
 import { ReportView } from "./report-view";
@@ -90,6 +94,8 @@ export function LeadsManager({
   hubspotConfigured,
   clients,
   initialSelectedId,
+  playbook,
+  progress,
 }: {
   rows: LeadRow[];
   users: { id: string; name: string }[];
@@ -107,6 +113,10 @@ export function LeadsManager({
   hubspotConfigured: boolean;
   clients: ReviewClient[];
   initialSelectedId: string | null;
+  // Złote zasady (Ściąga, podpowiedzi w karcie, cel sezonu).
+  playbook: Playbook;
+  // Skrzynka → „Plan dnia”: dzisiejsze wynajmy, obsłużone dziś, tydzień.
+  progress: DayProgress;
 }) {
   const router = useRouter();
   const wide = useMediaQuery("(min-width: 1280px)");
@@ -184,7 +194,10 @@ export function LeadsManager({
     }
   }
 
+  const [sheet, setSheet] = useState(false);
+
   function open(id: string, i: CardIntent = null) {
+    setSheet(false);
     setSelectedId(id);
     setIntent(i);
     const url = new URL(window.location.href);
@@ -235,14 +248,33 @@ export function LeadsManager({
     const r = byId.get(id);
     const { ok, data } = await api(`/api/leads/${id}/activity`, "POST", { outcome });
     if (!ok) return setToast({ text: data.message ?? "Nie udało się zapisać.", error: true });
+    // Złote zasady, pkt 2: nie odebrała → SMS z szablonu od razu.
+    let smsNote = "";
+    if (outcome === "no_answer" && r?.phone) {
+      const tpl = await noAnswerTemplate();
+      if (tpl) {
+        const sms = await api(`/api/leads/${id}/sms`, "POST", { phone: r.phone, message: applySmsPlaceholders(tpl, { clientName: r.clientName ?? r.person }) });
+        smsNote = sms.ok ? " SMS z szablonu wysłany." : ` SMS nie poszedł: ${sms.data.message ?? "błąd bramki"}.`;
+      }
+    }
     const msg =
       outcome === "talked"
         ? "rozmowa zapisana → W kontakcie, krok za 2 dni rob. (zmienisz w karcie)"
         : outcome === "offer_sent"
           ? "oferta wysłana → follow-up za 3 dni rob."
-          : "nie odebrała → kolejna próba jutro 10:00";
-    setToast({ text: `${r ? r.title : "Sygnał"}: ${msg}.` });
+          : "nie odebrała → kolejna próba jutro";
+    setToast({ text: `${r ? r.title : "Sygnał"}: ${msg}.${smsNote}` });
     refresh();
+  }
+
+  // Szablon „lead_no_answer” (Ustawienia → Szablony SMS) — pobrany raz.
+  const [tplCache, setTplCache] = useState<string | null | undefined>(undefined);
+  async function noAnswerTemplate(): Promise<string | null> {
+    if (tplCache !== undefined) return tplCache;
+    const { ok, data } = await api<{ templates: { key: string; body: string }[] }>("/api/message-templates", "GET");
+    const body = ok ? (data.templates.find((t) => t.key === "lead_no_answer")?.body ?? null) : null;
+    setTplCache(body);
+    return body;
   }
 
   function startSerial() {
@@ -285,12 +317,15 @@ export function LeadsManager({
       onOutcome={onOutcome}
       agent={readOnly}
       canArchive={isAdmin}
+      playbook={playbook}
     />
   ) : null;
+  // Prawa kolumna: Ściąga albo karta sygnału.
+  const side = sheet ? <Cheatsheet playbook={playbook} onClose={() => setSheet(false)} /> : card;
 
   return (
     <div style={APP_CSS_VARS} className="text-[var(--c-text)]">
-      <div className={wide && selectedId ? "grid grid-cols-[minmax(0,1fr)_420px] gap-5" : ""}>
+      <div className={wide && side ? `grid ${sheet ? "grid-cols-[minmax(0,1fr)_480px]" : "grid-cols-[minmax(0,1fr)_420px]"} gap-5` : ""}>
         <div className="flex min-w-0 flex-col gap-[18px]">
           {/* Nagłówek */}
           <div className="flex flex-wrap items-center gap-3">
@@ -312,6 +347,15 @@ export function LeadsManager({
               ))}
             </div>
             <div className="flex-grow" />
+            <button
+              type="button"
+              onClick={() => setSheet((v) => !v)}
+              aria-pressed={sheet}
+              className={`h-[34px] rounded-lg border px-3 text-[13px] transition-colors ${sheet ? "border-[#0C3450] bg-[#0C3450] text-white" : "border-[#C9D3DC] bg-white text-[#0C3450] hover:border-[var(--c-brand)]"}`}
+              title="Złote zasady obsługi zapytań"
+            >
+              📖 Ściąga
+            </button>
             {hubspotConfigured && !readOnly && (
               <button
                 type="button"
@@ -379,6 +423,8 @@ export function LeadsManager({
                   suggestions={linkSuggestions}
                   onLink={(leadId, rentalId) => void linkRental(leadId, rentalId)}
                   callStats={callStats}
+                  progress={progress}
+                  playbook={playbook}
                 />
               )}
 
@@ -406,16 +452,16 @@ export function LeadsManager({
           )}
         </div>
 
-        {/* Karta sygnału: kolumna (≥1280 px) albo panel wysuwany */}
-        {card &&
+        {/* Karta sygnału / Ściąga: kolumna (≥1280 px) albo panel wysuwany */}
+        {side &&
           (wide ? (
-            <aside aria-label="Karta sygnału" className="sticky top-4 h-[calc(100vh-110px)] overflow-hidden rounded-[14px] border border-[var(--c-border)]">
-              {card}
+            <aside aria-label={sheet ? "Ściąga" : "Karta sygnału"} className="sticky top-4 h-[calc(100vh-110px)] overflow-hidden rounded-[14px] border border-[var(--c-border)]">
+              {side}
             </aside>
           ) : (
-            <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label="Karta sygnału">
-              <button type="button" aria-label="Zamknij" className="absolute inset-0 bg-black/25" onClick={close} />
-              <div className="relative h-full w-full max-w-[440px] shadow-[0_0_40px_rgba(0,0,0,0.2)]">{card}</div>
+            <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label={sheet ? "Ściąga" : "Karta sygnału"}>
+              <button type="button" aria-label="Zamknij" className="absolute inset-0 bg-black/25" onClick={() => (sheet ? setSheet(false) : close())} />
+              <div className="relative h-full w-full max-w-[480px] shadow-[0_0_40px_rgba(0,0,0,0.2)]">{side}</div>
             </div>
           ))}
       </div>

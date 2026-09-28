@@ -150,11 +150,14 @@ export function planOutcome(s: OutcomeState, outcome: Outcome, now: Date, opts: 
       contact: false,
     };
   }
+  // Złote zasady (28.09): 3 próby w 3 różne dni i pory — od razu, jutro
+  // 16–17, pojutrze 8–9 (najlepsze okna wg badań); dalej jutro 10:00.
   const attempts = s.attempts + 1;
+  const next = nextWorkday(now);
   return {
     ...base,
     stage: null,
-    nextActionAt: nextWorkdayAt10(now),
+    nextActionAt: attempts === 1 ? atHour(next, 16) : attempts === 2 ? new Date(next.getFullYear(), next.getMonth(), next.getDate(), 8, 30) : nextWorkdayAt10(now),
     nextStepType: "PONOWNA_PROBA",
     nextStepNote: `próba ${Math.min(attempts + 1, NO_ANSWER_LIMIT + 1)} (nie odebrała ${attempts}×)`,
     attempts,

@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { requireClientsPageAccess } from "@/lib/clients/page-access";
-import { loadArchived2025Rows, loadLeadRows, loadLinkSuggestions, loadStaffUsers, todayCallStats } from "@/lib/leads/load";
+import { loadArchived2025Rows, loadDayProgress, loadLeadRows, loadLinkSuggestions, loadStaffUsers, todayCallStats } from "@/lib/leads/load";
 import { syncLeadsWithRentalsSafe } from "@/lib/leads/rental-link";
 import { lastDealsSync } from "@/lib/leads/hubspot-sync";
 import { LeadsManager } from "@/components/leads/leads-manager";
 import { agentAssignees } from "@/lib/agent-api/assignees";
+import { loadPlaybook } from "@/lib/leads/playbook-load";
 
 // Sygnały — miejsce pracy biura nad zapytaniami klientów (CRM, prompt 2A).
 // ADMIN/STAFF, jak moduł Klienci; KIEROWCA przekierowany.
@@ -24,7 +25,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       select: { id: true, name: true, city: true, contacts: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true } } },
     }),
   ]);
-  const [linkSuggestions, callStats, archivedRows] = await Promise.all([loadLinkSuggestions(rows), todayCallStats(), loadArchived2025Rows()]);
+  const [linkSuggestions, callStats, archivedRows, playbook, progress] = await Promise.all([loadLinkSuggestions(rows), todayCallStats(), loadArchived2025Rows(), loadPlaybook(), loadDayProgress(session.user.id)]);
   return (
     <LeadsManager
       rows={rows}
@@ -43,6 +44,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         return { id: c.id, name: c.name, city: c.city, person: person && person !== c.name ? person : null };
       })}
       initialSelectedId={id ?? null}
+      playbook={playbook}
+      progress={progress}
     />
   );
 }

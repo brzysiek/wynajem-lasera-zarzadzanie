@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import type { LeadRow } from "@/lib/leads/load";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { DayProgress, LeadRow } from "@/lib/leads/load";
 import { POSTPONE_REASON_LABEL, TYPE_LABEL, type PostponeReasonKey } from "@/lib/leads/labels";
 import { formatPhone } from "@/lib/clients/labels";
-import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, buildInbox, inboxKpis, rotInfo, workDurationLabel, type NextStepType } from "@/lib/leads/funnel";
+import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, buildInbox, endOfDay, rotInfo, type NextStepType } from "@/lib/leads/funnel";
+import { seasonReservations, type Playbook } from "@/lib/leads/playbook";
 import Link from "next/link";
-import { Avatar, Dots, KpiBand, Seg, toFunnel, type LinkSuggestion } from "./funnel-views";
+import { Avatar, Dots, Seg, toFunnel, type LinkSuggestion } from "./funnel-views";
 import { StageChip } from "./lead-ui";
 import type { CardIntent } from "./lead-card";
 
@@ -76,6 +77,8 @@ export function InboxView({
   suggestions,
   onLink,
   callStats,
+  progress,
+  playbook,
 }: {
   rows: LeadRow[];
   now: Date;
@@ -89,6 +92,8 @@ export function InboxView({
   suggestions: Record<string, LinkSuggestion>;
   onLink: (leadId: string, rentalId: string) => void;
   callStats: { talked: number; noAnswer: number };
+  progress: DayProgress;
+  playbook: Playbook;
 }) {
   const [owner, setOwner] = useState<Owner>("me");
   const [moreFresh, setMoreFresh] = useState(false);
@@ -96,8 +101,31 @@ export function InboxView({
   const all = useMemo(() => toFunnel(rows), [rows]);
   const scoped = owner === "all" ? all : all.filter((r) => r.ownerId === currentUserId);
   const b = buildInbox(scoped, now);
-  const k = inboxKpis(scoped, now);
   const fresh = moreFresh ? b.fresh : b.fresh.slice(0, 12);
+  const season = seasonReservations(all, playbook.season);
+  // „Brawo!” — rezerwacja z lejka (nie stała klientka) z ostatnich 48 h.
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage dostępny dopiero w przeglądarce
+      setDismissed(JSON.parse(localStorage.getItem("wl_wins_seen") ?? "[]"));
+    } catch {
+      // brak localStorage — komunikat pokaże się do zamknięcia
+    }
+  }, []);
+  const win = all
+    .filter((l) => !l.returningClient && (l.stage === "REZERWACJA" || l.stage === "WYGRANA") && now.getTime() - l.stageChangedAt.getTime() < 48 * 3_600_000 && !dismissed.includes(l.id))
+    .sort((x, y) => y.stageChangedAt.getTime() - x.stageChangedAt.getTime())[0];
+  const dismissWin = (id: string) =>
+    setDismissed((d) => {
+      const n = [...d, id].slice(-50);
+      try {
+        localStorage.setItem("wl_wins_seen", JSON.stringify(n));
+      } catch {
+        // tylko do odświeżenia
+      }
+      return n;
+    });
 
   async function quick(id: string, outcome: "talked" | "no_answer") {
     setBusy(id);
@@ -122,25 +150,25 @@ export function InboxView({
           </button>
         )}
         <span className="text-[12px] text-[#5C6166]">
-          dziś: {callStats.talked} {callStats.talked === 1 ? "rozmowa" : "rozmów"} · {callStats.noAnswer} nieodebranych
+          dziś: {callStats.talked} {callStats.talked === 1 ? "rozmowa" : callStats.talked % 10 >= 2 && callStats.talked % 10 <= 4 && (callStats.talked % 100 < 12 || callStats.talked % 100 > 14) ? "rozmowy" : "rozmów"} · {callStats.noAnswer} nieodebrane
         </span>
       </div>
 
-      <KpiBand
-        items={[
-          { label: "Nowe bez kontaktu", value: String(k.fresh), sub: `${k.freshLate} po SLA ${FIRST_CONTACT_SLA_HOURS} h rob.`, warn: k.freshLate > 0 },
-          { label: "Do zrobienia dziś", value: String(k.today), sub: "follow-upy i telefony" },
-          { label: "Gniją", value: String(k.rotting), sub: "bez aktywności ponad limit etapu", warn: k.rotting > 0 },
-          { label: "Wracają (Odłożone)", value: String(k.returningWeek), sub: `w tym tygodniu · odłożonych ${k.returning}` },
-          { label: "Czas do 1. kontaktu", value: workDurationLabel(k.medianFirstContact), sub: `mediana 30 dni · cel ${FIRST_CONTACT_SLA_HOURS} h rob.`, warn: (k.medianFirstContact ?? 0) > FIRST_CONTACT_SLA_HOURS },
-          { label: "Oferta → rezerwacja", value: `${k.reservations30} z ${k.offers30}`, sub: "ostatnie 30 dni" },
-        ]}
-      />
+      <PlanBand b={b} now={now} progress={progress} playbook={playbook} season={season} />
+      {win && (
+        <div className="flex flex-wrap items-center gap-2.5 self-start border border-[#CFE3DA] bg-[#EEF6F2] px-3.5 py-2 text-[13px] font-semibold text-[#2F7A68]">
+          ✓ Brawo! Rezerwacja z lejka: {who(win)}
+          {win.rentalDevice ? ` (${win.rentalDevice}${win.rentalStartsAt ? ` ${d2(new Date(win.rentalStartsAt))}` : ""})` : ""} · cel sezonu {season} z {playbook.season.target} – {playbook.season.reward.replace(/\s*\p{Extended_Pictographic}+$/u, "")} coraz bliżej
+          <button type="button" onClick={() => dismissWin(win.id)} className="font-normal text-[#5C6166] hover:text-[#0C3450]" aria-label="Zamknij">
+            ✕
+          </button>
+        </div>
+      )}
 
-      <section>
-        <H2 tag={<span className="bg-[#1B6FA8] px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.1em] text-white">SLA {FIRST_CONTACT_SLA_HOURS} h rob.</span>}>Nowe – czekają na pierwszy kontakt</H2>
+      <section id="plan-2" className="scroll-mt-4">
+        <H2 tag={<span className="bg-[#1B6FA8] px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-[0.1em] text-white">SLA {FIRST_CONTACT_SLA_HOURS} h rob.</span>}>2 · Nowe – czekają na pierwszy kontakt</H2>
         {b.fresh.length === 0 ? (
-          <Empty>Brak nietkniętych zapytań — wszystkie mają pierwszy kontakt.</Empty>
+          <p className="border border-[#CFE3DA] bg-[#EEF6F2] px-4 py-3 text-[13px] font-semibold text-[#2F7A68]">✓ Wszystkie nowe obsłużone — każde zapytanie ma pierwszy kontakt.</p>
         ) : (
           <div className="border border-[#E3E6E9] bg-white">
             {fresh.map((r) => {
@@ -181,8 +209,8 @@ export function InboxView({
                         <button type="button" disabled={busy === r.id} className={BTN_SM} onClick={() => void quick(r.id, "talked")} title="Rozmowa odbyta → W kontakcie, następny krok za 2 dni rob. (zmienisz w karcie)">
                           Rozmawiałam
                         </button>
-                        <button type="button" disabled={busy === r.id} className={BTN_SM} onClick={() => void quick(r.id, "no_answer")} title="Nie odebrała → kolejna próba jutro 10:00">
-                          Nie odebrała
+                        <button type="button" disabled={busy === r.id} className={BTN_SM} onClick={() => void quick(r.id, "no_answer")} title="Nie odebrała → SMS z szablonu od razu i kolejna próba (jutro 16:00, potem 8:30)">
+                          Nie odebrała → SMS
                         </button>
                         <button type="button" className={BTN_SM} onClick={() => onLost(r.id)} title="Przegrana — z powodem">
                           ✕
@@ -202,8 +230,8 @@ export function InboxView({
         )}
       </section>
 
-      <section>
-        <H2>Do zrobienia dziś</H2>
+      <section id="plan-3" className="scroll-mt-4">
+        <H2>3–5 · Do zrobienia dziś</H2>
         {b.today.length === 0 ? (
           <Empty>Na dziś nic więcej — kroki na kolejne dni są na Tablicy i Liście.</Empty>
         ) : (
@@ -317,6 +345,66 @@ export function InboxView({
         </section>
       </div>
       <StageLegend />
+    </div>
+  );
+}
+
+// „Plan dnia” (zasady-wzor.html, ekran 1): kolejność dnia z licznikami
+// (klik przewija do sekcji), postęp „Dziś: X z Y”, tydzień i cel sezonu.
+function PlanBand({ b, now, progress, playbook, season }: { b: ReturnType<typeof buildInbox<Row>>; now: Date; progress: DayProgress; playbook: Playbook; season: number }) {
+  const eod = endOfDay(now);
+  const dueNew = b.fresh.filter((l) => !l.nextActionAt || l.nextActionAt <= eod || rotInfo(l, now).rotting);
+  const calls = b.today.filter((l) => l.nextStepType === "ODDZWONI" || l.nextStepType === "PONOWNA_PROBA" || l.nextStepType === "UMOW_TERMIN");
+  const followUps = b.today.filter((l) => l.nextStepType === "FOLLOW_UP_OFERTY");
+  const returning = [...b.today.filter((l) => (l.nextStepNote ?? "").startsWith("wraca z odłożonych")), ...b.returning.filter((l) => l.returnAt && l.returnAt <= eod)];
+  const names = (xs: Row[]) => xs.slice(0, 2).map((l) => who(l).split(/[@\s·]/)[0]).join(", ") + (xs.length > 2 ? "…" : "");
+  const remaining = dueNew.length + calls.length + followUps.length + returning.length;
+  const total = progress.doneToday + remaining;
+  const pct = total ? Math.round((progress.doneToday / total) * 100) : 100;
+  const seasonPct = Math.min(100, Math.round((season / playbook.season.target) * 100));
+  const scroll = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const items: { no: number; title: string; n: number; sub: string; done: boolean; target: string }[] = [
+    { no: 1, title: "Dzisiejsze wynajmy", n: progress.rentalsToday, sub: progress.rentalsToday ? `${progress.rentalsWithDriver} z ${progress.rentalsToday} z kierowcą` : "brak dziś", done: progress.rentalsWithDriver === progress.rentalsToday, target: "" },
+    { no: 2, title: "Nowe zapytania", n: dueNew.length, sub: `z ${b.fresh.length} · cel ${FIRST_CONTACT_SLA_HOURS} h rob.`, done: dueNew.length === 0, target: "plan-2" },
+    { no: 3, title: "Umówione telefony", n: calls.length, sub: names(calls), done: calls.length === 0, target: "plan-3" },
+    { no: 4, title: "Follow-upy ofert", n: followUps.length, sub: names(followUps), done: followUps.length === 0, target: "plan-3" },
+    { no: 5, title: "Wracają odłożone", n: returning.length, sub: names(returning), done: returning.length === 0, target: "plan-3" },
+  ];
+  return (
+    <div className="grid border border-[#E3E6E9] bg-white md:grid-cols-[repeat(5,minmax(0,1fr))_280px]">
+      {items.map((it) => (
+        <button
+          key={it.no}
+          type="button"
+          onClick={() => (it.target ? scroll(it.target) : window.location.assign(`${window.location.pathname.replace(/\/sygnaly.*$/, "")}/nadchodzace`))}
+          className={`border-b border-r border-[#E3E6E9] px-3.5 py-2.5 text-left hover:bg-[#F7F9FB] md:border-b-0 ${it.done ? "text-[#5C6166]" : ""}`}
+        >
+          <span className={`mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold text-white ${it.done ? "bg-[#2F7A68]" : "bg-[#0C3450]"}`}>{it.done ? "✓" : it.no}</span>
+          <b className={`font-semibold ${it.done ? "text-[#5C6166]" : "text-[#0C3450]"}`}>{it.title}</b>
+          <div className="mt-0.5">
+            {!(it.done && it.no === 1) && <span className="text-[18px] font-medium text-[#0C3450]">{it.n} </span>}
+            <span className="text-[12px] text-[#5C6166]">{it.sub}</span>
+          </div>
+        </button>
+      ))}
+      <div className="bg-[#EEF6F2] px-3.5 py-2.5">
+        <b className="font-semibold text-[#2F7A68]">
+          Dziś: {progress.doneToday} z {total} zrobione
+        </b>
+        <div className="my-1.5 h-2 bg-[#D5E9E0]">
+          <i className="block h-2 bg-[#2F7A68]" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="text-[12px] text-[#5C6166]">
+          Tydzień: {progress.weekOffers} {progress.weekOffers === 1 ? "oferta" : progress.weekOffers >= 2 && progress.weekOffers <= 4 ? "oferty" : "ofert"} → {progress.weekReservations} {progress.weekReservations === 1 ? "rezerwacja" : progress.weekReservations >= 2 && progress.weekReservations <= 4 ? "rezerwacje" : "rezerwacji"}
+        </div>
+        <b className="mt-1.5 block font-semibold text-[#0C3450]">
+          Cel sezonu: {season} z {playbook.season.target} rezerwacji z nowych
+        </b>
+        <div className="my-1.5 h-2 bg-[#D6E7F4]">
+          <i className="block h-2 bg-[#1B6FA8]" style={{ width: `${seasonPct}%` }} />
+        </div>
+        <div className="text-[12px] text-[#5C6166]">Nagroda: {playbook.season.reward}</div>
+      </div>
     </div>
   );
 }
