@@ -7,7 +7,7 @@ import { loadQualifiedMap } from "@/lib/clients/qualify";
 import type { LeadStageKey, LeadTypeKey } from "@/lib/leads/parse-deal";
 import type { ActivityTypeKey, LostReasonKey } from "@/lib/leads/labels";
 import { ARCHIVE_2025, FUNNEL_FROM, buildNaDzis, maxStageReached } from "@/lib/leads/funnel";
-import { STAGE_LABEL } from "@/lib/leads/labels";
+import { STAGE_HISTORY_LABELS } from "@/lib/leads/labels";
 
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
@@ -158,7 +158,7 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     callList: l.callList,
     talked: x.talked.has(l.id),
     clientQualified: l.clientId ? (x.qualified.get(l.clientId) ?? false) : false,
-    maxStage: maxStageReached(l.stage, x.stageBodies.get(l.id) ?? [], STAGE_LABEL, Boolean(l.rentalId)),
+    maxStage: maxStageReached(l.stage, x.stageBodies.get(l.id) ?? [], STAGE_HISTORY_LABELS, Boolean(l.rentalId)),
     search: [l.title, l.client?.name, person, email, phone, l.location ?? l.client?.city, l.message].filter(Boolean).join(" ").toLowerCase(),
   };
 }

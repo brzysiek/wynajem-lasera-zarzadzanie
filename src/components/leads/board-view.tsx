@@ -3,10 +3,12 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { LeadRow } from "@/lib/leads/load";
-import { BOARD_STAGES, LOST_REASON_LABEL, STAGE_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
+import { BOARD_STAGES, LOST_REASON_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { FUNNEL_FROM, REACH_ORDER } from "@/lib/leads/funnel";
 import { Avatar, Dots, Seg } from "./funnel-views";
+import { StageChip } from "./lead-ui";
+import { LEAD_STAGE_COLORS } from "@/components/shell-tokens";
 
 // Sygnały → Tablica (wzór lejek-wzor.html, s2): jedyny lejek w panelu.
 // Karta: prowadząca, następny krok z terminem (terakota = po terminie),
@@ -144,12 +146,13 @@ export function BoardView({
           const c = conv(stage);
           return (
             <div key={stage} {...dropProps(stage)} className={`min-h-[200px] p-2.5 ${drop === stage ? "bg-[#EAF4FB] outline outline-2 outline-[#1B6FA8]" : "bg-[#F4F6F8]"}`}>
+              <div className="-mx-2.5 -mt-2.5 mb-2 h-1" style={{ background: LEAD_STAGE_COLORS[stage].dot }} />
               <div className="mb-2 flex items-baseline justify-between gap-2">
                 <b className="text-[14px] font-semibold text-[#0C3450]">
-                  {STAGE_LABEL[stage]} · {col.length}
+                  <StageChip stage={stage} /> {col.length}
                 </b>
                 <span className="text-[11px] text-[#5C6166]" title="Z sygnałów, które doszły do tego etapu (wybrany okres), ile doszło do następnego.">
-                  {stage === "REZERWACJA" ? (c == null ? "→ wygrana po wynajmie" : `→ ${c}% do wygranej`) : c == null ? "" : `→ ${c}% do ${stage === "SYGNAL" ? "wywiadu" : stage === "WYWIAD" ? "oferty" : "rezerwacji"}`}
+                  {stage === "REZERWACJA" ? (c == null ? "→ wygrana po wynajmie" : `→ ${c}% do wygranej`) : c == null ? "" : `→ ${c}% do ${stage === "SYGNAL" ? "kontaktu" : stage === "WYWIAD" ? "oferty" : "rezerwacji"}`}
                 </span>
               </div>
               <div className="flex flex-col gap-2">

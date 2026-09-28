@@ -16,12 +16,12 @@ export const ARCHIVE_2025 = "BEZ_KONTAKTU_2025";
 // Najwyższy etap, jaki sygnał kiedykolwiek osiągnął (raport i konwersja):
 // bieżący etap + zmiany etapów z historii (wpisy „Wywiad → Oferta wysłana”).
 export const REACH_ORDER: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA"];
-export function maxStageReached(current: LeadStageKey, stageChangeBodies: (string | null)[], labels: Record<LeadStageKey, string>, hasRental: boolean): LeadStageKey {
+export function maxStageReached(current: LeadStageKey, stageChangeBodies: (string | null)[], labels: Record<LeadStageKey, string[]>, hasRental: boolean): LeadStageKey {
   let best = current === "PRZEGRANA" ? 0 : REACH_ORDER.indexOf(current);
   for (const body of stageChangeBodies) {
     if (!body) continue;
     for (let i = REACH_ORDER.length - 1; i > best; i--) {
-      if (body.includes(labels[REACH_ORDER[i]])) {
+      if (labels[REACH_ORDER[i]].some((l) => body.includes(l))) {
         best = i;
         break;
       }

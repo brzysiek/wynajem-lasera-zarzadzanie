@@ -132,3 +132,12 @@ export function htmlToText(html: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+// Automatyczny mail z cennikiem wysyłany po pobraniu cennika ze strony
+// (szablon z kontakt@) — to nie jest kontakt z klientką (lejek v2: nie
+// kwalifikuje i nie przesuwa sygnału). Odpowiedź „Re: …” już jest kontaktem.
+export const AUTO_PRICE_LIST_SUBJECT = "Cennik oraz aktualna oferta - wynajemlasera.pl";
+
+export function isAutoPriceListMail(subject: string | null | undefined): boolean {
+  return (subject ?? "").trim().toLowerCase() === AUTO_PRICE_LIST_SUBJECT.toLowerCase();
+}

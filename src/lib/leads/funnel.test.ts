@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { STAGE_HISTORY_LABELS } from "./labels";
 import { addWorkHours, buildNaDzis, callQueue, maxStageReached, medianFirstContactHours, naDzisKpis, nextWorkdayAt10, planOutcome, type FunnelLead } from "./funnel";
 
 // Wrzesień/październik 2026: 25.09 = piątek, 28.09 = poniedziałek, 02.10 = piątek.
@@ -96,10 +97,12 @@ describe("Na dziś i Do obdzwonienia", () => {
 });
 
 describe("najwyższy osiągnięty etap", () => {
-  const labels = { SYGNAL: "Sygnał", WYWIAD: "Wywiad", OFERTA: "Oferta wysłana", REZERWACJA: "Rezerwacja", WYGRANA: "Wygrana", PRZEGRANA: "Przegrana" };
+  const labels = STAGE_HISTORY_LABELS;
   it("przegrana po ofercie liczy się jako oferta; wynajem = co najmniej rezerwacja", () => {
     expect(maxStageReached("PRZEGRANA", ["Sygnał → Wywiad", "Wywiad → Oferta wysłana", "Oferta wysłana → Przegrana · powód: Cena"], labels, false)).toBe("OFERTA");
     expect(maxStageReached("SYGNAL", [], labels, false)).toBe("SYGNAL");
+    // nazwy v2 i sprzed v2 w jednej historii
+    expect(maxStageReached("PRZEGRANA", ["Nowe → W kontakcie"], labels, false)).toBe("WYWIAD");
     expect(maxStageReached("WYWIAD", [], labels, true)).toBe("REZERWACJA");
     expect(maxStageReached("WYGRANA", [], labels, true)).toBe("WYGRANA");
   });

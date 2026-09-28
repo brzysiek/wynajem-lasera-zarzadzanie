@@ -10,7 +10,7 @@ import { initials } from "@/lib/clients/labels";
 export function StageChip({ stage, suffix, className = "" }: { stage: LeadStageKey; suffix?: string; className?: string }) {
   const c = LEAD_STAGE_COLORS[stage];
   return (
-    <span className={`inline-block whitespace-nowrap rounded-md px-[7px] py-0.5 text-[11px] font-semibold ${className}`} style={{ background: c.bg, color: c.fg }}>
+    <span className={`inline-block whitespace-nowrap px-[7px] py-0.5 text-[9.5px] font-semibold uppercase tracking-[0.08em] ${className}`} style={{ background: c.bg, color: c.fg }}>
       {STAGE_LABEL[stage]}
       {suffix && ` ${suffix}`}
     </span>

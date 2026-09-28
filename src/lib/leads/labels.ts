@@ -2,15 +2,26 @@
 // Bez zależności (serwer i komponenty klienta).
 import type { LeadStageKey, LeadTypeKey } from "./parse-deal";
 
+// Lejek v2 (wzór lejek-v2-wzor.html): Nowe → W kontakcie → Oferta wysłana →
+// Rezerwacja → Wygrana / Przegrana. Klucze w bazie bez zmian.
 export const STAGE_LABEL: Record<LeadStageKey, string> = {
-  SYGNAL: "Sygnał",
-  WYWIAD: "Wywiad",
+  SYGNAL: "Nowe",
+  WYWIAD: "W kontakcie",
   OFERTA: "Oferta wysłana",
   REZERWACJA: "Rezerwacja",
   WYGRANA: "Wygrana",
   PRZEGRANA: "Przegrana",
 };
 export const STAGE_KEYS = Object.keys(STAGE_LABEL) as LeadStageKey[];
+// Nazwy w historii (wpisy STAGE_CHANGE) — obecne i sprzed v2 („Sygnał → Wywiad”).
+export const STAGE_HISTORY_LABELS: Record<LeadStageKey, string[]> = {
+  SYGNAL: ["Nowe", "Sygnał"],
+  WYWIAD: ["W kontakcie", "Wywiad"],
+  OFERTA: ["Oferta wysłana"],
+  REZERWACJA: ["Rezerwacja"],
+  WYGRANA: ["Wygrana"],
+  PRZEGRANA: ["Przegrana"],
+};
 export const BOARD_STAGES: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"];
 export const OPEN_STAGES: LeadStageKey[] = BOARD_STAGES;
 

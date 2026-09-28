@@ -655,7 +655,8 @@ function Stepper({ stage }: { stage: LeadStageKey }) {
             stage === "PRZEGRANA" ? "bg-[#EEF0F2] text-[#8A939B]" : i === at ? "bg-[#1B6FA8] font-semibold text-white" : i < at ? "bg-[#BFD8EC] text-[#0C3450]" : "bg-[#EEF0F2] text-[#5C6166]"
           }`}
         >
-          {s === "OFERTA" ? "Oferta" : STAGE_LABEL[s]}
+          {STAGE_LABEL[s]}
+          {stage !== "PRZEGRANA" && i < at ? " ✓" : ""}
         </span>
       ))}
     </div>

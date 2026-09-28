@@ -4,7 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import type { ClientListRow } from "@/lib/clients/list-load";
 import { DEVICE_INTEREST_LABEL } from "@/lib/clients/labels";
-import { STAGE_LABEL, TYPE_LABEL } from "@/lib/leads/labels";
+import { TYPE_LABEL } from "@/lib/leads/labels";
+import { StageChip } from "@/components/leads/lead-ui";
 import type { LeadStageKey, LeadTypeKey } from "@/lib/leads/parse-deal";
 import { NEXT_STEP_LABEL, type NextStepType } from "@/lib/leads/funnel";
 import { BASE_PATH } from "@/lib/base-path";
@@ -146,7 +147,7 @@ export function PotentialTable({
               </span>
               <span>
                 {r.funnel === "IN" && r.lead ? (
-                  <span className={`${TAG} ${r.lead.stage === "REZERWACJA" ? "bg-[#1B6FA8] text-white" : "bg-[#EEF0F2] text-[#5C6166]"}`}>{STAGE_LABEL[r.lead.stage as LeadStageKey] ?? r.lead.stage}</span>
+                  <StageChip stage={r.lead.stage as LeadStageKey} />
                 ) : r.funnel === "ARCHIVE" ? (
                   <span className={`${TAG} bg-[#EEF0F2] text-[#5C6166]`}>Archiwum 2025</span>
                 ) : (

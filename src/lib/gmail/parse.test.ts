@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAddressIndex, classifyEmail, headerMap, historyQuery, htmlToText, isAutomated, isSkippedByLabels, parseAddresses } from "./parse";
+import { buildAddressIndex, classifyEmail, headerMap, historyQuery, htmlToText, isAutoPriceListMail, isAutomated, isSkippedByLabels, parseAddresses } from "./parse";
 
 const own = (a: string) => a.endsWith("@wynajemlasera.pl");
 const index = buildAddressIndex([
@@ -71,5 +71,14 @@ describe("filtry", () => {
   });
   it("HTML → tekst bez skryptów", () => {
     expect(htmlToText("<p>Dzień dobry,</p><script>alert(1)</script><p>cena&nbsp;1&nbsp;500 zł</p>")).toBe("Dzień dobry,\ncena 1 500 zł");
+  });
+});
+
+describe("automatyczny mail z cennikiem (lejek v2)", () => {
+  it("szablon po pobraniu cennika to nie kontakt; odpowiedź już tak", () => {
+    expect(isAutoPriceListMail("Cennik oraz aktualna oferta - wynajemlasera.pl")).toBe(true);
+    expect(isAutoPriceListMail(" cennik oraz aktualna oferta - wynajemlasera.pl ")).toBe(true);
+    expect(isAutoPriceListMail("Re: Cennik oraz aktualna oferta - wynajemlasera.pl")).toBe(false);
+    expect(isAutoPriceListMail(null)).toBe(false);
   });
 });

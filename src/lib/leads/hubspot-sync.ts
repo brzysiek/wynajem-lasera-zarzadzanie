@@ -27,6 +27,7 @@ import {
 } from "@/lib/leads/parse-deal";
 import { applyImportRules } from "@/lib/leads/call-list";
 import { qualifyClient } from "@/lib/clients/qualify";
+import { AUTO_PRICE_LIST_SUBJECT } from "@/lib/gmail/parse";
 import { blockedIds } from "@/lib/porzadki/import-blocks";
 import { isPlaceholderEmail } from "@/lib/clients/placeholder";
 import { dealsToImport } from "@/lib/porzadki/import-block-rules";
@@ -57,7 +58,8 @@ const ADVANCED: LeadStageKey[] = ["WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA"];
 // (Gmail — prompt 3C; e-maile z HubSpota były zsynchronizowane do Gmaila).
 async function repliedByEmail(clientId: string | null, since: Date): Promise<boolean> {
   if (!clientId) return false;
-  return (await prisma.emailMessage.count({ where: { clientId, direction: "OUT", sentAt: { gte: since } } })) > 0;
+  // Bez automatycznego maila z cennikiem (szablon po pobraniu cennika) — lejek v2.
+  return (await prisma.emailMessage.count({ where: { clientId, direction: "OUT", sentAt: { gte: since }, OR: [{ subject: null }, { subject: { not: AUTO_PRICE_LIST_SUBJECT } }] } })) > 0;
 }
 const LAST_SYNC_KEY = "leads_hubspot_last_sync";
 

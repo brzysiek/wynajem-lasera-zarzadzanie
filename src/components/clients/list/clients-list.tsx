@@ -219,7 +219,11 @@ export function ClientsList({
   }, [tab, debounced, status, stage, leadStage, region, device, clinicType, source, risk, overdue, noStep, gap, trained, special, sort, mode]);
 
   const clientsRows = useMemo(() => allRows.filter((r) => r.status !== "POTENCJALNY"), [allRows]);
-  const potentialRows = useMemo(() => allRows.filter((r) => r.status === "POTENCJALNY"), [allRows]);
+  // Lejek v2: Potencjalni = tylko osoby z interakcją (rozmowa, mail, SMS);
+  // nietknięte kontakty z zapytań zostają w Sygnałach („Kontakt”).
+  const potentialAll = useMemo(() => allRows.filter((r) => r.status === "POTENCJALNY"), [allRows]);
+  const potentialRows = useMemo(() => potentialAll.filter((r) => r.qualified), [potentialAll]);
+  const untouchedContacts = potentialAll.length - potentialRows.length;
   const tabRows = tab === "KLIENCI" ? clientsRows : potentialRows;
 
   const statusCounts = useMemo(() => {
@@ -557,13 +561,14 @@ export function ClientsList({
       ) : (
         <>
           {/* Potencjalni (lejek, wzór s4): bez własnych etapów — grupy lejka i braki danych */}
-          <div className="mx-4 mt-4 grid grid-cols-2 bg-[#EAF4FB] sm:grid-cols-3 md:mx-7 xl:grid-cols-5">
+          <div className="mx-4 mt-4 grid grid-cols-2 bg-[#EAF4FB] sm:grid-cols-3 md:mx-7 xl:grid-cols-6">
             {[
-              { key: "IN", label: "W lejku", n: pCounts.inFunnel, sub: "z otwartym sygnałem", on: stage === "IN", click: () => setStage(stage === "IN" ? "" : "IN") },
+              { key: "ALL", label: "Potencjalni", n: potentialRows.length, sub: "osoby z interakcją", on: stage === "" && !gap, click: () => { setStage(""); setGap(""); } },
+              { key: "IN", label: "W lejku teraz", n: pCounts.inFunnel, sub: "otwarty sygnał", on: stage === "IN", click: () => setStage(stage === "IN" ? "" : "IN") },
               { key: "OUT", label: "Poza lejkiem", n: pCounts.out, sub: `bez sygnału · ${pCounts.outWithPhone} z telefonem`, warn: true, on: stage === "OUT", click: () => setStage(stage === "OUT" ? "" : "OUT") },
               { key: "ARCHIVE", label: "Archiwum 2025", n: pCounts.archive, sub: "do kampanii przed sezonem", on: stage === "ARCHIVE", click: () => setStage(stage === "ARCHIVE" ? "" : "ARCHIVE") },
               { key: "emailName", label: "Nazwa = e-mail", n: pCounts.emailName, sub: "do uzupełnienia (agent)", warn: true, on: gap === "emailName", click: () => setGap(gap === "emailName" ? "" : "emailName") },
-              { key: "phone", label: "Bez telefonu", n: pCounts.noPhone, sub: "tylko e-mail", on: gap === "phone", click: () => setGap(gap === "phone" ? "" : "phone") },
+              { key: "contacts", label: "Kontakty bez interakcji", n: untouchedContacts, sub: "tylko w Sygnałach → Nowe / archiwum", on: false, click: () => router.push("/sygnaly") },
             ].map((k) => (
               <button
                 key={k.key}

@@ -71,13 +71,15 @@ export const CLIENT_STATUS_COLORS = {
 
 // Etapy sygnału (moduł Sygnały, docs/crm/mockup-sygnaly.html) — miękkie tło
 // z palety APP + ciemny odcień tekstu, jak chipy statusu klienta.
+// Kolory etapów lejka v2 (lejek-v2-wzor.html) — te same wszędzie w panelu:
+// od jasnoniebieskiego (Nowe) do granatu (Rezerwacja); dot = pasek kolumny.
 export const LEAD_STAGE_COLORS = {
-  SYGNAL: { bg: APP.accentSoft, fg: APP_DEEP.accent, dot: APP.accent },
-  WYWIAD: { bg: APP.brandSoft, fg: APP.brandDeep, dot: APP.brand },
-  OFERTA: { bg: APP.goldSoft, fg: APP_DEEP.gold, dot: APP.gold },
-  REZERWACJA: { bg: APP.purpleSoft, fg: APP_DEEP.purple, dot: APP.purple },
-  WYGRANA: { bg: APP.greenSoft, fg: APP_DEEP.green, dot: APP.green },
-  PRZEGRANA: { bg: APP.redSoft, fg: APP.red, dot: APP.red },
+  SYGNAL: { bg: "#D6E7F4", fg: "#0C3450", dot: "#D6E7F4" },
+  WYWIAD: { bg: "#8DB8DB", fg: "#0C3450", dot: "#8DB8DB" },
+  OFERTA: { bg: "#1B6FA8", fg: "#FFFFFF", dot: "#1B6FA8" },
+  REZERWACJA: { bg: "#0C3450", fg: "#FFFFFF", dot: "#0C3450" },
+  WYGRANA: { bg: "#EEF6F2", fg: "#2F7A68", dot: "#2F7A68" },
+  PRZEGRANA: { bg: "#EEF0F2", fg: "#5C6166", dot: "#5C6166" },
 } as const;
 
 // Paleta APP jako zmienne CSS — ustawiane na korzeniu strony, żeby klasy

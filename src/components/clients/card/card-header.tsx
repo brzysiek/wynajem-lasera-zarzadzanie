@@ -71,7 +71,7 @@ export function CardHeader({
             {status ? (
               <span className={`flex-none px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] ${statusCls}`}>{STATUS_LABEL[status]}</span>
             ) : (
-              <span className="flex-none border border-dashed border-[#C3C4C7] px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] text-[#5C6166]">Kontakt z zapytania</span>
+              <span className="flex-none border border-dashed border-[#C3C4C7] px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] text-[#5C6166]" title="Kontakt z zapytania — jeszcze bez rozmowy ani korespondencji (lejek v2)">Kontakt</span>
             )}
           </div>
           {d.profile.shortName && d.profile.shortName !== d.name && <div className="truncate text-[13px] text-[#5C6166]" title={d.name}>{d.name}</div>}

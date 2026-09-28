@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { logInfo, logWarn } from "@/lib/logger";
 import { GmailError, getMessageMeta, getProfile, listHistoryAdded, listMessageIds } from "@/lib/integrations/gmail-read";
-import { buildAddressIndex, classifyEmail, headerMap, historyQuery, isAutomated, isSkippedByLabels, parseAddresses, type AddressIndex } from "@/lib/gmail/parse";
+import { buildAddressIndex, classifyEmail, headerMap, historyQuery, isAutoPriceListMail, isAutomated, isSkippedByLabels, parseAddresses, type AddressIndex } from "@/lib/gmail/parse";
 
 // Synchronizacja historii e-maili z Gmaila (CRM, prompt 3C).
 // - Import historii: dla każdego adresu osoby kontaktowej klienta wszystkie
@@ -83,7 +83,9 @@ const PARALLEL = 10;
 
 // E-mail wychodzący do osoby z zapytania, wysłany po utworzeniu jej sygnału,
 // kwalifikuje klienta (prompt 2 v2, 1.0 pkt 2 — odpowiedź na zapytanie).
-async function qualifyFromOutgoing(out: { clientId: string; sentAt: Date }[]) {
+async function qualifyFromOutgoing(all: { clientId: string; sentAt: Date; subject: string | null }[]) {
+  // Automatyczny cennik po pobraniu ze strony to nie kontakt (lejek v2).
+  const out = all.filter((o) => !isAutoPriceListMail(o.subject));
   // Wystarczy najpóźniejszy e-mail na klienta — jedno zapytanie na klienta.
   const latest = new Map<string, Date>();
   for (const o of out) if (!latest.has(o.clientId) || o.sentAt > latest.get(o.clientId)!) latest.set(o.clientId, o.sentAt);
@@ -158,7 +160,7 @@ async function processIds(
     }
     if (rows.length) {
       stored += (await prisma.emailMessage.createMany({ data: rows, skipDuplicates: true })).count;
-      await qualifyFromOutgoing(rows.filter((r) => r.direction === "OUT").map((r) => ({ clientId: r.clientId, sentAt: r.sentAt })));
+      await qualifyFromOutgoing(rows.filter((r) => r.direction === "OUT").map((r) => ({ clientId: r.clientId, sentAt: r.sentAt, subject: r.subject ?? null })));
     }
   }
   return { stored, done: true, nextOffset: ids.length };
