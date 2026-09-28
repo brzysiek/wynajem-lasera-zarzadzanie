@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { STAGE_HISTORY_LABELS } from "./labels";
-import { addWorkHours, buildInbox, buildNaDzis, callQueue, inboxKpis, maxStageReached, medianFirstContactHours, naDzisKpis, nextWorkdayAt10, planOutcome, rotInfo, type FunnelLead } from "./funnel";
+import { addWorkHours, buildInbox, buildToday, buildNaDzis, callQueue, inboxKpis, maxStageReached, medianFirstContactHours, naDzisKpis, nextWorkdayAt10, planOutcome, rotInfo, type FunnelLead } from "./funnel";
 
 // Wrzesień/październik 2026: 25.09 = piątek, 28.09 = poniedziałek, 02.10 = piątek.
 const at = (day: number, h = 12, m = 0, month = 9) => new Date(2026, month - 1, day, h, m);
@@ -119,7 +119,7 @@ describe("lejek v2: Odłożone, gnicie, Skrzynka", () => {
   });
 
   it("gnicie: Nowe po SLA, W kontakcie > 3 dni rob., Oferta > 10 dni, brak kroku; aktywność zeruje", () => {
-    expect(rotInfo(lead({ id: "n", createdAt: at(25, 9) }), now)).toMatchObject({ rotting: true, label: "po SLA · 1 dzień rob." });
+    expect(rotInfo(lead({ id: "n", createdAt: at(25, 9) }), now)).toMatchObject({ rotting: true, label: "po czasie · 1 dzień rob." });
     expect(rotInfo(lead({ id: "n2", createdAt: at(28, 9) }), now).rotting).toBe(false);
     const talked = { firstContactAt: at(21), stage: "WYWIAD" as const, stageChangedAt: at(21), nextActionAt: at(30) };
     expect(rotInfo(lead({ id: "k", ...talked }), now)).toMatchObject({ rotting: true, label: "stoi 5 dni rob." });
@@ -143,5 +143,33 @@ describe("lejek v2: Odłożone, gnicie, Skrzynka", () => {
     expect(b.rotting.map((l) => l.id)).toEqual(["gnije"]);
     expect(b.returning.map((l) => l.id)).toEqual(["odl"]);
     expect(inboxKpis(leads, now)).toMatchObject({ fresh: 1, today: 2, rotting: 1, returningWeek: 1 });
+  });
+});
+
+describe("Lista „Na dziś” (28.09)", () => {
+  const now = at(28, 12);
+  it("po czasie → nowe → dziś → wracają; grupy planu dnia", () => {
+    const leads = [
+      lead({ id: "stara-nowa", createdAt: at(25, 9), nextActionAt: at(25, 13) }),
+      lead({ id: "nowa", createdAt: at(28, 10), nextActionAt: at(28, 14) }),
+      lead({ id: "proba", createdAt: at(22), attempts: 1, nextStepType: "PONOWNA_PROBA", nextActionAt: at(28, 16) }),
+      lead({ id: "followup-zalegly", firstContactAt: at(10), stage: "OFERTA", stageChangedAt: at(15), nextStepType: "FOLLOW_UP_OFERTY", nextActionAt: at(15) }),
+      lead({ id: "oddzwoni", firstContactAt: at(21), stage: "WYWIAD", nextStepType: "ODDZWONI", nextActionAt: at(28, 12) }),
+      lead({ id: "rez", firstContactAt: at(21), stage: "REZERWACJA" }),
+      lead({ id: "odl", firstContactAt: at(1), stage: "ODLOZONE", returnAt: at(28, 9) }),
+      lead({ id: "jutro", firstContactAt: at(21), stage: "WYWIAD", nextStepType: "INNE", nextActionAt: at(29) }),
+    ];
+    const t = buildToday(leads, now);
+    expect(t.map((x) => [x.lead.id, x.priority])).toEqual([
+      ["stara-nowa", "late"],
+      ["followup-zalegly", "late"],
+      ["nowa", "new"],
+      ["proba", "new"],
+      ["rez", "today"],
+      ["oddzwoni", "today"],
+      ["odl", "back"],
+    ]);
+    expect(t.find((x) => x.lead.id === "followup-zalegly")!.group).toBe("followups");
+    expect(t.find((x) => x.lead.id === "oddzwoni")!.group).toBe("calls");
   });
 });

@@ -9,7 +9,7 @@ export default async function PlaybookPage() {
   await requireAdmin();
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Ściąga" description="Złote zasady obsługi zapytań, skrypty rozmów w karcie sygnału i cel sezonu z nagrodą (pasek w Sygnały → Skrzynka)." />
+      <PageHeader title="Ściąga" description="Złote zasady obsługi zapytań, skrypty rozmów w karcie sygnału i cel sezonu z nagrodą (pasek „Plan dnia” w Sygnały → Lista „Na dziś”)." />
       <PlaybookEditor initial={await loadPlaybook()} />
     </div>
   );

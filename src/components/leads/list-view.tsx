@@ -1,29 +1,34 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { LeadRow } from "@/lib/leads/load";
+import type { DayProgress, LeadRow } from "@/lib/leads/load";
 import { LOST_REASON_LABEL, POSTPONE_REASON_LABEL, TYPE_LABEL, type PostponeReasonKey } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadTypeKey } from "@/lib/leads/parse-deal";
 import { STATUS_LABEL, type DeviceInterestKey } from "@/lib/clients/labels";
-import { FUNNEL_FROM, NEXT_STEP_LABEL, OPEN_STAGES, funnelFromRow, rotInfo, type FunnelLead, type NextStepType } from "@/lib/leads/funnel";
-import { Avatar, Seg } from "./funnel-views";
+import { FUNNEL_FROM, NEXT_STEP_LABEL, OPEN_STAGES, buildToday, funnelFromRow, rotInfo, type FunnelLead, type NextStepType, type TodayGroup } from "@/lib/leads/funnel";
+import { Avatar, Seg, toFunnel, type LinkSuggestion } from "./funnel-views";
 import { StageChip } from "./lead-ui";
-import { StageLegend } from "./inbox-view";
+import { PlanBand, StageLegend, WinToast, plural } from "./plan-day";
+import { TodayTable } from "./today-table";
+import type { CardIntent } from "./lead-card";
+import { seasonReservations, type Playbook } from "@/lib/leads/playbook";
 
-// Sygnały → Lista (lejek v2, wzór lejek-v2-wzor.html s3): te same sygnały co
-// Tablica, w tabeli — kiedy wpłynęło, etap, ile stoi, następny krok, kim jest
-// osoba (Kontakt / Potencjalny / Nowy / Stały…). Filtry zapamiętują się w
-// przeglądarce (wygoda użytkownika, bez znaczenia dla danych).
+// Sygnały → Lista (domyślny widok, decyzja 28.09 — bez osobnej Skrzynki):
+// filtr „Na dziś” (Plan dnia + jedna tabela w kolejności dnia, zasady-wzor.html
+// ekran 1) i rejestr „Wszystkie aktywne / Odłożone / Przegrane” (lejek-v2 s3):
+// kiedy wpłynęło, etap, ile stoi, następny krok, kim jest osoba. Filtry
+// rejestru zapamiętują się w przeglądarce; wejście w Sygnały = „Na dziś”.
 
 type Period = "30" | "month" | "2026" | "archive";
 type Owner = "all" | "ania" | "tomek";
-type State = "active" | "all" | "lost" | "postponed";
+type State = "today" | "active" | "postponed" | "lost";
+type Mine = "me" | "all";
 type Source = "all" | "www" | "phone" | "email";
 type Device = "all" | DeviceInterestKey;
-type Filters = { period: Period; owner: Owner; state: State; source: Source; device: Device };
+type Filters = { period: Period; owner: Owner; source: Source; device: Device };
 
 const KEY = "wl_leads_list_v2";
-const DEFAULTS: Filters = { period: "30", owner: "all", state: "active", source: "all", device: "all" };
+const DEFAULTS: Filters = { period: "30", owner: "all", source: "all", device: "all" };
 const WWW: LeadTypeKey[] = ["POBRANIE_CENNIKA", "KONTAKT", "REZERWACJA_WWW", "SZKOLENIE_WWW"];
 const SOURCE_SHORT: Record<LeadTypeKey, string> = {
   POBRANIE_CENNIKA: "WWW cennik",
@@ -59,7 +64,7 @@ function nextStep(r: LeadRow, now: Date): { text: string; late: boolean } {
   if (!r.nextActionAt) return { text: "brak kroku", late: true };
   const at = new Date(r.nextActionAt);
   const when = at.toDateString() === now.toDateString() ? `dziś${at.getHours() >= 11 ? ` ${at.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}` : ""}` : at < now ? "zaległy" : d2(r.nextActionAt);
-  if (r.stage === "SYGNAL" && !r.firstContactAt && rot.rotting) return { text: `${step} · po SLA`, late: true };
+  if (r.stage === "SYGNAL" && !r.firstContactAt && rot.rotting) return { text: `${step} · po czasie`, late: true };
   return { text: `${step} · ${when}`, late: at < now && at.toDateString() !== now.toDateString() };
 }
 
@@ -71,16 +76,50 @@ export function ListView({
   selectedId,
   onOpen,
   onExport,
+  currentUserId,
+  readOnly,
+  progress,
+  playbook,
+  suggestions,
+  callStats,
+  onQuick,
+  onLost,
+  onLink,
+  onSerial,
 }: {
   rows: LeadRow[];
   archived: LeadRow[];
   users: { id: string; name: string }[];
   now: Date;
   selectedId: string | null;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, intent?: CardIntent) => void;
   onExport: (rows: LeadRow[]) => void;
+  currentUserId: string;
+  readOnly: boolean;
+  progress: DayProgress;
+  playbook: Playbook;
+  suggestions: Record<string, LinkSuggestion>;
+  callStats: { talked: number; noAnswer: number };
+  onQuick: (id: string, outcome: "talked" | "no_answer") => Promise<void>;
+  onLost: (id: string) => void;
+  onLink: (leadId: string, rentalId: string) => void;
+  onSerial: () => void;
 }) {
   const [f, setF] = useState<Filters>(DEFAULTS);
+  const [state, setState] = useState<State>("today");
+  const [mine, setMine] = useState<Mine>("me");
+  const [group, setGroup] = useState<TodayGroup | null>(null);
+  const [todaySource, setTodaySource] = useState<"all" | "www" | "phone">("all");
+  const funnel = useMemo(() => toFunnel(rows), [rows]);
+  const scopedMine = mine === "me" ? funnel.filter((r) => r.ownerId === currentUserId) : funnel;
+  const today = useMemo(() => buildToday(scopedMine, now), [scopedMine, now]);
+  const todayShown = today
+    .filter((x) => (group ? x.group === group : true))
+    .filter((x) => (todaySource === "all" ? true : todaySource === "www" ? WWW.includes(x.lead.type) : x.lead.type === "TELEFON"));
+  const untouchedTotal = scopedMine.filter((r) => r.stage === "SYGNAL" && !r.firstContactAt && r.createdAt >= FUNNEL_FROM).length;
+  const season = seasonReservations(funnel, playbook.season);
+  const activeCount = rows.filter((r) => OPEN_STAGES.includes(r.stage) && new Date(r.createdAt) >= FUNNEL_FROM).length;
+  const postponedCount = rows.filter((r) => r.stage === "ODLOZONE").length;
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(80);
   useEffect(() => {
@@ -107,20 +146,86 @@ export function ListView({
   const from = f.period === "30" ? now.getTime() - 30 * dayMs : f.period === "month" ? new Date(now.getFullYear(), now.getMonth(), 1).getTime() : FUNNEL_FROM.getTime();
 
   const list = useMemo(() => {
+    if (state === "today") return [];
     const q = query.trim().toLowerCase();
     const digits = q.replace(/\D/g, "");
     const touched = (r: LeadRow) => Math.max(new Date(r.createdAt).getTime(), new Date(r.stageChangedAt).getTime(), r.lastWorkAt ? new Date(r.lastWorkAt).getTime() : 0) >= from;
     const base = f.period === "archive" ? archived : rows.filter((r) => new Date(r.createdAt) >= FUNNEL_FROM && touched(r));
     return base
       .filter((r) => (ownerId ? r.ownerId === ownerId : true))
-      .filter((r) =>
-        f.state === "active" ? OPEN_STAGES.includes(r.stage) : f.state === "lost" ? r.stage === "PRZEGRANA" : f.state === "postponed" ? r.stage === "ODLOZONE" : true,
-      )
+      .filter((r) => (state === "active" ? OPEN_STAGES.includes(r.stage) : state === "lost" ? r.stage === "PRZEGRANA" : r.stage === "ODLOZONE"))
       .filter((r) => (f.source === "all" ? true : f.source === "www" ? WWW.includes(r.type) : f.source === "phone" ? r.type === "TELEFON" : r.type === "EMAIL"))
       .filter((r) => (f.device === "all" ? true : r.devices.includes(f.device)))
       .filter((r) => (q.length < 2 ? true : r.search.includes(q) || (digits.length >= 3 && (r.phone ?? "").replace(/\D/g, "").includes(digits))))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [rows, archived, f, from, ownerId, query]);
+  }, [rows, archived, f, from, ownerId, query, state]);
+
+  const stateSeg = (
+    <Seg<State>
+      value={state}
+      onChange={(v) => {
+        setState(v);
+        setGroup(null);
+      }}
+      options={[
+        ["today", `Na dziś · ${today.length}`],
+        ["active", `Wszystkie aktywne · ${activeCount}`],
+        ["postponed", `Odłożone · ${postponedCount}`],
+        ["lost", "Przegrane"],
+      ]}
+    />
+  );
+
+  if (state === "today") {
+    return (
+      <div className="flex flex-col gap-3">
+        <PlanBand items={today} untouchedTotal={untouchedTotal} progress={progress} playbook={playbook} season={season} selected={group} onSelect={setGroup} />
+        <WinToast rows={funnel} now={now} season={season} playbook={playbook} />
+        <div className="flex flex-wrap items-center gap-2">
+          {stateSeg}
+          <Seg<Mine>
+            value={mine}
+            onChange={setMine}
+            options={[
+              ["me", "Moje"],
+              ["all", "Wszyscy"],
+            ]}
+          />
+          <Seg<"all" | "www" | "phone">
+            value={todaySource}
+            onChange={setTodaySource}
+            options={[
+              ["all", "Każde źródło"],
+              ["www", "WWW"],
+              ["phone", "Telefon"],
+            ]}
+          />
+          {!readOnly && (
+            <button type="button" onClick={onSerial} className="h-[28px] rounded-[6px] border border-[#C9D3DC] bg-white px-2.5 text-[12px] text-[#0C3450] hover:border-[#1B6FA8]" title="Otwiera po kolei kontakty do obdzwonienia">
+              Dzwoń po kolei
+            </button>
+          )}
+          <span className="text-[12px] text-[#5C6166]">
+            dziś: {callStats.talked} {plural(callStats.talked, "rozmowa", "rozmowy", "rozmów")} · {callStats.noAnswer} nieodebrane
+          </span>
+          <span className="ml-auto text-[12px] text-[#5C6166]">
+            {group ? (
+              <button type="button" className="text-[#1B6FA8] hover:underline" onClick={() => setGroup(null)}>
+                pokaż całą listę „Na dziś”
+              </button>
+            ) : (
+              "sort: po czasie → nowe → dziś → wracają"
+            )}
+          </span>
+        </div>
+        <TodayTable items={todayShown} now={now} selectedId={selectedId} readOnly={readOnly} suggestions={suggestions} onOpen={onOpen} onQuick={onQuick} onLost={onLost} onLink={onLink} />
+        <p className="text-[11.5px] text-[#5C6166]">
+          „Na dziś” = po czasie + nowe + zaplanowane na dziś + wracające odłożone. Kliknięcie punktu „Planu dnia” filtruje listę. „Wszystkie aktywne” = pełny rejestr.
+        </p>
+        <StageLegend priorities />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -156,16 +261,7 @@ export function ListView({
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Seg<State>
-          value={f.state}
-          onChange={(v) => set("state", v)}
-          options={[
-            ["active", "Aktywne"],
-            ["all", "Wszystkie"],
-            ["lost", "Przegrane"],
-            ["postponed", "Odłożone"],
-          ]}
-        />
+        {stateSeg}
         <Seg<Source>
           value={f.source}
           onChange={(v) => set("source", v)}

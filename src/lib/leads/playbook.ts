@@ -33,7 +33,7 @@ export const DEFAULT_PLAYBOOK: Playbook = {
     { title: "Follow-up z nową wartością.", text: "+3 dni: trzymany termin. +7 dni: opinia klientki / efekty / nowy termin." },
     { title: "Pytaj o wybór, nie o zgodę.", text: "„16 czy 23 października?”" },
     { title: "„Nie teraz” = Odłóż z datą.", text: "„Odezwę się przed sezonem – 2 lutego pasuje?”" },
-    { title: "Koniec dnia: Nowe puste, każdy sygnał z krokiem.", text: "5 minut kontroli w Skrzynce." },
+    { title: "Koniec dnia: Nowe puste, każdy sygnał z krokiem.", text: "5 minut kontroli na liście „Na dziś”." },
   ],
   questions: ["Jaki gabinet i gdzie? (transport)", "Jakie zabiegi / które urządzenie?", "Na kiedy i jak często?", "Zna sprzęt czy potrzebne szkolenie?", "Faktura – NIP?", "Kto decyduje?"],
   scripts: {

@@ -8,7 +8,7 @@ import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { FUNNEL_FROM, REACH_ORDER, funnelFromRow, rotInfo, type FunnelLead } from "@/lib/leads/funnel";
 import { Avatar, Dots, Seg } from "./funnel-views";
 import { StageChip } from "./lead-ui";
-import { StageLegend } from "./inbox-view";
+import { StageLegend } from "./plan-day";
 import { LEAD_STAGE_COLORS } from "@/components/shell-tokens";
 
 // Sygnały → Tablica (wzór lejek-v2-wzor.html, s2): jedyny lejek w panelu.
@@ -46,7 +46,7 @@ function due(r: LeadRow, now: Date): { text: string; late: boolean; today: boole
   // Nowe (nietknięte): SLA i kolejne próby.
   if (r.stage === "SYGNAL" && !r.firstContactAt) {
     if (r.attempts > 0) return { text: `${r.attempts + 1}. próba ${sameDay ? "dziś" : at < now ? "zaległa" : d2(r.nextActionAt)}`, late: rot.rotting || (at < now && !sameDay), today: sameDay && !rot.rotting };
-    return rot.rotting ? { text: "po SLA", late: true, today: false } : { text: "zadzwonić dziś", late: false, today: true };
+    return rot.rotting ? { text: "po czasie", late: true, today: false } : { text: "zadzwonić dziś", late: false, today: true };
   }
   if (rot.rotting) return { text: rot.label!, late: true, today: false };
   if (sameDay) return { text: `dziś${hm}`, late: false, today: true };

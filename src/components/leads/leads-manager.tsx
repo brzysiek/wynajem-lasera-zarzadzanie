@@ -13,7 +13,6 @@ import { fmtDate } from "@/components/clients/ui";
 import { useMediaQuery } from "@/components/clients/use-media-query";
 import { LeadCard, type CardIntent } from "./lead-card";
 import { toFunnel, type LinkSuggestion } from "./funnel-views";
-import { InboxView } from "./inbox-view";
 import { Cheatsheet } from "./cheatsheet";
 import type { Playbook } from "@/lib/leads/playbook";
 import type { DayProgress } from "@/lib/leads/load";
@@ -30,10 +29,10 @@ import { RefreshIcon, fmtRange } from "./lead-ui";
 // kilkaset, więc filtrowanie i widoki liczą się w przeglądarce. Karta: prawa
 // kolumna od 1280 px, poniżej panel wysuwany.
 
-// Lejek v2: Skrzynka (domyślna) · Tablica · Lista · Raport. „Na dziś” i „Do
-// obdzwonienia” weszły do Skrzynki (tryb „Dzwoń po kolei” został).
-type View = "inbox" | "board" | "list" | "report";
-const VIEW_LABEL: Record<View, string> = { inbox: "Skrzynka", board: "Tablica", list: "Lista", report: "Raport" };
+// Lejek v2 (zmiana 28.09 — bez osobnej Skrzynki): Lista (domyślna, filtr
+// „Na dziś” z Planem dnia) · Tablica · Raport. „Dzwoń po kolei” w „Na dziś”.
+type View = "list" | "board" | "report";
+const VIEW_LABEL: Record<View, string> = { list: "Lista", board: "Tablica", report: "Raport" };
 
 
 function csvCell(v: string | number | null): string {
@@ -120,7 +119,7 @@ export function LeadsManager({
 }) {
   const router = useRouter();
   const wide = useMediaQuery("(min-width: 1280px)");
-  const [view, setView] = useState<View>("inbox");
+  const [view, setView] = useState<View>("list");
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [intent, setIntent] = useState<CardIntent>(null);
   const [showNew, setShowNew] = useState<false | "new" | "mail">(false);
@@ -409,25 +408,6 @@ export function LeadsManager({
             </div>
           ) : (
             <>
-              {view === "inbox" && (
-                <InboxView
-                  rows={list}
-                  now={now}
-                  currentUserId={currentUserId}
-                  selectedId={selectedId}
-                  readOnly={readOnly}
-                  onOpen={(id, i) => open(id, i ?? null)}
-                  onQuick={quickOutcome}
-                  onLost={(id) => setLostIds([id])}
-                  onSerial={startSerial}
-                  suggestions={linkSuggestions}
-                  onLink={(leadId, rentalId) => void linkRental(leadId, rentalId)}
-                  callStats={callStats}
-                  progress={progress}
-                  playbook={playbook}
-                />
-              )}
-
               {view === "board" && (
                 <BoardView
                   rows={list}
@@ -447,7 +427,27 @@ export function LeadsManager({
 
               {view === "report" && <ReportView rows={list} now={now} />}
 
-              {view === "list" && <ListView rows={list} archived={archivedRows} users={users} now={now} selectedId={selectedId} onOpen={(id) => open(id)} onExport={exportCsv} />}
+              {view === "list" && (
+                <ListView
+                  rows={list}
+                  archived={archivedRows}
+                  users={users}
+                  now={now}
+                  selectedId={selectedId}
+                  onOpen={(id, i) => open(id, i ?? null)}
+                  onExport={exportCsv}
+                  currentUserId={currentUserId}
+                  readOnly={readOnly}
+                  progress={progress}
+                  playbook={playbook}
+                  suggestions={linkSuggestions}
+                  callStats={callStats}
+                  onQuick={quickOutcome}
+                  onLost={(id) => setLostIds([id])}
+                  onLink={(leadId, rentalId) => void linkRental(leadId, rentalId)}
+                  onSerial={startSerial}
+                />
+              )}
             </>
           )}
         </div>

@@ -693,14 +693,14 @@ function StageAge({ d }: { d: LeadDetail }) {
     return (
       <p className="text-[12.5px] text-[#6B5B3E]">
         Odłożone do <b className="font-semibold">{d.returnAt ? new Date(d.returnAt).toLocaleDateString("pl-PL") : "—"}</b>
-        {d.postponeReason ? ` · ${POSTPONE_REASON_LABEL[d.postponeReason as PostponeReasonKey] ?? d.postponeReason}` : ""} — w dniu powrotu wraca do Skrzynki („W kontakcie”, krok na dziś).
+        {d.postponeReason ? ` · ${POSTPONE_REASON_LABEL[d.postponeReason as PostponeReasonKey] ?? d.postponeReason}` : ""} — w dniu powrotu wraca na listę „Na dziś” („W kontakcie”, krok na dziś).
       </p>
     );
   }
   if (!OPEN_STAGES.includes(d.stage)) return null;
   const rot = rotInfo(funnelFromRow(d) as unknown as FunnelLead, now);
   const days = Math.floor((now.getTime() - new Date(d.stageChangedAt).getTime()) / 86_400_000);
-  const limit = d.stage === "SYGNAL" && !d.firstContactAt ? `SLA ${FIRST_CONTACT_SLA_HOURS} h rob.` : d.stage === "OFERTA" ? `limit gnicia ${ROT_DAYS_OFFER} dni` : d.stage === "REZERWACJA" ? "do dnia wynajmu" : `limit gnicia ${ROT_WORK_DAYS_CONTACT} dni rob.`;
+  const limit = d.stage === "SYGNAL" && !d.firstContactAt ? `czas na kontakt ${FIRST_CONTACT_SLA_HOURS} h rob.` : d.stage === "OFERTA" ? `limit gnicia ${ROT_DAYS_OFFER} dni` : d.stage === "REZERWACJA" ? "do dnia wynajmu" : `limit gnicia ${ROT_WORK_DAYS_CONTACT} dni rob.`;
   return (
     <p className="text-[12.5px] text-[#5C6166]">
       W etapie {days} {days === 1 ? "dzień" : "dni"} · {limit}
@@ -815,7 +815,7 @@ function CallResult({
       </div>
       {mode === "postpone" && (
         <div className="flex flex-col gap-2">
-          <p className="text-[11.5px] text-[#1B6FA8]">„Odłóż do…”: data powrotu + powód. W dniu powrotu sygnał wraca do Skrzynki („W kontakcie”, krok na dziś).</p>
+          <p className="text-[11.5px] text-[#1B6FA8]">„Odłóż do…”: data powrotu + powód. W dniu powrotu sygnał wraca na listę „Na dziś” („W kontakcie”, krok na dziś).</p>
           <div className="flex flex-wrap items-center gap-2">
             <input type="date" className={DATE_INPUT} value={date} onChange={(e) => setDate(e.target.value)} aria-label="Wraca dnia" />
             <select className={`${INPUT} h-8 w-auto cursor-pointer`} value={reason} onChange={(e) => setReason(e.target.value as PostponeReasonKey | "")} aria-label="Powód">

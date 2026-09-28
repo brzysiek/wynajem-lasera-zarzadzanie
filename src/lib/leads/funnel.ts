@@ -336,7 +336,7 @@ export function rotInfo(l: FunnelLead, now: Date): Rot {
     const h = workHoursBetween(l.createdAt, now);
     if (h <= FIRST_CONTACT_SLA_HOURS) return none;
     const d = Math.max(1, Math.floor(h / WORK_DAY_HOURS));
-    return { rotting: true, label: `po SLA · ${d} ${d === 1 ? "dzień" : "dni"} rob.`, days: d };
+    return { rotting: true, label: `po czasie · ${d} ${d === 1 ? "dzień" : "dni"} rob.`, days: d };
   }
   if (!l.nextActionAt) return { rotting: true, label: "brak kroku", days: 0 };
   const last = lastWorkOf(l);
@@ -386,4 +386,49 @@ export function inboxKpis<T extends FunnelLead>(leads: T[], now: Date) {
     offers30: offers30.length,
     reservations30: offers30.filter((l) => reached(l, "REZERWACJA")).length,
   };
+}
+
+// ------------------------------------------------------------------ Lista „Na dziś” (28.09, bez Skrzynki)
+
+// Jedna tabela, kolejność: po czasie → nowe → zaplanowane na dziś → wracające
+// odłożone. Grupy = punkty „Planu dnia” (klik filtruje tabelę).
+export type TodayPriority = "late" | "new" | "today" | "back";
+export type TodayGroup = "new" | "calls" | "followups" | "back" | "other";
+export type TodayItem<T> = { lead: T; priority: TodayPriority; group: TodayGroup };
+
+const PRIORITY_ORDER: Record<TodayPriority, number> = { late: 0, new: 1, today: 2, back: 3 };
+const CALL_STEPS = ["ODDZWONI", "PONOWNA_PROBA", "UMOW_TERMIN", "DOPYTAC"];
+
+export function buildToday<T extends FunnelLead & { nextStepNote?: string | null }>(leads: T[], now: Date): TodayItem<T>[] {
+  const sod = startOfDay(now);
+  const eod = endOfDay(now);
+  const out: TodayItem<T>[] = [];
+  for (const l of leads) {
+    if (!in2026(l)) continue;
+    const back = l.nextStepType === "POWROT" || (l.nextStepNote ?? "").startsWith("wraca z odłożonych");
+    if (l.stage === "ODLOZONE") {
+      if (l.returnAt && l.returnAt <= eod) out.push({ lead: l, priority: "back", group: "back" });
+      continue;
+    }
+    if (!isOpen(l)) continue;
+    if (untouched(l)) {
+      const due = !l.nextActionAt || l.nextActionAt <= eod;
+      const rot = rotInfo(l, now).rotting;
+      if (!due && !rot) continue;
+      // Kolejna próba zaplanowana na dziś to „Nowe”; minięta próba albo brak
+      // kontaktu po czasie na kontakt — „Po czasie”.
+      const late = l.attempts > 0 ? !!l.nextActionAt && l.nextActionAt < sod : rot;
+      out.push({ lead: l, priority: late ? "late" : "new", group: "new" });
+      continue;
+    }
+    const group: TodayGroup = back ? "back" : l.nextStepType === "FOLLOW_UP_OFERTY" ? "followups" : CALL_STEPS.includes(l.nextStepType ?? "") ? "calls" : "other";
+    if (l.stage === "REZERWACJA" && !l.rentalId) {
+      out.push({ lead: l, priority: "today", group });
+      continue;
+    }
+    if (!l.nextActionAt || l.nextActionAt > eod) continue;
+    out.push({ lead: l, priority: l.nextActionAt < sod ? "late" : back ? "back" : "today", group });
+  }
+  const t = (x: TodayItem<T>) => (x.priority === "today" || x.priority === "back" ? (x.lead.nextActionAt ?? x.lead.returnAt ?? x.lead.createdAt).getTime() : -x.lead.createdAt.getTime());
+  return out.sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || t(a) - t(b));
 }

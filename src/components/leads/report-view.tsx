@@ -5,7 +5,7 @@ import type { LeadRow } from "@/lib/leads/load";
 import { LOST_REASON_LABEL, type LostReasonKey } from "@/lib/leads/labels";
 import { FIRST_CONTACT_SLA_HOURS, rotInfo, workDurationLabel, type FunnelLead } from "@/lib/leads/funnel";
 import { LEAD_STAGE_COLORS } from "@/components/shell-tokens";
-import { StageLegend } from "./inbox-view";
+import { StageLegend } from "./plan-day";
 import { SOURCE_TYPES, countBy, firstContactBuckets, funnelSteps, inRange, postponedByMonth, reportKpis, type ReportRange, type ReportSource } from "@/lib/leads/report";
 import { KpiBand, Seg, toFunnel } from "./funnel-views";
 
@@ -146,7 +146,7 @@ export function ReportView({ rows, now }: { rows: LeadRow[]; now: Date }) {
         <Chart
           title="Odłożone – kiedy wracają"
           bars={postponed.map((p) => ({ label: p.label, count: p.count }))}
-          note={postponed.length ? "Lista do kampanii przed sezonem — każdy wraca do Skrzynki w swoim dniu." : "Brak odłożonych („Odłóż do…” w karcie sygnału)."}
+          note={postponed.length ? "Lista do kampanii przed sezonem — każdy wraca na listę „Na dziś” w swoim dniu." : "Brak odłożonych („Odłóż do…” w karcie sygnału)."}
         />
       </div>
       <StageLegend />

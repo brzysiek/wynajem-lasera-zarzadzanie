@@ -275,7 +275,7 @@ export const TOOLS: McpTool[] = [
       od: s("Wpłynęło od RRRR-MM-DD."),
       do_obdzwonienia: b("Tylko lista „Do obdzwonienia”."),
       duplikaty: b("Tylko otwarte sygnały klientów, którzy mają ich więcej niż jeden (do zgłoszenia archiwizacji duplikatu)."),
-      gnija: b("Tylko gnijące (lejek v2): Nowe po SLA 4 h rob., W kontakcie > 3 dni rob., Oferta > 10 dni bez aktywności, bez kroku."),
+      gnija: b("Tylko gnijące (lejek v2): Nowe po czasie na kontakt (4 h rob.), W kontakcie > 3 dni rob., Oferta > 10 dni bez aktywności, bez kroku."),
       brak_kroku: b("Tylko otwarte sygnały bez następnego kroku (do zgłoszenia krok_sygnalu)."),
       klient_id: s("ID klienta."),
       q: s("Szukaj."),
