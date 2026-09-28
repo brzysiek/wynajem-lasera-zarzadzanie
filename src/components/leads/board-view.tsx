@@ -110,7 +110,8 @@ export function BoardView({
 
   // Konwersja: z sygnałów, które doszły do etapu, ile doszło do następnego
   // (etap „kiedykolwiek osiągnięty”, także przegrane po drodze).
-  const reached = (s: LeadStageKey) => scoped.filter((r) => REACH_ORDER.indexOf(r.maxStage) >= REACH_ORDER.indexOf(s)).length;
+  // Stałe klientki poza konwersją nowych (lejek v2, 3.3 pkt 4).
+  const reached = (s: LeadStageKey) => scoped.filter((r) => !r.returningClient && REACH_ORDER.indexOf(r.maxStage) >= REACH_ORDER.indexOf(s)).length;
   const conv = (s: LeadStageKey) => {
     const next = REACH_ORDER[REACH_ORDER.indexOf(s) + 1];
     const base = reached(s);

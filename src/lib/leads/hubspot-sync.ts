@@ -28,6 +28,7 @@ import {
 import { applyImportRules } from "@/lib/leads/call-list";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { AUTO_PRICE_LIST_SUBJECT } from "@/lib/gmail/parse";
+import { intakeRules, mergeRepeatInquiry } from "@/lib/leads/intake";
 import { blockedIds } from "@/lib/porzadki/import-blocks";
 import { isPlaceholderEmail } from "@/lib/clients/placeholder";
 import { dealsToImport } from "@/lib/porzadki/import-block-rules";
@@ -209,12 +210,27 @@ async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContex
   // Lejek (L1): otwarty sygnał z 2026 dostaje prowadzącą (Ania) i pierwszy
   // kontakt w SLA 4 h rob. od wpłynięcia.
   const openNew = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(plan.stage) && plan.createdAt >= FUNNEL_FROM;
-  const funnel = openNew
-    ? {
-        ownerId: await defaultLeadOwnerId(),
-        ...(firstNote ? { lastContactAt: firstNote } : { nextActionAt: addWorkHours(plan.createdAt, FIRST_CONTACT_SLA_HOURS), nextStepType: "PIERWSZY_KONTAKT" }),
-      }
-    : {};
+  // Lejek v2 (V3): ponowne zapytanie → do istniejącego sygnału (ten rekord
+  // do archiwum jako duplikat, żeby import go nie powtarzał); stała klientka
+  // → od razu „W kontakcie” z krokiem „umówić termin”.
+  const intake = openNew ? await intakeRules(ref?.clientId ?? null, plan.createdAt, plan.devices) : { duplicateOf: null, returning: false };
+  const funnel = intake.duplicateOf
+    ? { archivedAt: new Date(), archiveReason: "DUPLIKAT", archiveNote: `ponowne zapytanie — scalone z otwartym sygnałem ${intake.duplicateOf.id}` }
+    : intake.returning
+      ? {
+          ownerId: await defaultLeadOwnerId(),
+          returningClient: true,
+          ...(plan.stage === "SYGNAL" ? { stage: "WYWIAD" as const } : {}),
+          nextActionAt: new Date(Math.max(plan.createdAt.getTime(), Date.now())),
+          nextStepType: "UMOW_TERMIN",
+          nextStepNote: "stała klientka — umówić termin",
+        }
+      : openNew
+        ? {
+            ownerId: await defaultLeadOwnerId(),
+            ...(firstNote ? { lastContactAt: firstNote } : { nextActionAt: addWorkHours(plan.createdAt, FIRST_CONTACT_SLA_HOURS), nextStepType: "PIERWSZY_KONTAKT" }),
+          }
+        : {};
 
   await prisma.$transaction(async (tx) => {
     const lead = await tx.lead.create({
@@ -257,6 +273,7 @@ async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContex
       skipDuplicates: true,
     });
   });
+  if (intake.duplicateOf) await mergeRepeatInquiry(intake.duplicateOf, { type: plan.type, createdAt: plan.createdAt, message: plan.message });
 }
 
 export type DealsSyncResult = {

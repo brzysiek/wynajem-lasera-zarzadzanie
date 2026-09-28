@@ -1246,6 +1246,9 @@ model Lead {
   returnAt        DateTime?
   // Lejek v2 — Odłożone: powód (SEZON | ZBIERA_OFERTY | URLOP | REMONT | INNE).
   postponeReason  String?        @db.VarChar(32)
+  // Lejek v2 — zapytanie od klientki z wynajmem w ostatnich 12 mies.: od razu
+  // „W kontakcie” z krokiem „umówić termin”, poza konwersją nowych.
+  returningClient Boolean        @default(false)
   rentalId        String?        @unique
   rental          Rental?        @relation(fields: [rentalId], references: [id], onDelete: SetNull)
   // Zaległe zapytanie z 2026 z importu HubSpota — lista „Do obdzwonienia”

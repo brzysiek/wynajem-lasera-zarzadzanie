@@ -31,7 +31,7 @@ export function maxStageReached(current: LeadStageKey, stageChangeBodies: (strin
   return REACH_ORDER[best];
 }
 
-export type NextStepType = "PIERWSZY_KONTAKT" | "PONOWNA_PROBA" | "FOLLOW_UP_OFERTY" | "ODDZWONI" | "DOPYTAC" | "POWROT" | "INNE";
+export type NextStepType = "PIERWSZY_KONTAKT" | "PONOWNA_PROBA" | "FOLLOW_UP_OFERTY" | "ODDZWONI" | "DOPYTAC" | "POWROT" | "UMOW_TERMIN" | "INNE";
 export const NEXT_STEP_LABEL: Record<NextStepType, string> = {
   PIERWSZY_KONTAKT: "pierwszy kontakt",
   PONOWNA_PROBA: "ponowna próba",
@@ -39,10 +39,11 @@ export const NEXT_STEP_LABEL: Record<NextStepType, string> = {
   ODDZWONI: "oddzwoni",
   DOPYTAC: "dopytać",
   POWROT: "powrót z odłożonych",
+  UMOW_TERMIN: "umówić termin",
   INNE: "kolejny krok",
 };
 // Kroki telefoniczne — trafiają do „Do obdzwonienia”, gdy przypadają.
-export const PHONE_STEPS: NextStepType[] = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA", "FOLLOW_UP_OFERTY", "ODDZWONI", "DOPYTAC"];
+export const PHONE_STEPS: NextStepType[] = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA", "FOLLOW_UP_OFERTY", "ODDZWONI", "DOPYTAC", "UMOW_TERMIN"];
 
 // Odłożone liczy się jak „W kontakcie” (automaty tylko do przodu).
 const STAGE_ORDER: Record<LeadStageKey, number> = { SYGNAL: 0, WYWIAD: 1, ODLOZONE: 1, OFERTA: 2, REZERWACJA: 3, WYGRANA: 4, PRZEGRANA: 5 };
@@ -183,6 +184,7 @@ export type FunnelLead = {
   lastWorkAt?: Date | null;
   returnAt?: Date | null;
   maxStage?: LeadStageKey;
+  returningClient?: boolean;
 };
 
 // Wiersz z datami ISO (LeadRow) → wiersz lejka z datami.
@@ -367,7 +369,7 @@ export function inboxKpis<T extends FunnelLead>(leads: T[], now: Date) {
   const b = buildInbox(leads, now);
   const from30 = new Date(now.getTime() - 30 * 86_400_000);
   const week = new Date(now.getTime() + 7 * 86_400_000);
-  const last30 = leads.filter((l) => l.createdAt >= from30);
+  const last30 = leads.filter((l) => l.createdAt >= from30 && !l.returningClient);
   const reached = (l: T, s: LeadStageKey) => REACH_ORDER.indexOf(l.maxStage ?? l.stage) >= REACH_ORDER.indexOf(s);
   const offers30 = last30.filter((l) => reached(l, "OFERTA"));
   return {

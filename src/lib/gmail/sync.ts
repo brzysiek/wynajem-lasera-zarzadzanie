@@ -2,6 +2,8 @@ import { emailHideReason } from "@/lib/porzadki/exclusion-rules";
 import { getHideKeywords, loadExclusionMatcher } from "@/lib/porzadki/exclusion-load";
 import { prisma } from "@/lib/prisma";
 import { qualifyClient } from "@/lib/clients/qualify";
+import { applyMailAutomationSafe } from "@/lib/leads/mail-automation";
+import { bounceRecipients } from "@/lib/leads/mail-rules";
 import { logInfo, logWarn } from "@/lib/logger";
 import { GmailError, getMessageMeta, getProfile, listHistoryAdded, listMessageIds } from "@/lib/integrations/gmail-read";
 import { buildAddressIndex, classifyEmail, headerMap, historyQuery, isAutoPriceListMail, isAutomated, isSkippedByLabels, parseAddresses, type AddressIndex } from "@/lib/gmail/parse";
@@ -116,9 +118,12 @@ async function processIds(
     if (todo.length === 0) continue;
     const metas = await Promise.all(todo.map((id) => getMessageMeta(mailbox, id)));
     const rows = [];
+    const bounces: string[] = [];
     for (const m of metas) {
       if (isSkippedByLabels(m.labelIds)) continue;
       const h = headerMap(m.headers);
+      // Odbity mail (lejek v2): adres do potwierdzenia — sam mail pomijamy.
+      if (Date.now() - Number(m.internalDate) < 7 * 86_400_000) bounces.push(...bounceRecipients(h));
       if (isAutomated(h)) continue;
       const from = parseAddresses(h["from"]);
       const to = parseAddresses(h["to"]);
@@ -161,6 +166,14 @@ async function processIds(
     if (rows.length) {
       stored += (await prisma.emailMessage.createMany({ data: rows, skipDuplicates: true })).count;
       await qualifyFromOutgoing(rows.filter((r) => r.direction === "OUT").map((r) => ({ clientId: r.clientId, sentAt: r.sentAt, subject: r.subject ?? null })));
+    }
+    // Lejek v2 (V3): maile przesuwają otwarte sygnały, oferta bez sygnału
+    // zakłada sygnał, odbite maile → zadanie „potwierdź adres”.
+    if (rows.length || bounces.length) {
+      await applyMailAutomationSafe(
+        rows.filter((r) => !r.hiddenReason).map((r) => ({ gmailMessageId: r.gmailMessageId, clientId: r.clientId, direction: r.direction, subject: r.subject ?? null, sentAt: r.sentAt })),
+        bounces,
+      );
     }
   }
   return { stored, done: true, nextOffset: ids.length };

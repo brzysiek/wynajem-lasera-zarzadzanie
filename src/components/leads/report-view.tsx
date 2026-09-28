@@ -62,7 +62,8 @@ function Chart({ title, bars, note, labelWidth = 150 }: { title: string; bars: B
 export function ReportView({ rows, now }: { rows: LeadRow[]; now: Date }) {
   const [range, setRange] = useState<ReportRange>("2026");
   const [source, setSource] = useState<ReportSource>("all");
-  const leads = useMemo(() => inRange(toFunnel(rows) as unknown as (LeadRow & Parameters<typeof funnelSteps>[0][number])[], range, source, now), [rows, range, source, now]);
+  // Stałe klientki poza lejkiem nowych (lejek v2, 3.3 pkt 4).
+  const leads = useMemo(() => inRange(toFunnel(rows.filter((r) => !r.returningClient)) as unknown as (LeadRow & Parameters<typeof funnelSteps>[0][number])[], range, source, now), [rows, range, source, now]);
   const k = reportKpis(leads, now);
   const funnel = funnelSteps(leads);
   const buckets = firstContactBuckets(leads);

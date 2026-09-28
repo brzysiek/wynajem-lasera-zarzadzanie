@@ -48,6 +48,7 @@ const ROW_SELECT = {
   lostReason: true,
   returnAt: true,
   postponeReason: true,
+  returningClient: true,
   rentalId: true,
   ownerId: true,
   hubspotDealId: true,
@@ -94,6 +95,8 @@ export type LeadRow = {
   returnAt: string | null;
   postponeReason: string | null;
   lastWorkAt: string | null;
+  // Zapytanie stałej klientki — poza konwersją nowych (lejek v2).
+  returningClient: boolean;
   rentalId: string | null;
   rentalStartsAt: string | null;
   rentalDevice: string | null;
@@ -157,6 +160,7 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     returnAt: l.returnAt?.toISOString() ?? null,
     postponeReason: l.postponeReason,
     lastWorkAt: x.lastWork.get(l.id)?.toISOString() ?? null,
+    returningClient: l.returningClient,
     rentalId: l.rentalId,
     rentalStartsAt: l.rental?.startsAt.toISOString() ?? null,
     rentalDevice: l.rental?.device.name ?? null,

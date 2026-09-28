@@ -6,6 +6,7 @@ import { leadTitle, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, addWorkHours, planOutcome, type NextStepType, type Outcome } from "@/lib/leads/funnel";
 import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { qualifyClient } from "@/lib/clients/qualify";
+import { intakeRules } from "@/lib/leads/intake";
 import type { LeadPatch, NewLeadInput } from "@/lib/leads/validate";
 
 // Akcje na sygnałach z panelu (CRM, prompt 2A). Wszystko tylko w bazie
@@ -292,6 +293,8 @@ export async function createLead(input: NewLeadInput, userId: string): Promise<s
   const now = new Date();
   // Telefon wpisany po rozmowie = kontakt już był; inaczej pierwszy kontakt w SLA 4 h rob.
   const talkedAlready = input.type === "TELEFON";
+  // Lejek v2: stała klientka (wynajem w 12 mies.) — od razu „umówić termin”.
+  const { returning } = await intakeRules(clientId, now, input.deviceInterest);
   const lead = await prisma.lead.create({
     data: {
       clientId,
@@ -301,8 +304,9 @@ export async function createLead(input: NewLeadInput, userId: string): Promise<s
       ownerId: await defaultLeadOwnerId(userId),
       sourceRef: input.sourceRef ?? null,
       ...(talkedAlready
-        ? { firstContactAt: now, lastContactAt: now, nextActionAt: addWorkHours(now, 16), nextStepType: "INNE", nextStepNote: "po rozmowie telefonicznej" }
+        ? { stage: "WYWIAD", firstContactAt: now, lastContactAt: now, nextActionAt: addWorkHours(now, 16), nextStepType: "INNE", nextStepNote: "po rozmowie telefonicznej" }
         : { nextActionAt: addWorkHours(now, FIRST_CONTACT_SLA_HOURS), nextStepType: "PIERWSZY_KONTAKT" }),
+      ...(returning ? { stage: "WYWIAD", returningClient: true, nextActionAt: now, nextStepType: "UMOW_TERMIN", nextStepNote: "stała klientka — umówić termin" } : {}),
       deviceInterest: input.deviceInterest.length ? input.deviceInterest : undefined,
       requestedFrom: input.requestedFrom,
       requestedDays: input.requestedDays,

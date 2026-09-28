@@ -84,7 +84,7 @@ export type GmailMeta = {
   hasAttachments: boolean;
 };
 
-const META_HEADERS = ["From", "To", "Cc", "Subject", "Date", "Message-ID", "Auto-Submitted", "Precedence", "X-Autoreply", "X-Autorespond"];
+const META_HEADERS = ["From", "To", "Cc", "Subject", "Date", "Message-ID", "Auto-Submitted", "Precedence", "X-Autoreply", "X-Autorespond", "X-Failed-Recipients"];
 
 export async function getMessageMeta(mailbox: string, id: string): Promise<GmailMeta> {
   const params = new URLSearchParams({ format: "metadata" });
