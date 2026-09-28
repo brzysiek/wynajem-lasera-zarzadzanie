@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/integrations/szybkisms";
 import { STAGE_LABEL, LOST_REASON_LABEL, POSTPONE_REASON_LABEL, type PostponeReasonKey } from "@/lib/leads/labels";
 import { leadTitle, type LeadStageKey } from "@/lib/leads/parse-deal";
-import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, addWorkHours, planOutcome, type NextStepType, type Outcome } from "@/lib/leads/funnel";
+import { stepForStage, FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, addWorkHours, planOutcome, type NextStepType, type Outcome } from "@/lib/leads/funnel";
 import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { intakeRules } from "@/lib/leads/intake";
@@ -72,6 +72,14 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
   if (patch.stage && patch.stage !== lead.stage) {
     Object.assign(data, stageData(lead, patch.stage));
     if (patch.stage === "WYGRANA" || patch.stage === "PRZEGRANA") Object.assign(data, { nextActionAt: null, nextStepType: null, nextStepNote: null });
+    // Krok „pierwszy kontakt / ponowna próba” nie zostaje po wyjściu z Nowe.
+    else if (stepForStage(patch.stage, lead.nextStepType) !== lead.nextStepType) {
+      Object.assign(data, {
+        nextStepType: stepForStage(patch.stage, lead.nextStepType),
+        nextStepNote: patch.stage === "REZERWACJA" && !lead.rentalId && !patch.rentalId ? "połącz z wynajmem w kalendarzu" : null,
+        attempts: 0,
+      });
+    }
     notes.push(`${STAGE_LABEL[lead.stage]} → ${STAGE_LABEL[patch.stage]}`);
     if (patch.stage === "PRZEGRANA") {
       data.lostReason = patch.lostReason;
@@ -127,6 +135,11 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
       });
     }
   });
+  // Przegląd 29.09, pkt 4: sygnał dalej niż „Nowe” (albo przegrana po rozmowie)
+  // = była interakcja → klient Potencjalny.
+  if (patch.stage && patch.stage !== lead.stage && (["WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA", "ODLOZONE"].includes(patch.stage) || (patch.stage === "PRZEGRANA" && lead.firstContactAt))) {
+    await qualifyClient(lead.clientId, "MANUAL");
+  }
 }
 
 // „email” = „Odpowiedziałam mailem” (prompt 2 v2, 3.3) — kwalifikuje klienta

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { takeOverFromDuplicates } from "@/lib/leads/intake";
 import type { ArchiveReasonKey } from "@/lib/porzadki/labels";
 import { PorzadkiError, type Actor } from "@/lib/porzadki/proposals";
 import { toLogValue } from "@/lib/changelog/diff";
@@ -42,6 +43,8 @@ export async function archiveRecords(type: ArchiveType, ids: string[], input: Ar
     }
     await recordChanges(tx, { userId: actor.userId, provenance: { source: input.note, confidence: null, batch: input.batch }, approvedById: opts.approvedById }, entries);
   });
+  // Duplikat sygnału: pozostały sygnał klienta przejmuje etap i krok (przegląd 29.09, pkt 5).
+  if (type === "lead" && input.reason === "DUPLIKAT" && count) await takeOverFromDuplicates(ids);
   return count;
 }
 

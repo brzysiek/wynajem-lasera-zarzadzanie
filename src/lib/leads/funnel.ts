@@ -432,3 +432,11 @@ export function buildToday<T extends FunnelLead & { nextStepNote?: string | null
   const t = (x: TodayItem<T>) => (x.priority === "today" || x.priority === "back" ? (x.lead.nextActionAt ?? x.lead.returnAt ?? x.lead.createdAt).getTime() : -x.lead.createdAt.getTime());
   return out.sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || t(a) - t(b));
 }
+
+// Przegląd 29.09, pkt 3: „pierwszy kontakt” / „ponowna próba” tylko w etapie
+// Nowe. Po wyjściu z Nowe krok zmienia się na odpowiedni dla etapu.
+export const FIRST_CONTACT_STEPS = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA"];
+export function stepForStage(stage: LeadStageKey, step: string | null): string | null {
+  if (stage === "SYGNAL" || !step || !FIRST_CONTACT_STEPS.includes(step)) return step;
+  return stage === "OFERTA" ? "FOLLOW_UP_OFERTY" : stage === "REZERWACJA" ? "INNE" : "DOPYTAC";
+}

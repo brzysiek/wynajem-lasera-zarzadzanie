@@ -27,7 +27,7 @@ import {
 } from "@/lib/porzadki/proposal-rules";
 import { createLead, updateLead } from "@/lib/leads/actions";
 import { LOST_REASON_LABEL } from "@/lib/leads/labels";
-import { NEXT_STEP_LABEL, type NextStepType } from "@/lib/leads/funnel";
+import { stepForStage, NEXT_STEP_LABEL, type NextStepType } from "@/lib/leads/funnel";
 import { upsertClientPrice } from "@/lib/clients/terms";
 import { createAddress, updateAddress } from "@/lib/clients/delivery";
 import { formatAddressLine, parseAddressInput } from "@/lib/clients/delivery-rules";
@@ -128,6 +128,10 @@ async function normalizeProposedAsync(p: ParsedProposal): Promise<unknown> {
     if (!l) throw new PorzadkiError("Sygnał nie istnieje.", 404);
     if (!p.clientId) p.clientId = l.clientId;
     if (p.kind === "LEAD_STEP" && (l.stage === "WYGRANA" || l.stage === "PRZEGRANA")) throw new PorzadkiError("Sygnał jest zamknięty — następny krok tylko dla otwartych.");
+    // Przegląd 29.09, pkt 3: pierwszy kontakt / ponowna próba tylko w etapie Nowe.
+    if (p.kind === "LEAD_STEP" && l.stage !== "SYGNAL" && ["PIERWSZY_KONTAKT", "PONOWNA_PROBA"].includes((p.proposed as LeadStepProposal).stepType)) {
+      throw new PorzadkiError(`rodzaj_kroku ${(p.proposed as LeadStepProposal).stepType} tylko w etapie Nowe — ten sygnał jest dalej (użyj DOPYTAC, ODDZWONI, FOLLOW_UP_OFERTY albo INNE).`);
+    }
     if (p.kind === "RENTAL_LINK") {
       const r = await prisma.rental.findUnique({ where: { id: (p.proposed as RentalLinkProposal).rentalId }, select: { id: true, lead: { select: { id: true } } } });
       if (!r) throw new PorzadkiError("Wynajem nie istnieje (wynajem_id z kalendarz_wynajmy).", 404);
@@ -314,11 +318,13 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
     const v = value as LeadStepProposal;
     const at = v.at.length > 10 ? new Date(v.at) : new Date(`${v.at}T10:00:00`);
     if (Number.isNaN(at.getTime())) return { ok: false, message: "Nieprawidłowy termin." };
-    const l = await prisma.lead.findUnique({ where: { id: p.leadId! }, select: { clientId: true } });
+    const l = await prisma.lead.findUnique({ where: { id: p.leadId! }, select: { clientId: true, stage: true } });
+    // Krok niezgodny z etapem (np. „pierwszy kontakt” w „W kontakcie”) — wg etapu.
+    const stepType = l ? (stepForStage(l.stage, v.stepType) ?? v.stepType) : v.stepType;
     await prisma.$transaction([
-      prisma.lead.update({ where: { id: p.leadId! }, data: { nextActionAt: at, nextStepType: v.stepType, nextStepNote: v.note } }),
+      prisma.lead.update({ where: { id: p.leadId! }, data: { nextActionAt: at, nextStepType: stepType, nextStepNote: v.note } }),
       prisma.leadActivity.create({
-        data: { leadId: p.leadId!, clientId: l?.clientId ?? null, type: "SYSTEM", body: `Następny krok (propozycja agenta): ${NEXT_STEP_LABEL[v.stepType as NextStepType] ?? v.stepType}, ${at.toLocaleString("pl-PL")}${v.note ? ` — ${v.note}` : ""}`, userId: actor.userId || null },
+        data: { leadId: p.leadId!, clientId: l?.clientId ?? null, type: "SYSTEM", body: `Następny krok (propozycja agenta): ${NEXT_STEP_LABEL[stepType as NextStepType] ?? stepType}, ${at.toLocaleString("pl-PL")}${v.note ? ` — ${v.note}` : ""}`, userId: actor.userId || null },
       }),
     ]);
     return { ok: true };

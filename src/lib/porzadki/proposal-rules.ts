@@ -73,7 +73,7 @@ export type LostReasonProposal = { lostReason: LostReasonKey; lostNote: string |
 export type LeadStepProposal = { at: string; stepType: string; note: string | null };
 export type RentalLinkProposal = { rentalId: string };
 
-const LEAD_STEP_TYPES = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA", "FOLLOW_UP_OFERTY", "ODDZWONI", "DOPYTAC", "INNE"];
+const LEAD_STEP_TYPES = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA", "FOLLOW_UP_OFERTY", "ODDZWONI", "DOPYTAC", "UMOW_TERMIN", "INNE"];
 const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ł/g, "l").replace(/[^a-z]+/g, " ").trim();
 function lostReasonOf(v: unknown): LostReasonKey | null {
   if (typeof v !== "string") return null;

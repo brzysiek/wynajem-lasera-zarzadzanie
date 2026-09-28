@@ -3,6 +3,7 @@ import { logError, logInfo } from "@/lib/logger";
 import { FUNNEL_FROM, OFFER_FOLLOW_UP_DAYS } from "@/lib/leads/funnel";
 import { addWorkdays } from "@/lib/leads/work-time";
 import { defaultLeadOwnerId } from "@/lib/leads/owner";
+import { qualifyClient } from "@/lib/clients/qualify";
 import { MAIL_AUTOMATION_MAX_AGE_DAYS, isOfferMail, planMailForLead } from "@/lib/leads/mail-rules";
 
 // Lejek v2, etap V3 — automaty z Gmaila (wołane po zapisie nowych maili w
@@ -85,6 +86,8 @@ export async function applyMailToLeads(rows: MailRow[], now = new Date()): Promi
         prisma.leadActivity.create({ data: { leadId: lead.id, clientId, type: stageChange ? "STAGE_CHANGE" : "EMAIL", body: plan.activity, createdAt: m.sentAt } }),
       ]);
       if (stageChange) moved++;
+      // Interakcja mailowa (osobisty mail z kontakt@ albo odpowiedź klientki) → klient Potencjalny.
+      await qualifyClient(clientId, "EMAIL_REPLY");
       state = { ...state, stage: stageChange ?? state.stage, firstContactAt: state.firstContactAt ?? plan.firstContactAt ?? null, lastContactAt: plan.lastContactAt };
     }
   }

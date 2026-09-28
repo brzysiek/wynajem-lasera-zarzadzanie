@@ -1,5 +1,5 @@
 import { loadExclusionMatcher } from "@/lib/porzadki/exclusion-load";
-import { FIRST_CONTACT_SLA_HOURS, FUNNEL_FROM, addWorkHours } from "@/lib/leads/funnel";
+import { FIRST_CONTACT_SLA_HOURS, FUNNEL_FROM, addWorkHours, nextWorkdayAt10 } from "@/lib/leads/funnel";
 import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { isLocked, readFieldMeta } from "@/lib/clients/profile-fields";
 import type { Prisma } from "@prisma/client";
@@ -29,6 +29,7 @@ import { applyImportRules } from "@/lib/leads/call-list";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { AUTO_PRICE_LIST_SUBJECT } from "@/lib/gmail/parse";
 import { intakeRules, mergeRepeatInquiry } from "@/lib/leads/intake";
+import { contactFromNotes } from "@/lib/leads/note-rules";
 import { blockedIds } from "@/lib/porzadki/import-blocks";
 import { isPlaceholderEmail } from "@/lib/clients/placeholder";
 import { dealsToImport } from "@/lib/porzadki/import-block-rules";
@@ -175,10 +176,10 @@ function noteActivities(notes: HsNote[], leadId: string, clientId: string | null
     }));
 }
 
-const earliest = (notes: HsNote[]) => {
-  const t = notes.map((n) => (n.timestamp ? new Date(n.timestamp).getTime() : NaN)).filter((x) => !Number.isNaN(x));
-  return t.length ? new Date(Math.min(...t)) : null;
-};
+// Przegląd 29.09, pkt 2: pierwszy kontakt tylko z notatki z rozmową; „nieudana
+// próba / zajęty / dzwonić jutro” to próba (●○○), nie kontakt.
+const noteContact = (notes: HsNote[]) => contactFromNotes(notes.map((n) => ({ text: noteHtmlToText(n.body), at: n.timestamp ? new Date(n.timestamp) : null })));
+
 
 async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContext, calls: number, until: Date) {
   const base = planLeadFromDeal(deal.properties, normalizePolishPhone);
@@ -201,12 +202,13 @@ async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContex
     callListUntil: until,
   });
   // Kontakt już był (HubSpot / Gmail) → klient zakwalifikowany (prompt 2 v2, 1.0).
-  if (ref && (emailed || notes.length > 0 || calls > 0 || ADVANCED.includes(plan.stage))) {
+  const contact = noteContact(notes);
+  if (ref && (emailed || contact.firstContactAt || calls > 0 || ADVANCED.includes(plan.stage))) {
     await qualifyClient(ref.clientId, emailed ? "EMAIL_REPLY" : "HUBSPOT");
   }
   const client = ref ? await prisma.client.findUnique({ where: { id: ref.clientId }, select: { name: true } }) : null;
   const title = plan.fromForm && client ? leadTitle({ who: client.name, devices: plan.devices, days: plan.requestedDays, fallback: plan.title }) : plan.title;
-  const firstNote = earliest(notes);
+  const firstNote = contact.firstContactAt;
   // Lejek (L1): otwarty sygnał z 2026 dostaje prowadzącą (Ania) i pierwszy
   // kontakt w SLA 4 h rob. od wpłynięcia.
   const openNew = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(plan.stage) && plan.createdAt >= FUNNEL_FROM;
@@ -228,7 +230,14 @@ async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContex
       : openNew
         ? {
             ownerId: await defaultLeadOwnerId(),
-            ...(firstNote ? { lastContactAt: firstNote } : { nextActionAt: addWorkHours(plan.createdAt, FIRST_CONTACT_SLA_HOURS), nextStepType: "PIERWSZY_KONTAKT" }),
+            ...(firstNote
+              ? // rozmowa z notatki → „W kontakcie” z krokiem „dopytać”
+                { lastContactAt: firstNote, ...(plan.stage === "SYGNAL" ? { stage: "WYWIAD" as const } : {}), nextActionAt: nextWorkdayAt10(new Date()), nextStepType: "DOPYTAC" }
+              : {
+                  nextActionAt: addWorkHours(plan.createdAt, FIRST_CONTACT_SLA_HOURS),
+                  nextStepType: contact.attempts ? "PONOWNA_PROBA" : "PIERWSZY_KONTAKT",
+                  attempts: contact.attempts,
+                }),
           }
         : {};
 
@@ -356,7 +365,7 @@ export async function syncDeals(opts: { maxNew?: number; reclassify?: boolean } 
     if (!lead.message && plan.message) fill.message = plan.message;
     if (!lead.requestedFrom && plan.requestedFrom) fill.requestedFrom = plan.requestedFrom;
     if (!lead.requestedDays && plan.requestedDays) fill.requestedDays = plan.requestedDays;
-    const first = earliest(dealNotes);
+    const first = noteContact(dealNotes).firstContactAt;
     if (!lead.firstContactAt && first) fill.firstContactAt = first;
     await prisma.lead.update({ where: { id: lead.id }, data: fill });
     refreshed++;
