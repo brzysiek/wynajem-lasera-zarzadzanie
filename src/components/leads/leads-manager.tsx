@@ -14,6 +14,8 @@ import { useMediaQuery } from "@/components/clients/use-media-query";
 import { LeadCard, type CardIntent } from "./lead-card";
 import { toFunnel, type LinkSuggestion } from "./funnel-views";
 import { Cheatsheet } from "./cheatsheet";
+import { SignalsTour } from "./signals-tour";
+import { seasonReservations } from "@/lib/leads/playbook";
 import type { Playbook } from "@/lib/leads/playbook";
 import type { DayProgress } from "@/lib/leads/load";
 import { applySmsPlaceholders } from "@/lib/sms-template";
@@ -95,6 +97,7 @@ export function LeadsManager({
   initialSelectedId,
   playbook,
   progress,
+  tour,
 }: {
   rows: LeadRow[];
   users: { id: string; name: string }[];
@@ -116,6 +119,8 @@ export function LeadsManager({
   playbook: Playbook;
   // Skrzynka → „Plan dnia”: dzisiejsze wynajmy, obsłużone dziś, tydzień.
   progress: DayProgress;
+  // Przewodnik po nowych Sygnałach (wniosek 19): czy pokazać i imię (wołacz).
+  tour: { show: boolean; name: string };
 }) {
   const router = useRouter();
   const wide = useMediaQuery("(min-width: 1280px)");
@@ -194,6 +199,11 @@ export function LeadsManager({
   }
 
   const [sheet, setSheet] = useState(false);
+  const [tourOpen, setTourOpen] = useState(tour.show);
+  async function tourDone(action: "later" | "done") {
+    setTourOpen(false);
+    await api("/api/me/tour", "POST", { tour: "signalsV2", action });
+  }
 
   function open(id: string, i: CardIntent = null) {
     setSheet(false);
@@ -320,7 +330,23 @@ export function LeadsManager({
     />
   ) : null;
   // Prawa kolumna: Ściąga albo karta sygnału.
-  const side = sheet ? <Cheatsheet playbook={playbook} onClose={() => setSheet(false)} /> : card;
+  const side = sheet ? (
+    <Cheatsheet
+      playbook={playbook}
+      onClose={() => setSheet(false)}
+      onStartTour={
+        readOnly
+          ? undefined
+          : () => {
+              setSheet(false);
+              setView("list");
+              setTourOpen(true);
+            }
+      }
+    />
+  ) : (
+    card
+  );
 
   return (
     <div style={APP_CSS_VARS} className="text-[var(--c-text)]">
@@ -337,6 +363,7 @@ export function LeadsManager({
                   role="tab"
                   aria-selected={view === v}
                   onClick={() => setView(v)}
+                  data-tour={v === "board" ? "tab-board" : undefined}
                   className={`h-8 rounded-lg px-3.5 text-sm transition-colors ${
                     view === v ? "bg-white font-semibold text-[var(--c-brand-deep)] shadow-[0_1px_2px_rgba(12,52,80,0.1)]" : "text-[var(--c-sidebar-text)] hover:text-[var(--c-text)]"
                   }`}
@@ -350,6 +377,7 @@ export function LeadsManager({
               type="button"
               onClick={() => setSheet((v) => !v)}
               aria-pressed={sheet}
+              data-tour="cheatsheet"
               className={`h-[34px] rounded-lg border px-3 text-[13px] transition-colors ${sheet ? "border-[#0C3450] bg-[#0C3450] text-white" : "border-[#C9D3DC] bg-white text-[#0C3450] hover:border-[var(--c-brand)]"}`}
               title="Złote zasady obsługi zapytań"
             >
@@ -465,6 +493,22 @@ export function LeadsManager({
             </div>
           ))}
       </div>
+
+      {tourOpen && !readOnly && (
+        <SignalsTour
+          name={tour.name}
+          season={seasonReservations(toFunnel(rows), playbook.season)}
+          target={playbook.season.target}
+          reward={playbook.season.reward}
+          onFinish={() => void tourDone("done")}
+          onLater={() => void tourDone("later")}
+          onBeforeStep={() => {
+            if (view !== "list") setView("list");
+            if (selectedId) close();
+            setSheet(false);
+          }}
+        />
+      )}
 
       {showNew && (
         <NewLeadDialog

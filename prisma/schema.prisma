@@ -108,6 +108,9 @@ model User {
   agentAssignable Boolean @default(false)
   // Płeć gramatyczna — do odmiany „zlecił"/„zleciła" w liście zadań.
   grammaticalGender GrammaticalGender?
+  // Przewodniki po panelu (wniosek 19): { "signalsV2": { "done": true, "later": 1 } }
+  // — obejrzany / „Później” (maks. 3 razy); osobno dla każdego użytkownika.
+  tourSeen Json?
   // Stawka za godzinę pracy — TYLKO rola KIEROWCA, null dla innych. REGUŁA
   // BEZPIECZEŃSTWA (docs/prompt-claude-code-dashboard-kosztow.md, sekcja 1.4):
   // to pole i wszystko z niego wyliczone (koszt pracy kierowcy) nie może się

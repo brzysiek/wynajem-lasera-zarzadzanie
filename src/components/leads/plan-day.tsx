@@ -46,7 +46,7 @@ export function PlanBand<T extends LeadRow>({
     { no: 5, title: "Wracają odłożone", n: of("back").length, sub: names(of("back")), group: "back" },
   ];
   return (
-    <div className="grid border border-[#E3E6E9] bg-white md:grid-cols-[repeat(5,minmax(0,1fr))_280px]">
+    <div data-tour="plan" className="grid border border-[#E3E6E9] bg-white md:grid-cols-[repeat(5,minmax(0,1fr))_280px]">
       {plan.map((it) => {
         const done = it.no === 1 ? progress.rentalsWithDriver === progress.rentalsToday : it.n === 0;
         const on = it.group != null && selected === it.group;

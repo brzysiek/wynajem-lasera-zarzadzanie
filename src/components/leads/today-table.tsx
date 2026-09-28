@@ -86,7 +86,7 @@ export function TodayTable({
     return <p className="border border-[#CFE3DA] bg-[#EEF6F2] px-4 py-3 text-[13px] font-semibold text-[#2F7A68]">✓ Na dziś wszystko zrobione — nowe obsłużone, każdy sygnał ma krok z datą.</p>;
   }
   return (
-    <div className="overflow-x-auto border border-[#E3E6E9] bg-white">
+    <div data-tour="today-table" className="overflow-x-auto border border-[#E3E6E9] bg-white">
       <div className="min-w-[1040px]">
         <div className="grid gap-2.5 border-b-[1.5px] border-[#0C3450] px-3.5 py-[7px] text-[10px] uppercase tracking-[0.1em] text-[#5C6166]" style={{ gridTemplateColumns: GRID }}>
           <span>Priorytet</span>
@@ -97,7 +97,7 @@ export function TodayTable({
           <span>Termin</span>
           <span />
         </div>
-        {items.map((x) => {
+        {items.map((x, idx) => {
           const r = x.lead;
           const untouched = r.stage === "SYGNAL" && !r.firstContactAt;
           const noRental = r.stage === "REZERWACJA" && !r.rentalId;
@@ -139,7 +139,11 @@ export function TodayTable({
                 {step(r)}
               </span>
               <span className={`text-[12.5px] font-semibold tabular-nums ${w.tone === "late" ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>{w.text}</span>
-              <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="flex justify-end gap-1"
+                onClick={(e) => e.stopPropagation()}
+                data-tour={untouched && items.findIndex((y) => y.lead.stage === "SYGNAL" && !y.lead.firstContactAt) === idx ? "row-actions" : undefined}
+              >
                 {readOnly ? (
                   <button type="button" className={BTN_SM} onClick={() => onOpen(r.id)}>
                     Szczegóły

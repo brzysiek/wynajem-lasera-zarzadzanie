@@ -6,6 +6,7 @@ import { lastDealsSync } from "@/lib/leads/hubspot-sync";
 import { LeadsManager } from "@/components/leads/leads-manager";
 import { agentAssignees } from "@/lib/agent-api/assignees";
 import { loadPlaybook } from "@/lib/leads/playbook-load";
+import { shouldShowTour, vocative } from "@/lib/tours";
 
 // Sygnały — miejsce pracy biura nad zapytaniami klientów (CRM, prompt 2A).
 // ADMIN/STAFF, jak moduł Klienci; KIEROWCA przekierowany.
@@ -25,7 +26,14 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       select: { id: true, name: true, city: true, contacts: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true } } },
     }),
   ]);
-  const [linkSuggestions, callStats, archivedRows, playbook, progress] = await Promise.all([loadLinkSuggestions(rows), todayCallStats(), loadArchived2025Rows(), loadPlaybook(), loadDayProgress(session.user.id)]);
+  const [linkSuggestions, callStats, archivedRows, playbook, progress, showTour] = await Promise.all([
+    loadLinkSuggestions(rows),
+    todayCallStats(),
+    loadArchived2025Rows(),
+    loadPlaybook(),
+    loadDayProgress(session.user.id),
+    session.user.role === "AGENT" ? false : shouldShowTour(session.user.id, "signalsV2"),
+  ]);
   return (
     <LeadsManager
       rows={rows}
@@ -46,6 +54,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       initialSelectedId={id ?? null}
       playbook={playbook}
       progress={progress}
+      tour={{ show: showTour, name: vocative(session.user.name ?? "") }}
     />
   );
 }

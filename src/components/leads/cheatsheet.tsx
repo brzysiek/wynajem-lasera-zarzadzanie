@@ -10,7 +10,7 @@ import type { Playbook } from "@/lib/leads/playbook";
 const H2 = "m-0 inline-block border-b-2 border-[#E08A5C] pb-[2px] text-[16px] font-semibold text-[#0C3450]";
 const BTN_SM = "inline-flex h-[26px] items-center whitespace-nowrap rounded-[6px] border border-[#C9D3DC] bg-white px-[9px] text-[12px] text-[#0C3450] hover:border-[#1B6FA8]";
 
-export function Cheatsheet({ playbook, onClose }: { playbook: Playbook; onClose: () => void }) {
+export function Cheatsheet({ playbook, onClose, onStartTour }: { playbook: Playbook; onClose: () => void; onStartTour?: () => void }) {
   const [sources, setSources] = useState(false);
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-white px-[18px] py-4 text-[13px] text-[#2A3540]">
@@ -45,6 +45,11 @@ export function Cheatsheet({ playbook, onClose }: { playbook: Playbook; onClose:
         <button type="button" className={BTN_SM} onClick={() => setSources((v) => !v)}>
           Skąd te zasady (źródła)
         </button>
+        {onStartTour && (
+          <button type="button" className={BTN_SM} onClick={onStartTour}>
+            Pokaż przewodnik po Sygnałach
+          </button>
+        )}
         <span className="ml-auto text-[12px] text-[#5C6166]">edytuje: Tomek · Ustawienia → Ściąga</span>
       </div>
       {sources && (
