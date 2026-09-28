@@ -22,7 +22,7 @@ import { Dots } from "./funnel-views";
 // akcje na górze, zawsze widoczne; pod nimi następny krok, rezerwacja, dane
 // z formularza i oś czasu (sygnał + inne aktywności tego klienta).
 
-export type CardIntent = "call" | "sms" | null;
+export type CardIntent = "call" | "sms" | "postpone" | null;
 type Panel = "call" | "sms" | "note" | "task" | null;
 type Template = { id: string; key: string; label: string; body: string };
 
@@ -82,7 +82,7 @@ export function LeadCard({
 }) {
   const [d, setD] = useState<LeadDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel>(agent && (intent === "call" || intent === "sms") ? null : intent);
+  const [panel, setPanel] = useState<Panel>(intent === "postpone" || (agent && (intent === "call" || intent === "sms")) ? null : intent);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [lost, setLost] = useState<false | { preset?: LostReasonKey }>(false);
@@ -400,6 +400,7 @@ export function LeadCard({
           <CallResult
             leadId={d.id}
             requestedFrom={d.requestedFrom}
+            initialMode={intent === "postpone" ? "postpone" : null}
             stage={d.stage}
             busy={busy}
             noAnswerTpl={noAnswerTpl ?? null}
@@ -695,6 +696,7 @@ function StageAge({ d }: { d: LeadDetail }) {
 function CallResult({
   leadId,
   requestedFrom,
+  initialMode,
   stage,
   busy,
   phone,
@@ -709,6 +711,7 @@ function CallResult({
 }: {
   leadId: string;
   requestedFrom: string | null;
+  initialMode: "postpone" | null;
   stage: LeadStageKey;
   busy: boolean;
   noAnswerTpl: Template | null;
@@ -724,7 +727,7 @@ function CallResult({
   run: (body: Record<string, unknown>, msg: string) => Promise<boolean>;
   sendSms: (message: string) => Promise<boolean>;
 }) {
-  const [mode, setMode] = useState<"talked" | "callback" | "email" | "postpone" | null>(null);
+  const [mode, setMode] = useState<"talked" | "callback" | "email" | "postpone" | null>(initialMode);
   const [reason, setReason] = useState<PostponeReasonKey | "">("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState("");

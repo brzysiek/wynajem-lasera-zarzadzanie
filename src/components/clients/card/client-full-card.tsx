@@ -18,6 +18,7 @@ import { SplitDialog } from "./split-dialog";
 import { ArchiveDialog } from "@/components/porzadki/archive-dialog";
 import { ARCHIVE_REASON_LABEL, type ArchiveReasonKey } from "@/lib/porzadki/labels";
 import type { ReviewClient } from "@/lib/history/review-load";
+import { FunnelBar } from "./funnel-bar";
 import { CardHeader, Indicators, NextStepBanner, TaskDialog } from "./card-header";
 import { CardLeft, Tile } from "./card-left";
 import { CardRight, InvoicesSection, QualitySection } from "./card-right";
@@ -215,6 +216,7 @@ export function ClientFullCard({
           </div>
         )}
         <CardHeader d={d} backHref={backHref} isAgent={isAgent} onSms={() => setSms((v) => !v)} onTask={() => setTask({ title: "", due: null })} />
+        {!d.archive && <FunnelBar d={d} isAgent={isAgent} />}
         {(sms || splitTo || toastEl) && (
           <div className="flex flex-col gap-3 px-4 pb-4 md:px-7">
             {sms && (

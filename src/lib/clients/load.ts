@@ -228,6 +228,16 @@ export type ClientDetail = {
     stage: "SYGNAL" | "WYWIAD" | "OFERTA" | "REZERWACJA" | "WYGRANA" | "PRZEGRANA" | "ODLOZONE";
     createdAt: string;
     nextActionAt: string | null;
+    // Pasek „W lejku” (lejek v2, ekran 6).
+    archived: boolean;
+    stageChangedAt: string;
+    nextStepType: string | null;
+    nextStepNote: string | null;
+    followUpNo: number;
+    returnAt: string | null;
+    devices: string[];
+    firstContactAt: string | null;
+    lastContactAt: string | null;
   }[];
 };
 
@@ -291,7 +301,26 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
           totalGross: true,
         },
       },
-      leads: { orderBy: { createdAt: "desc" }, take: 20, select: { id: true, title: true, stage: true, createdAt: true, nextActionAt: true } },
+      leads: {
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          title: true,
+          stage: true,
+          createdAt: true,
+          nextActionAt: true,
+          archivedAt: true,
+          stageChangedAt: true,
+          nextStepType: true,
+          nextStepNote: true,
+          followUpNo: true,
+          returnAt: true,
+          deviceInterest: true,
+          firstContactAt: true,
+          lastContactAt: true,
+        },
+      },
       aliases: { orderBy: { alias: "asc" }, select: { alias: true } },
     },
   });
@@ -780,7 +809,22 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     })(),
     suggestedEmails,
     hiddenThreads,
-    leads: c.leads.map((l) => ({ id: l.id, title: l.title, stage: l.stage, createdAt: l.createdAt.toISOString(), nextActionAt: l.nextActionAt?.toISOString() ?? null })),
+    leads: c.leads.map((l) => ({
+      id: l.id,
+      title: l.title,
+      stage: l.stage,
+      createdAt: l.createdAt.toISOString(),
+      nextActionAt: l.nextActionAt?.toISOString() ?? null,
+      archived: l.archivedAt != null,
+      stageChangedAt: l.stageChangedAt.toISOString(),
+      nextStepType: l.nextStepType,
+      nextStepNote: l.nextStepNote,
+      followUpNo: l.followUpNo,
+      returnAt: l.returnAt?.toISOString() ?? null,
+      devices: Array.isArray(l.deviceInterest) ? (l.deviceInterest as unknown[]).filter((x): x is string => typeof x === "string") : [],
+      firstContactAt: l.firstContactAt?.toISOString() ?? null,
+      lastContactAt: l.lastContactAt?.toISOString() ?? null,
+    })),
   };
 }
 

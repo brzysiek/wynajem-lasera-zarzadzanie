@@ -5,18 +5,20 @@ import Link from "next/link";
 import type { LeadRow } from "@/lib/leads/load";
 import { BOARD_STAGES, LOST_REASON_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
-import { FUNNEL_FROM, REACH_ORDER } from "@/lib/leads/funnel";
+import { FUNNEL_FROM, REACH_ORDER, funnelFromRow, rotInfo, type FunnelLead } from "@/lib/leads/funnel";
 import { Avatar, Dots, Seg } from "./funnel-views";
 import { StageChip } from "./lead-ui";
+import { StageLegend } from "./inbox-view";
 import { LEAD_STAGE_COLORS } from "@/components/shell-tokens";
 
-// Sygnały → Tablica (wzór lejek-wzor.html, s2): jedyny lejek w panelu.
-// Karta: prowadząca, następny krok z terminem (terakota = po terminie),
-// próby; nagłówek kolumny: konwersja do następnego etapu. Przeciąganie z tymi
-// samymi walidacjami co w karcie (Wygrana tylko z wynajmem — przez serwer;
-// Przegrana — okno z powodem).
+// Sygnały → Tablica (wzór lejek-v2-wzor.html, s2): jedyny lejek w panelu.
+// Kolumny w kolorach etapów, terakota = gnije / po terminie, kropki prób,
+// na karcie szybkie przyciski (Rozmawiałam, Oferta, Odłóż, ✕). Okres:
+// domyślnie 30 dni — sygnały, które wpłynęły albo miały aktywność w okresie.
+// Przeciąganie z tymi samymi walidacjami co w karcie (Wygrana tylko z
+// wynajmem — przez serwer; Przegrana — okno z powodem).
 
-type Period = "2026" | "90" | "archive";
+type Period = "30" | "month" | "2026" | "archive";
 type Owner = "all" | "ania" | "tomek";
 const PER_COLUMN = 12;
 const dayMs = 86_400_000;
@@ -28,7 +30,10 @@ function ago(iso: string, now: Date): string {
   return days <= 0 ? "dziś" : days === 1 ? "wczoraj" : days < 30 ? `${days} dni` : d2(iso);
 }
 
+const LIMIT_TEXT: Partial<Record<LeadStageKey, string>> = { SYGNAL: "limit 4 h rob.", WYWIAD: "limit 3 dni rob.", OFERTA: "follow-up +3 / +7 dni", REZERWACJA: "do dnia wynajmu" };
+
 function due(r: LeadRow, now: Date): { text: string; late: boolean; today: boolean } {
+  const rot = rotInfo(funnelFromRow(r) as unknown as FunnelLead, now);
   if (r.stage === "REZERWACJA") {
     return r.rentalId
       ? { text: `po wynajmie → Wygrana`, late: false, today: false }
@@ -36,11 +41,19 @@ function due(r: LeadRow, now: Date): { text: string; late: boolean; today: boole
   }
   if (!r.nextActionAt) return { text: "brak kroku", late: true, today: false };
   const at = new Date(r.nextActionAt);
+  const sameDay = at.toDateString() === now.toDateString();
+  const hm = at.getHours() >= 11 ? ` ${at.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" })}` : "";
+  // Nowe (nietknięte): SLA i kolejne próby.
+  if (r.stage === "SYGNAL" && !r.firstContactAt) {
+    if (r.attempts > 0) return { text: `${r.attempts + 1}. próba ${sameDay ? "dziś" : at < now ? "zaległa" : d2(r.nextActionAt)}`, late: rot.rotting || (at < now && !sameDay), today: sameDay && !rot.rotting };
+    return rot.rotting ? { text: "po SLA", late: true, today: false } : { text: "zadzwonić dziś", late: false, today: true };
+  }
+  if (rot.rotting) return { text: rot.label!, late: true, today: false };
+  if (sameDay) return { text: `dziś${hm}`, late: false, today: true };
   if (at < now) {
     const days = Math.floor((now.getTime() - at.getTime()) / dayMs);
-    return { text: days >= 1 ? `po terminie ${days} ${days === 1 ? "dzień" : "dni"}` : "po terminie", late: true, today: false };
+    return { text: `po terminie ${days} ${days === 1 ? "dzień" : "dni"}`, late: true, today: false };
   }
-  if (at.toDateString() === now.toDateString()) return { text: r.nextStepType === "PIERWSZY_KONTAKT" ? "zadzwonić dziś" : "dziś", late: false, today: true };
   return { text: `${r.nextStepType === "ODDZWONI" ? "oddzwoni" : "krok"} ${d2(r.nextActionAt)}`, late: false, today: false };
 }
 
@@ -54,6 +67,8 @@ export function BoardView({
   onOpen,
   onMove,
   onLost,
+  onQuick,
+  onPostpone,
   canArchive2025 = false,
 }: {
   rows: LeadRow[];
@@ -65,9 +80,11 @@ export function BoardView({
   onOpen: (id: string) => void;
   onMove: (id: string, stage: LeadStageKey) => void;
   onLost: (id: string) => void;
+  onQuick: (id: string, outcome: "talked" | "offer_sent") => Promise<void>;
+  onPostpone: (id: string) => void;
   canArchive2025?: boolean;
 }) {
-  const [period, setPeriod] = useState<Period>("2026");
+  const [period, setPeriod] = useState<Period>("30");
   const [owner, setOwner] = useState<Owner>("all");
   const old2025 = rows.filter((r) => ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(r.stage) && new Date(r.createdAt) < FUNNEL_FROM).length;
   const [dragId, setDragId] = useState<string | null>(null);
@@ -76,11 +93,20 @@ export function BoardView({
   const byName = (n: string) => users.find((u) => u.name === n)?.id ?? null;
   const ownerId = owner === "ania" ? byName("Ania") : owner === "tomek" ? byName("Tomek") : null;
 
+  const periodFrom = period === "30" ? now.getTime() - 30 * dayMs : period === "month" ? new Date(now.getFullYear(), now.getMonth(), 1).getTime() : FUNNEL_FROM.getTime();
   const scoped = useMemo(() => {
-    const from90 = now.getTime() - 90 * dayMs;
-    const base = period === "archive" ? archived : rows.filter((r) => (period === "2026" ? new Date(r.createdAt) >= FUNNEL_FROM : new Date(r.createdAt).getTime() >= from90));
+    // Okres: wpłynął albo miał aktywność / zmianę etapu w okresie (aktywne
+    // oferty sprzed miesiąca nie znikają z tablicy).
+    const touched = (r: LeadRow) => Math.max(new Date(r.createdAt).getTime(), new Date(r.stageChangedAt).getTime(), r.lastWorkAt ? new Date(r.lastWorkAt).getTime() : 0) >= periodFrom;
+    const base = period === "archive" ? archived : rows.filter((r) => new Date(r.createdAt) >= FUNNEL_FROM && touched(r));
     return owner === "all" ? base : base.filter((r) => r.ownerId === ownerId);
-  }, [rows, archived, period, owner, ownerId, now]);
+  }, [rows, archived, period, periodFrom, owner, ownerId]);
+  const [busy, setBusy] = useState<string | null>(null);
+  async function quick(id: string, outcome: "talked" | "offer_sent") {
+    setBusy(id);
+    await onQuick(id, outcome);
+    setBusy(null);
+  }
 
   // Konwersja: z sygnałów, które doszły do etapu, ile doszło do następnego
   // (etap „kiedykolwiek osiągnięty”, także przegrane po drodze).
@@ -90,8 +116,15 @@ export function BoardView({
     const base = reached(s);
     return base ? Math.round((reached(next) / base) * 100) : null;
   };
-  const won = scoped.filter((r) => r.stage === "WYGRANA" && r.rentalId).length;
-  const lost = scoped.filter((r) => r.stage === "PRZEGRANA");
+  // Stopka (wzór v2): wygrane w okresie i w 2026, przegrane w okresie z
+  // powodami, odłożone z datami powrotu.
+  const periodLabel = period === "30" ? "30 dni" : period === "month" ? "ten miesiąc" : "2026";
+  const inPeriod = (r: LeadRow) => new Date(r.stageChangedAt).getTime() >= periodFrom;
+  const mineAll = owner === "all" ? rows : rows.filter((r) => r.ownerId === ownerId);
+  const wonPeriod = scoped.filter((r) => r.stage === "WYGRANA" && r.rentalId && inPeriod(r)).length;
+  const won2026 = mineAll.filter((r) => r.stage === "WYGRANA" && r.rentalId && new Date(r.createdAt) >= FUNNEL_FROM).length;
+  const lost = scoped.filter((r) => r.stage === "PRZEGRANA" && inPeriod(r));
+  const postponed = mineAll.filter((r) => r.stage === "ODLOZONE" && r.returnAt).sort((a, b) => a.returnAt!.localeCompare(b.returnAt!));
   const reasons = [...lost.reduce((m, r) => m.set(r.lostReason ?? "INNE", (m.get(r.lostReason ?? "INNE") ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
 
   const dropProps = (target: LeadStageKey | "LOST") => ({
@@ -117,9 +150,10 @@ export function BoardView({
           value={period}
           onChange={setPeriod}
           options={[
+            ["30", "30 dni"],
+            ["month", "Ten miesiąc"],
             ["2026", "2026"],
-            ["90", "90 dni"],
-            ["archive", `Archiwum 2025 (${archived.length})`],
+            ["archive", `Archiwum (${archived.length})`],
           ]}
         />
         <Seg<Owner>
@@ -151,14 +185,18 @@ export function BoardView({
                 <b className="text-[14px] font-semibold text-[#0C3450]">
                   <StageChip stage={stage} /> {col.length}
                 </b>
-                <span className="text-[11px] text-[#5C6166]" title="Z sygnałów, które doszły do tego etapu (wybrany okres), ile doszło do następnego.">
-                  {stage === "REZERWACJA" ? (c == null ? "→ wygrana po wynajmie" : `→ ${c}% do wygranej`) : c == null ? "" : `→ ${c}% do ${stage === "SYGNAL" ? "kontaktu" : stage === "WYWIAD" ? "oferty" : "rezerwacji"}`}
+                <span
+                  className="text-[11px] text-[#5C6166]"
+                  title={c == null ? undefined : `Konwersja w okresie: ${c}% sygnałów z tego etapu doszło do ${stage === "SYGNAL" ? "kontaktu" : stage === "WYWIAD" ? "oferty" : stage === "OFERTA" ? "rezerwacji" : "wygranej"}.`}
+                >
+                  {LIMIT_TEXT[stage]}
                 </span>
               </div>
               <div className="flex flex-col gap-2">
                 {shown.map((r) => {
                   const d = due(r, now);
                   const dev = r.devices.map((x) => LEAD_DEVICE_LABEL[x]).join(", ");
+                  const QA = "border border-[#C9D3DC] bg-white px-1.5 py-px text-[10.5px] text-[#0C3450] hover:border-[#1B6FA8] disabled:opacity-40";
                   return (
                     <div
                       key={r.id}
@@ -169,7 +207,7 @@ export function BoardView({
                         setDrop(null);
                       }}
                       onClick={() => onOpen(r.id)}
-                      className={`cursor-pointer border border-l-[3px] bg-white px-2.5 py-2 ${d.late ? "border-l-[#E08A5C]" : "border-l-[#1B6FA8]"} ${selectedId === r.id ? "border-[#1B6FA8]" : "border-[#E3E6E9]"} ${dragId === r.id ? "opacity-50" : ""}`}
+                      className={`cursor-pointer border border-l-[3px] px-2.5 py-2 ${d.late ? "border-l-[#E08A5C] bg-[#FFFBF8]" : "border-l-[#1B6FA8] bg-white"} ${selectedId === r.id ? "border-[#1B6FA8]" : "border-[#E3E6E9]"} ${dragId === r.id ? "opacity-50" : ""}`}
                     >
                       <div className="font-semibold text-[#0C3450]">
                         {who(r)}
@@ -189,6 +227,24 @@ export function BoardView({
                           <span className={`tabular-nums ${d.late ? "font-semibold text-[#B8612F]" : d.today ? "font-semibold text-[#1B6FA8]" : "text-[#5C6166]"}`}>{d.text}</span>
                         </span>
                       </div>
+                      {!readOnly && period !== "archive" && (
+                        <div className="mt-1.5 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+                          <button type="button" disabled={busy === r.id} className={QA} onClick={() => void quick(r.id, "talked")} title="Rozmowa → W kontakcie, krok za 2 dni rob.">
+                            Rozmawiałam
+                          </button>
+                          {(r.stage === "SYGNAL" || r.stage === "WYWIAD") && (
+                            <button type="button" disabled={busy === r.id} className={QA} onClick={() => void quick(r.id, "offer_sent")} title="Wysłałam ofertę → Oferta wysłana, follow-up +3 dni rob.">
+                              Oferta
+                            </button>
+                          )}
+                          <button type="button" className={QA} onClick={() => onPostpone(r.id)} title="Odłóż do… — data powrotu i powód">
+                            Odłóż
+                          </button>
+                          <button type="button" className={QA} onClick={() => onLost(r.id)} title="Przegrana — z powodem">
+                            ✕
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -208,18 +264,24 @@ export function BoardView({
       </div>
 
       <div className="flex flex-wrap gap-2.5">
-        <div className="border border-[#E3E6E9] bg-white px-3.5 py-2">
-          <span className="text-[10px] uppercase tracking-[0.12em] text-[#5C6166]">Wygrane · {period === "archive" ? "archiwum" : period === "90" ? "90 dni" : "2026"}</span>{" "}
-          <b className="text-[16px] text-[#2F7A68]">{won}</b> <span className="bg-[#EAF4FB] px-[7px] py-px text-[11.5px] text-[#0C3450]">tylko z wynajmem</span>
+        <div className="border border-[#E3E6E9] bg-white px-3.5 py-2 text-[13px]">
+          <StageChip stage="WYGRANA" /> {period === "archive" ? "archiwum" : periodLabel} <b className="text-[#0C3450]">{wonPeriod}</b> · 2026 <b className="text-[#0C3450]">{won2026}</b>
+          <span className="block text-[11px] text-[#5C6166]">tylko z wynajmem w kalendarzu</span>
         </div>
-        <div {...dropProps("LOST")} className={`min-w-[260px] flex-1 border px-3.5 py-2 ${drop === "LOST" ? "border-[#E08A5C] bg-[#FBF0E7]" : "border-[#E3E6E9] bg-white"}`}>
-          <span className="text-[10px] uppercase tracking-[0.12em] text-[#5C6166]">Przegrane</span> <b className="text-[16px] text-[#0C3450]">{lost.length}</b>{" "}
-          <span className="text-[11.5px] text-[#5C6166]">
-            {reasons.map(([k, n]) => `${(LOST_REASON_LABEL[k as LostReasonKey] ?? k).toLowerCase()} ${n}`).join(" · ")}
-            {!readOnly && <span className="text-[#8A939B]">{reasons.length ? " · " : ""}upuść kartę tutaj, żeby oznaczyć przegraną (z powodem)</span>}
-          </span>
+        <div {...dropProps("LOST")} className={`min-w-[260px] flex-1 border px-3.5 py-2 text-[13px] ${drop === "LOST" ? "border-[#E08A5C] bg-[#FBF0E7]" : "border-[#E3E6E9] bg-white"}`}>
+          <StageChip stage="PRZEGRANA" /> {periodLabel} <b className="text-[#0C3450]">{lost.length}</b>
+          {reasons.length > 0 && <span className="text-[#5C6166]"> · {reasons.map(([k, n]) => `${(LOST_REASON_LABEL[k as LostReasonKey] ?? k).toLowerCase()} ${n}`).join(" · ")}</span>}
+          {!readOnly && <span className="block text-[11px] text-[#8A939B]">upuść kartę tutaj, żeby oznaczyć przegraną (z powodem)</span>}
+        </div>
+        <div className="border border-[#E3E6E9] bg-white px-3.5 py-2 text-[13px]">
+          <StageChip stage="ODLOZONE" /> <b className="text-[#0C3450]">{postponed.length}</b>
+          {postponed.length > 0 && <span className="text-[#5C6166]"> · wracają {postponed.slice(0, 4).map((r) => d2(r.returnAt!)).join(", ")}{postponed.length > 4 ? "…" : ""}</span>}
+        </div>
+        <div className="flex-1 border border-[#E3E6E9] bg-white px-3.5 py-2 text-[12px] text-[#5C6166]">
+          Karty: przeciągnij do kolumny albo użyj przycisków na karcie · kolumna „Nowe” = tylko nietknięte
         </div>
       </div>
+      <StageLegend />
     </div>
   );
 }

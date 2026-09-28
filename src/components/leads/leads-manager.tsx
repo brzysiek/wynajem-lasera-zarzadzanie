@@ -5,21 +5,21 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { APP_CSS_VARS } from "@/components/shell-tokens";
 import type { LeadRow } from "@/lib/leads/load";
-import { BOARD_STAGES, LOST_REASON_LABEL, STAGE_KEYS, STAGE_LABEL, TYPE_KEYS, TYPE_LABEL } from "@/lib/leads/labels";
-import { LEAD_DEVICE_LABEL, type LeadStageKey, type LeadTypeKey } from "@/lib/leads/parse-deal";
-import { DEVICE_INTEREST_KEYS, formatPhone, type DeviceInterestKey } from "@/lib/clients/labels";
+import { LOST_REASON_LABEL, STAGE_LABEL, TYPE_LABEL } from "@/lib/leads/labels";
+import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
 import type { ReviewClient } from "@/lib/history/review-load";
 import { api } from "@/components/clients/client-forms";
-import { DownloadIcon, SearchIcon, fmtDate } from "@/components/clients/ui";
+import { fmtDate } from "@/components/clients/ui";
 import { useMediaQuery } from "@/components/clients/use-media-query";
 import { LeadCard, type CardIntent } from "./lead-card";
 import { toFunnel, type LinkSuggestion } from "./funnel-views";
 import { InboxView } from "./inbox-view";
+import { ListView } from "./list-view";
 import { BoardView } from "./board-view";
 import { ReportView } from "./report-view";
 import { callQueue } from "@/lib/leads/funnel";
-import { BTN, LostDialog, NewLeadDialog } from "./lead-dialogs";
-import { DevicePill, RefreshIcon, StageChip, fmtRange } from "./lead-ui";
+import { LostDialog, NewLeadDialog } from "./lead-dialogs";
+import { RefreshIcon, fmtRange } from "./lead-ui";
 
 // Sygnały (/sygnaly) — wygląd wg docs/crm/mockup-sygnaly.html, logika wg
 // docs/crm/prompt-claude-code-crm-2-sygnaly.md (sekcja 3). Sygnałów jest
@@ -77,32 +77,6 @@ function syncAgo(iso: string, now: Date) {
 }
 
 
-// Kolejność list — wybór zapamiętany w przeglądarce (to tylko wygoda,
-// bez znaczenia dla danych).
-type FreshOrder = "oldest" | "newest";
-type ListSort = "newest" | "oldest" | "next" | "stage" | "name";
-type CallSort = "priority" | "newest" | "oldest";
-const SORT_KEY = "wl_leads_sort";
-
-function SortSelect<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: [T, string][] }) {
-  return (
-    <label className="flex items-center gap-1.5 text-xs text-[var(--c-muted)]">
-      Kolejność:
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="h-8 cursor-pointer rounded-full border border-[var(--c-border)] bg-white px-2.5 text-xs text-[var(--c-text)] hover:border-[var(--c-brand)] focus:border-[var(--c-brand)] focus:outline-none"
-      >
-        {options.map(([v, label]) => (
-          <option key={v} value={v}>
-            {label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
 export function LeadsManager({
   rows,
   users,
@@ -148,39 +122,7 @@ export function LeadsManager({
   // Do obdzwonienia — filtry i tryb seryjny (po wyniku rozmowy karta
   // przechodzi do następnego kontaktu z listy).
   const [serial, setSerial] = useState(false);
-  const [freshOrder, setFreshOrder] = useState<FreshOrder>("oldest");
-  const [listSort, setListSort] = useState<ListSort>("newest");
-  const [callSort, setCallSort] = useState<CallSort>("priority");
-
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(SORT_KEY) ?? "{}");
-      /* eslint-disable react-hooks/set-state-in-effect -- localStorage dostępny dopiero w przeglądarce */
-      if (saved.fresh) setFreshOrder(saved.fresh);
-      if (saved.list) setListSort(saved.list);
-      if (saved.calls) setCallSort(saved.calls);
-      /* eslint-enable react-hooks/set-state-in-effect */
-    } catch {
-      // brak localStorage — domyślna kolejność
-    }
-  }, []);
-  function saveSort(patch: Record<string, string>) {
-    try {
-      localStorage.setItem(SORT_KEY, JSON.stringify({ fresh: freshOrder, list: listSort, calls: callSort, ...patch }));
-    } catch {
-      // brak localStorage — kolejność tylko do odświeżenia strony
-    }
-  }
   const [serialDone, setSerialDone] = useState<Set<string>>(new Set());
-  // Lista
-  const [query, setQuery] = useState("");
-  const [fStage, setFStage] = useState<LeadStageKey | "" | "OPEN">("OPEN");
-  const [fType, setFType] = useState<LeadTypeKey | "">("");
-  const [fDevice, setFDevice] = useState<DeviceInterestKey | "">("");
-  const [fOwner, setFOwner] = useState("");
-  const [fNoClient, setFNoClient] = useState(false);
-  const [fSource, setFSource] = useState<"" | "hubspot" | "panel">("");
-  const [limit, setLimit] = useState(60);
   // Optymistyczne etapy po przeciągnięciu — ważne tylko dla tej wersji
   // danych; po odświeżeniu (nowe `rows`) liczy się już stan z serwera.
   const [movedState, setMovedState] = useState<{ base: LeadRow[]; map: Map<string, LeadStageKey> }>({ base: rows, map: new Map() });
@@ -289,11 +231,17 @@ export function LeadsManager({
   }
 
   // Skrzynka: wynik kontaktu jednym kliknięciem (Rozmawiałam / Nie odebrała).
-  async function quickOutcome(id: string, outcome: "talked" | "no_answer") {
+  async function quickOutcome(id: string, outcome: "talked" | "no_answer" | "offer_sent") {
     const r = byId.get(id);
     const { ok, data } = await api(`/api/leads/${id}/activity`, "POST", { outcome });
     if (!ok) return setToast({ text: data.message ?? "Nie udało się zapisać.", error: true });
-    setToast({ text: `${r ? r.title : "Sygnał"}: ${outcome === "talked" ? "rozmowa zapisana → W kontakcie, krok za 2 dni rob. (zmienisz w karcie)" : "nie odebrała → kolejna próba jutro 10:00"}.` });
+    const msg =
+      outcome === "talked"
+        ? "rozmowa zapisana → W kontakcie, krok za 2 dni rob. (zmienisz w karcie)"
+        : outcome === "offer_sent"
+          ? "oferta wysłana → follow-up za 3 dni rob."
+          : "nie odebrała → kolejna próba jutro 10:00";
+    setToast({ text: `${r ? r.title : "Sygnał"}: ${msg}.` });
     refresh();
   }
 
@@ -323,43 +271,9 @@ export function LeadsManager({
     return null;
   }
 
-  // Lista — filtry lokalnie.
-  const filtered = useMemo(() => {
-    const s = query.trim().toLowerCase();
-    const digits = s.replace(/\D/g, "");
-    return list.filter((r) => {
-      if (fStage === "OPEN" ? !BOARD_STAGES.includes(r.stage) : fStage && r.stage !== fStage) return false;
-      if (fType && r.type !== fType) return false;
-      if (fDevice && !r.devices.includes(fDevice)) return false;
-      if (fOwner && r.ownerId !== (fOwner === "none" ? null : fOwner)) return false;
-      if (fNoClient && r.clientId) return false;
-      if (fSource === "hubspot" && !r.fromHubspot) return false;
-      if (fSource === "panel" && r.fromHubspot) return false;
-      if (s.length >= 2 && !r.search.includes(s) && !(digits.length >= 3 && (r.phone ?? "").replace(/\D/g, "").includes(digits))) return false;
-      return true;
-    });
-  }, [list, query, fStage, fType, fDevice, fOwner, fNoClient, fSource]);
-
-  const sortedList = useMemo(() => {
-    const byDate = (a: string | null, b: string | null) => (a ?? "9999").localeCompare(b ?? "9999");
-    const order = { SYGNAL: 0, WYWIAD: 1, OFERTA: 2, REZERWACJA: 3, ODLOZONE: 4, WYGRANA: 5, PRZEGRANA: 6 } as const;
-    return [...filtered].sort((a, b) =>
-      listSort === "newest"
-        ? b.createdAt.localeCompare(a.createdAt)
-        : listSort === "oldest"
-          ? a.createdAt.localeCompare(b.createdAt)
-          : listSort === "next"
-            ? byDate(a.nextActionAt, b.nextActionAt) || b.createdAt.localeCompare(a.createdAt)
-            : listSort === "stage"
-              ? order[a.stage] - order[b.stage] || b.createdAt.localeCompare(a.createdAt)
-              : a.title.localeCompare(b.title, "pl"),
-    );
-  }, [filtered, listSort]);
-
-
   const card = selectedId ? (
     <LeadCard
-      key={selectedId}
+      key={`${selectedId}:${intent === "postpone" ? "p" : ""}`}
       leadId={selectedId}
       users={users}
       intent={intent}
@@ -373,11 +287,6 @@ export function LeadsManager({
       canArchive={isAdmin}
     />
   ) : null;
-
-  const selectCls = (on: boolean) =>
-    `h-8 cursor-pointer rounded-full border px-2.5 text-xs transition-colors hover:border-[var(--c-brand)] focus:border-[var(--c-brand)] focus:outline-none ${
-      on ? "border-[var(--c-brand)] bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)]" : "border-[var(--c-border)] bg-white text-[var(--c-text)]"
-    }`;
 
   return (
     <div style={APP_CSS_VARS} className="text-[var(--c-text)]">
@@ -484,145 +393,15 @@ export function LeadsManager({
                   onOpen={(id) => open(id)}
                   onMove={(id, stage) => void moveTo(id, stage)}
                   onLost={(id) => setLostIds([id])}
+                  onQuick={quickOutcome}
+                  onPostpone={(id) => open(id, "postpone")}
                   canArchive2025={isAdmin}
                 />
               )}
 
               {view === "report" && <ReportView rows={list} now={now} />}
 
-              {view === "list" && (
-                <section aria-label="Lista" className="flex flex-col gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex h-9 min-w-[220px] flex-grow items-center gap-2 rounded-[10px] border border-[var(--c-border)] bg-white px-3 transition-colors focus-within:border-[var(--c-brand)] sm:max-w-[340px]">
-                      <SearchIcon size={15} className="flex-none text-[var(--c-muted)]" />
-                      <span className="sr-only">Szukaj sygnału</span>
-                      <input
-                        type="search"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Szukaj: nazwa, osoba, telefon, e-mail…"
-                        className="min-w-0 flex-grow bg-transparent text-sm outline-none placeholder:text-[var(--c-faint)]"
-                      />
-                    </label>
-                    <select aria-label="Etap" className={selectCls(fStage !== "")} value={fStage} onChange={(e) => setFStage(e.target.value as LeadStageKey | "" | "OPEN")}>
-                      <option value="OPEN">Otwarte</option>
-                      <option value="">Wszystkie etapy</option>
-                      {STAGE_KEYS.map((s) => (
-                        <option key={s} value={s}>
-                          {STAGE_LABEL[s]}
-                        </option>
-                      ))}
-                    </select>
-                    <select aria-label="Typ" className={selectCls(Boolean(fType))} value={fType} onChange={(e) => setFType(e.target.value as LeadTypeKey | "")}>
-                      <option value="">Każdy typ</option>
-                      {TYPE_KEYS.map((t) => (
-                        <option key={t} value={t}>
-                          {TYPE_LABEL[t]}
-                        </option>
-                      ))}
-                    </select>
-                    <select aria-label="Urządzenie" className={selectCls(Boolean(fDevice))} value={fDevice} onChange={(e) => setFDevice(e.target.value as DeviceInterestKey | "")}>
-                      <option value="">Każde urządzenie</option>
-                      {DEVICE_INTEREST_KEYS.filter((k) => k !== "SZKOLENIE").map((k) => (
-                        <option key={k} value={k}>
-                          {LEAD_DEVICE_LABEL[k]}
-                        </option>
-                      ))}
-                    </select>
-                    <select aria-label="Prowadzi" className={selectCls(Boolean(fOwner))} value={fOwner} onChange={(e) => setFOwner(e.target.value)}>
-                      <option value="">Każdy prowadzący</option>
-                      <option value={currentUserId}>Moje</option>
-                      <option value="none">Nieprzypisane</option>
-                      {users
-                        .filter((u) => u.id !== currentUserId)
-                        .map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.name}
-                          </option>
-                        ))}
-                    </select>
-                    <select aria-label="Źródło" className={selectCls(Boolean(fSource))} value={fSource} onChange={(e) => setFSource(e.target.value as "" | "hubspot" | "panel")}>
-                      <option value="">HubSpot i panel</option>
-                      <option value="hubspot">Z HubSpota</option>
-                      <option value="panel">Z panelu</option>
-                    </select>
-                    <button type="button" aria-pressed={fNoClient} onClick={() => setFNoClient((v) => !v)} className={`${selectCls(fNoClient)} px-3`}>
-                      Bez klienta
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => exportCsv(sortedList)}
-                      disabled={filtered.length === 0}
-                      className="ml-auto flex h-8 items-center gap-1.5 rounded-lg border border-[var(--c-border)] bg-white px-3 text-[13px] transition-colors hover:border-[var(--c-brand)] hover:text-[var(--c-brand-deep)] disabled:opacity-40"
-                    >
-                      <DownloadIcon />
-                      CSV
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <p className="m-0 text-xs text-[var(--c-muted)]">{filtered.length} sygnałów</p>
-                    <SortSelect<ListSort>
-                      value={listSort}
-                      onChange={(v) => {
-                        setListSort(v);
-                        saveSort({ list: v });
-                      }}
-                      options={[
-                        ["newest", "wpłynęło — od najnowszych"],
-                        ["oldest", "wpłynęło — od najstarszych"],
-                        ["next", "następny krok"],
-                        ["stage", "etap"],
-                        ["name", "nazwa A–Z"],
-                      ]}
-                    />
-                  </div>
-                  <div className="overflow-x-auto rounded-xl border border-[var(--c-border)] bg-white">
-                    <table className="w-full min-w-[760px] text-[13px]">
-                      <thead className="bg-[var(--c-bg)] text-left text-xs text-[var(--c-muted)]">
-                        <tr>
-                          <th className="px-3 py-2 font-medium">Sygnał</th>
-                          <th className="px-3 py-2 font-medium">Etap</th>
-                          <th className="px-3 py-2 font-medium">Typ</th>
-                          <th className="px-3 py-2 font-medium">Urządzenie / termin</th>
-                          <th className="px-3 py-2 font-medium">Wpłynęło</th>
-                          <th className="px-3 py-2 font-medium">Następny krok</th>
-                          <th className="px-3 py-2 font-medium">Prowadzi</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedList.slice(0, limit).map((r) => (
-                          <tr
-                            key={r.id}
-                            onClick={() => open(r.id)}
-                            className={`cursor-pointer border-t border-[var(--c-border)] transition-colors hover:bg-[var(--c-brand-soft)]/40 ${selectedId === r.id ? "bg-[var(--c-brand-soft)]/60" : ""}`}
-                          >
-                            <td className="max-w-[280px] px-3 py-2">
-                              <span className="block truncate font-semibold text-[var(--c-navy)]">{r.title}</span>
-                              <span className="block truncate text-xs text-[var(--c-muted)]">{[r.clientId ? r.clientName : "bez klienta", r.phone ? formatPhone(r.phone) : null].filter(Boolean).join(" · ")}</span>
-                            </td>
-                            <td className="px-3 py-2">
-                              <StageChip stage={r.stage} />
-                              {r.lostReason && <span className="block text-[11px] text-[var(--c-muted)]">{LOST_REASON_LABEL[r.lostReason]}</span>}
-                            </td>
-                            <td className="px-3 py-2 text-[var(--c-sidebar-text)]">{TYPE_LABEL[r.type]}</td>
-                            <td className="px-3 py-2">
-                              <DevicePill devices={r.devices} from={r.requestedFrom} days={r.requestedDays} />
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2 text-[var(--c-muted)]">{fmtDate(r.createdAt)}</td>
-                            <td className="whitespace-nowrap px-3 py-2">{r.nextActionAt ? fmtDate(r.nextActionAt) : <span className="text-[var(--c-faint)]">—</span>}</td>
-                            <td className="px-3 py-2">{r.ownerName ?? <span className="text-[var(--c-faint)]">—</span>}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {filtered.length > limit && (
-                    <button type="button" onClick={() => setLimit((l) => l + 60)} className={`${BTN} self-center`}>
-                      Pokaż więcej ({filtered.length - limit})
-                    </button>
-                  )}
-                </section>
-              )}
+              {view === "list" && <ListView rows={list} archived={archivedRows} users={users} now={now} selectedId={selectedId} onOpen={(id) => open(id)} onExport={exportCsv} />}
             </>
           )}
         </div>
