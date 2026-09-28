@@ -30,6 +30,10 @@ describe("parseClientPatch", () => {
     expect(parseClientPatch({ transportPriceNet: null })).toEqual({ ok: true, data: { transportPriceNet: null } });
     expect(parseClientPatch({ transportPriceNet: "" })).toEqual({ ok: true, data: { transportPriceNet: null } });
     expect(parseClientPatch({ transportPriceNet: { kwota: 70 } }).ok).toBe(false);
+    // Wniosek 15: od kiedy obowiązuje kwota transportu.
+    expect(parseClientPatch({ transportPriceSince: "2026-09-01" })).toEqual({ ok: true, data: { transportPriceSince: new Date(Date.UTC(2026, 8, 1, 12)) } });
+    expect(parseClientPatch({ transportPriceSince: null })).toEqual({ ok: true, data: { transportPriceSince: null } });
+    expect(parseClientPatch({ transportPriceSince: "wczoraj" }).ok).toBe(false);
     expect(parseClientPatch({ invoicePartDefault: 500, pulseRateNet: 0.06 })).toEqual({ ok: true, data: { invoicePartDefault: "500.00", pulseRateNet: "0.0600" } });
     expect(parseClientPatch({ distanceKm: "daleko" }).ok).toBe(false);
     expect(parseClientPatch({ source: "TIKTOK" }).ok).toBe(false);

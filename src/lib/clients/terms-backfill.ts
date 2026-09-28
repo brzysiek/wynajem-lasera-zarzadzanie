@@ -5,6 +5,8 @@ import { rentalDurationDays } from "@/lib/pricing/duration";
 import { warsawYmd } from "@/lib/clients/day-route";
 import { TERMS_DEVICE_LABEL, invoiceDefaults, parseInvoiceMode, positionsSummary, termsVariantFor } from "@/lib/clients/terms-rules";
 import { logError } from "@/lib/logger";
+import { loadDeliverySettings } from "@/lib/clients/delivery";
+import { zoneFor } from "@/lib/clients/delivery-rules";
 import { compareWithTerms, planBackfill, type BackfillPlan, type PlanTerms } from "@/lib/clients/terms-backfill-rules";
 
 // Kwoty wg warunków (karta klienta, etap D): przyszłe rezerwacje bez
@@ -40,6 +42,19 @@ export type MismatchRow = {
   // Klient ma w warunkach tylko inny wariant (np. „LightSheer 1 głowica”) —
   // porównanie z nim.
   otherVariant: string | null;
+};
+
+// Stała kwota transportu vs strefa z trasy od bazy (wniosek 15) — do
+// przeglądu przy zmianie cennika; nic nie nadpisuje.
+export type TransportZoneRow = {
+  clientId: string;
+  clientName: string;
+  km: number;
+  zone: string;
+  zonePrice: number | null;
+  fixed: number;
+  since: string | null;
+  diff: number | null;
 };
 
 // Kwota na FV do ustalenia (warunki „część” bez kwoty) — wniosek 17.
@@ -137,7 +152,7 @@ export type LegacyTermsRow = { clientId: string; clientName: string; agreedPrice
 
 export async function loadTermsReview(
   today = new Date(),
-): Promise<{ backfill: BackfillRow[]; mismatches: MismatchRow[]; clientsWithTerms: number; legacy: LegacyTermsRow[]; pending: PendingInvoiceRow[] }> {
+): Promise<{ backfill: BackfillRow[]; mismatches: MismatchRow[]; clientsWithTerms: number; legacy: LegacyTermsRow[]; pending: PendingInvoiceRow[]; transportZones: TransportZoneRow[] }> {
   const loaded = await load(today);
   // Dawna „cena ustalona” bez tabeli cen — do rozpisania na urządzenia (karta
   // klienta → Warunki handlowe → Edytuj, albo propozycje agenta cennik_klienta).
@@ -198,7 +213,33 @@ export async function loadTermsReview(
     deviceName: r.device.name,
     totalNet: Number(r.finance!.totalNet),
   }));
-  return { backfill, mismatches, clientsWithTerms: loaded.terms.size, legacy, pending };
+  const { zones } = await loadDeliverySettings();
+  const transportZones = (
+    await prisma.client.findMany({
+      where: { archivedAt: null, transportPriceNet: { not: null } },
+      select: { id: true, name: true, shortName: true, transportPriceNet: true, transportPriceSince: true, distanceKm: true, deliveryAddresses: { where: { isDefault: true }, take: 1, select: { distanceKm: true } } },
+    })
+  )
+    .flatMap((c) => {
+      const km = c.deliveryAddresses[0]?.distanceKm ?? c.distanceKm;
+      const z = km != null ? zoneFor(Number(km), zones) : null;
+      if (!z) return [];
+      const fixed = Number(c.transportPriceNet);
+      return [
+        {
+          clientId: c.id,
+          clientName: c.shortName ?? c.name,
+          km: Number(km),
+          zone: z.code,
+          zonePrice: z.priceNet,
+          fixed,
+          since: c.transportPriceSince?.toISOString() ?? null,
+          diff: z.priceNet != null ? Math.round((fixed - z.priceNet) * 100) / 100 : null,
+        },
+      ];
+    })
+    .sort((a, b) => Math.abs(b.diff ?? 0) - Math.abs(a.diff ?? 0) || b.km - a.km);
+  return { backfill, mismatches, clientsWithTerms: loaded.terms.size, legacy, pending, transportZones };
 }
 
 // Wykonanie dla wskazanych rezerwacji — plan liczony od nowa na serwerze;

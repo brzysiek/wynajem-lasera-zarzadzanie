@@ -652,10 +652,18 @@ export function RentalFinanceSection({
                   wróć do wartości {hintSource === "hubspot" ? "z HubSpot" : "z warunków klienta"} ({fmt(hintAmount)} zł)
                 </button>
               ) : (
-                transportPriceHint &&
-                transportPriceHint.trim() && (
-                  <p className="mt-1 text-xs text-gray-400">Podpowiedź z HubSpot: {transportPriceHint}</p>
-                )
+                <>
+                  {transportPriceHint && transportPriceHint.trim() && <p className="mt-1 text-xs text-gray-400">Podpowiedź z HubSpot: {transportPriceHint}</p>}
+                  {/* Wniosek 15: strefa tylko jako podpowiedź, gdy klient nie ma stałej kwoty. */}
+                  {clientTerms?.zone && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Klient nie ma stałej kwoty transportu. Strefa {clientTerms.zone.code} ({Math.round(clientTerms.zone.km)} km od bazy): {fmt(clientTerms.zone.priceNet)} zł{" "}
+                      <button type="button" className={CHANGE_LINK} onClick={() => onTransportPriceChange(String(clientTerms.zone!.priceNet))}>
+                        wstaw
+                      </button>
+                    </p>
+                  )}
+                </>
               )}
             </>
           )}

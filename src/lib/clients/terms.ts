@@ -4,6 +4,8 @@ import { recordChanges, type ChangeActor, type ChangeEntry } from "@/lib/changel
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { warsawYmd } from "@/lib/clients/day-route";
 import { syncFutureRentalsToTermsSafe } from "@/lib/clients/terms-backfill";
+import { loadDeliverySettings } from "@/lib/clients/delivery";
+import { zoneFor } from "@/lib/clients/delivery-rules";
 import {
   PRICE_SOURCES,
   TERMS_DEVICE_LABEL,
@@ -125,6 +127,9 @@ export type ClientTermsDto = {
   // Inna rezerwacja klienta tego samego dnia dostawy z transportem —
   // „2 urządzenia jednego dnia = 1 kurs”.
   transportTakenBy: string | null;
+  // Wniosek 15: podpowiedź ze strefy (trasa od bazy do adresu domyślnego) —
+  // tylko gdy klient nie ma stałej kwoty transportu i strefa ma stawkę.
+  zone: { code: string; km: number; priceNet: number } | null;
 };
 
 export async function loadTermsForRental(q: { clientId?: string | null; hubspotContactId?: string | null; day?: string | null; excludeRentalId?: string | null }): Promise<ClientTermsDto | null> {
@@ -136,9 +141,27 @@ export async function loadTermsForRental(q: { clientId?: string | null; hubspotC
   if (!clientId) return null;
   const c = await prisma.client.findUnique({
     where: { id: clientId },
-    select: { id: true, name: true, shortName: true, transportPriceNet: true, paymentForm: true, invoiceMode: true, invoicePartDefault: true, prices: { select: { device: true, days: true, priceNet: true } } },
+    select: {
+      id: true,
+      name: true,
+      shortName: true,
+      transportPriceNet: true,
+      distanceKm: true,
+      paymentForm: true,
+      invoiceMode: true,
+      invoicePartDefault: true,
+      prices: { select: { device: true, days: true, priceNet: true } },
+      deliveryAddresses: { where: { isDefault: true }, take: 1, select: { distanceKm: true } },
+    },
   });
   if (!c) return null;
+
+  let zone: ClientTermsDto["zone"] = null;
+  const km = c.deliveryAddresses[0]?.distanceKm ?? c.distanceKm;
+  if (c.transportPriceNet == null && km != null) {
+    const z = zoneFor(Number(km), (await loadDeliverySettings()).zones);
+    if (z?.priceNet != null) zone = { code: z.code, km: Number(km), priceNet: z.priceNet };
+  }
 
   let transportTakenBy: string | null = null;
   if (q.day && /^\d{4}-\d{2}-\d{2}$/.test(q.day)) {
@@ -167,6 +190,7 @@ export async function loadTermsForRental(q: { clientId?: string | null; hubspotC
     invoiceMode: parseInvoiceMode(c.invoiceMode),
     invoicePartDefault: c.invoicePartDefault != null ? Number(c.invoicePartDefault) : null,
     transportTakenBy,
+    zone,
   };
 }
 

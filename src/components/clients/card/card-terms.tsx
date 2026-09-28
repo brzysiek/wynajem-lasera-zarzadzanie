@@ -47,6 +47,8 @@ export function TermsSection({ d, onChanged, notify }: { d: ClientDetail; onChan
   const days = [...new Set([1, 2, 3, ...prices.map((r) => r.days)])].sort((a, b) => a - b);
   const listPrice = (code: string, n: number) => d.terms.priceList.find((r) => r.device === code && r.days === n)?.priceNet ?? null;
   const transport = d.transportPriceNet && Number(d.transportPriceNet) > 0 ? Number(d.transportPriceNet) : null;
+  // Wniosek 15: ostatnia zmiana kwoty transportu z poprzednią wartością.
+  const prevTransport = d.terms.transportHistory.find((h) => h.before != null && h.before !== h.after) ?? null;
   const pulseRate = p.pulseRateNet != null ? Number(p.pulseRateNet) : null;
   const legacy = p.agreedPrice != null && prices.length === 0 ? Number(p.agreedPrice) : null;
   const TH = "border-b border-[#D6DADE] px-1.5 py-1 text-left text-[10px] font-medium uppercase tracking-[0.08em] text-[#5C6166]";
@@ -125,7 +127,17 @@ export function TermsSection({ d, onChanged, notify }: { d: ClientDetail; onChan
           <Row label="Transport">
             {transport != null ? (
               <>
-                {money(transport)} / kurs <span className="text-[#767C82]">· 2 urządzenia jednego dnia = 1 kurs</span>
+                {money(transport)} / kurs
+                {d.terms.transportSince && <span className="text-[#767C82]"> · od {dmy(d.terms.transportSince)}</span>}
+                <span className="text-[#767C82]"> · 2 urządzenia jednego dnia = 1 kurs</span>
+                {prevTransport && (
+                  <span
+                    className="block text-[11.5px] text-[#767C82]"
+                    title={d.terms.transportHistory.map((h) => `${dmy(h.at)}: ${h.before != null ? money(h.before) : "—"} → ${h.after != null ? money(h.after) : "—"}`).join("\n")}
+                  >
+                    wcześniej {money(prevTransport.before!)} (do {dmy(prevTransport.at)})
+                  </span>
+                )}
               </>
             ) : (
               <Missing>uzupełnij stawkę za kurs</Missing>
@@ -246,6 +258,7 @@ function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () =
   );
   const [f, setF] = useState({
     transport: d.transportPriceNet ? String(Number(d.transportPriceNet)) : "",
+    transportSince: d.terms.transportSince?.slice(0, 10) ?? "",
     pulsesCharged: p.pulsesCharged === true ? "tak" : p.pulsesCharged === false ? "nie" : "",
     pulseRate: p.pulseRateNet != null ? String(Number(p.pulseRateNet)) : "",
     invoiceMode: p.invoiceMode ?? "",
@@ -283,6 +296,8 @@ function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () =
     if (ok) {
       ({ ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}`, "PATCH", {
         transportPriceNet: f.transport,
+        // Data podana ręcznie; bez zmiany — przy nowej kwocie panel wpisze dziś.
+        ...(f.transportSince !== (d.terms.transportSince?.slice(0, 10) ?? "") ? { transportPriceSince: f.transportSince || null } : {}),
         pulsesCharged: f.pulsesCharged || null,
         pulseRateNet: f.pulseRate,
         invoiceMode: f.invoiceMode || null,
@@ -389,6 +404,10 @@ function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () =
         <label className={label}>
           Transport / kurs
           <input className={INPUT} inputMode="decimal" value={f.transport} onChange={(e) => set("transport", e.target.value)} placeholder="np. 70" />
+        </label>
+        <label className={label}>
+          Transport obowiązuje od
+          <input className={INPUT} type="date" value={f.transportSince} onChange={(e) => set("transportSince", e.target.value)} />
         </label>
         <label className={label}>
           Impulsy

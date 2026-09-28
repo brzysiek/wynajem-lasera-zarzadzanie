@@ -3,7 +3,7 @@
 // z src/lib/reminders.ts — ta sama co SMS).
 import { normalizeNip, parseDistanceKm, parseMoney } from "./hubspot-import";
 import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_KEYS, SOURCE_LABEL, type DeviceInterestKey } from "./labels";
-import { parseClientProfilePatch, parseContactProfilePatch, type ClientProfilePatch, type ContactProfilePatch } from "./profile-fields";
+import { parseClientProfilePatch, parseContactProfilePatch, parseDay, type ClientProfilePatch, type ContactProfilePatch } from "./profile-fields";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 type Deps = { normalizePhone: (raw: string) => string | null };
@@ -34,6 +34,7 @@ export type ClientPatch = Partial<{
   city: string | null;
   country: string | null;
   transportPriceNet: string | null;
+  transportPriceSince: Date | null; // od kiedy obowiązuje kwota transportu (wniosek 15)
   distanceKm: string | null;
   clinicType: keyof typeof CLINIC_TYPE_LABEL | null;
   source: keyof typeof SOURCE_LABEL | null;
@@ -64,6 +65,11 @@ export function parseClientPatch(body: Record<string, unknown>): Result<ClientPa
     const { value, invalid } = raw === "invalid" ? { value: null, invalid: true } : parseMoney(raw);
     if (invalid) return { ok: false, message: "Cena transportu musi być liczbą, np. 150." };
     out.transportPriceNet = value;
+  }
+  if ("transportPriceSince" in body) {
+    const d = parseDay(body.transportPriceSince);
+    if (d === "invalid") return { ok: false, message: "Transport obowiązuje od: data RRRR-MM-DD." };
+    out.transportPriceSince = d;
   }
   if ("distanceKm" in body) {
     const raw = numText(body.distanceKm);

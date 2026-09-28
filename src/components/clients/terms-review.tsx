@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { BackfillRow, LegacyTermsRow, MismatchRow, PendingInvoiceRow } from "@/lib/clients/terms-backfill";
+import type { BackfillRow, LegacyTermsRow, MismatchRow, PendingInvoiceRow, TransportZoneRow } from "@/lib/clients/terms-backfill";
 import { APP_CSS_VARS } from "@/components/shell-tokens";
 import { api } from "./client-forms";
 
@@ -10,7 +10,7 @@ import { api } from "./client-forms";
 // klientów z tabelą cen — plan (pozycje, razem, FV, płatność) i uzupełnienie
 // zaznaczonych. Dół: rezerwacje z kwotą inną niż w warunkach (dla Ani).
 
-type Review = { backfill: BackfillRow[]; mismatches: MismatchRow[]; clientsWithTerms: number; legacy: LegacyTermsRow[]; pending: PendingInvoiceRow[] };
+type Review = { backfill: BackfillRow[]; mismatches: MismatchRow[]; clientsWithTerms: number; legacy: LegacyTermsRow[]; pending: PendingInvoiceRow[]; transportZones: TransportZoneRow[] };
 
 const zl = (n: number) => new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2, useGrouping: "always" }).format(n);
 const dmy = (iso: string) => new Date(iso).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -24,6 +24,7 @@ export function TermsReview({ initial, canApply }: { initial: Review; canApply: 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [onlyBig, setOnlyBig] = useState(false);
+  const [zonesOpen, setZonesOpen] = useState(false);
 
   async function apply() {
     setBusy(true);
@@ -250,6 +251,54 @@ export function TermsReview({ initial, canApply }: { initial: Review; canApply: 
           </div>
         )}
       </section>
+
+      {review.transportZones.length > 0 && (
+        <section className="rounded-xl border border-[var(--c-border)] bg-white px-4 py-4">
+          <button type="button" onClick={() => setZonesOpen((v) => !v)} className="flex w-full items-baseline justify-between gap-3 text-left">
+            <h2 className="m-0 text-[17px] font-semibold text-[var(--c-navy)]">
+              Transport: kwota stała vs strefa <span className="tabular-nums text-[var(--c-muted)]">{review.transportZones.length}</span>
+            </h2>
+            <span className="text-[12.5px] text-[var(--c-brand)]">{zonesOpen ? "zwiń ▴" : "pokaż ▾"}</span>
+          </button>
+          <p className="mt-1 text-[12.5px] text-[var(--c-muted)]">
+            Do przeglądu przy zmianie cennika. Obowiązuje kwota stała z karty klienta; strefa (trasa od bazy, stawki w Ustawienia → Cennik) to tylko podpowiedź — nic się samo nie zmienia.
+          </p>
+          {zonesOpen && (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[640px] border-collapse text-[13px]">
+                <thead>
+                  <tr>
+                    <th className={TH}>Klient</th>
+                    <th className={`${TH} text-right`}>Trasa</th>
+                    <th className={TH}>Strefa</th>
+                    <th className={`${TH} text-right`}>Kwota stała</th>
+                    <th className={`${TH} text-right`}>Wg strefy</th>
+                    <th className={`${TH} text-right`}>Różnica</th>
+                    <th className={TH}>Obowiązuje od</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {review.transportZones.map((t) => (
+                    <tr key={t.clientId}>
+                      <td className={TD}>
+                        <Link href={`/klienci/${t.clientId}`} className="font-medium text-[var(--c-navy)] hover:text-[var(--c-brand)]">
+                          {t.clientName}
+                        </Link>
+                      </td>
+                      <td className={`${TD} text-right tabular-nums`}>{zl(Math.round(t.km))} km</td>
+                      <td className={TD}>{t.zone}</td>
+                      <td className={`${TD} text-right tabular-nums`}>{zl(t.fixed)}</td>
+                      <td className={`${TD} text-right tabular-nums text-[var(--c-muted)]`}>{t.zonePrice != null ? zl(t.zonePrice) : "brak stawki"}</td>
+                      <td className={`${TD} text-right tabular-nums ${t.diff != null && t.diff < 0 ? "text-[#B8612F]" : ""}`}>{t.diff != null ? `${t.diff > 0 ? "+" : ""}${zl(t.diff)}` : "—"}</td>
+                      <td className={`${TD} tabular-nums text-[var(--c-muted)]`}>{t.since ? dmy(t.since) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       {review.legacy.length > 0 && (
         <section className="rounded-xl border border-[var(--c-border)] bg-white px-4 py-4">

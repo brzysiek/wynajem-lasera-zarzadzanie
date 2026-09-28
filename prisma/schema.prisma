@@ -784,6 +784,9 @@ model Client {
   geocodedAt        DateTime?
   country           String?               @default("Polska")
   transportPriceNet Decimal?              @db.Decimal(10, 2) // dawne HubSpot „ustalona_cena_transportu”
+  // Od kiedy obowiązuje kwota transportu (wniosek 15) — ustawiana przy zmianie
+  // kwoty; historia zmian w dzienniku (change_logs, pole transportPriceNet).
+  transportPriceSince DateTime?
   distanceKm        Decimal?              @db.Decimal(6, 1) // ostatnia znana odległość (z wynajmów)
   clinicType        ClinicType?
   source            ClientSource?

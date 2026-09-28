@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { fromLogValue } from "@/lib/changelog/diff";
 import { loadClientAddresses, loadDeliverySettings, type DeliveryAddressDto } from "@/lib/clients/delivery";
 import type { TransportZone } from "@/lib/clients/delivery-rules";
 import { loadClientPrices, type ClientPriceDto } from "@/lib/clients/terms";
@@ -135,7 +136,14 @@ export type ClientDetail = {
   // Paszport dostawy (etap B): adresy z trasą od bazy i uwagami kierowców.
   delivery: { addresses: DeliveryAddressDto[]; zones: TransportZone[]; baseAddress: string };
   // Warunki handlowe (etap C): ceny klienta i cennik ogólny w kodach tabeli cen.
-  terms: { prices: ClientPriceDto[]; priceList: ClientPriceRow[] };
+  terms: {
+    prices: ClientPriceDto[];
+    priceList: ClientPriceRow[];
+    // Wniosek 15: od kiedy obowiązuje kwota transportu i poprzednie kwoty
+    // (z dziennika zmian, od najnowszej).
+    transportSince: string | null;
+    transportHistory: { at: string; before: number | null; after: number | null }[];
+  };
   fieldMeta: FieldMetaDto;
   opportunities: OpportunityDto[];
   lineage: LineageDto;
@@ -557,13 +565,24 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     .flatMap((r) => r.messages)
     .filter((m) => m.channel === "SMS" && m.status === "SENT" && m.sentAt)
     .map((m) => m.sentAt!.getTime());
-  const [extras, deliveryAddresses, deliverySettings, clientPrices, priceRules] = await Promise.all([
+  const [extras, deliveryAddresses, deliverySettings, clientPrices, priceRules, transportLog] = await Promise.all([
     loadCardExtras(c.id, [c.fieldMeta, ...c.contacts.map((p) => p.fieldMeta)]),
     loadClientAddresses(c.id),
     loadDeliverySettings(),
     loadClientPrices(c.id),
     prisma.priceRule.findMany({ select: { pricingCategory: true, variant: true, durationDays: true, priceNet: true } }),
+    prisma.changeLog.findMany({
+      where: { entity: "CLIENT", entityId: c.id, field: "transportPriceNet", operation: "FIELD_CHANGE", undoneById: null },
+      orderBy: { createdAt: "desc" },
+      take: 6,
+      select: { createdAt: true, before: true, after: true },
+    }),
   ]);
+  const logAmount = (raw: string | null) => {
+    const v = fromLogValue(raw);
+    const n = v == null || v === "" ? NaN : Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
   const rhythm = computeRhythm({ realized: rhythmRentals.filter((x) => x.at <= today), planned: rhythmRentals.filter((x) => x.at > today), today });
   const deviceCounts = new Map<string, number>();
   for (const r of txRentals) if (r.startsAt <= today) deviceCounts.set(r.deviceName, (deviceCounts.get(r.deviceName) ?? 0) + 1);
@@ -627,6 +646,8 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
         const code = deviceCodeFor("WYNAJEM", r.pricingCategory, r.variant);
         return code ? [{ device: code, days: r.durationDays, priceNet: Number(r.priceNet) }] : [];
       }),
+      transportSince: c.transportPriceSince?.toISOString() ?? null,
+      transportHistory: transportLog.map((l) => ({ at: l.createdAt.toISOString(), before: logAmount(l.before), after: logAmount(l.after) })),
     },
     fieldMeta: extras.withNames(c.fieldMeta),
     opportunities: extras.opportunities,

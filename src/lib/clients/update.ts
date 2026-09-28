@@ -16,6 +16,12 @@ import { enrichClient } from "@/lib/clients/enrich";
 import { logWarn } from "@/lib/logger";
 import { CLIENT_JSON_FIELDS, CONTACT_JSON_FIELDS, readFieldMeta, stampFieldMeta } from "@/lib/clients/profile-fields";
 
+// Kwota zmieniona? (Decimal „70” vs tekst „70.00” to ta sama kwota.)
+function amountChanged(before: Prisma.Decimal | null, after: string | null | undefined): boolean {
+  if (before == null || after == null) return (before == null) !== (after == null);
+  return !before.equals(new Prisma.Decimal(after));
+}
+
 // Pola JSON: null w PATCH = wyczyść (Prisma.DbNull).
 function jsonNulls<T extends Record<string, unknown>>(data: T, keys: readonly string[]): T {
   const out: Record<string, unknown> = { ...data };
@@ -74,6 +80,12 @@ export async function patchClient(
   if (!addr.ok) return { ok: false, status: 400, message: addr.message };
   Object.assign(rest, addr.patch);
   Object.assign(parsed.data, addr.patch);
+  // Wniosek 15: nowa kwota transportu obowiązuje od dziś, chyba że podano datę.
+  if (!("transportPriceSince" in parsed.data) && "transportPriceNet" in parsed.data && amountChanged(current.transportPriceNet, parsed.data.transportPriceNet)) {
+    const since = parsed.data.transportPriceNet == null ? null : new Date();
+    Object.assign(rest, { transportPriceSince: since });
+    Object.assign(parsed.data, { transportPriceSince: since });
+  }
   const changes = changedFields(current as unknown as Record<string, unknown>, parsed.data);
 
   const fieldMeta = stamp(current.fieldMeta, changes.map((c) => c.field), actor, provenance.value);
