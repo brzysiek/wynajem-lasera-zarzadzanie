@@ -24,7 +24,8 @@ describe("computeClientStatus (wniosek 12, poprawka 27.09 14:20)", () => {
     expect(status([ago(10), ago(60), ago(120), ago(180)], null, true)).toBe("STALY"); // Pawlik — 4 wynajmy od III
     expect(status([ago(4), ago(30)], null, true)).toBe("STALY"); // Bloom House — 2 wynajmy
     expect(status([ago(184), ago(400)], null, true)).toBe("STALY"); // Be Beauty
-    expect(status([ago(800)], null, true)).toBe("STALY");
+    expect(status([ago(800)], null, true)).toBe("NOWY"); // 1 wynajem w historii (dawno) + rezerwacja
+    expect(status([ago(500), ago(800)], null, true)).toBe("STALY"); // powracająca z rezerwacją
   });
 
   it("bez rezerwacji: > 12 mies. → BYLY, 6–12 mies. → USPIONY", () => {

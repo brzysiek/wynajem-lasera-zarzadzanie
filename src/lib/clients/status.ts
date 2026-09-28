@@ -46,9 +46,9 @@ export function daysAgo(date: Date, today: Date): number {
 // Reguły (wniosek nr 12, poprawka Tomka 27.09.2026 14:20):
 // 1. blokada → NIE_KONTAKTOWAC
 // 2. brak zrealizowanych wynajmów i rezerwacji → POTENCJALNY
-// 3. rezerwacja w przyszłości → STALY, gdy ≥ 2 wynajmy w 12 mies. albo
-//    pierwszy wynajem był ponad 12 mies. temu; inaczej (0–1 wynajem, nowa
-//    klientka) → NOWY. Doprecyzowane 27.09 wieczorem wg kontroli Tomka:
+// 3. rezerwacja w przyszłości → STALY, gdy w historii ≥ 2 zrealizowane
+//    wynajmy; 0–1 → NOWY („Nowy = najwyżej 1 wynajem w całej historii”,
+//    druga poprawka z wniosku 12, 27.09 16:27). Doprecyzowane 27.09 wieczorem wg kontroli Tomka:
 //    Pawlik, DaCorso, So Skin, Grelecka (rezerwacja + kilka wynajmów w roku)
 //    = Stałe; w Nowych tylko Karpierz (sama rezerwacja) i BlooMe (1 wynajem).
 // 4. bez rezerwacji — wg ostatniego zrealizowanego wynajmu:
@@ -67,9 +67,8 @@ export function computeClientStatus(input: {
   if (input.statusOverride === "NIE_KONTAKTOWAC") return "NIE_KONTAKTOWAC";
   const ages = input.realizedRentalDates.map((d) => daysAgo(d, input.today));
   if (ages.length === 0) return input.hasFutureReservation ? "NOWY" : "POTENCJALNY";
-  const firstAge = Math.max(...ages);
   const inLastYear = ages.filter((a) => a <= 365).length;
-  if (input.hasFutureReservation) return inLastYear >= 2 || firstAge > 365 ? "STALY" : "NOWY";
+  if (input.hasFutureReservation) return ages.length >= 2 ? "STALY" : "NOWY";
   const lastAge = Math.min(...ages);
   if (lastAge > 365) return "BYLY";
   if (lastAge > 180) return "USPIONY";
