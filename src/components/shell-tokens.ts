@@ -80,6 +80,7 @@ export const LEAD_STAGE_COLORS = {
   REZERWACJA: { bg: "#0C3450", fg: "#FFFFFF", dot: "#0C3450" },
   WYGRANA: { bg: "#EEF6F2", fg: "#2F7A68", dot: "#2F7A68" },
   PRZEGRANA: { bg: "#EEF0F2", fg: "#5C6166", dot: "#5C6166" },
+  ODLOZONE: { bg: "#FFFFFF", fg: "#6B5B3E", dot: "#B9A67E" },
 } as const;
 
 // Paleta APP jako zmienne CSS — ustawiane na korzeniu strony, żeby klasy

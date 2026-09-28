@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { logError, logInfo } from "@/lib/logger";
 import { normalizePolishPhone } from "@/lib/reminders";
 import { FUNNEL_FROM, nextWorkdayAt10 } from "@/lib/leads/funnel";
+import { POSTPONE_REASON_LABEL, type PostponeReasonKey } from "@/lib/leads/labels";
 
 // Lejek ↔ kalendarz (wniosek 18, decyzja 5): wynajem klienta z otwartym
 // sygnałem → sygnał „Rezerwacja” z powiązanym wynajmem; wynajem zakończony →
@@ -10,14 +11,19 @@ import { FUNNEL_FROM, nextWorkdayAt10 } from "@/lib/leads/funnel";
 // z odbytym wynajmem klienta. Wołane po synchronizacji kalendarzy
 // (cron), po zapisie rezerwacji w panelu i przy otwarciu Sygnałów.
 
-const OPEN = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"] as const;
+// Odłożone też: rezerwacja w kalendarzu od odłożonej klientki = Rezerwacja.
+const OPEN = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "ODLOZONE"] as const;
 const digits = (p: string | null | undefined) => (p ? (normalizePolishPhone(p) ?? p).replace(/\D/g, "") : "");
 const fmt = (d: Date) => d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" });
 
-export async function syncLeadsWithRentals(now = new Date()): Promise<{ linked: number; won: number; cancelled: number }> {
+export async function syncLeadsWithRentals(now = new Date()): Promise<{ linked: number; won: number; cancelled: number; revived: number }> {
   let linked = 0;
   let won = 0;
   let cancelled = 0;
+
+  // 0) Odłożone (lejek v2): w dniu powrotu wracają do „W kontakcie” z
+  // krokiem na dziś (widać je w Skrzynce → Do zrobienia dziś).
+  const revived = await reviveReturningLeads(now);
 
   // 1) Anulowane: wynajem usunięty z kalendarza.
   const gone = await prisma.lead.findMany({
@@ -75,6 +81,7 @@ export async function syncLeadsWithRentals(now = new Date()): Promise<{ linked: 
           data: {
             rentalId: r.id,
             ...(l.stage !== "REZERWACJA" ? { stage: "REZERWACJA", stageChangedAt: now } : {}),
+            ...(l.stage === "ODLOZONE" ? { returnAt: null, postponeReason: null } : {}),
             nextActionAt: null,
             nextStepType: null,
             nextStepNote: "po wynajmie → Wygrana",
@@ -121,8 +128,26 @@ export async function syncLeadsWithRentals(now = new Date()): Promise<{ linked: 
     }
   }
 
-  if (linked || won || cancelled) logInfo("leads_rentals_synced", { linked, won, cancelled });
-  return { linked, won, cancelled };
+  if (linked || won || cancelled || revived) logInfo("leads_rentals_synced", { linked, won, cancelled, revived });
+  return { linked, won, cancelled, revived };
+}
+
+export async function reviveReturningLeads(now = new Date()): Promise<number> {
+  const due = await prisma.lead.findMany({
+    where: { archivedAt: null, stage: "ODLOZONE", returnAt: { lte: now } },
+    select: { id: true, clientId: true, returnAt: true, postponeReason: true, nextStepNote: true },
+  });
+  for (const l of due) {
+    const why = l.postponeReason ? (POSTPONE_REASON_LABEL[l.postponeReason as PostponeReasonKey] ?? l.postponeReason) : null;
+    await prisma.$transaction([
+      prisma.lead.update({
+        where: { id: l.id },
+        data: { stage: "WYWIAD", stageChangedAt: now, returnAt: null, nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: `wraca z odłożonych${why ? ` (${why})` : ""} — zapytać o decyzję` },
+      }),
+      prisma.leadActivity.create({ data: { leadId: l.id, clientId: l.clientId, type: "STAGE_CHANGE", body: `Odłożone → W kontakcie · powrót ${fmt(l.returnAt!)}${why ? ` (${why})` : ""}` } }),
+    ]);
+  }
+  return due.length;
 }
 
 async function releaseLead(leadId: string, clientId: string | null, body: string, now: Date) {

@@ -13,7 +13,8 @@ import { api } from "@/components/clients/client-forms";
 import { DownloadIcon, SearchIcon, fmtDate } from "@/components/clients/ui";
 import { useMediaQuery } from "@/components/clients/use-media-query";
 import { LeadCard, type CardIntent } from "./lead-card";
-import { CallsView, NaDzisView, toFunnel, type LinkSuggestion } from "./funnel-views";
+import { toFunnel, type LinkSuggestion } from "./funnel-views";
+import { InboxView } from "./inbox-view";
 import { BoardView } from "./board-view";
 import { ReportView } from "./report-view";
 import { callQueue } from "@/lib/leads/funnel";
@@ -25,8 +26,10 @@ import { DevicePill, RefreshIcon, StageChip, fmtRange } from "./lead-ui";
 // kilkaset, więc filtrowanie i widoki liczą się w przeglądarce. Karta: prawa
 // kolumna od 1280 px, poniżej panel wysuwany.
 
-type View = "today" | "board" | "calls" | "list" | "report";
-const VIEW_LABEL: Record<View, string> = { today: "Na dziś", board: "Tablica", calls: "Do obdzwonienia", list: "Lista", report: "Raport" };
+// Lejek v2: Skrzynka (domyślna) · Tablica · Lista · Raport. „Na dziś” i „Do
+// obdzwonienia” weszły do Skrzynki (tryb „Dzwoń po kolei” został).
+type View = "inbox" | "board" | "list" | "report";
+const VIEW_LABEL: Record<View, string> = { inbox: "Skrzynka", board: "Tablica", list: "Lista", report: "Raport" };
 
 
 function csvCell(v: string | number | null): string {
@@ -133,7 +136,7 @@ export function LeadsManager({
 }) {
   const router = useRouter();
   const wide = useMediaQuery("(min-width: 1280px)");
-  const [view, setView] = useState<View>("today");
+  const [view, setView] = useState<View>("inbox");
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [intent, setIntent] = useState<CardIntent>(null);
   const [showNew, setShowNew] = useState<false | "new" | "mail">(false);
@@ -285,6 +288,23 @@ export function LeadsManager({
     refresh();
   }
 
+  // Skrzynka: wynik kontaktu jednym kliknięciem (Rozmawiałam / Nie odebrała).
+  async function quickOutcome(id: string, outcome: "talked" | "no_answer") {
+    const r = byId.get(id);
+    const { ok, data } = await api(`/api/leads/${id}/activity`, "POST", { outcome });
+    if (!ok) return setToast({ text: data.message ?? "Nie udało się zapisać.", error: true });
+    setToast({ text: `${r ? r.title : "Sygnał"}: ${outcome === "talked" ? "rozmowa zapisana → W kontakcie, krok za 2 dni rob. (zmienisz w karcie)" : "nie odebrała → kolejna próba jutro 10:00"}.` });
+    refresh();
+  }
+
+  function startSerial() {
+    const first = visibleCalls[0];
+    if (!first) return setToast({ text: "Nikogo do obdzwonienia teraz — nowe i telefony na dziś są zrobione." });
+    setSerialDone(new Set());
+    setSerial(true);
+    open(first.id, "call");
+  }
+
   async function linkRental(leadId: string, rentalId: string) {
     const { ok, data } = await api(`/api/leads/${leadId}`, "PATCH", { rentalId });
     if (!ok) return setToast({ text: data.message ?? "Nie udało się powiązać.", error: true });
@@ -322,7 +342,7 @@ export function LeadsManager({
 
   const sortedList = useMemo(() => {
     const byDate = (a: string | null, b: string | null) => (a ?? "9999").localeCompare(b ?? "9999");
-    const order = { SYGNAL: 0, WYWIAD: 1, OFERTA: 2, REZERWACJA: 3, WYGRANA: 4, PRZEGRANA: 5 } as const;
+    const order = { SYGNAL: 0, WYWIAD: 1, OFERTA: 2, REZERWACJA: 3, ODLOZONE: 4, WYGRANA: 5, PRZEGRANA: 6 } as const;
     return [...filtered].sort((a, b) =>
       listSort === "newest"
         ? b.createdAt.localeCompare(a.createdAt)
@@ -379,11 +399,6 @@ export function LeadsManager({
                   }`}
                 >
                   {VIEW_LABEL[v]}
-                  {v === "calls" && visibleCalls.length > 0 && (
-                    <span className="ml-1.5 rounded-full bg-[var(--c-purple-soft)] px-1.5 text-[11px] font-semibold text-[var(--c-purple-deep)] tabular-nums">
-                      {visibleCalls.length}
-                    </span>
-                  )}
                 </button>
               ))}
             </div>
@@ -403,15 +418,15 @@ export function LeadsManager({
             {!readOnly && (
               <button
                 type="button"
-                onClick={() => setShowNew("mail")}
+                onClick={() => setShowNew("new")}
                 className="h-[34px] rounded-lg border border-[#C9D3DC] bg-white px-3 text-[13px] text-[#0C3450] transition-colors hover:border-[var(--c-brand)]"
               >
-                + Sygnał z maila / telefonu
+                + Szybki sygnał (telefon)
               </button>
             )}
             {!readOnly && (
-              <button type="button" onClick={() => setShowNew("new")} className="h-[34px] rounded-lg bg-[var(--c-brand)] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]">
-                + Nowy sygnał
+              <button type="button" onClick={() => setShowNew("mail")} className="h-[34px] rounded-lg bg-[var(--c-brand)] px-4 text-[13px] font-semibold text-white transition-colors hover:bg-[var(--c-brand-deep)]">
+                + Sygnał
               </button>
             )}
           </div>
@@ -441,17 +456,20 @@ export function LeadsManager({
             </div>
           ) : (
             <>
-              {view === "today" && (
-                <NaDzisView
+              {view === "inbox" && (
+                <InboxView
                   rows={list}
                   now={now}
-                  users={users}
                   currentUserId={currentUserId}
                   selectedId={selectedId}
                   readOnly={readOnly}
-                  suggestions={linkSuggestions}
                   onOpen={(id, i) => open(id, i ?? null)}
+                  onQuick={quickOutcome}
+                  onLost={(id) => setLostIds([id])}
+                  onSerial={startSerial}
+                  suggestions={linkSuggestions}
                   onLink={(leadId, rentalId) => void linkRental(leadId, rentalId)}
+                  callStats={callStats}
                 />
               )}
 
@@ -467,20 +485,6 @@ export function LeadsManager({
                   onMove={(id, stage) => void moveTo(id, stage)}
                   onLost={(id) => setLostIds([id])}
                   canArchive2025={isAdmin}
-                />
-              )}
-
-              {view === "calls" && (
-                <CallsView
-                  rows={list}
-                  now={now}
-                  selectedId={selectedId}
-                  readOnly={readOnly}
-                  callStats={callStats}
-                  onOpen={(id, i) => {
-                    if (i === "call") setSerial(true);
-                    open(id, i ?? null);
-                  }}
                 />
               )}
 
@@ -641,7 +645,7 @@ export function LeadsManager({
         <NewLeadDialog
           clients={clients}
           initialType={showNew === "mail" ? "EMAIL" : "TELEFON"}
-          title={showNew === "mail" ? "Sygnał z maila / telefonu" : "Nowy sygnał"}
+          title={showNew === "mail" ? "Nowy sygnał (mail, OLX, polecenie…)" : "Szybki sygnał z telefonu"}
           onClose={() => setShowNew(false)}
           onCreated={(id) => {
             setShowNew(false);

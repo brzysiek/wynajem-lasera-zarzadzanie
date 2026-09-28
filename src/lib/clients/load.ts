@@ -225,7 +225,7 @@ export type ClientDetail = {
   leads: {
     id: string;
     title: string;
-    stage: "SYGNAL" | "WYWIAD" | "OFERTA" | "REZERWACJA" | "WYGRANA" | "PRZEGRANA";
+    stage: "SYGNAL" | "WYWIAD" | "OFERTA" | "REZERWACJA" | "WYGRANA" | "PRZEGRANA" | "ODLOZONE";
     createdAt: string;
     nextActionAt: string | null;
   }[];
@@ -593,7 +593,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
   const commLabel = (h: ClientHistoryItem) =>
     h.kind === "email" ? "e-mail" : h.kind === "message" ? (h.channel === "SMS" ? "SMS" : "e-mail z panelu") : "rozmowa";
   // Następny krok: najbliższy z otwartych sygnałów i otwartych zadań klienta.
-  const openLeadIds = c.leads.filter((l) => ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(l.stage)).map((l) => l.id);
+  const openLeadIds = c.leads.filter((l) => ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "ODLOZONE"].includes(l.stage)).map((l) => l.id);
   const tasks = await prisma.task.findMany({
     where: { status: "OPEN", OR: [{ clientId: id }, ...(openLeadIds.length ? [{ leadId: { in: openLeadIds } }] : [])] },
     orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],

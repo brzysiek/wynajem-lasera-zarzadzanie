@@ -9,7 +9,7 @@ import { EventRow, Panel, Tile } from "./shared";
 
 export type CardTab = "karta" | "przeglad" | "transakcje" | "komunikacja" | "dane";
 
-const OPEN_STAGES = new Set(["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"]);
+const OPEN_STAGES = new Set(["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "ODLOZONE"]);
 
 // Kafelki Przeglądu — wspólne dla pełnej karty i skróconej karty na liście.
 export function OverviewTiles({ d, cols = 4 }: { d: ClientDetail; cols?: 2 | 4 }) {

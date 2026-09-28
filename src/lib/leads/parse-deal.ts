@@ -12,7 +12,7 @@ import { interestsFromText } from "../history/invoices";
 import type { DeviceInterestKey } from "../clients/labels";
 
 export type LeadTypeKey = "POBRANIE_CENNIKA" | "KONTAKT" | "REZERWACJA_WWW" | "SZKOLENIE_WWW" | "TELEFON" | "EMAIL" | "OLX" | "POLECENIE" | "INNE";
-export type LeadStageKey = "SYGNAL" | "WYWIAD" | "OFERTA" | "REZERWACJA" | "WYGRANA" | "PRZEGRANA";
+export type LeadStageKey = "SYGNAL" | "WYWIAD" | "OFERTA" | "REZERWACJA" | "WYGRANA" | "PRZEGRANA" | "ODLOZONE";
 
 const EMAIL_RE = /[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[a-z]{2,}/i;
 

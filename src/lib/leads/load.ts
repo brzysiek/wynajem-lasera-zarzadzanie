@@ -46,6 +46,8 @@ const ROW_SELECT = {
   lastContactAt: true,
   sourceRef: true,
   lostReason: true,
+  returnAt: true,
+  postponeReason: true,
   rentalId: true,
   ownerId: true,
   hubspotDealId: true,
@@ -87,6 +89,11 @@ export type LeadRow = {
   lastContactAt: string | null;
   sourceRef: string | null;
   lostReason: LostReasonKey | null;
+  // Lejek v2: Odłożone (data powrotu, powód) i ostatnia prawdziwa aktywność
+  // (rozmowa, mail, SMS, notatka, zmiana etapu) — licznik gnicia.
+  returnAt: string | null;
+  postponeReason: string | null;
+  lastWorkAt: string | null;
   rentalId: string | null;
   rentalStartsAt: string | null;
   rentalDevice: string | null;
@@ -112,7 +119,7 @@ function queryRows(where: Parameters<typeof prisma.lead.findMany>[0] extends inf
   return prisma.lead.findMany({ where, orderBy: { createdAt: "desc" }, select: ROW_SELECT });
 }
 
-type Extra = { statuses: Map<string, ClientStatus>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]> };
+type Extra = { statuses: Map<string, ClientStatus>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]>; lastWork: Map<string, Date> };
 
 function toRow(l: RowSource, x: Extra): LeadRow {
   const statuses = x.statuses;
@@ -147,6 +154,9 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     lastContactAt: l.lastContactAt?.toISOString() ?? null,
     sourceRef: l.sourceRef,
     lostReason: l.lostReason,
+    returnAt: l.returnAt?.toISOString() ?? null,
+    postponeReason: l.postponeReason,
+    lastWorkAt: x.lastWork.get(l.id)?.toISOString() ?? null,
     rentalId: l.rentalId,
     rentalStartsAt: l.rental?.startsAt.toISOString() ?? null,
     rentalDevice: l.rental?.device.name ?? null,
@@ -165,15 +175,21 @@ function toRow(l: RowSource, x: Extra): LeadRow {
 
 async function loadExtra(leads: { id: string; clientId: string | null }[]): Promise<Extra> {
   const clientIds = [...new Set(leads.map((l) => l.clientId).filter((x): x is string => Boolean(x)))];
-  const [statuses, qualified, talkedRows, stageRows] = await Promise.all([
+  const [statuses, qualified, talkedRows, stageRows, workRows] = await Promise.all([
     loadClientStatuses(clientIds),
     loadQualifiedMap(clientIds),
     prisma.leadActivity.groupBy({ by: ["leadId"], where: { leadId: { in: leads.map((l) => l.id) }, type: { in: ["CALL", "EMAIL"] } } }),
     prisma.leadActivity.findMany({ where: { leadId: { in: leads.map((l) => l.id) }, type: "STAGE_CHANGE" }, select: { leadId: true, body: true } }),
+    prisma.leadActivity.groupBy({
+      by: ["leadId"],
+      where: { leadId: { in: leads.map((l) => l.id) }, type: { in: ["CALL", "CALL_NO_ANSWER", "SMS", "EMAIL", "NOTE", "STAGE_CHANGE"] } },
+      _max: { createdAt: true },
+    }),
   ]);
+  const lastWork = new Map(workRows.filter((r) => r._max.createdAt).map((r) => [r.leadId as string, r._max.createdAt as Date]));
   const stageBodies = new Map<string, (string | null)[]>();
   for (const a of stageRows) stageBodies.set(a.leadId!, [...(stageBodies.get(a.leadId!) ?? []), a.body]);
-  return { statuses, qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies };
+  return { statuses, qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies, lastWork };
 }
 
 export async function loadLeadRows(): Promise<LeadRow[]> {

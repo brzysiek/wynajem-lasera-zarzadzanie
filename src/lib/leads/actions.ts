@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendSms } from "@/lib/integrations/szybkisms";
-import { STAGE_LABEL, LOST_REASON_LABEL } from "@/lib/leads/labels";
+import { STAGE_LABEL, LOST_REASON_LABEL, POSTPONE_REASON_LABEL, type PostponeReasonKey } from "@/lib/leads/labels";
 import { leadTitle, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, addWorkHours, planOutcome, type NextStepType, type Outcome } from "@/lib/leads/funnel";
 import { defaultLeadOwnerId } from "@/lib/leads/owner";
@@ -51,8 +51,10 @@ function stageData(lead: Lead, stage: LeadStageKey): Prisma.LeadUpdateInput {
   return {
     stage,
     stageChangedAt: new Date(),
-    // Wyjście z przegranej czyści powód — nie zostaje nieaktualny.
-    ...(stage !== "PRZEGRANA" ? { lostReason: null, lostNote: null, returnAt: null } : {}),
+    // Wyjście z przegranej czyści powód — nie zostaje nieaktualny; wyjście z
+    // odłożonych — datę i powód powrotu.
+    ...(stage !== "PRZEGRANA" ? { lostReason: null, lostNote: null } : {}),
+    ...(stage !== "PRZEGRANA" && stage !== "ODLOZONE" ? { returnAt: null, postponeReason: null } : {}),
   };
 }
 
@@ -65,6 +67,7 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
   if (patch.stage === "WYGRANA" && !lead.rentalId && !patch.rentalId) {
     throw new LeadError("Wygrana tylko z powiązanym wynajmem — najpierw powiąż sygnał z wynajmem w kalendarzu.");
   }
+  if (patch.stage === "ODLOZONE" && lead.stage !== "ODLOZONE") throw new LeadError("Odłóż przez „Odłóż do…” — z datą powrotu i powodem.");
   if (patch.stage && patch.stage !== lead.stage) {
     Object.assign(data, stageData(lead, patch.stage));
     if (patch.stage === "WYGRANA" || patch.stage === "PRZEGRANA") Object.assign(data, { nextActionAt: null, nextStepType: null, nextStepNote: null });
@@ -136,7 +139,7 @@ const whenLabel = (d: Date) => d.toLocaleString("pl-PL", { weekday: "short", day
 // follow-upy wg reguł lejka (src/lib/leads/funnel.ts — planOutcome).
 export async function logLeadActivity(
   id: string,
-  input: { outcome: CallOutcome; body: string | null; nextActionAt?: Date | null; stage?: LeadStageKey },
+  input: { outcome: CallOutcome; body: string | null; nextActionAt?: Date | null; stage?: LeadStageKey; postponeReason?: PostponeReasonKey | null },
   userId: string,
 ) {
   const lead = await getLead(id);
@@ -144,12 +147,15 @@ export async function logLeadActivity(
   const type = input.outcome === "note" ? "NOTE" : input.outcome === "no_answer" ? "CALL_NO_ANSWER" : input.outcome === "email" ? "EMAIL" : "CALL";
   if (type === "NOTE" && !input.body) throw new LeadError("Notatka nie może być pusta.");
   if (input.outcome === "callback" && !input.nextActionAt) throw new LeadError("Wybierz termin, kiedy oddzwoni.");
+  if (input.outcome === "postpone" && (!input.nextActionAt || input.nextActionAt <= now)) throw new LeadError("Odłóż do: wybierz datę powrotu (od jutra).");
+  if (input.outcome === "postpone" && !input.postponeReason) throw new LeadError("Odłóż do: wybierz powód.");
   const data: Prisma.LeadUpdateInput = { ...claim(lead, userId) };
   let stageTo: LeadStageKey | null = input.stage && input.stage !== lead.stage ? input.stage : null;
   let body = input.body;
 
   if (input.outcome !== "note") {
-    const plan = planOutcome(lead, input.outcome, now, { at: input.nextActionAt ?? null, note: null });
+    const reasonLabel = input.postponeReason ? POSTPONE_REASON_LABEL[input.postponeReason] : null;
+    const plan = planOutcome(lead, input.outcome, now, { at: input.nextActionAt ?? null, note: input.outcome === "postpone" ? `wraca: ${reasonLabel}${input.body ? ` — ${input.body}` : ""}` : null });
     if (plan.contact) {
       if (!lead.firstContactAt) data.firstContactAt = now;
       data.lastContactAt = now;
@@ -157,8 +163,11 @@ export async function logLeadActivity(
     Object.assign(data, { nextActionAt: plan.nextActionAt, nextStepType: plan.nextStepType, nextStepNote: plan.nextStepNote, attempts: plan.attempts, followUpNo: plan.followUpNo });
     stageTo = stageTo ?? (plan.stage && plan.stage !== lead.stage ? plan.stage : null);
     const next = plan.nextActionAt ? ` Następny krok: ${NEXT_STEP_LABEL[plan.nextStepType as NextStepType]}, ${whenLabel(plan.nextActionAt)}.` : "";
+    if (input.outcome === "postpone") Object.assign(data, { returnAt: plan.nextActionAt, postponeReason: input.postponeReason });
     const head =
-      input.outcome === "callback"
+      input.outcome === "postpone"
+        ? `Odłożone do ${input.nextActionAt!.toLocaleDateString("pl-PL")} (${reasonLabel})`
+        : input.outcome === "callback"
         ? "Oddzwoni"
         : input.outcome === "email"
           ? "Odpowiedziałam mailem"

@@ -17,7 +17,7 @@ export const ARCHIVE_2025 = "BEZ_KONTAKTU_2025";
 // bieżący etap + zmiany etapów z historii (wpisy „Wywiad → Oferta wysłana”).
 export const REACH_ORDER: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA"];
 export function maxStageReached(current: LeadStageKey, stageChangeBodies: (string | null)[], labels: Record<LeadStageKey, string[]>, hasRental: boolean): LeadStageKey {
-  let best = current === "PRZEGRANA" ? 0 : REACH_ORDER.indexOf(current);
+  let best = current === "PRZEGRANA" ? 0 : current === "ODLOZONE" ? 1 : REACH_ORDER.indexOf(current);
   for (const body of stageChangeBodies) {
     if (!body) continue;
     for (let i = REACH_ORDER.length - 1; i > best; i--) {
@@ -31,19 +31,21 @@ export function maxStageReached(current: LeadStageKey, stageChangeBodies: (strin
   return REACH_ORDER[best];
 }
 
-export type NextStepType = "PIERWSZY_KONTAKT" | "PONOWNA_PROBA" | "FOLLOW_UP_OFERTY" | "ODDZWONI" | "DOPYTAC" | "INNE";
+export type NextStepType = "PIERWSZY_KONTAKT" | "PONOWNA_PROBA" | "FOLLOW_UP_OFERTY" | "ODDZWONI" | "DOPYTAC" | "POWROT" | "INNE";
 export const NEXT_STEP_LABEL: Record<NextStepType, string> = {
   PIERWSZY_KONTAKT: "pierwszy kontakt",
   PONOWNA_PROBA: "ponowna próba",
   FOLLOW_UP_OFERTY: "follow-up oferty",
   ODDZWONI: "oddzwoni",
   DOPYTAC: "dopytać",
+  POWROT: "powrót z odłożonych",
   INNE: "kolejny krok",
 };
 // Kroki telefoniczne — trafiają do „Do obdzwonienia”, gdy przypadają.
 export const PHONE_STEPS: NextStepType[] = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA", "FOLLOW_UP_OFERTY", "ODDZWONI", "DOPYTAC"];
 
-const STAGE_ORDER: Record<LeadStageKey, number> = { SYGNAL: 0, WYWIAD: 1, OFERTA: 2, REZERWACJA: 3, WYGRANA: 4, PRZEGRANA: 5 };
+// Odłożone liczy się jak „W kontakcie” (automaty tylko do przodu).
+const STAGE_ORDER: Record<LeadStageKey, number> = { SYGNAL: 0, WYWIAD: 1, ODLOZONE: 1, OFERTA: 2, REZERWACJA: 3, WYGRANA: 4, PRZEGRANA: 5 };
 const atHour = (d: Date, h: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), h);
 export const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 export const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
@@ -77,7 +79,7 @@ export function addWorkHours(from: Date, hours: number): Date {
 
 // ------------------------------------------------------------------ wynik kontaktu
 
-export type Outcome = "talked" | "no_answer" | "callback" | "offer_sent" | "email";
+export type Outcome = "talked" | "no_answer" | "callback" | "offer_sent" | "email" | "postpone";
 
 export type OutcomeState = { stage: LeadStageKey; nextStepType: string | null; attempts: number; followUpNo: number };
 
@@ -127,6 +129,11 @@ export function planOutcome(s: OutcomeState, outcome: Outcome, now: Date, opts: 
       contact: true,
     };
   }
+  // Odłóż do… (lejek v2): data powrotu obowiązkowa — w tym dniu sygnał wraca
+  // do „W kontakcie” z krokiem na dziś (reviveReturningLeads).
+  if (outcome === "postpone") {
+    return { ...base, stage: "ODLOZONE", nextActionAt: opts.at ? atHour(opts.at, 9) : null, nextStepType: "POWROT", nextStepNote: opts.note ?? null, attempts: 0, contact: true };
+  }
   if (outcome === "email") {
     return { ...base, stage: null, nextActionAt: opts.at ?? atHour(addWorkdays(now, 3), 10), nextStepType: "INNE", nextStepNote: opts.note ?? "sprawdzić odpowiedź na maila", attempts: 0, contact: true };
   }
@@ -171,10 +178,15 @@ export type FunnelLead = {
   ownerId: string | null;
   rentalId: string | null;
   phone: string | null;
+  // Lejek v2: ostatnia prawdziwa aktywność (rozmowa, mail, SMS, notatka,
+  // zmiana etapu — nie zaplanowany termin), powrót odłożonego, najdalszy etap.
+  lastWorkAt?: Date | null;
+  returnAt?: Date | null;
+  maxStage?: LeadStageKey;
 };
 
 // Wiersz z datami ISO (LeadRow) → wiersz lejka z datami.
-export function funnelFromRow<T extends { createdAt: string; firstContactAt: string | null; lastContactAt: string | null; stageChangedAt: string; nextActionAt: string | null }>(
+export function funnelFromRow<T extends { createdAt: string; firstContactAt: string | null; lastContactAt: string | null; stageChangedAt: string; nextActionAt: string | null; lastWorkAt?: string | null; returnAt?: string | null }>(
   r: T,
 ): Omit<T, "createdAt" | "firstContactAt" | "lastContactAt" | "stageChangedAt" | "nextActionAt"> & Pick<FunnelLead, "createdAt" | "firstContactAt" | "lastContactAt" | "stageChangedAt" | "nextActionAt"> {
   return {
@@ -184,11 +196,13 @@ export function funnelFromRow<T extends { createdAt: string; firstContactAt: str
     lastContactAt: r.lastContactAt ? new Date(r.lastContactAt) : null,
     stageChangedAt: new Date(r.stageChangedAt),
     nextActionAt: r.nextActionAt ? new Date(r.nextActionAt) : null,
-  };
+    ...(r.lastWorkAt !== undefined ? { lastWorkAt: r.lastWorkAt ? new Date(r.lastWorkAt) : null } : {}),
+    ...(r.returnAt !== undefined ? { returnAt: r.returnAt ? new Date(r.returnAt) : null } : {}),
+  } as never;
 }
 
 // Id sygnałów w kolejce „Do obdzwonienia” (API agenta, filtr do_obdzwonienia).
-export function callQueueIds<T extends Parameters<typeof funnelFromRow>[0] & Omit<FunnelLead, "createdAt" | "firstContactAt" | "lastContactAt" | "stageChangedAt" | "nextActionAt">>(rows: T[], now: Date): Set<string> {
+export function callQueueIds<T extends Parameters<typeof funnelFromRow>[0] & Omit<FunnelLead, "createdAt" | "firstContactAt" | "lastContactAt" | "stageChangedAt" | "nextActionAt" | "lastWorkAt" | "returnAt">>(rows: T[], now: Date): Set<string> {
   return new Set(callQueue(rows.map((r) => funnelFromRow(r) as unknown as FunnelLead), now).map((l) => l.id));
 }
 
@@ -290,4 +304,81 @@ export function workDurationLabel(hours: number | null): string {
   if (hours < perDay) return `${Math.round(hours * 10) / 10} h rob.`.replace(".", ",");
   const d = Math.round((hours / perDay) * 10) / 10;
   return `${String(d).replace(".", ",")} dnia rob.`;
+}
+
+// ------------------------------------------------------------------ lejek v2: gnicie i Skrzynka
+
+// Limity gnicia (lejek-v2, 3.2): Nowe — SLA 4 h rob. od wpłynięcia; W
+// kontakcie — 3 dni rob. bez aktywności; Oferta — 10 dni. Licznik zeruje
+// prawdziwa aktywność (rozmowa, mail, SMS, notatka), nie zaplanowany termin.
+// Otwarty sygnał bez następnego kroku gnije zawsze. Rezerwacja nie gnije.
+export const ROT_WORK_DAYS_CONTACT = 3;
+export const ROT_DAYS_OFFER = 10;
+const WORK_DAY_HOURS = WORK_END_HOUR - WORK_START_HOUR;
+
+export type Rot = { rotting: boolean; label: string | null; days: number };
+
+const untouched = (l: FunnelLead) => l.stage === "SYGNAL" && !l.firstContactAt;
+
+export function lastWorkOf(l: FunnelLead): Date {
+  return new Date(Math.max(l.stageChangedAt.getTime(), l.lastContactAt?.getTime() ?? 0, l.lastWorkAt?.getTime() ?? 0));
+}
+
+export function rotInfo(l: FunnelLead, now: Date): Rot {
+  const none: Rot = { rotting: false, label: null, days: 0 };
+  if (!isOpen(l) || !in2026(l) || l.stage === "REZERWACJA") return none;
+  if (untouched(l)) {
+    const h = workHoursBetween(l.createdAt, now);
+    if (h <= FIRST_CONTACT_SLA_HOURS) return none;
+    const d = Math.max(1, Math.floor(h / WORK_DAY_HOURS));
+    return { rotting: true, label: `po SLA · ${d} ${d === 1 ? "dzień" : "dni"} rob.`, days: d };
+  }
+  if (!l.nextActionAt) return { rotting: true, label: "brak kroku", days: 0 };
+  const last = lastWorkOf(l);
+  if (l.stage === "OFERTA") {
+    const d = Math.floor((now.getTime() - last.getTime()) / 86_400_000);
+    return d > ROT_DAYS_OFFER ? { rotting: true, label: `stoi ${d} dni`, days: d } : { ...none, days: d };
+  }
+  const wd = Math.floor(workHoursBetween(last, now) / WORK_DAY_HOURS);
+  return wd > ROT_WORK_DAYS_CONTACT ? { rotting: true, label: `stoi ${wd} dni rob.`, days: wd } : { ...none, days: wd };
+}
+
+// Skrzynka (lejek v2, ekran 1): Nowe (nietknięte, z SLA), Do zrobienia dziś
+// (kroki do końca dnia + rezerwacje bez wynajmu), Gniją (ponad limit etapu,
+// bez tych na dziś), Wracają (Odłożone wg daty powrotu). Tylko z 2026.
+export function buildInbox<T extends FunnelLead>(leads: T[], now: Date) {
+  const eod = endOfDay(now);
+  const act = leads.filter(in2026);
+  const at = (l: T) => l.nextActionAt?.getTime() ?? 0;
+  const fresh = act.filter((l) => isOpen(l) && untouched(l)).sort((a, b) => at(a) - at(b) || b.createdAt.getTime() - a.createdAt.getTime());
+  const due = act.filter((l) => isOpen(l) && !untouched(l) && l.nextActionAt && l.nextActionAt <= eod).sort((a, b) => at(a) - at(b));
+  const dueIds = new Set(due.map((l) => l.id));
+  const toLink = act.filter((l) => l.stage === "REZERWACJA" && !l.rentalId && !dueIds.has(l.id));
+  const today = [...due, ...toLink];
+  const todayIds = new Set(today.map((l) => l.id));
+  const rotting = act
+    .filter((l) => isOpen(l) && !untouched(l) && !todayIds.has(l.id) && rotInfo(l, now).rotting)
+    .sort((a, b) => rotInfo(b, now).days - rotInfo(a, now).days);
+  const returning = leads.filter((l) => l.stage === "ODLOZONE").sort((a, b) => (a.returnAt?.getTime() ?? 0) - (b.returnAt?.getTime() ?? 0));
+  return { fresh, today, rotting, returning };
+}
+
+export function inboxKpis<T extends FunnelLead>(leads: T[], now: Date) {
+  const b = buildInbox(leads, now);
+  const from30 = new Date(now.getTime() - 30 * 86_400_000);
+  const week = new Date(now.getTime() + 7 * 86_400_000);
+  const last30 = leads.filter((l) => l.createdAt >= from30);
+  const reached = (l: T, s: LeadStageKey) => REACH_ORDER.indexOf(l.maxStage ?? l.stage) >= REACH_ORDER.indexOf(s);
+  const offers30 = last30.filter((l) => reached(l, "OFERTA"));
+  return {
+    fresh: b.fresh.length,
+    freshLate: b.fresh.filter((l) => rotInfo(l, now).rotting).length,
+    today: b.today.length,
+    rotting: leads.filter((l) => in2026(l) && isOpen(l) && !untouched(l) && rotInfo(l, now).rotting).length,
+    returning: b.returning.length,
+    returningWeek: b.returning.filter((l) => l.returnAt && l.returnAt <= week).length,
+    medianFirstContact: medianFirstContactHours(last30, now),
+    offers30: offers30.length,
+    reservations30: offers30.filter((l) => reached(l, "REZERWACJA")).length,
+  };
 }

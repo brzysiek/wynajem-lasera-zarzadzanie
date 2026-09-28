@@ -149,7 +149,8 @@ const LIST_RENTAL_SELECT = {
   messages: { where: { channel: "SMS", status: "SENT" }, select: { sentAt: true } },
 } as const;
 
-const OPEN_LEAD_STAGES = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"] as const;
+// Odłożone też w lejku (lejek v2) — z datą powrotu.
+const OPEN_LEAD_STAGES = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "ODLOZONE"] as const;
 
 function headsOf(r: { title: string; finance: { deviceVariant: string | null } | null }): number | null {
   const v = r.finance?.deviceVariant;
@@ -435,7 +436,7 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
             nextStepNote: inquiry.nextStepNote,
           }
         : null,
-      funnel: inquiry && ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(inquiry.stage) ? "IN" : archivedLead ? "ARCHIVE" : "OUT",
+      funnel: inquiry && (OPEN_LEAD_STAGES as readonly string[]).includes(inquiry.stage) ? "IN" : archivedLead ? "ARCHIVE" : "OUT",
       archivedLeadId: archivedLead?.id ?? null,
       devices: [...new Set([...summary.rentedDevices, ...interests])],
       rentedDevices: summary.rentedDevices,

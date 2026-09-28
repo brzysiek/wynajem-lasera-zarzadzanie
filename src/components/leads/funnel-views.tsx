@@ -40,6 +40,8 @@ export function toFunnel(rows: LeadRow[]): Row[] {
     lastContactAt: r.lastContactAt ? new Date(r.lastContactAt) : null,
     stageChangedAt: new Date(r.stageChangedAt),
     nextActionAt: r.nextActionAt ? new Date(r.nextActionAt) : null,
+    lastWorkAt: r.lastWorkAt ? new Date(r.lastWorkAt) : null,
+    returnAt: r.returnAt ? new Date(r.returnAt) : null,
   })) as unknown as Row[];
 }
 

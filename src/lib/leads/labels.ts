@@ -11,6 +11,7 @@ export const STAGE_LABEL: Record<LeadStageKey, string> = {
   REZERWACJA: "Rezerwacja",
   WYGRANA: "Wygrana",
   PRZEGRANA: "Przegrana",
+  ODLOZONE: "Odłożone",
 };
 export const STAGE_KEYS = Object.keys(STAGE_LABEL) as LeadStageKey[];
 // Nazwy w historii (wpisy STAGE_CHANGE) — obecne i sprzed v2 („Sygnał → Wywiad”).
@@ -21,7 +22,19 @@ export const STAGE_HISTORY_LABELS: Record<LeadStageKey, string[]> = {
   REZERWACJA: ["Rezerwacja"],
   WYGRANA: ["Wygrana"],
   PRZEGRANA: ["Przegrana"],
+  ODLOZONE: ["Odłożone"],
 };
+
+// Odłożone („zła pora”, lejek v2): powód obowiązkowy, data powrotu obowiązkowa.
+export const POSTPONE_REASON_LABEL = {
+  SEZON: "przed sezonem",
+  ZBIERA_OFERTY: "zbiera oferty",
+  URLOP: "urlop",
+  REMONT: "remont / otwarcie",
+  INNE: "inny powód",
+} as const;
+export type PostponeReasonKey = keyof typeof POSTPONE_REASON_LABEL;
+export const POSTPONE_REASON_KEYS = Object.keys(POSTPONE_REASON_LABEL) as PostponeReasonKey[];
 export const BOARD_STAGES: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"];
 export const OPEN_STAGES: LeadStageKey[] = BOARD_STAGES;
 

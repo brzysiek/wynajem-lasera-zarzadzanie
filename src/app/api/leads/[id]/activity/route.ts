@@ -7,11 +7,11 @@ import { recordChanges } from "@/lib/changelog/record";
 import { loadLeadDetail } from "@/lib/leads/load";
 import { LeadError, addLeadNote, logLeadActivity, type CallOutcome } from "@/lib/leads/actions";
 import { parseDay } from "@/lib/leads/validate";
-import { STAGE_KEYS } from "@/lib/leads/labels";
+import { POSTPONE_REASON_KEYS, STAGE_KEYS, type PostponeReasonKey } from "@/lib/leads/labels";
 import type { LeadStageKey } from "@/lib/leads/parse-deal";
 import { logError, logInfo } from "@/lib/logger";
 
-const OUTCOMES: CallOutcome[] = ["talked", "no_answer", "callback", "offer_sent", "note", "email"];
+const OUTCOMES: CallOutcome[] = ["talked", "no_answer", "callback", "offer_sent", "note", "email", "postpone"];
 
 // Wynik rozmowy / notatka z karty sygnału. ADMIN/STAFF; AGENT — tylko
 // notatka (bez przejęcia sygnału, etapu i terminu), zapisana też w dzienniku
@@ -42,10 +42,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
   const next = body && "nextActionAt" in body ? parseDay(body.nextActionAt) : undefined;
   if (body && "nextActionAt" in body && next === undefined) return NextResponse.json({ message: "Nieprawidłowa data." }, { status: 400 });
-  const stage = STAGE_KEYS.includes(body?.stage) && body.stage !== "PRZEGRANA" ? (body.stage as LeadStageKey) : undefined;
+  const stage = STAGE_KEYS.includes(body?.stage) && body.stage !== "PRZEGRANA" && body.stage !== "ODLOZONE" ? (body.stage as LeadStageKey) : undefined;
   const text = typeof body?.body === "string" ? body.body.trim().slice(0, 5000) || null : null;
   try {
-    await logLeadActivity(id, { outcome, body: text, nextActionAt: next, stage }, session.user.id);
+    const postponeReason = POSTPONE_REASON_KEYS.includes(body?.postponeReason) ? (body.postponeReason as PostponeReasonKey) : null;
+    await logLeadActivity(id, { outcome, body: text, nextActionAt: next, stage, postponeReason }, session.user.id);
     logInfo("lead_activity_logged", { userId: session.user.id, leadId: id, outcome });
     return NextResponse.json(await loadLeadDetail(id));
   } catch (err) {

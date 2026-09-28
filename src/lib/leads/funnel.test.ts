@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { STAGE_HISTORY_LABELS } from "./labels";
-import { addWorkHours, buildNaDzis, callQueue, maxStageReached, medianFirstContactHours, naDzisKpis, nextWorkdayAt10, planOutcome, type FunnelLead } from "./funnel";
+import { addWorkHours, buildInbox, buildNaDzis, callQueue, inboxKpis, maxStageReached, medianFirstContactHours, naDzisKpis, nextWorkdayAt10, planOutcome, rotInfo, type FunnelLead } from "./funnel";
 
 // Wrzesień/październik 2026: 25.09 = piątek, 28.09 = poniedziałek, 02.10 = piątek.
 const at = (day: number, h = 12, m = 0, month = 9) => new Date(2026, month - 1, day, h, m);
@@ -105,5 +105,42 @@ describe("najwyższy osiągnięty etap", () => {
     expect(maxStageReached("PRZEGRANA", ["Nowe → W kontakcie"], labels, false)).toBe("WYWIAD");
     expect(maxStageReached("WYWIAD", [], labels, true)).toBe("REZERWACJA");
     expect(maxStageReached("WYGRANA", [], labels, true)).toBe("WYGRANA");
+  });
+});
+
+describe("lejek v2: Odłożone, gnicie, Skrzynka", () => {
+  const now = at(28, 12); // pn 28.09 12:00
+  it("Odłóż do… → Odłożone z powrotem o 9:00", () => {
+    const p = planOutcome({ stage: "OFERTA", nextStepType: "FOLLOW_UP_OFERTY", attempts: 0, followUpNo: 1 }, "postpone", now, { at: new Date(2026, 9, 5), note: "wraca: zbiera oferty" });
+    expect(p).toMatchObject({ stage: "ODLOZONE", nextStepType: "POWROT", nextStepNote: "wraca: zbiera oferty" });
+    expect(p.nextActionAt).toEqual(new Date(2026, 9, 5, 9));
+    expect(maxStageReached("ODLOZONE", [], STAGE_HISTORY_LABELS, false)).toBe("WYWIAD");
+  });
+
+  it("gnicie: Nowe po SLA, W kontakcie > 3 dni rob., Oferta > 10 dni, brak kroku; aktywność zeruje", () => {
+    expect(rotInfo(lead({ id: "n", createdAt: at(25, 9) }), now)).toMatchObject({ rotting: true, label: "po SLA · 1 dzień rob." });
+    expect(rotInfo(lead({ id: "n2", createdAt: at(28, 9) }), now).rotting).toBe(false);
+    const talked = { firstContactAt: at(21), stage: "WYWIAD" as const, stageChangedAt: at(21), nextActionAt: at(30) };
+    expect(rotInfo(lead({ id: "k", ...talked }), now)).toMatchObject({ rotting: true, label: "stoi 5 dni rob." });
+    expect(rotInfo(lead({ id: "k2", ...talked, lastWorkAt: at(25, 16) }), now).rotting).toBe(false);
+    expect(rotInfo(lead({ id: "o", firstContactAt: at(10), stage: "OFERTA", stageChangedAt: at(15), nextActionAt: at(30) }), now)).toMatchObject({ rotting: true, label: "stoi 13 dni" });
+    expect(rotInfo(lead({ id: "b", firstContactAt: at(27), stage: "WYWIAD", stageChangedAt: at(27) }), now)).toMatchObject({ rotting: true, label: "brak kroku" });
+    expect(rotInfo(lead({ id: "r", firstContactAt: at(1), stage: "REZERWACJA", stageChangedAt: at(1) }), now).rotting).toBe(false);
+  });
+
+  it("Skrzynka: nowe, na dziś, gniją, wracają", () => {
+    const leads = [
+      lead({ id: "nowy", createdAt: at(27), nextActionAt: at(28, 12) }),
+      lead({ id: "dzis", firstContactAt: at(21), stage: "WYWIAD", stageChangedAt: at(25), nextActionAt: at(28, 15) }),
+      lead({ id: "gnije", firstContactAt: at(10), stage: "OFERTA", stageChangedAt: at(12), nextActionAt: at(30) }),
+      lead({ id: "rez", firstContactAt: at(20), stage: "REZERWACJA", stageChangedAt: at(20) }),
+      lead({ id: "odl", firstContactAt: at(20), stage: "ODLOZONE", returnAt: new Date(2026, 9, 1, 9), nextActionAt: new Date(2026, 9, 1, 9) }),
+    ];
+    const b = buildInbox(leads, now);
+    expect(b.fresh.map((l) => l.id)).toEqual(["nowy"]);
+    expect(b.today.map((l) => l.id)).toEqual(["dzis", "rez"]);
+    expect(b.rotting.map((l) => l.id)).toEqual(["gnije"]);
+    expect(b.returning.map((l) => l.id)).toEqual(["odl"]);
+    expect(inboxKpis(leads, now)).toMatchObject({ fresh: 1, today: 2, rotting: 1, returningWeek: 1 });
   });
 });

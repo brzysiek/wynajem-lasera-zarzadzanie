@@ -1180,6 +1180,7 @@ enum LeadStage {
   REZERWACJA // termin potwierdzony
   WYGRANA // wynajem zrealizowany
   PRZEGRANA // rezygnacja / brak kontaktu — zawsze z powodem
+  ODLOZONE // lejek v2: „zła pora” — wraca w dniu returnAt (powód: postponeReason)
 }
 
 enum LeadType {
@@ -1243,6 +1244,8 @@ model Lead {
   lostReason      LostReason?
   lostNote        String?        @db.Text
   returnAt        DateTime?
+  // Lejek v2 — Odłożone: powód (SEZON | ZBIERA_OFERTY | URLOP | REMONT | INNE).
+  postponeReason  String?        @db.VarChar(32)
   rentalId        String?        @unique
   rental          Rental?        @relation(fields: [rentalId], references: [id], onDelete: SetNull)
   // Zaległe zapytanie z 2026 z importu HubSpota — lista „Do obdzwonienia”

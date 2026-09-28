@@ -267,9 +267,10 @@ export const TOOLS: McpTool[] = [
     description:
       "Sygnały (zapytania) od najnowszych, z paginacją. Filtry: etap, typ, wpłynęło od, do obdzwonienia, duplikaty, klient, szukaj. " +
       "Pola lejka: nextActionAt + nextStepType (PIERWSZY_KONTAKT, PONOWNA_PROBA, ODDZWONI, FOLLOW_UP_OFERTY, DOPYTAC, INNE) + nextStepNote, attempts (nieodebrane próby), " +
-      "followUpNo, lastContactAt, maxStage (najdalszy osiągnięty etap), sourceRef (odnośnik źródła, np. gmail:<id>). Wygrana liczy się tylko z wynajmem (rentalId).",
+      "followUpNo, lastContactAt, lastWorkAt (ostatnia prawdziwa aktywność — licznik gnicia), maxStage (najdalszy osiągnięty etap), sourceRef (odnośnik źródła, np. gmail:<id>), " +
+      "returnAt + postponeReason przy etapie ODLOZONE (Odłożone — w dniu powrotu wraca do W kontakcie). Wygrana liczy się tylko z wynajmem (rentalId).",
     inputSchema: obj({
-      etap: s("Etap.", { enum: ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA", "PRZEGRANA"] }),
+      etap: s("Etap (SYGNAL = Nowe, WYWIAD = W kontakcie, ODLOZONE = Odłożone).", { enum: ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA", "PRZEGRANA", "ODLOZONE"] }),
       typ: s("Typ.", { enum: ["POBRANIE_CENNIKA", "KONTAKT", "REZERWACJA_WWW", "SZKOLENIE_WWW", "TELEFON", "EMAIL", "OLX", "POLECENIE", "INNE"] }),
       od: s("Wpłynęło od RRRR-MM-DD."),
       do_obdzwonienia: b("Tylko lista „Do obdzwonienia”."),

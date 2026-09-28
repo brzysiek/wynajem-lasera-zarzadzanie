@@ -561,10 +561,11 @@ export function ClientsList({
       ) : (
         <>
           {/* Potencjalni (lejek, wzór s4): bez własnych etapów — grupy lejka i braki danych */}
-          <div className="mx-4 mt-4 grid grid-cols-2 bg-[#EAF4FB] sm:grid-cols-3 md:mx-7 xl:grid-cols-6">
+          <div className="mx-4 mt-4 grid grid-cols-2 bg-[#EAF4FB] sm:grid-cols-4 md:mx-7 xl:grid-cols-7">
             {[
               { key: "ALL", label: "Potencjalni", n: potentialRows.length, sub: "osoby z interakcją", on: stage === "" && !gap, click: () => { setStage(""); setGap(""); } },
               { key: "IN", label: "W lejku teraz", n: pCounts.inFunnel, sub: "otwarty sygnał", on: stage === "IN", click: () => setStage(stage === "IN" ? "" : "IN") },
+              { key: "postponed", label: "Odłożeni", n: potentialRows.filter((r) => r.lead?.stage === "ODLOZONE").length, sub: "z datą powrotu", on: false, click: () => setStage("IN") },
               { key: "OUT", label: "Poza lejkiem", n: pCounts.out, sub: `bez sygnału · ${pCounts.outWithPhone} z telefonem`, warn: true, on: stage === "OUT", click: () => setStage(stage === "OUT" ? "" : "OUT") },
               { key: "ARCHIVE", label: "Archiwum 2025", n: pCounts.archive, sub: "do kampanii przed sezonem", on: stage === "ARCHIVE", click: () => setStage(stage === "ARCHIVE" ? "" : "ARCHIVE") },
               { key: "emailName", label: "Nazwa = e-mail", n: pCounts.emailName, sub: "do uzupełnienia (agent)", warn: true, on: gap === "emailName", click: () => setGap(gap === "emailName" ? "" : "emailName") },

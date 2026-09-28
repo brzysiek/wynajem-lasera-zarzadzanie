@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { LeadDetail } from "@/lib/leads/load";
-import { ACTIVITY_LABEL, LOST_REASON_LABEL, STAGE_KEYS, STAGE_LABEL, TYPE_LABEL, type ActivityTypeKey, type LostReasonKey } from "@/lib/leads/labels";
-import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, NO_ANSWER_LIMIT, OPEN_STAGES, workDurationLabel, type NextStepType } from "@/lib/leads/funnel";
+import { ACTIVITY_LABEL, LOST_REASON_LABEL, POSTPONE_REASON_KEYS, POSTPONE_REASON_LABEL, STAGE_KEYS, STAGE_LABEL, TYPE_LABEL, type ActivityTypeKey, type LostReasonKey, type PostponeReasonKey } from "@/lib/leads/labels";
+import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, NO_ANSWER_LIMIT, OPEN_STAGES, ROT_DAYS_OFFER, ROT_WORK_DAYS_CONTACT, funnelFromRow, rotInfo, workDurationLabel, type FunnelLead, type NextStepType } from "@/lib/leads/funnel";
 import { workHoursBetween } from "@/lib/leads/work-time";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { DEVICE_INTEREST_KEYS, formatPhone, type DeviceInterestKey } from "@/lib/clients/labels";
@@ -264,9 +264,10 @@ export function LeadCard({
               }}
             >
               {STAGE_KEYS.map((s) => (
-                <option key={s} value={s} disabled={s === "WYGRANA" && !d.rentalId && d.stage !== "WYGRANA"}>
+                <option key={s} value={s} disabled={(s === "WYGRANA" && !d.rentalId && d.stage !== "WYGRANA") || (s === "ODLOZONE" && d.stage !== "ODLOZONE")}>
                   {STAGE_LABEL[s]}
                   {s === "WYGRANA" && !d.rentalId && d.stage !== "WYGRANA" ? " (tylko z wynajmem)" : ""}
+                  {s === "ODLOZONE" && d.stage !== "ODLOZONE" ? " (przez „Odłóż do…”)" : ""}
                 </option>
               ))}
             </select>
@@ -284,6 +285,7 @@ export function LeadCard({
           </label>
         </div>
         <Stepper stage={d.stage} />
+        <StageAge d={d} />
         {d.stage === "PRZEGRANA" && d.lostReason && (
           <p className="text-xs text-[var(--c-red)]">
             Powód: <b className="font-semibold">{LOST_REASON_LABEL[d.lostReason]}</b>
@@ -394,8 +396,10 @@ export function LeadCard({
             )}
           </div>
         )}
-        {!agent && OPEN_STAGES.includes(d.stage) && (
+        {!agent && (OPEN_STAGES.includes(d.stage) || d.stage === "ODLOZONE") && (
           <CallResult
+            leadId={d.id}
+            requestedFrom={d.requestedFrom}
             stage={d.stage}
             busy={busy}
             noAnswerTpl={noAnswerTpl ?? null}
@@ -665,7 +669,32 @@ function Stepper({ stage }: { stage: LeadStageKey }) {
 
 // Wynik kontaktu (lejek, wzór s3): chip ustawia następny krok wg reguł
 // (src/lib/leads/funnel.ts — planOutcome), serwer liczy termin i próby.
+// W etapie (lejek v2): ile dni stoi, limit gnicia; Odłożone — data i powód powrotu.
+function StageAge({ d }: { d: LeadDetail }) {
+  const now = new Date();
+  if (d.stage === "ODLOZONE") {
+    return (
+      <p className="text-[12.5px] text-[#6B5B3E]">
+        Odłożone do <b className="font-semibold">{d.returnAt ? new Date(d.returnAt).toLocaleDateString("pl-PL") : "—"}</b>
+        {d.postponeReason ? ` · ${POSTPONE_REASON_LABEL[d.postponeReason as PostponeReasonKey] ?? d.postponeReason}` : ""} — w dniu powrotu wraca do Skrzynki („W kontakcie”, krok na dziś).
+      </p>
+    );
+  }
+  if (!OPEN_STAGES.includes(d.stage)) return null;
+  const rot = rotInfo(funnelFromRow(d) as unknown as FunnelLead, now);
+  const days = Math.floor((now.getTime() - new Date(d.stageChangedAt).getTime()) / 86_400_000);
+  const limit = d.stage === "SYGNAL" && !d.firstContactAt ? `SLA ${FIRST_CONTACT_SLA_HOURS} h rob.` : d.stage === "OFERTA" ? `limit gnicia ${ROT_DAYS_OFFER} dni` : d.stage === "REZERWACJA" ? "do dnia wynajmu" : `limit gnicia ${ROT_WORK_DAYS_CONTACT} dni rob.`;
+  return (
+    <p className="text-[12.5px] text-[#5C6166]">
+      W etapie {days} {days === 1 ? "dzień" : "dni"} · {limit}
+      {rot.rotting && <b className="ml-1 font-semibold text-[#B8612F]">· gnije ({rot.label})</b>}
+    </p>
+  );
+}
+
 function CallResult({
+  leadId,
+  requestedFrom,
   stage,
   busy,
   phone,
@@ -678,6 +707,8 @@ function CallResult({
   onSmsDraft,
   run,
 }: {
+  leadId: string;
+  requestedFrom: string | null;
   stage: LeadStageKey;
   busy: boolean;
   noAnswerTpl: Template | null;
@@ -693,7 +724,8 @@ function CallResult({
   run: (body: Record<string, unknown>, msg: string) => Promise<boolean>;
   sendSms: (message: string) => Promise<boolean>;
 }) {
-  const [mode, setMode] = useState<"talked" | "callback" | "email" | null>(null);
+  const [mode, setMode] = useState<"talked" | "callback" | "email" | "postpone" | null>(null);
+  const [reason, setReason] = useState<PostponeReasonKey | "">("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState("");
   const chip = (on: boolean) =>
@@ -741,10 +773,45 @@ function CallResult({
         <button type="button" className={chip(mode === "email")} onClick={() => setMode(mode === "email" ? null : "email")}>
           Odpowiedziałam mailem
         </button>
+        <Link
+          href={`/kalendarz/wynajem/nowy?${new URLSearchParams({ ...(requestedFrom ? { date: requestedFrom.slice(0, 10) } : {}), sygnal: leadId }).toString()}`}
+          className={chip(false)}
+          title="Nowy wynajem w kalendarzu powiązany z tym sygnałem → etap Rezerwacja"
+        >
+          Rezerwuje → kalendarz
+        </Link>
+        <button type="button" className={chip(mode === "postpone")} onClick={() => setMode(mode === "postpone" ? null : "postpone")}>
+          Odłóż do…
+        </button>
         <button type="button" className={chip(false)} onClick={() => onLost()}>
-          Nie zainteresowana
+          Przegrana
         </button>
       </div>
+      {mode === "postpone" && (
+        <div className="flex flex-col gap-2">
+          <p className="text-[11.5px] text-[#1B6FA8]">„Odłóż do…”: data powrotu + powód. W dniu powrotu sygnał wraca do Skrzynki („W kontakcie”, krok na dziś).</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input type="date" className={DATE_INPUT} value={date} onChange={(e) => setDate(e.target.value)} aria-label="Wraca dnia" />
+            <select className={`${INPUT} h-8 w-auto cursor-pointer`} value={reason} onChange={(e) => setReason(e.target.value as PostponeReasonKey | "")} aria-label="Powód">
+              <option value="">— powód —</option>
+              {POSTPONE_REASON_KEYS.map((k) => (
+                <option key={k} value={k}>
+                  {POSTPONE_REASON_LABEL[k]}
+                </option>
+              ))}
+            </select>
+            <input className={`${INPUT} h-8 min-w-0 flex-grow`} placeholder="Notatka (np. „odezwę się jesienią”)" value={note} onChange={(e) => setNote(e.target.value)} />
+            <button
+              type="button"
+              disabled={busy || !date || !reason}
+              className={`${BTN_PRIMARY} h-8`}
+              onClick={async () => (await run({ outcome: "postpone", body: note, nextActionAt: date, postponeReason: reason }, `Odłożone do ${new Date(date).toLocaleDateString("pl-PL")}.`)) && onDone(true)}
+            >
+              Odłóż
+            </button>
+          </div>
+        </div>
+      )}
       {!mode && <p className="text-[11.5px] text-[#1B6FA8]">{noAnswerHint}</p>}
 
       {mode === "email" && (
