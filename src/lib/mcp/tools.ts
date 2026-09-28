@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { OPEN_STAGES, callQueueIds } from "@/lib/leads/funnel";
+import { OPEN_STAGES, callQueueIds, funnelFromRow, rotInfo, type FunnelLead } from "@/lib/leads/funnel";
 import { normalizePolishPhone } from "@/lib/reminders";
 import type { AgentCtx } from "@/lib/agent-api/handler";
 import { AgentApiError } from "@/lib/agent-api/handler";
@@ -275,6 +275,8 @@ export const TOOLS: McpTool[] = [
       od: s("Wpłynęło od RRRR-MM-DD."),
       do_obdzwonienia: b("Tylko lista „Do obdzwonienia”."),
       duplikaty: b("Tylko otwarte sygnały klientów, którzy mają ich więcej niż jeden (do zgłoszenia archiwizacji duplikatu)."),
+      gnija: b("Tylko gnijące (lejek v2): Nowe po SLA 4 h rob., W kontakcie > 3 dni rob., Oferta > 10 dni bez aktywności, bez kroku."),
+      brak_kroku: b("Tylko otwarte sygnały bez następnego kroku (do zgłoszenia krok_sygnalu)."),
       klient_id: s("ID klienta."),
       q: s("Szukaj."),
       ...PAGE,
@@ -284,7 +286,8 @@ export const TOOLS: McpTool[] = [
       const from = day(a, "od");
       const q = str(a, "q")?.toLowerCase() ?? "";
       const all = await loadLeadRows();
-      const queue = callQueueIds(all, new Date());
+      const now = new Date();
+      const queue = callQueueIds(all, now);
       const openByClient = new Map<string, number>();
       for (const r of all) if (r.clientId && OPEN_STAGES.includes(r.stage)) openByClient.set(r.clientId, (openByClient.get(r.clientId) ?? 0) + 1);
       const rows = all.filter(
@@ -294,6 +297,8 @@ export const TOOLS: McpTool[] = [
           (!from || new Date(r.createdAt) >= from) &&
           (a.do_obdzwonienia !== true || queue.has(r.id)) &&
           (a.duplikaty !== true || (!!r.clientId && OPEN_STAGES.includes(r.stage) && (openByClient.get(r.clientId) ?? 0) > 1)) &&
+          (a.gnija !== true || rotInfo(funnelFromRow(r) as unknown as FunnelLead, now).rotting) &&
+          (a.brak_kroku !== true || (OPEN_STAGES.includes(r.stage) && r.stage !== "REZERWACJA" && !r.nextActionAt)) &&
           (!str(a, "klient_id") || r.clientId === str(a, "klient_id")) &&
           (!q || [r.title, r.person, r.email, r.phone, r.clientName, r.city].filter(Boolean).join(" ").toLowerCase().includes(q)),
       );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countBy, firstContactBuckets, funnelSteps, inRange, reportKpis, type ReportLead } from "./report";
+import { countBy, firstContactBuckets, funnelSteps, inRange, postponedByMonth, reportKpis, type ReportLead } from "./report";
 
 const at = (day: number, h = 10, month = 9) => new Date(2026, month - 1, day, h);
 const lead = (p: Partial<ReportLead>): ReportLead => ({
@@ -27,9 +27,10 @@ describe("raport lejka", () => {
 
   it("lejek „kiedykolwiek osiągnął” z % do poprzedniego", () => {
     const f = funnelSteps(leads);
-    expect(f.map((s) => s.count)).toEqual([6, 5, 5, 4, 3, 1]);
+    expect(f.map((s) => s.count)).toEqual([6, 5, 4, 3, 1]);
+    expect(f.map((s) => s.label)).toEqual(["Nowe", "W kontakcie", "Oferta wysłana", "Rezerwacja", "Wygrana"]);
     expect(f[1].pctOfPrev).toBe(83);
-    expect(f[5].pctOfPrev).toBe(33);
+    expect(f[4].pctOfPrev).toBe(33);
   });
 
   it("czas do 1. kontaktu w koszykach (pn 21.09)", () => {
@@ -40,11 +41,26 @@ describe("raport lejka", () => {
   it("źródła i zakres", () => {
     expect(inRange(leads, "2026", "phone", at(30)).length).toBe(1);
     expect(inRange(leads, "30", "www", at(30)).length).toBe(4);
+    expect(inRange(leads, "month", "all", at(30)).length).toBe(6);
     expect(countBy(leads, (l) => l.type)[0]).toEqual({ key: "POBRANIE_CENNIKA", count: 4 });
   });
 
   it("wskaźniki: bez kontaktu z otwartych, wygrane tylko z wynajmem", () => {
     const k = reportKpis(leads, at(30));
     expect(k).toMatchObject({ total: 6, noContact: 1, won: 1, wonPct: 17 });
+  });
+
+  it("odłożone wg miesiąca powrotu", () => {
+    expect(
+      postponedByMonth([
+        { stage: "ODLOZONE", returnAt: new Date(2026, 9, 1) },
+        { stage: "ODLOZONE", returnAt: new Date(2026, 9, 5) },
+        { stage: "ODLOZONE", returnAt: new Date(2027, 1, 20) },
+        { stage: "OFERTA", returnAt: null },
+      ]),
+    ).toEqual([
+      { key: "2026-10", label: "X.2026", count: 2 },
+      { key: "2027-02", label: "II.2027", count: 1 },
+    ]);
   });
 });

@@ -2,13 +2,15 @@
 
 import { useMemo, useState } from "react";
 import type { LeadRow } from "@/lib/leads/load";
-import { LOST_REASON_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
-import type { LeadTypeKey } from "@/lib/leads/parse-deal";
-import { FIRST_CONTACT_SLA_HOURS, workDurationLabel } from "@/lib/leads/funnel";
-import { countBy, firstContactBuckets, funnelSteps, inRange, reportKpis, type ReportRange, type ReportSource } from "@/lib/leads/report";
+import { LOST_REASON_LABEL, type LostReasonKey } from "@/lib/leads/labels";
+import { FIRST_CONTACT_SLA_HOURS, rotInfo, workDurationLabel, type FunnelLead } from "@/lib/leads/funnel";
+import { LEAD_STAGE_COLORS } from "@/components/shell-tokens";
+import { StageLegend } from "./inbox-view";
+import { SOURCE_TYPES, countBy, firstContactBuckets, funnelSteps, inRange, postponedByMonth, reportKpis, type ReportRange, type ReportSource } from "@/lib/leads/report";
 import { KpiBand, Seg, toFunnel } from "./funnel-views";
 
-// Sygnały → Raport (wzór lejek-wzor.html, s5): tygodniowy obraz lejka.
+// Sygnały → Raport (wzór lejek-v2-wzor.html, s7): miesięczny obraz lejka,
+// szybkość, powody przegranych, powroty odłożonych.
 // Wykresy poziome, jedna seria = jeden kolor (niebieski); zielony tylko dla
 // celu, terakota dla „wymaga uwagi”. Dymek na słupku, tabela na żądanie.
 
@@ -59,11 +61,15 @@ function Chart({ title, bars, note, labelWidth = 150 }: { title: string; bars: B
   );
 }
 
+const MONTHS = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
+const PCT_OF = ["", "z zapytań", "z kontaktu", "z ofert", "z rezerwacji"];
+
 export function ReportView({ rows, now }: { rows: LeadRow[]; now: Date }) {
-  const [range, setRange] = useState<ReportRange>("2026");
+  const [range, setRange] = useState<ReportRange>("month");
   const [source, setSource] = useState<ReportSource>("all");
   // Stałe klientki poza lejkiem nowych (lejek v2, 3.3 pkt 4).
-  const leads = useMemo(() => inRange(toFunnel(rows.filter((r) => !r.returningClient)) as unknown as (LeadRow & Parameters<typeof funnelSteps>[0][number])[], range, source, now), [rows, range, source, now]);
+  const all = useMemo(() => toFunnel(rows.filter((r) => !r.returningClient)), [rows]);
+  const leads = useMemo(() => inRange(all as unknown as (LeadRow & Parameters<typeof funnelSteps>[0][number])[], range, source, now), [all, range, source, now]);
   const k = reportKpis(leads, now);
   const funnel = funnelSteps(leads);
   const buckets = firstContactBuckets(leads);
@@ -71,8 +77,14 @@ export function ReportView({ rows, now }: { rows: LeadRow[]; now: Date }) {
     leads.filter((l) => l.stage === "PRZEGRANA"),
     (l) => l.lostReason ?? "INNE",
   );
-  const sources = countBy(leads, (l) => l.type);
-  const label = range === "2026" ? "2026" : `${range} dni`;
+  const postponed = postponedByMonth(all);
+  const rotting = (leads as unknown as FunnelLead[]).filter((l) => rotInfo(l, now).rotting).length;
+  const www = leads.filter((l) => SOURCE_TYPES.www.includes(l.type)).length;
+  const phone = leads.filter((l) => l.type === "TELEFON").length;
+  const offers = funnel.find((f) => f.key === "OFERTA")?.count ?? 0;
+  const reservations = funnel.find((f) => f.key === "REZERWACJA")?.count ?? 0;
+  const label = range === "2026" ? "2026" : range === "month" ? MONTHS[now.getMonth()].toLowerCase() : "30 dni";
+  const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "—");
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -82,7 +94,7 @@ export function ReportView({ rows, now }: { rows: LeadRow[]; now: Date }) {
           onChange={setRange}
           options={[
             ["30", "30 dni"],
-            ["90", "90 dni"],
+            ["month", MONTHS[now.getMonth()]],
             ["2026", "2026"],
           ]}
         />
@@ -99,38 +111,45 @@ export function ReportView({ rows, now }: { rows: LeadRow[]; now: Date }) {
       </div>
       <KpiBand
         items={[
-          { label: `Sygnały ${label}`, value: String(k.total), sub: "wpłynęło w okresie" },
-          { label: "Bez kontaktu", value: String(k.noContact), sub: k.noContactPct == null ? "—" : `${k.noContactPct}% sygnałów`, warn: k.noContact > 0 },
+          { label: "Zapytania", value: String(k.total), sub: `${www} WWW + ${phone} telefon${k.total - www - phone > 0 ? ` + ${k.total - www - phone} inne` : ""}` },
+          { label: "Bez kontaktu", value: String(k.noContact), sub: k.noContactPct == null ? "—" : `${k.noContactPct}%`, warn: k.noContact > 0 },
           { label: "Czas do 1. kontaktu", value: workDurationLabel(k.medianFirstContact), sub: "mediana z czekającymi", warn: (k.medianFirstContact ?? 0) > FIRST_CONTACT_SLA_HOURS },
-          { label: "Wygrane", value: String(k.won), sub: `${k.wonPct ?? 0}% · tylko z wynajmem` },
-          { label: "Oferty bez follow-upu", value: `${k.staleOffers} z ${k.offers}`, sub: "> 7 dni bez aktywności", warn: k.staleOffers > 0 },
+          { label: "Oferty", value: String(offers), sub: `${pct(offers, k.total)} zapytań` },
+          { label: "Rezerwacje", value: String(reservations), sub: `${pct(reservations, offers)} ofert` },
+          { label: "Gniją", value: String(rotting), sub: "ponad limit etapu", warn: rotting > 0 },
         ]}
       />
       <div className="grid gap-[18px] xl:grid-cols-2">
         <Chart
-          title={`Lejek ${label}`}
-          labelWidth={100}
-          bars={funnel.map((s) => ({ label: s.label, count: s.count, note: s.pctOfPrev == null ? "100%" : `${s.pctOfPrev}% z poprz.`, color: "#1B6FA8" }))}
-          note="Liczone „kiedykolwiek osiągnęło etap” (także te, które potem przegrały). Wygrana — tylko z wynajmem w kalendarzu."
+          title={`Lejek – ${label}`}
+          labelWidth={110}
+          bars={funnel.map((s, i) => ({
+            label: s.label,
+            count: s.count,
+            note: i === 0 ? "100%" : s.key === "WYGRANA" && s.count === 0 ? "w toku (po wynajmie)" : s.pctOfPrev == null ? "—" : `${s.pctOfPrev}% ${PCT_OF[i]}`,
+            color: LEAD_STAGE_COLORS[s.key as keyof typeof LEAD_STAGE_COLORS]?.dot ?? "#1B6FA8",
+          }))}
+          note="Liczone „kiedykolwiek osiągnął etap”. Kolory = kolory etapów na Tablicy. Wygrana — tylko z wynajmem w kalendarzu. Bez zapytań stałych klientek."
         />
         <Chart
-          title={`Powody przegranych ${label}`}
-          bars={lost.map((r) => ({ label: LOST_REASON_LABEL[r.key as LostReasonKey] ?? r.key, count: r.count }))}
-          note={lost.length ? "Powód jest obowiązkowy przy przegranej." : "Brak przegranych w okresie."}
+          title="Szybkość pierwszego kontaktu"
+          bars={buckets.map((b) => ({ label: b.label, count: b.count, color: b.tone === "ok" ? "#2F7A68" : b.tone === "warn" ? "#E08A5C" : "#2B5B82" }))}
+          note="Zielony = w celu, terakota = wymaga uwagi. „Wciąż bez kontaktu” — otwarte sygnały bez rozmowy, SMS-a ani maila."
         />
       </div>
       <div className="grid gap-[18px] xl:grid-cols-2">
         <Chart
-          title="Czas do pierwszego kontaktu"
-          bars={buckets.map((b) => ({ label: b.label, count: b.count, color: b.tone === "ok" ? "#2F7A68" : b.tone === "warn" ? "#E08A5C" : "#2B5B82" }))}
-          note="Zielony = w celu, terakota = wymaga uwagi. „Wciąż bez kontaktu” — otwarte sygnały bez rozmowy, SMS-a ani maila."
+          title={`Powody przegranych (${label})`}
+          bars={lost.map((r) => ({ label: LOST_REASON_LABEL[r.key as LostReasonKey] ?? r.key, count: r.count }))}
+          note={lost.length ? "Powód jest obowiązkowy przy przegranej — „Inne” to wyjątek." : "Brak przegranych w okresie."}
         />
         <Chart
-          title={`Źródła sygnałów ${label}`}
-          bars={sources.map((s) => ({ label: TYPE_LABEL[s.key as LeadTypeKey] ?? s.key, count: s.count }))}
-          note="E-mail i telefon pojawiają się po założeniu sygnału z maila / telefonu (+ Sygnał z maila / telefonu)."
+          title="Odłożone – kiedy wracają"
+          bars={postponed.map((p) => ({ label: p.label, count: p.count }))}
+          note={postponed.length ? "Lista do kampanii przed sezonem — każdy wraca do Skrzynki w swoim dniu." : "Brak odłożonych („Odłóż do…” w karcie sygnału)."}
         />
       </div>
+      <StageLegend />
     </div>
   );
 }

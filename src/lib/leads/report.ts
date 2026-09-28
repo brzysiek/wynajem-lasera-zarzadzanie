@@ -5,7 +5,7 @@ import { FIRST_CONTACT_SLA_HOURS, FUNNEL_FROM, REACH_ORDER, medianFirstContactHo
 import { workHoursBetween } from "./work-time";
 import type { LeadStageKey, LeadTypeKey } from "./parse-deal";
 
-export type ReportRange = "30" | "90" | "2026";
+export type ReportRange = "30" | "month" | "2026";
 export type ReportSource = "all" | "www" | "phone" | "email";
 
 export const SOURCE_TYPES: Record<Exclude<ReportSource, "all">, LeadTypeKey[]> = {
@@ -27,23 +27,22 @@ export type ReportLead = {
 };
 
 export function inRange<T extends ReportLead>(leads: T[], range: ReportRange, source: ReportSource, now: Date): T[] {
-  const from = range === "2026" ? FUNNEL_FROM : new Date(now.getTime() - Number(range) * 86_400_000);
+  const from = range === "2026" ? FUNNEL_FROM : range === "month" ? new Date(now.getFullYear(), now.getMonth(), 1) : new Date(now.getTime() - 30 * 86_400_000);
   return leads.filter((l) => l.createdAt >= from && (source === "all" || SOURCE_TYPES[source].includes(l.type)));
 }
 
 export type FunnelStep = { key: string; label: string; count: number; pctOfPrev: number | null };
 
-// Sygnał → Kontakt → Wywiad → Oferta → Rezerwacja → Wygrana; „Kontakt” = był
-// pierwszy kontakt (albo sygnał doszedł dalej niż Sygnał).
+// Nowe → W kontakcie → Oferta wysłana → Rezerwacja → Wygrana (lejek v2).
 export function funnelSteps(leads: ReportLead[]): FunnelStep[] {
   const reach = (s: LeadStageKey) => leads.filter((l) => REACH_ORDER.indexOf(l.maxStage) >= REACH_ORDER.indexOf(s)).length;
   const contact = leads.filter((l) => l.firstContactAt || REACH_ORDER.indexOf(l.maxStage) >= 1).length;
   const won = leads.filter((l) => l.stage === "WYGRANA" && l.rentalId).length;
   const raw = [
-    { key: "SYGNAL", label: "Sygnał", count: leads.length },
-    { key: "KONTAKT", label: "Kontakt", count: contact },
-    { key: "WYWIAD", label: "Wywiad", count: reach("WYWIAD") },
-    { key: "OFERTA", label: "Oferta", count: reach("OFERTA") },
+    // Lejek v2: „W kontakcie” = był pierwszy kontakt (albo sygnał doszedł dalej).
+    { key: "SYGNAL", label: "Nowe", count: leads.length },
+    { key: "WYWIAD", label: "W kontakcie", count: Math.max(contact, reach("WYWIAD")) },
+    { key: "OFERTA", label: "Oferta wysłana", count: reach("OFERTA") },
     { key: "REZERWACJA", label: "Rezerwacja", count: reach("REZERWACJA") },
     { key: "WYGRANA", label: "Wygrana", count: won },
   ];
@@ -102,4 +101,19 @@ export function reportKpis(leads: ReportLead[], now: Date) {
     staleOffers: stale,
     offers: offers.length,
   };
+}
+
+// Odłożone — kiedy wracają (lejek v2, Raport): liczba wg miesiąca powrotu,
+// etykiety jak we wzorze („X.2026”).
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+export function postponedByMonth(leads: { stage: string; returnAt?: Date | null }[]): { key: string; label: string; count: number }[] {
+  const m = new Map<string, number>();
+  for (const l of leads) {
+    if (l.stage !== "ODLOZONE" || !l.returnAt) continue;
+    const key = `${l.returnAt.getFullYear()}-${String(l.returnAt.getMonth() + 1).padStart(2, "0")}`;
+    m.set(key, (m.get(key) ?? 0) + 1);
+  }
+  return [...m]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, count]) => ({ key, label: `${ROMAN[Number(key.slice(5)) - 1]}.${key.slice(0, 4)}`, count }));
 }
