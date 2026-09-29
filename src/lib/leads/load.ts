@@ -6,7 +6,7 @@ import { hubspotDealUrl } from "@/lib/integrations/hubspot-deals";
 import { loadQualifiedMap } from "@/lib/clients/qualify";
 import type { LeadStageKey, LeadTypeKey } from "@/lib/leads/parse-deal";
 import type { ActivityTypeKey, LostReasonKey } from "@/lib/leads/labels";
-import { ARCHIVE_2025, FUNNEL_FROM, buildNaDzis, maxStageReached } from "@/lib/leads/funnel";
+import { ARCHIVE_2025, FUNNEL_FROM, buildToday, maxStageReached } from "@/lib/leads/funnel";
 import { STAGE_HISTORY_LABELS } from "@/lib/leads/labels";
 
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
@@ -210,15 +210,14 @@ export async function loadArchived2025Rows(): Promise<LeadRow[]> {
   return leads.map((l) => toRow(l, extra));
 }
 
-// Plakietka w menu (lejek, L1): zaległe + na dziś zalogowanej osoby — te same
-// reguły co „Na dziś” (nowe bez kontaktu z 30 dni i kroki do dziś).
+// Plakietka w menu: pozycje Listy „Na dziś” zalogowanej osoby (te same
+// reguły co Plan dnia — buildToday).
 export async function countLeadWork(userId: string, now = new Date()): Promise<number> {
   const leads = await prisma.lead.findMany({
-    where: { archivedAt: null, ownerId: userId, stage: { in: ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"] }, createdAt: { gte: FUNNEL_FROM } },
-    select: { id: true, stage: true, type: true, createdAt: true, firstContactAt: true, lastContactAt: true, stageChangedAt: true, nextActionAt: true, nextStepType: true, attempts: true, ownerId: true, rentalId: true, contactPhone: true },
+    where: { archivedAt: null, ownerId: userId, stage: { in: ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "ODLOZONE"] }, createdAt: { gte: FUNNEL_FROM } },
+    select: { id: true, stage: true, type: true, createdAt: true, firstContactAt: true, lastContactAt: true, stageChangedAt: true, nextActionAt: true, nextStepType: true, nextStepNote: true, attempts: true, ownerId: true, rentalId: true, contactPhone: true, returnAt: true },
   });
-  const d = buildNaDzis(leads.map((l) => ({ ...l, phone: l.contactPhone })), now);
-  return d.due.length + d.fresh.length;
+  return buildToday(leads.map((l) => ({ ...l, phone: l.contactPhone })), now).length;
 }
 
 // „Rezerwacje do spięcia”: podpowiedź wynajmu dla sygnału „Rezerwacja” bez

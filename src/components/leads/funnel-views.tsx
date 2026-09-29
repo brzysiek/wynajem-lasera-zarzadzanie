@@ -66,6 +66,12 @@ function Due({ at, now }: { at: Date | null; now: Date }) {
   return <span className={`text-[12px] tabular-nums ${d.tone === "late" ? "font-semibold text-[#B8612F]" : d.tone === "today" ? "font-semibold text-[#1B6FA8]" : "text-[#5C6166]"}`}>{d.text}</span>;
 }
 
+// Filtr okresu Listy i Tablicy (przegląd 29.09 07:15, pkt 3): data wpłynięcia
+// albo ostatniego realnego kontaktu — nie zmiana etapu z migracji.
+export function periodTouch(r: Pick<LeadRow, "createdAt" | "lastContactAt">): number {
+  return Math.max(new Date(r.createdAt).getTime(), r.lastContactAt ? new Date(r.lastContactAt).getTime() : 0);
+}
+
 export function Avatar({ name }: { name: string | null }) {
   return (
     <span className="inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-[#2B5B82] text-[10.5px] font-semibold text-white" title={name ?? "bez prowadzącej"}>

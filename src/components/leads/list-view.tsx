@@ -5,8 +5,8 @@ import type { DayProgress, LeadRow } from "@/lib/leads/load";
 import { LOST_REASON_LABEL, POSTPONE_REASON_LABEL, TYPE_LABEL, type PostponeReasonKey } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadTypeKey } from "@/lib/leads/parse-deal";
 import { STATUS_LABEL, type DeviceInterestKey } from "@/lib/clients/labels";
-import { FUNNEL_FROM, NEXT_STEP_LABEL, OPEN_STAGES, buildToday, funnelFromRow, rotInfo, type FunnelLead, type NextStepType, type TodayGroup } from "@/lib/leads/funnel";
-import { Avatar, Seg, toFunnel, type LinkSuggestion } from "./funnel-views";
+import { FUNNEL_FROM, NEXT_STEP_LABEL, OPEN_STAGES, buildToday, funnelFromRow, isFreshInquiry, rotInfo, type FunnelLead, type NextStepType, type TodayGroup } from "@/lib/leads/funnel";
+import { Avatar, Seg, periodTouch, toFunnel, type LinkSuggestion } from "./funnel-views";
 import { StageChip } from "./lead-ui";
 import { PlanBand, StageLegend, WinToast, plural } from "./plan-day";
 import { TodayTable } from "./today-table";
@@ -115,8 +115,9 @@ export function ListView({
   const today = useMemo(() => buildToday(scopedMine, now), [scopedMine, now]);
   const todayShown = today
     .filter((x) => (group ? x.group === group : true))
-    .filter((x) => (todaySource === "all" ? true : todaySource === "www" ? WWW.includes(x.lead.type) : x.lead.type === "TELEFON"));
-  const untouchedTotal = scopedMine.filter((r) => r.stage === "SYGNAL" && !r.firstContactAt && r.createdAt >= FUNNEL_FROM).length;
+    .filter((x) => (todaySource === "all" ? true : todaySource === "www" ? WWW.includes(x.lead.type) : x.lead.type === "TELEFON"))
+    .filter((x) => (f.device === "all" ? true : x.lead.devices.includes(f.device)));
+  const untouchedTotal = scopedMine.filter((r) => r.stage === "SYGNAL" && !r.firstContactAt && r.createdAt >= FUNNEL_FROM && isFreshInquiry(r, now)).length;
   const season = seasonReservations(funnel, playbook.season);
   const activeCount = rows.filter((r) => OPEN_STAGES.includes(r.stage) && new Date(r.createdAt) >= FUNNEL_FROM).length;
   const postponedCount = rows.filter((r) => r.stage === "ODLOZONE").length;
@@ -149,7 +150,7 @@ export function ListView({
     if (state === "today") return [];
     const q = query.trim().toLowerCase();
     const digits = q.replace(/\D/g, "");
-    const touched = (r: LeadRow) => Math.max(new Date(r.createdAt).getTime(), new Date(r.stageChangedAt).getTime(), r.lastWorkAt ? new Date(r.lastWorkAt).getTime() : 0) >= from;
+    const touched = (r: LeadRow) => periodTouch(r) >= from;
     const base = f.period === "archive" ? archived : rows.filter((r) => new Date(r.createdAt) >= FUNNEL_FROM && touched(r));
     return base
       .filter((r) => (ownerId ? r.ownerId === ownerId : true))
@@ -172,6 +173,20 @@ export function ListView({
         ["active", `Wszystkie aktywne · ${activeCount}`],
         ["postponed", `Odłożone · ${postponedCount}`],
         ["lost", "Przegrane"],
+      ]}
+    />
+  );
+
+  const deviceSeg = (
+    <Seg<Device>
+      value={f.device}
+      onChange={(v) => set("device", v)}
+      options={[
+        ["all", "Każde urządzenie"],
+        ["LIGHTSHEER", "LightSheer"],
+        ["ALMA_HARMONY", "Alma"],
+        ["OBSERV", "Observ"],
+        ["COOLTECH", "Cooltech"],
       ]}
     />
   );
@@ -200,6 +215,7 @@ export function ListView({
               ["phone", "Telefon"],
             ]}
           />
+          {deviceSeg}
           {!readOnly && (
             <button type="button" onClick={onSerial} className="h-[28px] rounded-[6px] border border-[#C9D3DC] bg-white px-2.5 text-[12px] text-[#0C3450] hover:border-[#1B6FA8]" title="Otwiera po kolei kontakty do obdzwonienia">
               Dzwoń po kolei
@@ -272,17 +288,7 @@ export function ListView({
             ["email", "E-mail"],
           ]}
         />
-        <Seg<Device>
-          value={f.device}
-          onChange={(v) => set("device", v)}
-          options={[
-            ["all", "Każde urządzenie"],
-            ["LIGHTSHEER", "LightSheer"],
-            ["ALMA_HARMONY", "Alma"],
-            ["OBSERV", "Observ"],
-            ["COOLTECH", "Cooltech"],
-          ]}
-        />
+        {deviceSeg}
         <span className="ml-auto text-[12px] text-[#5C6166]">
           {list.length} sygnałów · te same co na Tablicy · sort: wpłynęło ↓
         </span>

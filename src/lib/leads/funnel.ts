@@ -396,6 +396,11 @@ export type TodayPriority = "late" | "new" | "today" | "back";
 export type TodayGroup = "new" | "calls" | "followups" | "back" | "other";
 export type TodayItem<T> = { lead: T; priority: TodayPriority; group: TodayGroup };
 
+// „Nowe” w Liście „Na dziś” = zapytania z ostatnich 30 dni; starsze nietknięte
+// są rozłożone w kalendarzu (maks. 5 dziennie) i wracają wg terminu.
+export const FRESH_INQUIRY_DAYS = 30;
+export const isFreshInquiry = (l: { createdAt: Date }, now: Date) => now.getTime() - l.createdAt.getTime() <= FRESH_INQUIRY_DAYS * 86_400_000;
+
 const PRIORITY_ORDER: Record<TodayPriority, number> = { late: 0, new: 1, today: 2, back: 3 };
 const CALL_STEPS = ["ODDZWONI", "PONOWNA_PROBA", "UMOW_TERMIN", "DOPYTAC"];
 
@@ -412,13 +417,21 @@ export function buildToday<T extends FunnelLead & { nextStepNote?: string | null
     }
     if (!isOpen(l)) continue;
     if (untouched(l)) {
+      const fresh = isFreshInquiry(l, now);
+      // Przegląd 29.09 07:15: kolejna próba i nietknięte starsze niż 30 dni
+      // idą wg zaplanowanego terminu (nie wg czasu na kontakt) — nie zalewają
+      // „Na dziś” i nie udają „dziś”, gdy próba jest jutro.
+      if (l.attempts > 0 || !fresh) {
+        if (!l.nextActionAt || l.nextActionAt > eod) continue;
+        const late = l.nextActionAt < sod;
+        out.push({ lead: l, priority: late ? "late" : fresh ? "new" : "today", group: fresh ? "new" : "calls" });
+        continue;
+      }
       const due = !l.nextActionAt || l.nextActionAt <= eod;
       const rot = rotInfo(l, now).rotting;
       if (!due && !rot) continue;
-      // Kolejna próba zaplanowana na dziś to „Nowe”; minięta próba albo brak
-      // kontaktu po czasie na kontakt — „Po czasie”.
-      const late = l.attempts > 0 ? !!l.nextActionAt && l.nextActionAt < sod : rot;
-      out.push({ lead: l, priority: late ? "late" : "new", group: "new" });
+      // Pierwszy kontakt po czasie na kontakt — „Po czasie”, inaczej „Nowe”.
+      out.push({ lead: l, priority: rot ? "late" : "new", group: "new" });
       continue;
     }
     const group: TodayGroup = back ? "back" : l.nextStepType === "FOLLOW_UP_OFERTY" ? "followups" : CALL_STEPS.includes(l.nextStepType ?? "") ? "calls" : "other";

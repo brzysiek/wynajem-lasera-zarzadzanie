@@ -6,7 +6,7 @@ import type { LeadRow } from "@/lib/leads/load";
 import { BOARD_STAGES, LOST_REASON_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { FUNNEL_FROM, REACH_ORDER, funnelFromRow, rotInfo, type FunnelLead } from "@/lib/leads/funnel";
-import { Avatar, Dots, Seg } from "./funnel-views";
+import { Avatar, Dots, Seg, periodTouch } from "./funnel-views";
 import { StageChip } from "./lead-ui";
 import { StageLegend } from "./plan-day";
 import { LEAD_STAGE_COLORS } from "@/components/shell-tokens";
@@ -95,9 +95,9 @@ export function BoardView({
 
   const periodFrom = period === "30" ? now.getTime() - 30 * dayMs : period === "month" ? new Date(now.getFullYear(), now.getMonth(), 1).getTime() : FUNNEL_FROM.getTime();
   const scoped = useMemo(() => {
-    // Okres: wpłynął albo miał aktywność / zmianę etapu w okresie (aktywne
-    // oferty sprzed miesiąca nie znikają z tablicy).
-    const touched = (r: LeadRow) => Math.max(new Date(r.createdAt).getTime(), new Date(r.stageChangedAt).getTime(), r.lastWorkAt ? new Date(r.lastWorkAt).getTime() : 0) >= periodFrom;
+    // Okres: wpłynął albo miał realny kontakt w okresie (zmiany etapu z
+    // migracji i wpisy systemowe się nie liczą).
+    const touched = (r: LeadRow) => periodTouch(r) >= periodFrom;
     const base = period === "archive" ? archived : rows.filter((r) => new Date(r.createdAt) >= FUNNEL_FROM && touched(r));
     return owner === "all" ? base : base.filter((r) => r.ownerId === ownerId);
   }, [rows, archived, period, periodFrom, owner, ownerId]);
@@ -173,7 +173,7 @@ export function BoardView({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 min-[1200px]:grid-cols-4">
         {BOARD_STAGES.map((stage) => {
           const col = scoped.filter((r) => r.stage === stage).sort((a, b) => (a.nextActionAt ?? "9999").localeCompare(b.nextActionAt ?? "9999"));
           const expanded = open.has(stage);
@@ -279,7 +279,7 @@ export function BoardView({
           {postponed.length > 0 && <span className="text-[#5C6166]"> · wracają {postponed.slice(0, 4).map((r) => d2(r.returnAt!)).join(", ")}{postponed.length > 4 ? "…" : ""}</span>}
         </div>
         <div className="flex-1 border border-[#E3E6E9] bg-white px-3.5 py-2 text-[12px] text-[#5C6166]">
-          Karty: przeciągnij do kolumny albo użyj przycisków na karcie · kolumna „Nowe” = tylko nietknięte
+          {readOnly ? "Podgląd: etapy i szybkie przyciski na kartach ma biuro (Tomek, Ania)" : "Karty: przeciągnij do kolumny albo użyj przycisków na karcie"} · kolumna „Nowe” = tylko nietknięte
         </div>
       </div>
       <StageLegend />

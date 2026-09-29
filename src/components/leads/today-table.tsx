@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { LeadRow } from "@/lib/leads/load";
 import { TYPE_LABEL } from "@/lib/leads/labels";
 import { formatPhone } from "@/lib/clients/labels";
-import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, addWorkHours, rotInfo, type FunnelLead, type NextStepType, type TodayItem } from "@/lib/leads/funnel";
+import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, addWorkHours, isFreshInquiry, rotInfo, type FunnelLead, type NextStepType, type TodayItem } from "@/lib/leads/funnel";
 import { Dots, type LinkSuggestion } from "./funnel-views";
 import { StageChip } from "./lead-ui";
 import { PriorityTag } from "./plan-day";
@@ -18,7 +18,9 @@ import type { CardIntent } from "./lead-card";
 type Row = LeadRow & FunnelLead;
 
 const BTN_SM = "inline-flex h-[26px] items-center whitespace-nowrap rounded-[6px] border border-[#C9D3DC] bg-white px-[9px] text-[12px] text-[#0C3450] hover:border-[#1B6FA8] disabled:opacity-40";
-const GRID = "88px 70px minmax(0,1.6fr) 124px minmax(0,1.3fr) 118px 250px";
+// Przegląd 29.09 07:15, pkt 6: przy ~1290 px bez przewijania w bok — termin
+// i akcje zawijają się w komórce zamiast wychodzić poza ekran.
+const GRID = "84px 58px minmax(0,1.5fr) 116px minmax(0,1.2fr) 128px 210px";
 const d2 = (d: Date) => d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" });
 const hm = (d: Date) => d.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
 const who = (r: LeadRow) => r.clientName ?? r.person ?? r.email ?? r.title;
@@ -43,8 +45,9 @@ function when(x: TodayItem<Row>, now: Date): { text: string; tone: "late" | "tod
   const r = x.lead;
   if (r.stage === "SYGNAL" && !r.firstContactAt) {
     const rot = rotInfo(r, now);
-    if (x.priority === "late") return { text: r.attempts > 0 && r.nextActionAt ? `zaległa od ${d2(r.nextActionAt)}` : (rot.label ?? "po czasie"), tone: "late" };
-    if (r.attempts > 0 && r.nextActionAt) return { text: `dziś ${hm(r.nextActionAt)}`, tone: "today" };
+    const planned = (r.attempts > 0 || !isFreshInquiry(r, now)) && r.nextActionAt;
+    if (x.priority === "late") return { text: planned ? `zaległa od ${d2(r.nextActionAt!)}` : (rot.label ?? "po czasie"), tone: "late" };
+    if (planned) return { text: sameDay(r.nextActionAt!, now) ? `dziś ${hm(r.nextActionAt!)}` : d2(r.nextActionAt!), tone: "today" };
     return { text: `dziś do ${hm(addWorkHours(r.createdAt, FIRST_CONTACT_SLA_HOURS))}`, tone: "today" };
   }
   if (x.priority === "late" && r.nextActionAt) {
@@ -87,7 +90,7 @@ export function TodayTable({
   }
   return (
     <div data-tour="today-table" className="overflow-x-auto border border-[#E3E6E9] bg-white">
-      <div className="min-w-[1040px]">
+      <div className="min-w-[860px]">
         <div className="grid gap-2.5 border-b-[1.5px] border-[#0C3450] px-3.5 py-[7px] text-[10px] uppercase tracking-[0.1em] text-[#5C6166]" style={{ gridTemplateColumns: GRID }}>
           <span>Priorytet</span>
           <span>Wpłynęło</span>
@@ -138,9 +141,9 @@ export function TodayTable({
               <span className="truncate text-[12.5px] text-[#5C6166]" title={step(r)}>
                 {step(r)}
               </span>
-              <span className={`text-[12.5px] font-semibold tabular-nums ${w.tone === "late" ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>{w.text}</span>
+              <span className={`text-[12.5px] font-semibold leading-tight tabular-nums ${w.tone === "late" ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>{w.text}</span>
               <div
-                className="flex justify-end gap-1"
+                className="flex flex-wrap justify-end gap-1"
                 onClick={(e) => e.stopPropagation()}
                 data-tour={untouched && items.findIndex((y) => y.lead.stage === "SYGNAL" && !y.lead.firstContactAt) === idx ? "row-actions" : undefined}
               >

@@ -172,4 +172,22 @@ describe("Lista „Na dziś” (28.09)", () => {
     expect(t.find((x) => x.lead.id === "followup-zalegly")!.group).toBe("followups");
     expect(t.find((x) => x.lead.id === "oddzwoni")!.group).toBe("calls");
   });
+
+  it("przegląd 29.09 07:15: stare nietknięte i próby jutro nie zalewają „Na dziś”", () => {
+    const leads = [
+      // Nietknięte z marca: termin rozłożony na jutro — nie ma go dziś.
+      lead({ id: "marzec-jutro", createdAt: at(3, 10, 0, 3), nextActionAt: at(29, 9) }),
+      // Nietknięte z kwietnia z terminem dziś → „umówione telefony”, nie „nowe”.
+      lead({ id: "kwiecien-dzis", createdAt: at(16, 10, 0, 4), nextActionAt: at(28, 9) }),
+      // Nietknięte z maja, termin minął → po czasie, w telefonach.
+      lead({ id: "maj-zalegly", createdAt: at(5, 10, 0, 5), nextActionAt: at(25, 9) }),
+      // Kolejna próba jutro 16:00 — nie „dziś 16:00”, choć zapytanie po czasie.
+      lead({ id: "proba-jutro", createdAt: at(21), attempts: 1, nextStepType: "PONOWNA_PROBA", nextActionAt: at(29, 16) }),
+    ];
+    const t = buildToday(leads, now);
+    expect(t.map((x) => [x.lead.id, x.priority, x.group])).toEqual([
+      ["maj-zalegly", "late", "calls"],
+      ["kwiecien-dzis", "today", "calls"],
+    ]);
+  });
 });
