@@ -97,6 +97,11 @@ export function ProposalDetailView({
       <StatusBadge status={p.status} />
       <PriorityBadge priority={p.priority} />
       {p.blocksCleanup && <span className="rounded-md bg-[var(--c-red-soft)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-red)]">blokuje porządki</span>}
+      {p.deployed && (
+        <span className="rounded-md bg-[var(--c-green-soft)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-green-deep)]" title="Tytuł commita wymienia ten wniosek">
+          wdrożono w {p.deployed.commit} · {fmtDate(p.deployed.at)}
+        </span>
+      )}
     </span>
   );
 

@@ -46,6 +46,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # Wniosek 30: historia commitów do „wdrożono w …” (scripts/recent-commits.mjs).
+        with:
+          fetch-depth: 300
 
       - uses: actions/setup-node@v4
         with:
@@ -117,6 +120,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        # Wniosek 30: historia commitów do „wdrożono w …” (scripts/recent-commits.mjs).
+        with:
+          fetch-depth: 300
 
       - uses: actions/setup-node@v4
         with:

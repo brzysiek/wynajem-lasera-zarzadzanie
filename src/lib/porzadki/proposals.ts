@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { AreaKey, CauseKey, PriorityKey, ProposalStatusKey, ProposalTypeKey, RelationKey } from "@/lib/porzadki/labels";
 import { OPEN_STATUSES } from "@/lib/porzadki/labels";
+import { syncDeployedProposals } from "@/lib/porzadki/deployed";
 import {
   canEditProposal,
   canSetStatus,
@@ -42,6 +43,8 @@ export type ProposalRow = {
   updatedAt: string;
   commentCount: number;
   clientCount: number;
+  // Wniosek 30: commit, którego tytuł wymienia ten wniosek (podpowiedź „✓ Zrobione”).
+  deployed: { commit: string; at: string } | null;
 };
 
 export type ProposalDetail = ProposalRow & {
@@ -94,6 +97,7 @@ function toRow(p: RowSource): ProposalRow {
     updatedAt: p.updatedAt.toISOString(),
     commentCount: p._count.comments,
     clientCount: p._count.clients,
+    deployed: p.deployedCommit ? { commit: p.deployedCommit, at: (p.deployedAt ?? p.updatedAt).toISOString() } : null,
   };
 }
 
@@ -122,6 +126,7 @@ function whereFor(f: ProposalFilters): Prisma.ProposalWhereInput {
 }
 
 export async function listProposals(f: ProposalFilters = {}): Promise<{ rows: ProposalRow[]; counts: Record<string, number> }> {
+  await syncDeployedProposals();
   const [rows, grouped] = await Promise.all([
     prisma.proposal.findMany({ where: whereFor(f), include: ROW_INCLUDE, take: 1000 }),
     prisma.proposal.groupBy({ by: ["status"], _count: { _all: true } }),
@@ -251,6 +256,27 @@ export async function setProposalStatus(
       });
     }
   });
+}
+
+// Wniosek 30: zmiana statusu wielu wniosków naraz (lista /wnioski, pasek
+// hurtowy i przycisk w wierszu, także „Cofnij”) — każdy wpis trafia do
+// historii statusów. Zwraca, co faktycznie zmieniono (z → na) do cofnięcia.
+export async function setProposalStatuses(
+  items: { id: string; status: ProposalStatusKey }[],
+  actor: Actor,
+  opts: { comment?: string | null; duplicateOfId?: string | null },
+): Promise<{ id: string; from: ProposalStatusKey; to: ProposalStatusKey }[]> {
+  if (actor.role !== "ADMIN") throw new PorzadkiError("Statusy wniosków ustawia administrator.", 403);
+  const current = await prisma.proposal.findMany({ where: { id: { in: items.map((i) => i.id) } }, select: { id: true, status: true } });
+  const from = new Map(current.map((c) => [c.id, c.status as ProposalStatusKey]));
+  const changed: { id: string; from: ProposalStatusKey; to: ProposalStatusKey }[] = [];
+  for (const it of items) {
+    const f = from.get(it.id);
+    if (!f || f === it.status) continue;
+    await setProposalStatus(it.id, it.status, actor, opts);
+    changed.push({ id: it.id, from: f, to: it.status });
+  }
+  return changed;
 }
 
 export async function addProposalComment(id: string, body: string, actor: Actor) {

@@ -1463,6 +1463,10 @@ model Proposal {
   blocksCleanup  Boolean  @default(false)
   status         String   @default("NOWY") @db.VarChar(16)
   decision       String?  @db.Text // decyzja / komentarz przy zmianie statusu
+  // Wniosek 30: „wdrożono w …” — commit, którego tytuł wymienia ten wniosek
+  // (podpowiedź „✓ Zrobione”, status ustawia ADMIN).
+  deployedCommit String?   @db.VarChar(16)
+  deployedAt     DateTime?
   authorId       String?
   author         User?    @relation("ProposalAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   createdAt      DateTime @default(now())

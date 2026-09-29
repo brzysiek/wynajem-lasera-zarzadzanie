@@ -634,11 +634,11 @@ export const TOOLS: McpTool[] = [
   {
     name: "wnioski_lista",
     title: "Wnioski",
-    description: "Wnioski o zmiany w panelu i procesie. Filtry: status (open = otwarte), obszar, typ, priorytet, blokuje, klient, szukaj.",
+    description: "Wnioski o zmiany w panelu i procesie. Filtry: status (open = otwarte), obszar, typ, priorytet, blokuje, klient, szukaj. Pole wdrozono_w: commit i data wdrożenia (z tytułu commita) — status ustawia Tomek.",
     inputSchema: obj({ status: s("open albo kod statusu."), obszar: s("Obszar."), typ: s("Typ."), priorytet: s("HIGH, MEDIUM, LOW."), blokuje: b("Tylko blokujące porządki."), klient_id: s("ID klienta."), q: s("Szukaj.") }),
     readOnly: true,
-    run: async (a) =>
-      listProposals({
+    run: async (a) => {
+      const res = await listProposals({
         status: str(a, "status"),
         area: str(a, "obszar"),
         type: str(a, "typ"),
@@ -646,7 +646,9 @@ export const TOOLS: McpTool[] = [
         blocks: typeof a.blokuje === "boolean" ? a.blokuje : null,
         clientId: str(a, "klient_id"),
         q: str(a, "q"),
-      }),
+      });
+      return { ...res, rows: res.rows.map(({ deployed, ...r }) => ({ ...r, wdrozono_w: deployed ? `${deployed.commit} · ${deployed.at.slice(0, 10)}` : null })) };
+    },
   },
   {
     name: "wniosek",
