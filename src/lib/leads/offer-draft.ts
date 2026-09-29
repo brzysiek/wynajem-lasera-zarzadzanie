@@ -26,7 +26,7 @@ const short = (d: Date) => d.toLocaleDateString("pl-PL", { day: "2-digit", month
 
 // 2 najbliższe dni (bez niedziel, 45 dni od startu), w które co najmniej jedno
 // aktywne urządzenie z kategorii jest wolne przez cały wynajem.
-async function freeDatesFor(categories: DevicePricingCategory[], start: Date, days: number) {
+export async function freeDatesFor(categories: DevicePricingCategory[], start: Date, days: number) {
   const devices = await prisma.device.findMany({ where: { active: true, pricingCategory: { in: categories } }, select: { id: true, pricingCategory: true, variantOptions: true } });
   const end = new Date(start.getTime() + 45 * 86_400_000);
   const rentals = devices.length

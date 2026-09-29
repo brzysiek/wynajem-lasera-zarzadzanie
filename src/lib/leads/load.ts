@@ -8,6 +8,9 @@ import type { LeadStageKey, LeadTypeKey } from "@/lib/leads/parse-deal";
 import type { ActivityTypeKey, LostReasonKey } from "@/lib/leads/labels";
 import { ARCHIVE_2025, FUNNEL_FROM, buildToday, maxStageReached } from "@/lib/leads/funnel";
 import { STAGE_HISTORY_LABELS } from "@/lib/leads/labels";
+import { SPRING_REF_PREFIX } from "@/lib/leads/season-goal";
+import { freeDatesFor } from "@/lib/leads/offer-draft";
+import { arrivalRhythmLabel } from "@/lib/clients/status";
 
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
@@ -56,7 +59,7 @@ const ROW_SELECT = {
   client: { select: { name: true, city: true } },
   clientContact: { select: { firstName: true, lastName: true, phone: true, email: true } },
   owner: { select: { name: true } },
-  rental: { select: { startsAt: true, eventType: true, device: { select: { name: true } } } },
+  rental: { select: { startsAt: true, device: { select: { name: true } } } },
   activities: { orderBy: { createdAt: "desc" as const }, take: 1, select: { type: true, createdAt: true, body: true } },
   _count: { select: { activities: { where: { type: "CALL_NO_ANSWER" as const } } } },
 } as const;
@@ -97,10 +100,9 @@ export type LeadRow = {
   lastWorkAt: string | null;
   // Zapytanie stałej klientki — poza konwersją nowych (lejek v2).
   returningClient: boolean;
-  // Wniosek 20: rezerwacja z tego sygnału = pierwszy przyjazd nowej klientki
-  // (wynajem, nie szkolenie; wcześniej żadnego zrealizowanego przyjazdu) —
-  // tylko takie liczą się do celu sezonu i komunikatu „Brawo”.
-  firstVisitWin: boolean;
+  // Wniosek 21: sygnał „wraca z wiosny” (Plan dnia) — ostatni wynajem,
+  // rytm i sugerowany wolny termin tego urządzenia; null u pozostałych.
+  spring: { lastAt: string | null; device: string | null; rhythm: string | null; suggest: string | null } | null;
   rentalId: string | null;
   rentalStartsAt: string | null;
   rentalDevice: string | null;
@@ -126,15 +128,7 @@ function queryRows(where: Parameters<typeof prisma.lead.findMany>[0] extends inf
   return prisma.lead.findMany({ where, orderBy: { createdAt: "desc" }, select: ROW_SELECT });
 }
 
-type Extra = { statuses: Map<string, ClientStatus>; realized: Map<string, Date[]>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]>; lastWork: Map<string, Date> };
-
-const ARRIVAL_GAP_MS = 3 * 86_400_000;
-function firstVisitWin(l: { clientId: string | null; createdAt: Date; rental: { startsAt: Date; eventType: string } | null }, realized: Map<string, Date[]>): boolean {
-  if (l.rental?.eventType === "SZKOLENIE") return false;
-  const at = (l.rental?.startsAt ?? l.createdAt).getTime();
-  // Przyjazd z tego sygnału (± 3 dni) się nie liczy — tylko wcześniejsze.
-  return !(l.clientId && (realized.get(l.clientId) ?? []).some((d) => d.getTime() < at - ARRIVAL_GAP_MS));
-}
+type Extra = { statuses: Map<string, ClientStatus>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]>; lastWork: Map<string, Date> };
 
 function toRow(l: RowSource, x: Extra): LeadRow {
   const statuses = x.statuses;
@@ -173,7 +167,7 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     postponeReason: l.postponeReason,
     lastWorkAt: x.lastWork.get(l.id)?.toISOString() ?? null,
     returningClient: l.returningClient,
-    firstVisitWin: firstVisitWin(l, x.realized),
+    spring: null,
     rentalId: l.rentalId,
     rentalStartsAt: l.rental?.startsAt.toISOString() ?? null,
     rentalDevice: l.rental?.device.name ?? null,
@@ -207,15 +201,50 @@ async function loadExtra(leads: { id: string; clientId: string | null }[]): Prom
   const stageBodies = new Map<string, (string | null)[]>();
   for (const a of stageRows) stageBodies.set(a.leadId!, [...(stageBodies.get(a.leadId!) ?? []), a.body]);
   const statuses = new Map([...info].map(([id, x]) => [id, x.status]));
-  const realized = new Map([...info].map(([id, x]) => [id, x.realized]));
-  return { statuses, realized, qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies, lastWork };
+  return { statuses, qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies, lastWork };
 }
 
 export async function loadLeadRows(): Promise<LeadRow[]> {
   // Zarchiwizowane sygnały (Porządki → Archiwum) znikają z list i „Do obdzwonienia”.
   const leads = await queryRows({ archivedAt: null });
-  const extra = await loadExtra(leads);
-  return leads.map((l) => toRow(l, extra));
+  const [extra, spring] = await Promise.all([loadExtra(leads), loadSpringInfo(leads)]);
+  return leads.map((l) => ({ ...toRow(l, extra), spring: spring.get(l.id) ?? null }));
+}
+
+// Wiersz „Wracają z wiosny” (wniosek 21): ostatni odbyty wynajem (panel albo
+// historia kalendarzy), rytm z przyjazdów i najbliższy wolny dzień tego
+// urządzenia. Tylko otwarte sygnały z listy wiosny (≤ 19).
+async function loadSpringInfo(leads: { id: string; clientId: string | null; stage: string; sourceRef: string | null }[]): Promise<Map<string, NonNullable<LeadRow["spring"]>>> {
+  const todo = leads.filter((l) => l.clientId && l.sourceRef?.startsWith(SPRING_REF_PREFIX) && ["WYWIAD", "OFERTA", "ODLOZONE"].includes(l.stage));
+  const out = new Map<string, NonNullable<LeadRow["spring"]>>();
+  if (!todo.length) return out;
+  const ids = todo.map((l) => l.clientId as string);
+  const now = new Date();
+  const [rentals, history, info] = await Promise.all([
+    prisma.rental.findMany({
+      where: { clientId: { in: ids }, eventType: "WYNAJEM", deletedInGoogle: false, startsAt: { lte: now } },
+      select: { clientId: true, startsAt: true, device: { select: { name: true, pricingCategory: true } } },
+    }),
+    prisma.rentalHistory.findMany({
+      where: { clientId: { in: ids }, kind: "WYNAJEM", matchState: { in: ["AUTO", "CONFIRMED"] } },
+      select: { clientId: true, startsAt: true, device: { select: { name: true, pricingCategory: true } } },
+    }),
+    loadClientStatusInfo(ids),
+  ]);
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  for (const l of todo) {
+    const all = [...rentals, ...history].filter((r) => r.clientId === l.clientId).sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime());
+    const last = all[0] ?? null;
+    const cat = last?.device.pricingCategory ?? null;
+    const free = cat ? (await freeDatesFor([cat], tomorrow, 1)).dates[0] : null;
+    out.set(l.id, {
+      lastAt: last?.startsAt.toISOString() ?? null,
+      device: last?.device.name ?? null,
+      rhythm: arrivalRhythmLabel(info.get(l.clientId as string)?.realized ?? []),
+      suggest: free?.toISOString() ?? null,
+    });
+  }
+  return out;
 }
 
 // Tablica → „Archiwum 2025”: sygnały sprzed 2026 bez kontaktu (do kampanii).

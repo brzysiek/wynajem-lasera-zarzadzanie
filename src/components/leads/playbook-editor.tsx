@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Playbook } from "@/lib/leads/playbook";
+import { REWARD_STEP, type Playbook } from "@/lib/leads/playbook";
 import { api } from "@/components/clients/client-forms";
 
 // Ustawienia → Ściąga (zasady-wzor.html): edycja złotych zasad, skryptów rozmów
@@ -21,6 +21,16 @@ const SCRIPT_LABEL: Record<keyof Playbook["scripts"], string> = {
 
 export function PlaybookEditor({ initial }: { initial: Playbook }) {
   const [pb, setPb] = useState(initial);
+
+  const target = Math.max(1, pb.season.returningTarget + pb.season.newTarget);
+  const rewardSlots = Array.from({ length: Math.ceil(target / REWARD_STEP) }, (_, i) => Math.min((i + 1) * REWARD_STEP, target));
+  const setSeason = (x: Partial<Playbook["season"]>) => setPb((p) => ({ ...p, season: { ...p.season, ...x } }));
+  const setReward = (i: number, text: string) =>
+    setPb((p) => {
+      const rewards = rewardSlots.map((_, k) => p.season.rewards[k] ?? p.season.rewards.at(-1) ?? "");
+      rewards[i] = text;
+      return { ...p, season: { ...p.season, rewards, reward: rewards[0] } };
+    });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
@@ -38,26 +48,40 @@ export function PlaybookEditor({ initial }: { initial: Playbook }) {
   return (
     <div className="flex max-w-[860px] flex-col gap-6">
       <section className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-5">
-        <h2 className="m-0 text-base font-semibold text-gray-900">Cel sezonu (pasek w Skrzynce)</h2>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <h2 className="m-0 text-base font-semibold text-gray-900">Cel sezonu (pasek w Planie dnia)</h2>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <label className={LABEL}>
-            Cel (rezerwacje z nowych)
-            <input className={INPUT} type="number" min={1} value={pb.season.target} onChange={(e) => setPb({ ...pb, season: { ...pb.season, target: Number(e.target.value) } })} />
+            Wracają z wiosny
+            <input className={INPUT} type="number" min={0} value={pb.season.returningTarget} onChange={(e) => setSeason({ returningTarget: Number(e.target.value) })} />
+          </label>
+          <label className={LABEL}>
+            Nowe gabinety
+            <input className={INPUT} type="number" min={0} value={pb.season.newTarget} onChange={(e) => setSeason({ newTarget: Number(e.target.value) })} />
           </label>
           <label className={LABEL}>
             Sezon od
-            <input className={INPUT} type="date" value={pb.season.from} onChange={(e) => setPb({ ...pb, season: { ...pb.season, from: e.target.value } })} />
+            <input className={INPUT} type="date" value={pb.season.from} onChange={(e) => setSeason({ from: e.target.value })} />
           </label>
           <label className={LABEL}>
             Sezon do
-            <input className={INPUT} type="date" value={pb.season.to} onChange={(e) => setPb({ ...pb, season: { ...pb.season, to: e.target.value } })} />
+            <input className={INPUT} type="date" value={pb.season.to} onChange={(e) => setSeason({ to: e.target.value })} />
           </label>
           <label className={LABEL}>
-            Nagroda
-            <input className={INPUT} value={pb.season.reward} onChange={(e) => setPb({ ...pb, season: { ...pb.season, reward: e.target.value } })} />
+            Wracający do (kamień milowy)
+            <input className={INPUT} type="date" value={pb.season.milestone} onChange={(e) => setSeason({ milestone: e.target.value })} />
           </label>
         </div>
-        <p className="m-0 text-xs text-gray-500">Licznik = sygnały nowych klientów (bez stałych klientek), które wpłynęły w sezonie i doszły do rezerwacji.</p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {rewardSlots.map((at, i) => (
+            <label key={at} className={LABEL}>
+              Nagroda za {at} z {target}
+              <input className={INPUT} value={pb.season.rewards[i] ?? pb.season.rewards.at(-1) ?? ""} onChange={(e) => setReward(i, e.target.value)} />
+            </label>
+          ))}
+        </div>
+        <p className="m-0 text-xs text-gray-500">
+          Liczymy gabinety, nie wynajmy. Wracające — z listy „przed sezonem” zamrożonej 29.09 (raz, przy pierwszej rezerwacji w sezonie). Nowe — pierwszy przyjazd w historii (bez powracających i szkoleń). Nagroda co {REWARD_STEP}.
+        </p>
       </section>
 
       <section className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-5">

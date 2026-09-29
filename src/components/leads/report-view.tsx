@@ -8,6 +8,8 @@ import { LEAD_STAGE_COLORS } from "@/components/shell-tokens";
 import { StageLegend } from "./plan-day";
 import { SOURCE_TYPES, countBy, firstContactBuckets, funnelSteps, inRange, postponedByMonth, reportKpis, type ReportRange, type ReportSource } from "@/lib/leads/report";
 import { KpiBand, Seg, toFunnel } from "./funnel-views";
+import { REWARD_STEP, type Playbook } from "@/lib/leads/playbook";
+import { SPRING_OUTCOME_LABEL, type SeasonGoal, type SpringOutcome } from "@/lib/leads/season-goal";
 
 // Sygnały → Raport (wzór lejek-v2-wzor.html, s7): miesięczny obraz lejka,
 // szybkość, powody przegranych, powroty odłożonych.
@@ -64,7 +66,55 @@ function Chart({ title, bars, note, labelWidth = 150 }: { title: string; bars: B
 const MONTHS = ["Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"];
 const PCT_OF = ["", "z zapytań", "z kontaktu", "z ofert", "z rezerwacji"];
 
-export function ReportView({ rows, now }: { rows: LeadRow[]; now: Date }) {
+// Kafel „Cel sezonu” (wniosek 21, pkt 5): wracający X/12, nowi Y/8 i lista
+// gabinetów z wiosny z wynikiem.
+function SeasonTile({ goal, playbook, onOpen }: { goal: SeasonGoal; playbook: Playbook; onOpen: (leadId: string) => void }) {
+  const se = playbook.season;
+  const tone: Record<SpringOutcome, string> = { BOOKED: "text-[#2F7A68] font-semibold", TALKING: "text-[#1B6FA8]", POSTPONED: "text-[#5C6166]", LOST: "text-[#B8612F]", TODO: "text-[#5C6166]" };
+  return (
+    <div className="border border-[#E3E6E9] bg-white px-4 py-3.5">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="m-0 inline-block border-b-2 border-[#E08A5C] pb-[2px] text-[16px] font-semibold text-[#0C3450]">Cel sezonu</h2>
+        <span className="text-[12px] text-[#5C6166]">
+          {se.from.split("-").reverse().join(".")} – {se.to.split("-").reverse().join(".")} · nagroda co {REWARD_STEP}
+        </span>
+      </div>
+      <div className="mb-2 flex flex-wrap gap-4 text-[13px]">
+        <span>
+          <b className="text-[18px] font-medium text-[#0C3450]">{goal.total}</b> z {se.target} gabinetów
+        </span>
+        <span>
+          wracający <b className="text-[#0C3450]">{goal.returning}</b> / {se.returningTarget}
+        </span>
+        <span>
+          nowi <b className="text-[#0C3450]">{goal.fresh}</b> / {se.newTarget}
+        </span>
+      </div>
+      <div className="text-[10px] uppercase tracking-[0.1em] text-[#5C6166]">Wracają z wiosny ({goal.spring.length})</div>
+      <ul className="m-0 mt-1 grid list-none gap-x-4 p-0 text-[12.5px] sm:grid-cols-2">
+        {goal.spring.map((r) => (
+          <li key={r.clientId} className="flex items-baseline justify-between gap-2 border-b border-[#F0F1F2] py-1">
+            {r.leadId ? (
+              <button type="button" onClick={() => onOpen(r.leadId!)} className="min-w-0 truncate text-left text-[#0C3450] hover:text-[#1B6FA8]" title={r.name}>
+                {r.name}
+              </button>
+            ) : (
+              <span className="min-w-0 truncate text-[#0C3450]" title={r.name}>
+                {r.name}
+              </span>
+            )}
+            <span className={`flex-none ${tone[r.outcome]}`}>
+              {SPRING_OUTCOME_LABEL[r.outcome]}
+              {r.bookedAt ? ` · ${new Date(r.bookedAt).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" })}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function ReportView({ rows, now, seasonGoal, playbook, onOpen }: { rows: LeadRow[]; now: Date; seasonGoal: SeasonGoal; playbook: Playbook; onOpen: (leadId: string) => void }) {
   const [range, setRange] = useState<ReportRange>("month");
   const [source, setSource] = useState<ReportSource>("all");
   // Stałe klientki poza lejkiem nowych (lejek v2, 3.3 pkt 4).
@@ -119,6 +169,7 @@ export function ReportView({ rows, now }: { rows: LeadRow[]; now: Date }) {
           { label: "Gniją", value: String(rotting), sub: "ponad limit etapu", warn: rotting > 0 },
         ]}
       />
+      <SeasonTile goal={seasonGoal} playbook={playbook} onOpen={onOpen} />
       <div className="grid gap-[18px] xl:grid-cols-2">
         <Chart
           title={`Lejek – ${label}`}

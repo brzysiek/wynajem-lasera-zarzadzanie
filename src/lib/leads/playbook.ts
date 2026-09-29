@@ -15,14 +15,34 @@ export type Playbook = {
     offerFollowUp2: string; // Oferta: +7 dni rob.
     postponedReturn: string; // Odłożone: co powiedzieć, gdy wracamy
   };
-  season: { target: number; from: string; to: string; reward: string };
+  // Cel sezonu (wniosek 21, decyzja 29.09): gabinety, nie wynajmy —
+  // wracające z wiosny (lista zamrożona 29.09) + nowe (pierwszy przyjazd,
+  // wniosek 20). target = returningTarget + newTarget. Nagroda co
+  // REWARD_STEP: rewards[i] = opis nagrody za próg (i + 1) × 5. milestone —
+  // kamień milowy dla wracających (do tej daty cały cel wracających).
+  season: { target: number; returningTarget: number; newTarget: number; from: string; to: string; milestone: string; rewards: string[]; reward: string };
   sources: { label: string; url: string }[];
 };
 
 export const PLAYBOOK_SETTING_KEY = "sales_playbook";
+export const REWARD_STEP = 5;
+
+// Następna nagroda: próg (wielokrotność 5), ile brakuje i jej opis; null po celu.
+export function nextReward(done: number, season: Playbook["season"]): { at: number; left: number; text: string } | null {
+  const at = (Math.floor(done / REWARD_STEP) + 1) * REWARD_STEP;
+  if (at > season.target && done >= season.target) return null;
+  const idx = Math.min(season.rewards.length - 1, Math.floor(Math.min(at, season.target) / REWARD_STEP) - 1);
+  return { at: Math.min(at, season.target), left: Math.min(at, season.target) - done, text: season.rewards[Math.max(0, idx)] };
+}
+
+// Nagroda odblokowana dokładnie przy tej liczbie (5, 10, 15, 20) albo null.
+export function rewardUnlockedAt(n: number, season: Playbook["season"]): string | null {
+  if (n <= 0 || (n % REWARD_STEP !== 0 && n !== season.target)) return null;
+  return season.rewards[Math.min(season.rewards.length - 1, Math.ceil(n / REWARD_STEP) - 1)];
+}
 
 export const DEFAULT_PLAYBOOK: Playbook = {
-  dayOrder: ["Dzisiejsze wynajmy", "Nowe zapytania", "Umówione telefony", "Follow-upy ofert", "Wracają odłożone", "Potem porządki"],
+  dayOrder: ["Dzisiejsze wynajmy", "Nowe zapytania", "Umówione telefony", "Wracają z wiosny", "Follow-upy ofert", "Wracają odłożone", "Potem porządki"],
   rules: [
     { title: "Nowe najpierw, telefon zamiast maila.", text: "Telefon w ciągu 4 h rob., najlepiej w godzinę. Po godzinie szansa na kontakt spada ponad 10×." },
     { title: "Nie odebrała → SMS od razu.", text: "Szablon jednym kliknięciem z karty sygnału." },
@@ -44,7 +64,16 @@ export const DEFAULT_PLAYBOOK: Playbook = {
     offerFollowUp2: "„Dzień dobry, podsyłam efekty zabiegów u innej klientki – mam też wolny termin {termin}. Który pasuje?”",
     postponedReturn: "„Dzień dobry, umawiałyśmy się, że odezwę się teraz. Sezon startuje – mam wolne {termin}. Rezerwujemy?”",
   },
-  season: { target: 8, from: "2026-09-01", to: "2027-05-31", reward: "kolacja i kino 🎬" },
+  season: {
+    target: 20,
+    returningTarget: 12,
+    newTarget: 8,
+    from: "2026-10-01",
+    to: "2027-05-31",
+    milestone: "2026-11-15",
+    rewards: ["kolacja i kino 🎬", "kolacja i kino 🎬", "kolacja i kino 🎬", "kolacja i kino 🎬"],
+    reward: "kolacja i kino 🎬",
+  },
   sources: [
     { label: "Lead Response Management Study (Oldroyd / InsideSales, MIT)", url: "https://www.leadresponsemanagement.org/lrm_study/" },
     { label: "InsideSales – Response time matters", url: "https://www.insidesales.com/response-time-matters/" },
@@ -78,8 +107,16 @@ export function parsePlaybook(raw: string | null | undefined): Playbook {
         .slice(0, 20)
     : [];
   const sc = (o.scripts && typeof o.scripts === "object" ? o.scripts : {}) as Record<string, unknown>;
-  const se = (o.season && typeof o.season === "object" ? o.season : {}) as Record<string, unknown>;
-  const target = Number(se.target);
+  // Zapis sprzed wniosku 21 (cel „8 z nowych”) → nowy cel sezonu w całości.
+  const rawSe = (o.season && typeof o.season === "object" ? o.season : {}) as Record<string, unknown>;
+  const se = "returningTarget" in rawSe ? rawSe : {};
+  const count = (v: unknown, fallback: number) => (Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) < 1000 ? Number(v) : fallback);
+  const returningTarget = count(se.returningTarget, d.season.returningTarget);
+  const newTarget = count(se.newTarget, d.season.newTarget);
+  const target = Math.max(1, returningTarget + newTarget);
+  const rewardSlots = Math.max(1, Math.ceil(target / REWARD_STEP));
+  const savedRewards = Array.isArray(se.rewards) ? (se.rewards as unknown[]).map((x) => str(x, 200)) : [];
+  const rewards = Array.from({ length: rewardSlots }, (_, i) => savedRewards[i] ?? savedRewards.at(-1) ?? d.season.rewards[Math.min(i, d.season.rewards.length - 1)]);
   const sources = Array.isArray(o.sources)
     ? (o.sources as unknown[])
         .map((x) => (x && typeof x === "object" ? { label: str((x as { label: unknown }).label, 200), url: str((x as { url: unknown }).url, 500) } : null))
@@ -98,33 +135,17 @@ export function parsePlaybook(raw: string | null | undefined): Playbook {
       postponedReturn: str(sc.postponedReturn) ?? d.scripts.postponedReturn,
     },
     season: {
-      target: Number.isInteger(target) && target > 0 && target < 1000 ? target : d.season.target,
+      target,
+      returningTarget,
+      newTarget,
       from: typeof se.from === "string" && DAY.test(se.from) ? se.from : d.season.from,
       to: typeof se.to === "string" && DAY.test(se.to) ? se.to : d.season.to,
-      reward: str(se.reward, 200) ?? d.season.reward,
+      milestone: typeof se.milestone === "string" && DAY.test(se.milestone) ? se.milestone : d.season.milestone,
+      rewards,
+      reward: rewards[0],
     },
     sources: sources.length ? sources : d.sources,
   };
-}
-
-// Cel sezonu: rezerwacje z sygnałów nowych klientów (bez stałych klientek),
-// które wpłynęły w sezonie i doszły co najmniej do Rezerwacji. Wniosek 20:
-// tylko pierwszy przyjazd nowej klientki (firstVisitWin z load.ts —
-// powracające i szkolenia nie); bez tej flagi — jak dotąd, wg returningClient.
-export function seasonReservations(
-  leads: { createdAt: Date; returningClient?: boolean; firstVisitWin?: boolean; stage: string; maxStage?: string; rentalId: string | null }[],
-  season: Playbook["season"],
-): number {
-  const from = new Date(`${season.from}T00:00:00`);
-  const to = new Date(`${season.to}T23:59:59`);
-  return leads.filter(
-    (l) =>
-      (l.firstVisitWin ?? !l.returningClient) &&
-      l.createdAt >= from &&
-      l.createdAt <= to &&
-      l.stage !== "PRZEGRANA" &&
-      (l.rentalId != null || l.stage === "REZERWACJA" || l.stage === "WYGRANA" || l.maxStage === "REZERWACJA" || l.maxStage === "WYGRANA"),
-  ).length;
 }
 
 // Tekst skryptu z wolnym terminem ({termin}).

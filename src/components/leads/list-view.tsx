@@ -11,7 +11,8 @@ import { StageChip } from "./lead-ui";
 import { PlanBand, StageLegend, WinToast, plural } from "./plan-day";
 import { TodayTable } from "./today-table";
 import type { CardIntent } from "./lead-card";
-import { seasonReservations, type Playbook } from "@/lib/leads/playbook";
+import type { Playbook } from "@/lib/leads/playbook";
+import type { SeasonGoal } from "@/lib/leads/season-goal";
 
 // Sygnały → Lista (domyślny widok, decyzja 28.09 — bez osobnej Skrzynki):
 // filtr „Na dziś” (Plan dnia + jedna tabela w kolejności dnia, zasady-wzor.html
@@ -79,6 +80,7 @@ export function ListView({
   currentUserId,
   readOnly,
   progress,
+  seasonGoal,
   playbook,
   suggestions,
   callStats,
@@ -97,6 +99,7 @@ export function ListView({
   currentUserId: string;
   readOnly: boolean;
   progress: DayProgress;
+  seasonGoal: SeasonGoal;
   playbook: Playbook;
   suggestions: Record<string, LinkSuggestion>;
   callStats: { talked: number; noAnswer: number };
@@ -118,7 +121,6 @@ export function ListView({
     .filter((x) => (todaySource === "all" ? true : todaySource === "www" ? WWW.includes(x.lead.type) : x.lead.type === "TELEFON"))
     .filter((x) => (f.device === "all" ? true : x.lead.devices.includes(f.device)));
   const untouchedTotal = scopedMine.filter((r) => r.stage === "SYGNAL" && !r.firstContactAt && r.createdAt >= FUNNEL_FROM && isFreshInquiry(r, now)).length;
-  const season = seasonReservations(funnel, playbook.season);
   const activeCount = rows.filter((r) => OPEN_STAGES.includes(r.stage) && new Date(r.createdAt) >= FUNNEL_FROM).length;
   const postponedCount = rows.filter((r) => r.stage === "ODLOZONE").length;
   const [query, setQuery] = useState("");
@@ -194,8 +196,8 @@ export function ListView({
   if (state === "today") {
     return (
       <div className="flex flex-col gap-3">
-        <PlanBand items={today} untouchedTotal={untouchedTotal} progress={mine === "me" ? { ...progress, doneToday: progress.doneByUser[currentUserId] ?? 0 } : progress} playbook={playbook} season={season} selected={group} onSelect={setGroup} />
-        <WinToast rows={funnel} now={now} season={season} playbook={playbook} userId={currentUserId} />
+        <PlanBand items={today} untouchedTotal={untouchedTotal} progress={mine === "me" ? { ...progress, doneToday: progress.doneByUser[currentUserId] ?? 0 } : progress} playbook={playbook} goal={seasonGoal} selected={group} onSelect={setGroup} />
+        <WinToast goal={seasonGoal} now={now} playbook={playbook} userId={currentUserId} />
         <div className="flex flex-wrap items-center gap-2">
           {stateSeg}
           <Seg<Mine>

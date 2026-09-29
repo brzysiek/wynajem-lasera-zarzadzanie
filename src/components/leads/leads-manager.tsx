@@ -15,7 +15,7 @@ import { LeadCard, type CardIntent } from "./lead-card";
 import { toFunnel, type LinkSuggestion } from "./funnel-views";
 import { Cheatsheet } from "./cheatsheet";
 import { SignalsTour } from "./signals-tour";
-import { seasonReservations } from "@/lib/leads/playbook";
+import type { SeasonGoal } from "@/lib/leads/season-goal";
 import type { Playbook } from "@/lib/leads/playbook";
 import type { DayProgress } from "@/lib/leads/load";
 import { applySmsPlaceholders } from "@/lib/sms-template";
@@ -97,6 +97,7 @@ export function LeadsManager({
   initialSelectedId,
   playbook,
   progress,
+  seasonGoal,
   tour,
 }: {
   rows: LeadRow[];
@@ -119,6 +120,7 @@ export function LeadsManager({
   playbook: Playbook;
   // Skrzynka → „Plan dnia”: dzisiejsze wynajmy, obsłużone dziś, tydzień.
   progress: DayProgress;
+  seasonGoal: SeasonGoal;
   // Przewodnik po nowych Sygnałach (wniosek 19): czy pokazać i imię (wołacz).
   tour: { show: boolean; name: string };
 }) {
@@ -453,7 +455,7 @@ export function LeadsManager({
                 />
               )}
 
-              {view === "report" && <ReportView rows={list} now={now} />}
+              {view === "report" && <ReportView rows={list} now={now} seasonGoal={seasonGoal} playbook={playbook} onOpen={(id: string) => open(id)} />}
 
               {view === "list" && (
                 <ListView
@@ -467,6 +469,7 @@ export function LeadsManager({
                   currentUserId={currentUserId}
                   readOnly={readOnly}
                   progress={progress}
+                  seasonGoal={seasonGoal}
                   playbook={playbook}
                   suggestions={linkSuggestions}
                   callStats={callStats}
@@ -497,7 +500,7 @@ export function LeadsManager({
       {tourOpen && !readOnly && (
         <SignalsTour
           name={tour.name}
-          season={seasonReservations(toFunnel(rows), playbook.season)}
+          season={seasonGoal.total}
           target={playbook.season.target}
           reward={playbook.season.reward}
           onFinish={() => void tourDone("done")}

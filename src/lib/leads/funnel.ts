@@ -3,6 +3,7 @@
 // Czas pracy: pn–pt 8–17 (work-time.ts). Czyste funkcje (vitest bez "@/").
 import { WORK_END_HOUR, WORK_START_HOUR, addWorkdays, nextWorkday, workHoursBetween } from "./work-time";
 import type { LeadStageKey, LeadTypeKey } from "./parse-deal";
+import { SPRING_REF_PREFIX } from "./season-goal";
 
 export const OPEN_STAGES: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"];
 // Sygnały sprzed 2026 nie trafiają do „Na dziś” ani „Do obdzwonienia”.
@@ -393,7 +394,7 @@ export function inboxKpis<T extends FunnelLead>(leads: T[], now: Date) {
 // Jedna tabela, kolejność: po czasie → nowe → zaplanowane na dziś → wracające
 // odłożone. Grupy = punkty „Planu dnia” (klik filtruje tabelę).
 export type TodayPriority = "late" | "new" | "today" | "back";
-export type TodayGroup = "new" | "calls" | "followups" | "back" | "other";
+export type TodayGroup = "new" | "calls" | "spring" | "followups" | "back" | "other";
 export type TodayItem<T> = { lead: T; priority: TodayPriority; group: TodayGroup };
 
 // „Nowe” w Liście „Na dziś” = zapytania z ostatnich 30 dni; starsze nietknięte
@@ -404,7 +405,7 @@ export const isFreshInquiry = (l: { createdAt: Date }, now: Date) => now.getTime
 const PRIORITY_ORDER: Record<TodayPriority, number> = { late: 0, new: 1, today: 2, back: 3 };
 const CALL_STEPS = ["ODDZWONI", "PONOWNA_PROBA", "UMOW_TERMIN", "DOPYTAC"];
 
-export function buildToday<T extends FunnelLead & { nextStepNote?: string | null }>(leads: T[], now: Date): TodayItem<T>[] {
+export function buildToday<T extends FunnelLead & { nextStepNote?: string | null; sourceRef?: string | null }>(leads: T[], now: Date): TodayItem<T>[] {
   const sod = startOfDay(now);
   const eod = endOfDay(now);
   const out: TodayItem<T>[] = [];
@@ -434,7 +435,8 @@ export function buildToday<T extends FunnelLead & { nextStepNote?: string | null
       out.push({ lead: l, priority: rot ? "late" : "new", group: "new" });
       continue;
     }
-    const group: TodayGroup = back ? "back" : l.nextStepType === "FOLLOW_UP_OFERTY" ? "followups" : CALL_STEPS.includes(l.nextStepType ?? "") ? "calls" : "other";
+    // Wniosek 21: gabinety z listy „wracają z wiosny” — osobny punkt planu.
+    const group: TodayGroup = back ? "back" : l.sourceRef?.startsWith(SPRING_REF_PREFIX) ? "spring" : l.nextStepType === "FOLLOW_UP_OFERTY" ? "followups" : CALL_STEPS.includes(l.nextStepType ?? "") ? "calls" : "other";
     if (l.stage === "REZERWACJA" && !l.rentalId) {
       out.push({ lead: l, priority: "today", group });
       continue;

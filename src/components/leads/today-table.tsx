@@ -27,6 +27,10 @@ const who = (r: LeadRow) => r.clientName ?? r.person ?? r.email ?? r.title;
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
 
 function meta(r: Row): string {
+  // Wniosek 21: gabinet z wiosny — ostatni wynajem, urządzenie, rytm, telefon.
+  if (r.spring && r.stage !== "REZERWACJA") {
+    return [r.spring.lastAt ? `ostatni ${d2(new Date(r.spring.lastAt))}` : null, r.spring.device, r.spring.rhythm, r.phone ? `tel. ${formatPhone(r.phone)}` : null].filter(Boolean).join(" · ");
+  }
   if (r.stage === "SYGNAL" && !r.firstContactAt) return [TYPE_LABEL[r.type], r.phone ? `tel. ${formatPhone(r.phone)}` : null].filter(Boolean).join(" · ");
   if (r.stage === "OFERTA") return `${r.followUpNo ? `follow-up ${r.followUpNo} z 2 · ` : ""}oferta ${d2(r.stageChangedAt)}`;
   if (r.stage === "REZERWACJA") return r.rentalId ? `wynajem ${r.rentalStartsAt ? d2(new Date(r.rentalStartsAt)) : ""}` : "brak wpisu w kalendarzu";
@@ -35,6 +39,7 @@ function meta(r: Row): string {
 }
 
 function step(r: Row): string {
+  if (r.spring && r.stage === "WYWIAD" && r.nextStepType === "UMOW_TERMIN") return `umówić termin${r.spring.suggest ? ` · wolne ${d2(new Date(r.spring.suggest))}` : ""}`;
   if (r.stage === "SYGNAL" && !r.firstContactAt) return r.attempts > 0 ? `${r.attempts + 1}. próba${r.nextActionAt && r.nextActionAt.getHours() >= 15 ? " (najlepiej 16–17)" : r.nextActionAt && r.nextActionAt.getHours() < 10 ? " (najlepiej 8–9)" : ""}` : "pierwszy kontakt";
   if (r.stage === "ODLOZONE" || r.nextStepType === "POWROT") return "wraca z odłożonych";
   if (r.stage === "REZERWACJA" && !r.rentalId) return r.nextStepNote ?? "potwierdzić termin i wpisać do kalendarza";

@@ -43,11 +43,11 @@ export function SignalsTour({
       title: "Plan dnia i Twój cel",
       body: (
         <>
-          <p>Tu zaczynasz dzień. Kolejność zawsze ta sama: wynajmy → nowe → umówione telefony → follow-upy → powroty.</p>
+          <p>Tu zaczynasz dzień. Kolejność zawsze ta sama: wynajmy → nowe → umówione telefony → wracają z wiosny → follow-upy → powroty.</p>
           <p>
             Kliknij punkt, a lista pokaże tylko te sprawy. Zrobione robi się zielone. Po prawej cel sezonu:{" "}
             <b className="text-[#0C3450]">
-              {target} rezerwacji z nowych = {rewardText} 🎬
+              {target} gabinetów (wracające z wiosny + nowe), nagroda co 5 – {rewardText} 🎬
             </b>
             .
           </p>
