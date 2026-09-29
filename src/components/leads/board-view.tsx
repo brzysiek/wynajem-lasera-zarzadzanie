@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { LeadRow } from "@/lib/leads/load";
 import { BOARD_STAGES, LOST_REASON_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
-import { FUNNEL_FROM, REACH_ORDER, funnelFromRow, rotInfo, type FunnelLead } from "@/lib/leads/funnel";
+import { FUNNEL_FROM, NEXT_STEP_LABEL, REACH_ORDER, funnelFromRow, rotInfo, type FunnelLead, type NextStepType } from "@/lib/leads/funnel";
 import { Avatar, Dots, Seg, periodTouch } from "./funnel-views";
 import { StageChip } from "./lead-ui";
 import { StageLegend } from "./plan-day";
@@ -58,6 +58,53 @@ function due(r: LeadRow, now: Date): { text: string; late: boolean; today: boole
   return { text: `${r.nextStepType === "ODDZWONI" ? "oddzwoni" : "krok"} ${d2(r.nextActionAt)}`, late: false, today: false };
 }
 
+// Wniosek 25: dymek przy kroku — rodzaj i termin, notatka kroku albo
+// ostatnia notatka (data, autor), próby / follow-up, ostatni kontakt, wiosna.
+function stepTip(r: LeadRow, d: { late: boolean; today: boolean }): string[] {
+  const lines: string[] = [];
+  const label = NEXT_STEP_LABEL[(r.nextStepType ?? "INNE") as NextStepType] ?? "kolejny krok";
+  const kind = label.charAt(0).toUpperCase() + label.slice(1);
+  if (r.nextActionAt) lines.push(`${kind} · ${new Date(r.nextActionAt).toLocaleString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${d.late ? " · zaległy" : d.today ? " · dziś" : ""}`);
+  else lines.push("Brak kroku — ustaw termin");
+  if (r.nextStepNote) lines.push(r.nextStepNote);
+  else if (r.lastNote) lines.push(`Notatka ${d2(r.lastNote.at)}${r.lastNote.by ? ` (${r.lastNote.by})` : ""}: ${r.lastNote.body.length > 140 ? `${r.lastNote.body.slice(0, 140)}…` : r.lastNote.body}`);
+  const counters = [r.attempts > 0 ? `${r.attempts}× nie odebrała` : null, r.followUpNo ? `follow-up ${r.followUpNo} z 2` : null].filter(Boolean);
+  if (counters.length) lines.push(counters.join(" · "));
+  lines.push(r.lastContactAt ? `Ostatni kontakt ${d2(r.lastContactAt)}` : "Bez kontaktu");
+  if (r.spring) lines.push(`Wiosna: ${[r.spring.lastAt ? `ostatnio ${d2(r.spring.lastAt)}` : null, r.spring.device, r.spring.rhythm].filter(Boolean).join(" · ")}`);
+  return lines;
+}
+
+function Tip({ lines, children, label }: { lines: string[]; children: React.ReactNode; label: string }) {
+  const [on, setOn] = useState(false);
+  return (
+    <span
+      className="group relative inline-flex"
+      onClick={(e) => {
+        // Dotyk: pierwszy tap pokazuje dymek zamiast otwierać kartę.
+        e.stopPropagation();
+        setOn((v) => !v);
+      }}
+      onMouseLeave={() => setOn(false)}
+      aria-label={label}
+    >
+      {children}
+      <span
+        role="tooltip"
+        className={`absolute bottom-full right-0 z-20 mb-1 w-[240px] flex-col gap-0.5 bg-[#0C3450] px-2.5 py-2 text-left text-[11.5px] font-normal leading-snug text-white shadow-lg ${on ? "flex" : "hidden group-hover:flex"}`}
+      >
+        {lines.map((l, i) => (
+          <span key={i} className={i === 0 ? "font-semibold" : "text-[#D6E4EF] [overflow-wrap:anywhere]"}>
+            {l}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+type Show = "active" | "postponed" | "lost";
+
 export function BoardView({
   rows,
   archived,
@@ -86,6 +133,7 @@ export function BoardView({
   canArchive2025?: boolean;
 }) {
   const [period, setPeriod] = useState<Period>("30");
+  const [show, setShow] = useState<Show>("active");
   const [owner, setOwner] = useState<Owner>("all");
   const old2025 = rows.filter((r) => ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(r.stage) && new Date(r.createdAt) < FUNNEL_FROM).length;
   const [dragId, setDragId] = useState<string | null>(null);
@@ -129,6 +177,76 @@ export function BoardView({
   const postponed = mineAll.filter((r) => r.stage === "ODLOZONE" && r.returnAt).sort((a, b) => a.returnAt!.localeCompare(b.returnAt!));
   const reasons = [...lost.reduce((m, r) => m.set(r.lostReason ?? "INNE", (m.get(r.lostReason ?? "INNE") ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
 
+  const card = (r: LeadRow) => {
+                  const d = due(r, now);
+                  const dev = r.devices.map((x) => LEAD_DEVICE_LABEL[x]).join(", ");
+                  const QA = "border border-[#C9D3DC] bg-white px-1.5 py-px text-[10.5px] text-[#0C3450] hover:border-[#1B6FA8] disabled:opacity-40";
+                  return (
+                    <div
+                      key={r.id}
+                      draggable={!readOnly}
+                      onDragStart={() => setDragId(r.id)}
+                      onDragEnd={() => {
+                        setDragId(null);
+                        setDrop(null);
+                      }}
+                      onClick={() => onOpen(r.id)}
+                      className={`min-w-0 cursor-pointer border border-l-[3px] px-2.5 py-2 ${d.late ? "border-l-[#E08A5C] bg-[#FFFBF8]" : "border-l-[#1B6FA8] bg-white"} ${selectedId === r.id ? "border-[#1B6FA8]" : "border-[#E3E6E9]"} ${dragId === r.id ? "opacity-50" : ""}`}
+                    >
+                      {/* Wniosek 18 a): długi e-mail jako nazwa nie rozpycha karty — 2 linie z zawijaniem, pełna nazwa w dymku. */}
+                      <div className="line-clamp-2 min-w-0 font-semibold text-[#0C3450] [overflow-wrap:anywhere]" title={`${who(r)}${dev ? ` · ${dev}` : ""}`}>
+                        {who(r)}
+                        {dev && <span className="font-normal text-[#5C6166]"> · {dev}</span>}
+                      </div>
+                      <div className="mt-0.5 text-[11.5px] text-[#5C6166]">
+                        {r.stage === "REZERWACJA" && r.rentalStartsAt
+                          ? `wynajem ${d2(r.rentalStartsAt)} ✓ powiązany`
+                          : r.stage === "OFERTA"
+                            ? `oferta ${d2(r.stageChangedAt)}${r.followUpNo ? ` · follow-up ${r.followUpNo} z 2` : ""}`
+                            : `${TYPE_LABEL[r.type]} · ${ago(r.createdAt, now)}`}
+                      </div>
+                      {r.nextStepNote && <div className="mt-0.5 truncate text-[11.5px] text-[#2A3540]" title={r.nextStepNote}>{r.nextStepNote.split("\n")[0]}</div>}
+                      <div className="mt-1.5 flex items-center justify-between gap-2 text-[11.5px]">
+                        <Avatar name={r.ownerName} />
+                        <span className="flex items-center gap-1.5">
+                          {r.tasks.count > 0 && (
+                            <Tip label="Zadania przy sygnale" lines={[`Zadania: ${r.tasks.count}`, ...(r.tasks.first ? [`${r.tasks.first.title}${r.tasks.first.dueDate ? ` · ${d2(r.tasks.first.dueDate)}` : ""}`] : []), ...stepTip(r, d).slice(1)]}>
+                              <span className="cursor-help">📋{r.tasks.count > 1 ? r.tasks.count : ""}</span>
+                            </Tip>
+                          )}
+                          {r.attempts > 0 && <Dots attempts={r.attempts} />}
+                          <Tip label="Następny krok" lines={stepTip(r, d)}>
+                            <span className={`cursor-help tabular-nums ${d.late ? "font-semibold text-[#B8612F]" : d.today ? "font-semibold text-[#1B6FA8]" : "text-[#5C6166]"}`}>{d.text}</span>
+                          </Tip>
+                        </span>
+                      </div>
+                      {!readOnly && period !== "archive" && r.stage !== "PRZEGRANA" && (
+                        <div className="mt-1.5 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+                          <button type="button" disabled={busy === r.id} className={QA} onClick={() => void quick(r.id, "talked")} title="Rozmowa → W kontakcie, krok za 2 dni rob.">
+                            Rozmawiałam
+                          </button>
+                          {(r.stage === "SYGNAL" || r.stage === "WYWIAD") && (
+                            <button type="button" disabled={busy === r.id} className={QA} onClick={() => void quick(r.id, "offer_sent")} title="Wysłałam ofertę → Oferta wysłana, follow-up +3 dni rob.">
+                              Oferta
+                            </button>
+                          )}
+                          {r.stage === "REZERWACJA" && !r.rentalId && (
+                            <button type="button" className={QA} onClick={() => onOpen(r.id, "link")} title="Lista wynajmów tego klienta i podobnych — wybór jednym kliknięciem">
+                              Powiąż z wynajmem
+                            </button>
+                          )}
+                          <button type="button" className={QA} onClick={() => onPostpone(r.id)} title="Odłóż do… — data powrotu i powód">
+                            Odłóż
+                          </button>
+                          <button type="button" className={QA} onClick={() => onLost(r.id)} title="Przegrana — z powodem">
+                            ✕
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                };
+
   const dropProps = (target: LeadStageKey | "LOST") => ({
     onDragOver: (e: React.DragEvent) => {
       if (readOnly) return;
@@ -158,6 +276,15 @@ export function BoardView({
             ["archive", `Archiwum (${archived.length})`],
           ]}
         />
+        <Seg<Show>
+          value={show}
+          onChange={setShow}
+          options={[
+            ["active", "Aktywne"],
+            ["postponed", `Odłożone (${postponed.length})`],
+            ["lost", `Przegrane (${lost.length})`],
+          ]}
+        />
         <Seg<Owner>
           value={owner}
           onChange={setOwner}
@@ -177,6 +304,26 @@ export function BoardView({
       {/* Kontrola 29.09 09:45, pkt 5: cztery kolumny zawsze obok siebie (od
           ok. 1000 px obszaru treści mieszczą się w całości); węższe okno —
           przewijanie w bok zamiast łamania na 2×2. Na telefonie jedna pod drugą. */}
+      {show !== "active" ? (
+        <div className="flex flex-col gap-2">
+          <p className="m-0 text-[12.5px] text-[#5C6166]">
+            {show === "postponed" ? "Odłożone — wracają same do „Na dziś” w dniu powrotu (od najbliższego)." : `Przegrane — ${periodLabel}, z powodem.`}
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(240px,1fr))]">
+            {(show === "postponed" ? postponed : lost).map((r) => (
+              <div key={r.id} className="flex flex-col">
+                {card(r)}
+                <span className="border border-t-0 border-[#E3E6E9] bg-[#F9FAFB] px-2.5 py-1 text-[11px] text-[#5C6166]">
+                  {show === "postponed"
+                    ? `wraca ${d2(r.returnAt!)}`
+                    : `${(LOST_REASON_LABEL[(r.lostReason ?? "INNE") as LostReasonKey] ?? r.lostReason ?? "").toLowerCase()}`}
+                </span>
+              </div>
+            ))}
+            {(show === "postponed" ? postponed : lost).length === 0 && <p className="text-[13px] text-[#5C6166]">Brak.</p>}
+          </div>
+        </div>
+      ) : (
       <div className="-mx-1 overflow-x-auto px-1 pb-1">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(4,minmax(232px,1fr))]">
         {BOARD_STAGES.map((stage) => {
@@ -199,67 +346,7 @@ export function BoardView({
                 </span>
               </div>
               <div className="flex flex-col gap-2">
-                {shown.map((r) => {
-                  const d = due(r, now);
-                  const dev = r.devices.map((x) => LEAD_DEVICE_LABEL[x]).join(", ");
-                  const QA = "border border-[#C9D3DC] bg-white px-1.5 py-px text-[10.5px] text-[#0C3450] hover:border-[#1B6FA8] disabled:opacity-40";
-                  return (
-                    <div
-                      key={r.id}
-                      draggable={!readOnly}
-                      onDragStart={() => setDragId(r.id)}
-                      onDragEnd={() => {
-                        setDragId(null);
-                        setDrop(null);
-                      }}
-                      onClick={() => onOpen(r.id)}
-                      className={`min-w-0 cursor-pointer border border-l-[3px] px-2.5 py-2 ${d.late ? "border-l-[#E08A5C] bg-[#FFFBF8]" : "border-l-[#1B6FA8] bg-white"} ${selectedId === r.id ? "border-[#1B6FA8]" : "border-[#E3E6E9]"} ${dragId === r.id ? "opacity-50" : ""}`}
-                    >
-                      {/* Wniosek 18 a): długi e-mail jako nazwa nie rozpycha karty — 2 linie z zawijaniem, pełna nazwa w dymku. */}
-                      <div className="line-clamp-2 min-w-0 font-semibold text-[#0C3450] [overflow-wrap:anywhere]" title={`${who(r)}${dev ? ` · ${dev}` : ""}`}>
-                        {who(r)}
-                        {dev && <span className="font-normal text-[#5C6166]"> · {dev}</span>}
-                      </div>
-                      <div className="mt-0.5 text-[11.5px] text-[#5C6166]">
-                        {r.stage === "REZERWACJA" && r.rentalStartsAt
-                          ? `wynajem ${d2(r.rentalStartsAt)} ✓ powiązany`
-                          : r.stage === "OFERTA"
-                            ? `oferta ${d2(r.stageChangedAt)}${r.followUpNo ? ` · follow-up ${r.followUpNo} z 2` : ""}`
-                            : `${TYPE_LABEL[r.type]} · ${ago(r.createdAt, now)}`}
-                      </div>
-                      <div className="mt-1.5 flex items-center justify-between gap-2 text-[11.5px]">
-                        <Avatar name={r.ownerName} />
-                        <span className="flex items-center gap-1.5">
-                          {r.attempts > 0 && <Dots attempts={r.attempts} />}
-                          <span className={`tabular-nums ${d.late ? "font-semibold text-[#B8612F]" : d.today ? "font-semibold text-[#1B6FA8]" : "text-[#5C6166]"}`}>{d.text}</span>
-                        </span>
-                      </div>
-                      {!readOnly && period !== "archive" && (
-                        <div className="mt-1.5 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" disabled={busy === r.id} className={QA} onClick={() => void quick(r.id, "talked")} title="Rozmowa → W kontakcie, krok za 2 dni rob.">
-                            Rozmawiałam
-                          </button>
-                          {(r.stage === "SYGNAL" || r.stage === "WYWIAD") && (
-                            <button type="button" disabled={busy === r.id} className={QA} onClick={() => void quick(r.id, "offer_sent")} title="Wysłałam ofertę → Oferta wysłana, follow-up +3 dni rob.">
-                              Oferta
-                            </button>
-                          )}
-                          {r.stage === "REZERWACJA" && !r.rentalId && (
-                            <button type="button" className={QA} onClick={() => onOpen(r.id, "link")} title="Lista wynajmów tego klienta i podobnych — wybór jednym kliknięciem">
-                              Powiąż z wynajmem
-                            </button>
-                          )}
-                          <button type="button" className={QA} onClick={() => onPostpone(r.id)} title="Odłóż do… — data powrotu i powód">
-                            Odłóż
-                          </button>
-                          <button type="button" className={QA} onClick={() => onLost(r.id)} title="Przegrana — z powodem">
-                            ✕
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {shown.map(card)}
                 {col.length > PER_COLUMN && (
                   <button
                     type="button"
@@ -275,6 +362,7 @@ export function BoardView({
         })}
         </div>
       </div>
+      )}
 
       <div className="flex flex-wrap gap-2.5">
         <div className="border border-[#E3E6E9] bg-white px-3.5 py-2 text-[13px]">

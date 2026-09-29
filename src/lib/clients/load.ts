@@ -124,6 +124,8 @@ export type ClientDetail = {
   // Archiwum (Porządki): null = klient aktywny.
   archive: { at: string; reason: string | null; note: string | null; batch: string | null } | null;
   statusOverride: "NIE_KONTAKTOWAC" | null;
+  // Wniosek 24: stan „Zrezygnował” (powód, data, opcjonalny ponowny kontakt).
+  resigned: { at: string; reason: string | null; note: string | null; recontactAt: string | null } | null;
   notes: string | null;
   hubspotCompanyId: string | null;
   legacyHubspotTag: string | null;
@@ -243,6 +245,8 @@ export type ClientDetail = {
     devices: string[];
     firstContactAt: string | null;
     lastContactAt: string | null;
+    attempts: number;
+    requestedFrom: string | null;
   }[];
 };
 
@@ -324,6 +328,8 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
           deviceInterest: true,
           firstContactAt: true,
           lastContactAt: true,
+          attempts: true,
+          requestedFrom: true,
         },
       },
       aliases: { orderBy: { alias: "asc" }, select: { alias: true } },
@@ -668,6 +674,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     deviceInterests: parseInterests(c.deviceInterests),
     archive: c.archivedAt ? { at: c.archivedAt.toISOString(), reason: c.archiveReason, note: c.archiveNote, batch: c.archiveBatch } : null,
     statusOverride: c.statusOverride,
+    resigned: c.resignedAt ? { at: c.resignedAt.toISOString(), reason: c.resignedReason, note: c.resignedNote, recontactAt: c.resignedRecontactAt?.toISOString() ?? null } : null,
     notes: c.notes,
     hubspotCompanyId: c.hubspotCompanyId,
     legacyHubspotTag: c.legacyHubspotTag,
@@ -836,6 +843,8 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       devices: Array.isArray(l.deviceInterest) ? (l.deviceInterest as unknown[]).filter((x): x is string => typeof x === "string") : [],
       firstContactAt: l.firstContactAt?.toISOString() ?? null,
       lastContactAt: l.lastContactAt?.toISOString() ?? null,
+      attempts: l.attempts,
+      requestedFrom: l.requestedFrom?.toISOString() ?? null,
     })),
   };
 }

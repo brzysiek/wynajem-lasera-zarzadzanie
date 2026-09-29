@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { LeadDetail } from "@/lib/leads/load";
-import { ACTIVITY_LABEL, LOST_REASON_LABEL, POSTPONE_REASON_KEYS, POSTPONE_REASON_LABEL, STAGE_KEYS, STAGE_LABEL, TYPE_LABEL, type ActivityTypeKey, type LostReasonKey, type PostponeReasonKey } from "@/lib/leads/labels";
+import { ACTIVITY_LABEL, LOST_REASON_LABEL, POSTPONE_REASON_LABEL, STAGE_LABEL, TYPE_LABEL, type ActivityTypeKey, type LostReasonKey, type PostponeReasonKey } from "@/lib/leads/labels";
 import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, NO_ANSWER_LIMIT, OPEN_STAGES, ROT_DAYS_OFFER, ROT_WORK_DAYS_CONTACT, funnelFromRow, rotInfo, workDurationLabel, type FunnelLead, type NextStepType } from "@/lib/leads/funnel";
 import { workHoursBetween } from "@/lib/leads/work-time";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
@@ -15,11 +15,12 @@ import { CalendarPlusIcon, PencilIcon, PhoneIcon, SmsIcon, StatusChip, fmtAgo, f
 import { EmailViewer } from "@/components/clients/email-viewer";
 import { ArchiveDialog } from "@/components/porzadki/archive-dialog";
 import { BTN, BTN_PRIMARY, LostDialog } from "./lead-dialogs";
-import { StageChip, TaskIcon, XCircleIcon, fmtRange, fmtWhen } from "./lead-ui";
+import { StageChip, TaskIcon, fmtRange, fmtWhen } from "./lead-ui";
 import { Dots } from "./funnel-views";
 import { StageTip } from "./stage-tip";
 import { RentalPicker } from "./rental-picker";
 import { OpenTasks } from "@/components/open-tasks";
+import { CallOutcomeDialog } from "./call-outcome-dialog";
 import type { Playbook } from "@/lib/leads/playbook";
 
 // Karta sygnału (prompt 2, 3.3) — panel boczny z każdego widoku. Szybkie
@@ -27,7 +28,7 @@ import type { Playbook } from "@/lib/leads/playbook";
 // z formularza i oś czasu (sygnał + inne aktywności tego klienta).
 
 export type CardIntent = "call" | "sms" | "postpone" | "link" | null;
-type Panel = "call" | "sms" | "note" | "task" | null;
+type Panel = "sms" | "note" | "task" | null;
 type Template = { id: string; key: string; label: string; body: string };
 
 const LABEL = "flex flex-col gap-1 text-xs font-medium text-[var(--c-muted)]";
@@ -89,7 +90,7 @@ export function LeadCard({
 }) {
   const [d, setD] = useState<LeadDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel>(intent === "postpone" || intent === "link" || (agent && (intent === "call" || intent === "sms")) ? null : intent);
+  const [panel, setPanel] = useState<Panel>(intent === "sms" && !agent ? "sms" : null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [lost, setLost] = useState<false | { preset?: LostReasonKey }>(false);
@@ -98,6 +99,13 @@ export function LeadCard({
   const [showAll, setShowAll] = useState(false);
   const [emailIds, setEmailIds] = useState<string[] | null>(null);
   const [archiving, setArchiving] = useState(false);
+  // Wniosek 24/27: okno „Wynik rozmowy” (postpone = „Odłóż do…” z Tablicy),
+  // „Zmień termin”, „Powiąż z wynajmem”, podpowiedź zwinięta do żarówki.
+  const [outcome, setOutcome] = useState<false | true | "postpone">(!agent && (intent === "call" || intent === "postpone") ? (intent === "postpone" ? "postpone" : true) : false);
+  const [reschedule, setReschedule] = useState(false);
+  const [linking, setLinking] = useState(intent === "link");
+  const [tipOpen, setTipOpen] = useState<boolean | null>(null);
+  const [freeDates, setFreeDates] = useState<string[] | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -107,6 +115,20 @@ export function LeadCard({
       else setLoadError(data.message ?? "Nie udało się wczytać sygnału.");
     });
     void api<{ templates: Template[] }>("/api/message-templates", "GET").then(({ ok, data }) => alive && ok && setTemplates(data.templates ?? []));
+    return () => {
+      alive = false;
+    };
+  }, [leadId]);
+
+  // „Czego chce”: wolne terminy z kalendarza (ten sam szkic co „Szkic maila”).
+  const [draft, setDraft] = useState<{ to: string | null; subject: string; body: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void api<{ to: string | null; subject: string; body: string; freeDates: string[] }>(`/api/leads/${leadId}/offer-draft`, "GET").then(({ ok, data }) => {
+      if (!alive || !ok) return;
+      setFreeDates(data.freeDates ?? []);
+      setDraft({ to: data.to, subject: data.subject, body: data.body });
+    });
     return () => {
       alive = false;
     };
@@ -163,15 +185,31 @@ export function LeadCard({
   const phone = d.phone;
   const noAnswerTpl = templates.find((t) => t.key === "lead_no_answer");
   const returning = d.clientStatus === "STALY" || d.clientStatus === "USPIONY";
-  const quick = "flex flex-col items-center justify-center gap-1 rounded-[10px] px-1 py-2.5 text-xs font-semibold transition-colors disabled:opacity-40";
-  const activities = showAll ? d.activities : d.activities.slice(0, 8);
+  const open = OPEN_STAGES.includes(d.stage) || d.stage === "ODLOZONE";
+  const activities = showAll ? d.activities : d.activities.slice(0, 3);
+  const ci = d.clientInfo;
+  // Wniosek 27 D: urządzenie z historii klientki, gdy sygnał go nie ma.
+  const devices = d.devices.length ? d.devices : ci?.lastInterest ? [ci.lastInterest] : [];
+  const lastOffer = d.activities.find((a) => /ofert/i.test(a.body ?? "") && (a.type === "EMAIL" || a.type === "CALL" || a.type === "STAGE_CHANGE"));
+  const ACTION = "inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[#C9D3DC] bg-white px-2.5 text-[12.5px] text-[#0C3450] hover:border-[#1B6FA8] disabled:opacity-40";
+  const ACTION_PRIMARY = "inline-flex h-8 items-center gap-1.5 rounded-[6px] bg-[#1B6FA8] px-3 text-[12.5px] font-semibold text-white hover:bg-[#0C3450]";
+  const outcomeLead = { id: d.id, stage: d.stage, attempts: d.attempts, followUpNo: d.followUpNo, nextStepType: d.nextStepType, phone, clientId: d.clientId, clientName: d.clientName ?? d.person, requestedFrom: d.requestedFrom };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">
-      {/* Nagłówek */}
-      <div className="flex flex-col gap-2 border-b border-[var(--c-border)] px-5 pb-4 pt-5">
+      {/* 1. Nagłówek (wniosek 27 C): gabinet, status, telefon, e-mail, miejscowość i km, prowadzi */}
+      <div className="flex flex-col gap-1.5 border-b border-[var(--c-border)] px-5 pb-3 pt-4">
         <div className="flex items-start gap-2">
-          <h2 className="m-0 min-w-0 flex-grow text-lg font-semibold leading-tight text-[var(--c-navy)]">{d.title}</h2>
+          <div className="min-w-0 flex-grow">
+            {d.clientId ? (
+              <Link href={`/klienci/${d.clientId}`} className="block text-lg font-semibold leading-tight text-[var(--c-navy)] [overflow-wrap:anywhere] hover:text-[var(--c-brand-deep)]">
+                {d.clientName ?? d.title}
+              </Link>
+            ) : (
+              <h2 className="m-0 text-lg font-semibold leading-tight text-[var(--c-navy)] [overflow-wrap:anywhere]">{d.person ?? d.title}</h2>
+            )}
+            {d.title !== d.clientName && <div className="truncate text-[12px] text-[var(--c-muted)]" title={d.title}>{d.title}</div>}
+          </div>
           {canArchive && !d.archive && (
             <button type="button" onClick={() => setArchiving(true)} className="-mt-0.5 rounded-md px-1.5 py-1 text-xs text-[var(--c-muted)] hover:bg-[var(--c-red-soft)] hover:text-[var(--c-red)]">
               Archiwizuj
@@ -216,18 +254,12 @@ export function LeadCard({
           />
         )}
         <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
-          {d.clientId ? (
-            <Link href={`/klienci/${d.clientId}`} className="font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
-              {d.clientName}
-            </Link>
-          ) : (
-            <span className="text-[var(--c-faint)]">bez klienta</span>
-          )}
+          <span title={stageAgeText(d)}>
+            <StageChip stage={d.stage} />
+          </span>
           {d.clientId && !d.clientQualified ? (
             <>
-              <span className="rounded-full border border-dashed border-[var(--c-faint)] px-2 py-[2px] text-[11px] font-semibold text-[var(--c-sidebar-text)]">
-                Kontakt z zapytania
-              </span>
+              <span className="rounded-full border border-dashed border-[var(--c-faint)] px-2 py-[2px] text-[11px] font-semibold text-[var(--c-sidebar-text)]">Kontakt z zapytania</span>
               {agent && (
                 <button type="button" disabled={busy} onClick={() => void qualify()} className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)] disabled:opacity-50">
                   Przenieś do klientów
@@ -237,168 +269,65 @@ export function LeadCard({
           ) : (
             d.clientStatus && <StatusChip status={d.clientStatus} />
           )}
+          {d.clientResigned && <span className="rounded-md bg-[#FBF0E7] px-[7px] py-0.5 text-[11px] font-semibold text-[#B8612F]">Zrezygnował</span>}
+          {returning && <span className="rounded-md bg-[var(--c-green-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-green-deep)]">Powracająca klientka</span>}
           {d.attempts > 0 && OPEN_STAGES.includes(d.stage) && (
             <span className="text-[11.5px] text-[#5C6166]">
               <Dots attempts={d.attempts} /> {d.attempts}× nie odebrała
             </span>
           )}
-          {returning && (
-            <span className="rounded-md bg-[var(--c-green-soft)] px-[7px] py-0.5 text-[11px] font-semibold text-[var(--c-green-deep)]">Powracająca klientka</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px]">
+          {phone ? (
+            <a href={`tel:${phone}`} className="font-semibold text-[var(--c-brand)] hover:underline">
+              ☎ {formatPhone(phone)}
+            </a>
+          ) : (
+            <span className="text-[var(--c-faint)]">bez telefonu</span>
           )}
+          {d.email && (
+            <a href={`mailto:${d.email}`} className="min-w-0 truncate text-[var(--c-brand)] hover:underline">
+              {d.email}
+            </a>
+          )}
+          {(d.city || ci?.distanceKm != null) && <span className="text-[var(--c-muted)]">{[d.city, ci?.distanceKm != null ? `${Math.round(ci.distanceKm)} km` : null].filter(Boolean).join(" · ")}</span>}
+          <span className="text-[var(--c-muted)]">prowadzi: {d.ownerName ?? "—"}</span>
         </div>
         {d.clientStatus === "NIE_KONTAKTOWAC" && (
           <p className="rounded-lg bg-[var(--c-red-soft)] px-3 py-2 text-[13px] text-[var(--c-red)]">
             <b className="font-semibold">Nie kontaktować.</b> Klient ma blokadę — sprawdź kartę klienta przed telefonem.
           </p>
         )}
-        <p className="text-xs text-[var(--c-muted)]">
-          Wpłynęło {fmtWhen(d.createdAt)}
-          {!fmtWhen(d.createdAt).startsWith("dziś") && !fmtWhen(d.createdAt).startsWith("wczoraj") && ` (${fmtAgo(d.createdAt)})`} · {TYPE_LABEL[d.type]} · {d.fromHubspot ? "z HubSpota" : "z panelu"}
-          {d.hubspotUrl && (
-            <>
-              {" · "}
-              <a href={d.hubspotUrl} target="_blank" rel="noreferrer" className="text-[var(--c-brand)] hover:underline">
-                Otwórz w HubSpot
+        {!agent && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {phone && (
+              <a href={`tel:${phone}`} className={ACTION_PRIMARY}>
+                <PhoneIcon size={14} /> Zadzwoń
               </a>
-            </>
-          )}
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          <label className={LABEL}>
-            Etap
-            <select
-              className={`${INPUT} h-8 cursor-pointer`}
-              value={d.stage}
-              disabled={busy || agent}
-              onChange={(e) => {
-                const stage = e.target.value as LeadStageKey;
-                if (stage === "PRZEGRANA") setLost({});
-                else void patch({ stage }, `Etap: ${STAGE_LABEL[stage]}.`);
-              }}
+            )}
+            <button type="button" disabled={!phone} className={ACTION} onClick={() => setPanel(panel === "sms" ? null : "sms")}>
+              <SmsIcon size={14} /> SMS
+            </button>
+<a
+              href={d.email || draft?.to ? `mailto:${draft?.to ?? d.email}?subject=${encodeURIComponent(draft?.subject ?? "Wynajem urządzenia")}&body=${encodeURIComponent(draft?.body ?? "")}` : undefined}
+              aria-disabled={!d.email && !draft?.to}
+              className={`${ACTION} ${d.email || draft?.to ? "" : "pointer-events-none opacity-40"}`}
+              title="Szkic maila z ofertą (wolne terminy, cena)"
             >
-              {STAGE_KEYS.map((s) => (
-                <option key={s} value={s} disabled={(s === "WYGRANA" && !d.rentalId && d.stage !== "WYGRANA") || (s === "ODLOZONE" && d.stage !== "ODLOZONE")}>
-                  {STAGE_LABEL[s]}
-                  {s === "WYGRANA" && !d.rentalId && d.stage !== "WYGRANA" ? " (tylko z wynajmem)" : ""}
-                  {s === "ODLOZONE" && d.stage !== "ODLOZONE" ? " (przez „Odłóż do…”)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className={LABEL}>
-            Prowadzi
-            <select className={`${INPUT} h-8 cursor-pointer`} value={d.ownerId ?? ""} disabled={busy || agent} onChange={(e) => void patch({ ownerId: e.target.value || null })}>
-              <option value="">— nikt —</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <Stepper stage={d.stage} />
-        <StageAge d={d} />
-        {d.stage === "PRZEGRANA" && d.lostReason && (
-          <p className="text-xs text-[var(--c-red)]">
-            Powód: <b className="font-semibold">{LOST_REASON_LABEL[d.lostReason]}</b>
-            {d.lostNote && ` — ${d.lostNote}`}
-          </p>
+              ✉ Szkic maila
+            </a>
+            <Link href={`/kalendarz/wynajem/nowy?${new URLSearchParams({ ...(d.requestedFrom ? { date: toDay(d.requestedFrom) } : {}), sygnal: d.id }).toString()}`} className={ACTION}>
+              <CalendarPlusIcon /> Rezerwacja
+            </Link>
+          </div>
         )}
       </div>
-
-      {/* Szybkie akcje */}
-      {agent ? (
-        <div className="grid grid-cols-2 gap-2 border-b border-[var(--c-border)] px-5 py-3">
-          <button type="button" onClick={() => setPanel(panel === "note" ? null : "note")} className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}>
-            <PencilIcon />
-            Notatka
-          </button>
-          <button type="button" onClick={() => setPanel(panel === "task" ? null : "task")} className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}>
-            <TaskIcon />
-            Zadanie
-          </button>
-        </div>
-      ) : (
-      <div className="grid grid-cols-4 gap-2 border-b border-[var(--c-border)] px-5 py-3">
-        {phone ? (
-          <a href={`tel:${phone}`} onClick={() => setPanel("call")} className={`${quick} bg-[var(--c-brand)] text-white hover:bg-[var(--c-brand-deep)]`}>
-            <PhoneIcon size={18} />
-            Zadzwoń
-          </a>
-        ) : (
-          <button type="button" onClick={() => setPanel("call")} className={`${quick} bg-[var(--c-brand)] text-white`} title="Brak telefonu — możesz zapisać wynik rozmowy">
-            <PhoneIcon size={18} />
-            Rozmowa
-          </button>
-        )}
-        <button
-          type="button"
-          disabled={!phone}
-          title={phone ? undefined : "Brak telefonu"}
-          onClick={() => setPanel(panel === "sms" ? null : "sms")}
-          className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}
-        >
-          <SmsIcon size={18} />
-          SMS
-        </button>
-        <a
-          href={d.email ? `mailto:${d.email}?subject=${encodeURIComponent(`Wynajem ${d.devices.map((x) => LEAD_DEVICE_LABEL[x]).join(", ") || "urządzenia"}`)}` : undefined}
-          aria-disabled={!d.email}
-          title={d.email ? "Szkic maila w programie pocztowym" : "Brak e-maila"}
-          className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)] ${d.email ? "" : "pointer-events-none opacity-40"}`}
-        >
-          <span aria-hidden className="text-[16px] leading-none">✉</span>
-          Szkic maila
-        </a>
-        <Link
-          href={`/kalendarz/wynajem/nowy?${new URLSearchParams({ ...(d.requestedFrom ? { date: toDay(d.requestedFrom) } : {}), sygnal: d.id }).toString()}`}
-          className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}
-          title="Nowy wynajem w kalendarzu — potem powiąż go z sygnałem niżej"
-        >
-          <CalendarPlusIcon />
-          Rezerwacja
-        </Link>
-        <button type="button" onClick={() => setPanel(panel === "note" ? null : "note")} className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}>
-          <PencilIcon />
-          Notatka
-        </button>
-        <button type="button" onClick={() => setPanel(panel === "task" ? null : "task")} className={`${quick} bg-[var(--c-brand-soft)] text-[var(--c-brand-deep)] hover:bg-[var(--c-navy-soft)]`}>
-          <TaskIcon />
-          Zadanie
-        </button>
-        <button
-          type="button"
-          disabled={d.stage === "PRZEGRANA"}
-          onClick={() => setLost({})}
-          className={`${quick} bg-[var(--c-red-soft)] text-[var(--c-red)] hover:opacity-80`}
-        >
-          <XCircleIcon />
-          Przegrana
-        </button>
-      </div>
-      )}
 
       <div className="flex min-h-0 flex-grow flex-col gap-[18px] overflow-y-auto px-5 pb-6 pt-4">
         {toast && (
-          <p
-            role="status"
-            className={`rounded-lg px-3 py-2 text-[13px] ${toast.error ? "bg-[var(--c-red-soft)] text-[var(--c-red)]" : "bg-[var(--c-green-soft)] text-[var(--c-green-deep)]"}`}
-          >
+          <p role="status" className={`rounded-lg px-3 py-2 text-[13px] ${toast.error ? "bg-[var(--c-red-soft)] text-[var(--c-red)]" : "bg-[var(--c-green-soft)] text-[var(--c-green-deep)]"}`}>
             {toast.text}
           </p>
-        )}
-
-        {playbook && (
-          <StageTip
-            leadId={d.id}
-            stage={d.stage}
-            followUpNo={d.followUpNo}
-            playbook={playbook}
-            smsText={phone && noAnswerTpl ? applySmsPlaceholders(noAnswerTpl.body, { clientName: d.clientName ?? d.person }) : null}
-            canAct={!agent}
-            onSendSms={(message) => run(`/api/leads/${leadId}/sms`, "POST", { phone, message }, "SMS wysłany.")}
-          />
         )}
         {!agent && OPEN_STAGES.includes(d.stage) && d.attempts >= NO_ANSWER_LIMIT && (
           <div className="flex flex-wrap items-center gap-2 border-l-[3px] border-[#E08A5C] bg-[#FBF0E7] px-3 py-2 text-[13px] text-[#B8612F]">
@@ -420,30 +349,72 @@ export function LeadCard({
             )}
           </div>
         )}
-        {!agent && (OPEN_STAGES.includes(d.stage) || d.stage === "ODLOZONE") && (
-          <CallResult
-            leadId={d.id}
-            requestedFrom={d.requestedFrom}
-            initialMode={intent === "postpone" ? "postpone" : null}
-            stage={d.stage}
-            busy={busy}
-            noAnswerTpl={noAnswerTpl ?? null}
-            phone={phone}
-            clientName={d.clientName ?? d.person}
-            unqualified={Boolean(d.clientId) && !d.clientQualified}
-            noAnswerCount={d.attempts}
-            nextStepType={d.nextStepType}
-            followUpNo={d.followUpNo}
-            onLost={(preset) => setLost({ preset })}
-            onDone={(outcome) => {
-              setPanel(null);
-              if (outcome) onOutcome?.();
-            }}
-            onSmsDraft={() => setPanel("sms")}
-            run={(body, msg) => run(`/api/leads/${leadId}/activity`, "POST", body, msg)}
-            sendSms={(message) => run(`/api/leads/${leadId}/sms`, "POST", { phone, message }, "SMS wysłany.")}
-          />
-        )}
+
+        {/* 2. Następny krok (wyróżniony) */}
+        <div className="flex flex-col gap-2 border-l-[3px] border-[#1B6FA8] bg-[#EAF4FB] px-3 py-2.5">
+          <span className="text-[10.5px] uppercase tracking-[0.12em] text-[#5C6166]">Następny krok</span>
+          {d.stage === "WYGRANA" || d.stage === "PRZEGRANA" ? (
+            <span className="text-[13px] text-[var(--c-muted)]">
+              Sygnał zamknięty ({STAGE_LABEL[d.stage].toLowerCase()})
+              {d.stage === "PRZEGRANA" && d.lostReason ? ` · ${LOST_REASON_LABEL[d.lostReason]}${d.lostNote ? ` — ${d.lostNote}` : ""}` : ""}
+            </span>
+          ) : d.stage === "ODLOZONE" ? (
+            <span className="text-[13px] text-[#6B5B3E]">
+              Odłożone do <b className="font-semibold">{d.returnAt ? new Date(d.returnAt).toLocaleDateString("pl-PL") : "—"}</b>
+              {d.postponeReason ? ` · ${POSTPONE_REASON_LABEL[d.postponeReason as PostponeReasonKey] ?? d.postponeReason}` : ""} — w dniu powrotu wraca do „Na dziś”.
+            </span>
+          ) : d.nextActionAt ? (
+            <span className="text-[13.5px] text-[#0C3450]">
+              <b className="font-semibold">{NEXT_STEP_LABEL[(d.nextStepType as NextStepType) ?? "INNE"] ?? d.nextStepType}</b>
+              {" · "}
+              <b className={`font-semibold ${new Date(d.nextActionAt) < new Date() ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>
+                {new Date(d.nextActionAt).toLocaleString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+              </b>
+              {d.nextStepNote && <span className="block text-[13px] text-[#2A3540]">{d.nextStepNote}</span>}
+            </span>
+          ) : (
+            <span className="text-[13px] text-[#B8612F]">brak — ustaw termin</span>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            {!agent && open && (
+              <button type="button" className={ACTION_PRIMARY} onClick={() => setOutcome(true)}>
+                Wynik rozmowy
+              </button>
+            )}
+            {!agent && d.stage !== "WYGRANA" && d.stage !== "PRZEGRANA" && (
+              <button type="button" className={ACTION} onClick={() => setReschedule((v) => !v)} aria-expanded={reschedule}>
+                Zmień termin
+              </button>
+            )}
+            <button type="button" className={ACTION} onClick={() => setPanel(panel === "note" ? null : "note")}>
+              <PencilIcon /> Notatka
+            </button>
+            <button type="button" className={ACTION} onClick={() => setPanel(panel === "task" ? null : "task")}>
+              <TaskIcon /> Zadanie
+            </button>
+          </div>
+          {reschedule && !agent && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input type="date" className={DATE_INPUT} value={toDay(d.nextActionAt)} disabled={busy} onChange={(e) => void patch({ nextActionAt: e.target.value || null }, "Ustawiono następny krok.")} />
+              <button type="button" className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]" onClick={() => void patch({ nextActionAt: toDay(nextWorkday(new Date())) }, "Następny krok: jutro.")}>
+                jutro
+              </button>
+              <button type="button" className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]" onClick={() => void patch({ nextActionAt: toDay(addWorkdays(new Date(), 3)) }, "Następny krok: za 3 dni robocze.")}>
+                +3 dni rob.
+              </button>
+              {d.nextActionAt && (
+                <button type="button" className="ml-auto text-xs text-[var(--c-muted)] hover:text-[var(--c-red)]" onClick={() => void patch({ nextActionAt: null })}>
+                  wyczyść
+                </button>
+              )}
+              {!d.firstContactAt && (
+                <span className="w-full text-[12px] text-[var(--c-muted)]">
+                  czas na kontakt {FIRST_CONTACT_SLA_HOURS} h rob. (czeka {workDurationLabel(workHoursBetween(new Date(d.createdAt), new Date()))})
+                </span>
+              )}
+            </div>
+          )}
+        </div>
         {panel === "sms" && phone && (
           <SmsBox
             initial={d.attempts >= NO_ANSWER_LIMIT && noAnswerTpl ? applySmsPlaceholders(noAnswerTpl.body, { clientName: d.clientName ?? d.person }) : ""}
@@ -469,138 +440,72 @@ export function LeadCard({
             title={d.title}
             busy={busy}
             onCancel={() => setPanel(null)}
-            onSave={async (body) => (await run(`/api/leads/${leadId}/task`, "POST", body, "Dodano zadanie.")) && setPanel(null)}
+            onSave={async (body) => (await run(`/api/leads/${leadId}/task`, "POST", body, "Dodano zadanie — termin kroku sygnału ten sam.")) && setPanel(null)}
           />
         )}
-
-        {/* Następny krok */}
-        {!agent && d.stage !== "WYGRANA" && d.stage !== "PRZEGRANA" && (
-          <div className="flex flex-wrap items-center gap-2 rounded-[10px] bg-[var(--c-bg)] px-3 py-2.5">
-            <span className="text-[13px] font-semibold text-[var(--c-navy)]">Następny krok</span>
-            <span className="w-full text-[12.5px] text-[var(--c-text)]">
-              {d.nextActionAt ? (
-                <>
-                  <b className={`font-semibold ${new Date(d.nextActionAt) < new Date() ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>
-                    {new Date(d.nextActionAt).toLocaleString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                  </b>
-                  {" · "}
-                  {NEXT_STEP_LABEL[(d.nextStepType as NextStepType) ?? "INNE"] ?? d.nextStepType}
-                  {d.nextStepNote ? ` · ${d.nextStepNote}` : ""}
-                </>
-              ) : (
-                <span className="text-[#B8612F]">brak — ustaw termin</span>
-              )}
-              {!d.firstContactAt && (
-                <span className="text-[var(--c-muted)]">
-                  {" · "}SLA {FIRST_CONTACT_SLA_HOURS} h rob. (czeka {workDurationLabel(workHoursBetween(new Date(d.createdAt), new Date()))})
-                </span>
-              )}
-            </span>
-            <input
-              type="date"
-              className={DATE_INPUT}
-              value={toDay(d.nextActionAt)}
-              disabled={busy}
-              onChange={(e) => void patch({ nextActionAt: e.target.value || null }, "Ustawiono następny krok.")}
-            />
-            <button type="button" className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]" onClick={() => void patch({ nextActionAt: toDay(nextWorkday(new Date())) }, "Następny krok: jutro.")}>
-              jutro
-            </button>
-            <button type="button" className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]" onClick={() => void patch({ nextActionAt: toDay(addWorkdays(new Date(), 3)) }, "Następny krok: za 3 dni robocze.")}>
-              +3 dni rob.
-            </button>
-            {d.nextActionAt && (
-              <button type="button" className="ml-auto text-xs text-[var(--c-muted)] hover:text-[var(--c-red)]" onClick={() => void patch({ nextActionAt: null })}>
-                wyczyść
-              </button>
-            )}
-          </div>
-        )}
-
         {d.openTasks.length > 0 && <OpenTasks tasks={d.openTasks} />}
 
-        {/* Rezerwacja */}
-        <Section title="Rezerwacja" id="lead-rental-section">
-          {d.rentalId ? (
-            <div className="flex items-center gap-2 rounded-[10px] border border-[var(--c-border)] px-3 py-2 text-[13px]">
-              <Link href={`/kalendarz/wynajem/${d.rentalId}?from=/sygnaly`} className="flex-grow font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
-                {d.rentalDevice} · {d.rentalStartsAt ? fmtDate(d.rentalStartsAt) : ""}
-              </Link>
-              {!agent && (
-                <button type="button" className="text-xs text-[var(--c-muted)] hover:text-[var(--c-red)]" onClick={() => void patch({ rentalId: null }, "Odpięto rezerwację.")}>
-                  odepnij
+        {/* 3. Czego chce · Historia */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Section
+            title="Czego chce"
+            action={
+              !editing &&
+              !agent && (
+                <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+                  Edytuj
                 </button>
-              )}
-            </div>
-          ) : agent ? (
-            <p className="text-[13px] text-[var(--c-faint)]">Brak powiązanego wynajmu.</p>
-          ) : (
-            <RentalPicker leadId={d.id} initial={d.rentalOptions} busy={busy} onPick={(id) => void patch({ rentalId: id }, "Powiązano z rezerwacją — etap: Rezerwacja.")} />
-          )}
-          <p className="text-[12px] text-[var(--c-muted)]">Wynajem dla tego klienta w kalendarzu sam przesuwa sygnał do „Rezerwacja”, a zrealizowany — do „Wygrana”.</p>
-        </Section>
-
-        {/* Dane z formularza */}
-        <Section
-          title="Zgłoszenie"
-          action={
-            !editing &&
-            !agent && (
-              <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
-                Edytuj
-              </button>
-            )
-          }
-        >
-          {editing ? (
-            <LeadForm d={d} busy={busy} onCancel={() => setEditing(false)} onSave={async (body) => (await patch(body, "Zapisano zgłoszenie.")) && setEditing(false)} />
-          ) : (
-            <div className="grid grid-cols-[100px_minmax(0,1fr)] gap-y-1.5 text-[13px]">
-              <span className="text-[var(--c-muted)]">Osoba</span>
-              <span>{d.person ?? "—"}</span>
-              <span className="text-[var(--c-muted)]">Telefon</span>
-              <span>{phone ? <a href={`tel:${phone}`} className="text-[var(--c-brand)]">{formatPhone(phone)}</a> : "—"}</span>
-              <span className="text-[var(--c-muted)]">E-mail</span>
-              <span className="truncate">{d.email ? <a href={`mailto:${d.email}`} className="text-[var(--c-brand)]">{d.email}</a> : "—"}</span>
-              <span className="text-[var(--c-muted)]">Urządzenie</span>
-              <span>{d.devices.length ? d.devices.map((x) => LEAD_DEVICE_LABEL[x]).join(", ") : "—"}</span>
-              <span className="text-[var(--c-muted)]">Termin</span>
-              <span>
-                {d.requestedFrom ? fmtRange(d.requestedFrom, d.requestedDays) : "—"}
-                {d.requestedDays ? ` (${d.requestedDays} ${d.requestedDays === 1 ? "dzień" : "dni"})` : ""}
-              </span>
-              <span className="text-[var(--c-muted)]">Miejscowość</span>
-              <span>{d.city ?? "—"}</span>
-              {d.message && (
-                <>
-                  <span className="text-[var(--c-muted)]">Wiadomość</span>
-                  <span className="whitespace-pre-line">„{d.message}”</span>
-                </>
-              )}
-            </div>
-          )}
-        </Section>
-
-        {(d.otherLeads.length > 0 || d.clientRentals.length > 0) && (
-          <Section title="Ten klient">
+              )
+            }
+          >
+            {editing ? (
+              <LeadForm d={d} busy={busy} onCancel={() => setEditing(false)} onSave={async (body) => (await patch(body, "Zapisano zgłoszenie.")) && setEditing(false)} />
+            ) : (
+              <div className="flex flex-col gap-1 text-[13px]">
+                <span>
+                  {devices.length ? devices.map((x) => LEAD_DEVICE_LABEL[x]).join(", ") : "urządzenie —"}
+                  {!d.devices.length && devices.length ? <span className="text-[var(--c-muted)]"> (z historii)</span> : null}
+                </span>
+                <span className="text-[var(--c-muted)]">
+                  {d.requestedFrom ? fmtRange(d.requestedFrom, d.requestedDays) : "termin —"}
+                  {d.requestedDays ? ` · ${d.requestedDays} ${d.requestedDays === 1 ? "dzień" : "dni"}` : ""}
+                </span>
+                {freeDates && freeDates.length > 0 && <span className="text-[#2F7A68]">wolne: {freeDates.join(", ")}</span>}
+                {d.person && d.person !== d.clientName && <span className="text-[var(--c-muted)]">osoba: {d.person}</span>}
+                {d.message && <span className="whitespace-pre-line text-[var(--c-muted)]">„{d.message}”</span>}
+              </div>
+            )}
+          </Section>
+          <Section title="Historia">
             <div className="flex flex-col gap-1 text-[13px]">
-              {d.clientRentals.length > 0 && (
-                <p className="text-[var(--c-muted)]">
-                  Wynajmy: {d.clientRentals.map((r) => `${fmtDate(r.startsAt)} ${r.deviceName}`).join(" · ")}
-                </p>
+              {ci && ci.arrivals > 0 ? (
+                <>
+                  <span>
+                    {ci.arrivals} {ci.arrivals === 1 ? "przyjazd" : ci.arrivals < 5 ? "przyjazdy" : "przyjazdów"}
+                    {ci.rhythm ? ` · ${ci.rhythm}` : ""}
+                  </span>
+                  {ci.lastRentalAt && (
+                    <span className="text-[var(--c-muted)]">
+                      ostatni {fmtDate(ci.lastRentalAt)}
+                      {ci.lastDevice ? ` · ${ci.lastDevice}` : ""}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="text-[var(--c-muted)]">bez wynajmów</span>
               )}
+              {lastOffer && <span className="text-[var(--c-muted)]">ostatnia oferta {fmtDate(lastOffer.at)}</span>}
               {d.otherLeads.map((l) => (
-                <Link key={l.id} href={`/sygnaly?id=${l.id}`} className="flex items-center gap-2 hover:text-[var(--c-brand-deep)]">
+                <Link key={l.id} href={`/sygnaly?id=${l.id}`} className="flex items-center gap-2 text-[12.5px] hover:text-[var(--c-brand-deep)]">
                   <StageChip stage={l.stage} />
                   <span className="truncate">{l.title}</span>
-                  <span className="ml-auto flex-none text-xs text-[var(--c-faint)]">{fmtDate(l.createdAt)}</span>
                 </Link>
               ))}
             </div>
           </Section>
-        )}
+        </div>
 
-        {/* Oś czasu */}
+        {/* 4. Oś czasu: 3 ostatnie, reszta pod „rozwiń” */}
         <Section title="Oś czasu">
           <ul className="flex flex-col gap-2.5">
             {activities.map((a) => {
@@ -615,7 +520,7 @@ export function LeadCard({
                     {tone.mark}
                   </span>
                   <span className="min-w-0 flex-grow">
-                    <span className="block whitespace-pre-line text-[13px] text-[var(--c-text)]">
+                    <span className="block whitespace-pre-line text-[13px] text-[var(--c-text)] [overflow-wrap:anywhere]">
                       {a.type !== "SYSTEM" && a.type !== "NOTE" && <b className="font-semibold">{ACTIVITY_LABEL[a.type]}: </b>}
                       {a.body ?? ""}
                     </span>
@@ -631,15 +536,123 @@ export function LeadCard({
                 </li>
               );
             })}
+            {(showAll || d.activities.length <= 3) && (
+              <li className="flex gap-2.5 text-[12.5px] text-[var(--c-muted)]">
+                <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[var(--c-bg)] text-[11px] font-bold">↓</span>
+                <span>
+                  Wpłynęło {fmtWhen(d.createdAt)}
+                  {!fmtWhen(d.createdAt).startsWith("dziś") && !fmtWhen(d.createdAt).startsWith("wczoraj") && ` (${fmtAgo(d.createdAt)})`} · {TYPE_LABEL[d.type]} · {d.fromHubspot ? "z HubSpota" : "z panelu"}
+                  {d.hubspotUrl && (
+                    <>
+                      {" · "}
+                      <a href={d.hubspotUrl} target="_blank" rel="noreferrer" className="text-[var(--c-brand)] hover:underline">
+                        HubSpot
+                      </a>
+                    </>
+                  )}
+                </span>
+              </li>
+            )}
           </ul>
-          {d.activities.length > 8 && (
+          {d.activities.length > 3 && (
             <button type="button" onClick={() => setShowAll((v) => !v)} className="self-start text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
-              {showAll ? "Zwiń" : `Pokaż wszystko (${d.activities.length})`}
+              {showAll ? "Zwiń" : `Rozwiń (${d.activities.length})`}
             </button>
           )}
         </Section>
+
+        {/* 5. Rezerwacja — gdy jest; inaczej „Powiąż z wynajmem” */}
+        <div id="lead-rental-section" className="flex scroll-mt-4 flex-col gap-2">
+          {d.rentalId ? (
+            <Section title="Rezerwacja">
+              <div className="flex items-center gap-2 rounded-[10px] border border-[var(--c-border)] px-3 py-2 text-[13px]">
+                <Link href={`/kalendarz?wynajem=${d.rentalId}`} className="flex-grow font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+                  {d.rentalDevice} · {d.rentalStartsAt ? fmtDate(d.rentalStartsAt) : ""}
+                </Link>
+                {!agent && (
+                  <button type="button" className="text-xs text-[var(--c-muted)] hover:text-[var(--c-red)]" onClick={() => void patch({ rentalId: null }, "Odpięto rezerwację.")}>
+                    odepnij
+                  </button>
+                )}
+              </div>
+            </Section>
+          ) : !agent && open ? (
+            linking ? (
+              <Section title="Powiąż z wynajmem">
+                <RentalPicker leadId={d.id} initial={d.rentalOptions} busy={busy} onPick={(id) => void patch({ rentalId: id }, "Powiązano z rezerwacją — etap: Rezerwacja.")} />
+              </Section>
+            ) : (
+              <button type="button" className={`${ACTION} self-start`} onClick={() => setLinking(true)}>
+                Powiąż z wynajmem
+              </button>
+            )
+          ) : null}
+        </div>
+
+        {/* 7. Podpowiedź / wywiad — zwinięta do żarówki, otwarta sama tylko w „Nowe” */}
+        {playbook &&
+          ((tipOpen ?? d.stage === "SYGNAL") ? (
+            <div className="flex flex-col gap-1">
+              <button type="button" onClick={() => setTipOpen(false)} className="self-start text-xs font-semibold text-[var(--c-brand)] hover:underline">
+                💡 Zwiń podpowiedź
+              </button>
+              <StageTip
+                leadId={d.id}
+                stage={d.stage}
+                followUpNo={d.followUpNo}
+                playbook={playbook}
+                smsText={phone && noAnswerTpl ? applySmsPlaceholders(noAnswerTpl.body, { clientName: d.clientName ?? d.person }) : null}
+                canAct={!agent}
+                onSendSms={(message) => run(`/api/leads/${leadId}/sms`, "POST", { phone, message }, "SMS wysłany.")}
+              />
+            </div>
+          ) : (
+            <button type="button" onClick={() => setTipOpen(true)} className={`${ACTION} self-start`} title="Podpowiedź i wywiad (6 pytań)">
+              💡 Podpowiedź
+            </button>
+          ))}
+
+        {/* 6. Etap jako jeden pasek przycisków + „Prowadzi” */}
+        <div className="flex flex-col gap-2 border-t border-[var(--c-border)] pt-3">
+          <StageBar
+            stage={d.stage}
+            disabled={busy || agent}
+            hasRental={Boolean(d.rentalId)}
+            onPick={(stage) => {
+              if (stage === "PRZEGRANA") setLost({});
+              else if (stage === "ODLOZONE") setOutcome("postpone");
+              else void patch({ stage }, `Etap: ${STAGE_LABEL[stage]}.`);
+            }}
+          />
+          <label className={`${LABEL} flex-row items-center gap-2`}>
+            Prowadzi
+            <select className={`${INPUT} h-8 w-auto cursor-pointer`} value={d.ownerId ?? ""} disabled={busy || agent} onChange={(e) => void patch({ ownerId: e.target.value || null })}>
+              <option value="">— nikt —</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
+      {outcome && (
+        <CallOutcomeDialog
+          lead={outcomeLead}
+          initialChoice={outcome === "postpone" ? "later" : undefined}
+          initialPostpone={outcome === "postpone"}
+          onClose={() => setOutcome(false)}
+          onDone={(detail) => {
+            setOutcome(false);
+            if (detail) setD(detail);
+            setToast({ text: "Zapisano wynik rozmowy." });
+            onChanged();
+            onOutcome?.();
+          }}
+        />
+      )}
       {emailIds && <EmailViewer messageIds={emailIds} onClose={() => setEmailIds(null)} />}
       {lost && (
         <LostDialog
@@ -659,230 +672,51 @@ export function LeadCard({
   );
 }
 
-// Etapy lejka nad kartą (wzór s3): zakończone jaśniej, bieżący wyróżniony.
-const STEPS: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA"];
-function Stepper({ stage }: { stage: LeadStageKey }) {
-  const at = STEPS.indexOf(stage);
+// Wniosek 27 C: etap jako jeden pasek przycisków na dole karty (zamiast
+// selecta i steppera). Wygrana tylko z powiązaną rezerwacją; Przegrana
+// i Odłożone otwierają swoje okna.
+const BAR_STAGES: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA", "ODLOZONE", "PRZEGRANA"];
+function StageBar({ stage, disabled, hasRental, onPick }: { stage: LeadStageKey; disabled: boolean; hasRental: boolean; onPick: (s: LeadStageKey) => void }) {
   return (
-    <div className="flex">
-      {STEPS.map((s, i) => (
-        <span
-          key={s}
-          className={`flex-1 border-r-2 border-white py-[5px] text-center text-[11.5px] last:border-0 ${
-            stage === "PRZEGRANA" ? "bg-[#EEF0F2] text-[#8A939B]" : i === at ? "bg-[#1B6FA8] font-semibold text-white" : i < at ? "bg-[#BFD8EC] text-[#0C3450]" : "bg-[#EEF0F2] text-[#5C6166]"
-          }`}
-        >
-          {STAGE_LABEL[s]}
-          {stage !== "PRZEGRANA" && i < at ? " ✓" : ""}
-        </span>
-      ))}
+    <div className="flex flex-wrap gap-1" role="group" aria-label="Etap">
+      {BAR_STAGES.map((s) => {
+        const on = s === stage;
+        const blocked = disabled || on || (s === "WYGRANA" && !hasRental);
+        return (
+          <button
+            key={s}
+            type="button"
+            disabled={blocked}
+            aria-pressed={on}
+            title={s === "WYGRANA" && !hasRental ? "Wygrana dopiero z powiązaną rezerwacją" : undefined}
+            onClick={() => onPick(s)}
+            className={`h-7 rounded-[6px] px-2.5 text-[12px] ${
+              on
+                ? s === "PRZEGRANA"
+                  ? "bg-[#8A939B] font-semibold text-white"
+                  : s === "ODLOZONE"
+                    ? "bg-[#6B5B3E] font-semibold text-white"
+                    : "bg-[#1B6FA8] font-semibold text-white"
+                : "border border-[#E3E6E9] bg-white text-[#5C6166] enabled:hover:border-[#1B6FA8] enabled:hover:text-[#0C3450] disabled:opacity-50"
+            }`}
+          >
+            {STAGE_LABEL[s]}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-// Wynik kontaktu (lejek, wzór s3): chip ustawia następny krok wg reguł
-// (src/lib/leads/funnel.ts — planOutcome), serwer liczy termin i próby.
-// W etapie (lejek v2): ile dni stoi, limit gnicia; Odłożone — data i powód powrotu.
-function StageAge({ d }: { d: LeadDetail }) {
+// Dymek na chipie etapu (dawny wiersz „W etapie N dni · limit gnicia”).
+function stageAgeText(d: LeadDetail): string {
+  if (d.stage === "ODLOZONE") return `Odłożone do ${d.returnAt ? new Date(d.returnAt).toLocaleDateString("pl-PL") : "—"}`;
+  if (!OPEN_STAGES.includes(d.stage)) return STAGE_LABEL[d.stage];
   const now = new Date();
-  if (d.stage === "ODLOZONE") {
-    return (
-      <p className="text-[12.5px] text-[#6B5B3E]">
-        Odłożone do <b className="font-semibold">{d.returnAt ? new Date(d.returnAt).toLocaleDateString("pl-PL") : "—"}</b>
-        {d.postponeReason ? ` · ${POSTPONE_REASON_LABEL[d.postponeReason as PostponeReasonKey] ?? d.postponeReason}` : ""} — w dniu powrotu wraca na listę „Na dziś” („W kontakcie”, krok na dziś).
-      </p>
-    );
-  }
-  if (!OPEN_STAGES.includes(d.stage)) return null;
   const rot = rotInfo(funnelFromRow(d) as unknown as FunnelLead, now);
   const days = Math.floor((now.getTime() - new Date(d.stageChangedAt).getTime()) / 86_400_000);
   const limit = d.stage === "SYGNAL" && !d.firstContactAt ? `czas na kontakt ${FIRST_CONTACT_SLA_HOURS} h rob.` : d.stage === "OFERTA" ? `limit gnicia ${ROT_DAYS_OFFER} dni` : d.stage === "REZERWACJA" ? "do dnia wynajmu" : `limit gnicia ${ROT_WORK_DAYS_CONTACT} dni rob.`;
-  return (
-    <p className="text-[12.5px] text-[#5C6166]">
-      W etapie {days} {days === 1 ? "dzień" : "dni"} · {limit}
-      {rot.rotting && <b className="ml-1 font-semibold text-[#B8612F]">· gnije ({rot.label})</b>}
-    </p>
-  );
-}
-
-function CallResult({
-  leadId,
-  requestedFrom,
-  initialMode,
-  stage,
-  busy,
-  noAnswerTpl,
-  phone,
-  clientName,
-  unqualified,
-  noAnswerCount,
-  nextStepType,
-  followUpNo,
-  onDone,
-  onLost,
-  onSmsDraft,
-  run,
-  sendSms,
-}: {
-  leadId: string;
-  requestedFrom: string | null;
-  initialMode: "postpone" | null;
-  stage: LeadStageKey;
-  busy: boolean;
-  noAnswerTpl: Template | null;
-  phone: string | null;
-  clientName: string | null;
-  unqualified: boolean;
-  noAnswerCount: number;
-  nextStepType: string | null;
-  followUpNo: number;
-  onDone: (outcome: boolean) => void; // outcome = zapisano wynik (tryb seryjny idzie dalej)
-  onLost: (preset?: LostReasonKey) => void;
-  onSmsDraft: () => void;
-  run: (body: Record<string, unknown>, msg: string) => Promise<boolean>;
-  sendSms: (message: string) => Promise<boolean>;
-}) {
-  const [mode, setMode] = useState<"talked" | "callback" | "email" | "postpone" | null>(initialMode);
-  const [reason, setReason] = useState<PostponeReasonKey | "">("");
-  const [note, setNote] = useState("");
-  const [date, setDate] = useState("");
-  const chip = (on: boolean) =>
-    `rounded-[14px] border px-2.5 py-[3px] text-[12px] transition-colors disabled:opacity-40 ${on ? "border-[#0C3450] bg-[#0C3450] text-white" : "border-[#C9D3DC] bg-white hover:border-[#0C3450]"}`;
-  const followUp = nextStepType === "FOLLOW_UP_OFERTY" && followUpNo === 1;
-  // Złote zasady, pkt 3: próby w różne dni i pory — jutro 16:00, potem 8:30.
-  const nextTry = noAnswerCount === 0 ? "jutro 16:00" : noAnswerCount === 1 ? "jutro 8:30" : "jutro 10:00";
-  const noAnswerHint = followUp
-    ? "Bez odpowiedzi na 1. follow-up → 2. follow-up za 7 dni rob."
-    : noAnswerCount >= NO_ANSWER_LIMIT
-      ? `Już ${noAnswerCount} próby bez odebrania — kolejna jutro 10:00, ale lepiej SMS albo przegrana „brak kontaktu” (baner wyżej).`
-      : `Próba ${noAnswerCount + 1} z ${NO_ANSWER_LIMIT}, następna: ${nextTry}${phone && noAnswerTpl ? " (SMS z szablonu idzie od razu)" : ""}.${noAnswerCount + 1 >= NO_ANSWER_LIMIT ? " To ostatnia — potem propozycja przegranej „brak kontaktu”." : ""}`;
-
-  return (
-    <div className="flex flex-col gap-2 border-t border-[var(--c-border)] pt-3">
-      <span className="text-[10px] uppercase tracking-[0.12em] text-[#5C6166]">Wynik kontaktu</span>
-      {unqualified && <p className="-mt-1 text-xs text-[var(--c-muted)]">„Rozmawiam”, „Oddzwoni” i „Wysłałam ofertę” przenoszą kontakt do Klientów jako Potencjalny.</p>}
-      <div className="flex flex-wrap gap-1.5">
-        <button type="button" className={chip(mode === "talked")} onClick={() => setMode(mode === "talked" ? null : "talked")}>
-          Rozmawiam
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          title={noAnswerHint}
-          className={chip(false)}
-          onClick={async () => {
-            const ok = await run({ outcome: "no_answer" }, followUp ? "Bez odpowiedzi — 2. follow-up za 7 dni rob." : `Zapisano: nie odebrała. Następna próba: ${nextTry}.`);
-            if (!ok) return;
-            // Złote zasady, pkt 2: nie odebrała → SMS od razu (szablon „lead_no_answer”).
-            if (!followUp && phone && noAnswerTpl) await sendSms(applySmsPlaceholders(noAnswerTpl.body, { clientName }));
-            else if (!followUp && noAnswerCount + 1 >= NO_ANSWER_LIMIT && phone) return onSmsDraft();
-            onDone(true);
-          }}
-        >
-          {followUp ? "Bez odpowiedzi → 2. follow-up" : `Nie odebrała → ${phone && noAnswerTpl ? "SMS + " : ""}${nextTry}`}
-        </button>
-        <button type="button" className={chip(mode === "callback")} onClick={() => setMode(mode === "callback" ? null : "callback")}>
-          Oddzwoni – termin
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          className={chip(false)}
-          onClick={async () => (await run({ outcome: "offer_sent" }, "Oferta wysłana — follow-up za 3 dni rob.")) && onDone(true)}
-        >
-          Wysłałam ofertę → follow-up +3 dni
-        </button>
-        <button type="button" className={chip(mode === "email")} onClick={() => setMode(mode === "email" ? null : "email")}>
-          Odpowiedziałam mailem
-        </button>
-        <Link
-          href={`/kalendarz/wynajem/nowy?${new URLSearchParams({ ...(requestedFrom ? { date: requestedFrom.slice(0, 10) } : {}), sygnal: leadId }).toString()}`}
-          className={chip(false)}
-          title="Nowy wynajem w kalendarzu powiązany z tym sygnałem → etap Rezerwacja"
-        >
-          Rezerwuje → kalendarz
-        </Link>
-        <button type="button" className={chip(mode === "postpone")} onClick={() => setMode(mode === "postpone" ? null : "postpone")}>
-          Odłóż do…
-        </button>
-        <button type="button" className={chip(false)} onClick={() => onLost()}>
-          Przegrana
-        </button>
-      </div>
-      {mode === "postpone" && (
-        <div className="flex flex-col gap-2">
-          <p className="text-[11.5px] text-[#1B6FA8]">„Odłóż do…”: data powrotu + powód. W dniu powrotu sygnał wraca na listę „Na dziś” („W kontakcie”, krok na dziś).</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <input type="date" className={DATE_INPUT} value={date} onChange={(e) => setDate(e.target.value)} aria-label="Wraca dnia" />
-            <select className={`${INPUT} h-8 w-auto cursor-pointer`} value={reason} onChange={(e) => setReason(e.target.value as PostponeReasonKey | "")} aria-label="Powód">
-              <option value="">— powód —</option>
-              {POSTPONE_REASON_KEYS.map((k) => (
-                <option key={k} value={k}>
-                  {POSTPONE_REASON_LABEL[k]}
-                </option>
-              ))}
-            </select>
-            <input className={`${INPUT} h-8 min-w-0 flex-grow`} placeholder="Notatka (np. „odezwę się jesienią”)" value={note} onChange={(e) => setNote(e.target.value)} />
-            <button
-              type="button"
-              disabled={busy || !date || !reason}
-              className={`${BTN_PRIMARY} h-8`}
-              onClick={async () => (await run({ outcome: "postpone", body: note, nextActionAt: date, postponeReason: reason }, `Odłożone do ${new Date(date).toLocaleDateString("pl-PL")}.`)) && onDone(true)}
-            >
-              Odłóż
-            </button>
-          </div>
-        </div>
-      )}
-      {!mode && <p className="text-[11.5px] text-[#1B6FA8]">{noAnswerHint}</p>}
-
-      {mode === "email" && (
-        <div className="flex flex-wrap items-center gap-2">
-          <input className={`${INPUT} h-8 min-w-0 flex-grow`} placeholder="Co wysłałaś? (np. cennik, oferta na LightSheer)" value={note} onChange={(e) => setNote(e.target.value)} />
-          <button type="button" disabled={busy} className={`${BTN_PRIMARY} h-8`} onClick={async () => (await run({ outcome: "email", body: note }, "Zapisano odpowiedź mailem.")) && onDone(true)}>
-            Zapisz
-          </button>
-        </div>
-      )}
-
-      {mode === "talked" && (
-        <>
-          <textarea autoFocus rows={3} className={`${INPUT} h-auto py-2`} placeholder="Co ustaliłaś? (urządzenie, termin, cena, dojazd…)" value={note} onChange={(e) => setNote(e.target.value)} />
-          <div className="flex flex-wrap items-center gap-3 text-[13px]">
-            {stage === "SYGNAL" && <span className="text-xs text-[var(--c-muted)]">etap → Wywiad</span>}
-            <label className="flex items-center gap-1.5 text-[var(--c-muted)]">
-              następny krok
-              <input type="date" className={DATE_INPUT} value={date} onChange={(e) => setDate(e.target.value)} />
-              {!date && <span className="text-xs">(domyślnie za 2 dni rob.)</span>}
-            </label>
-            <button
-              type="button"
-              disabled={busy}
-              className={`${BTN_PRIMARY} ml-auto h-8`}
-              onClick={async () => (await run({ outcome: "talked", body: note, ...(date ? { nextActionAt: date } : {}) }, "Zapisano rozmowę.")) && onDone(true)}
-            >
-              Zapisz rozmowę
-            </button>
-          </div>
-        </>
-      )}
-
-      {mode === "callback" && (
-        <div className="flex flex-wrap items-center gap-2">
-          <input type="date" className={DATE_INPUT} value={date} onChange={(e) => setDate(e.target.value)} />
-          <input className={`${INPUT} h-8 min-w-0 flex-grow`} placeholder="Notatka (opcjonalnie)" value={note} onChange={(e) => setNote(e.target.value)} />
-          <button
-            type="button"
-            disabled={busy || !date}
-            className={`${BTN_PRIMARY} h-8`}
-            onClick={async () => (await run({ outcome: "callback", body: note, nextActionAt: date }, "Zapisano: oddzwoni.")) && onDone(true)}
-          >
-            Zapisz
-          </button>
-        </div>
-      )}
-    </div>
-  );
+  return `W etapie ${days} ${days === 1 ? "dzień" : "dni"} · ${limit}${rot.rotting ? ` · gnije (${rot.label})` : ""}`;
 }
 
 function SmsBox({

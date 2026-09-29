@@ -216,7 +216,7 @@ export function ClientFullCard({
             )}
           </div>
         )}
-        <CardHeader d={d} backHref={backHref} isAgent={isAgent} onSms={() => setSms((v) => !v)} onTask={() => setTask({ title: "", due: null })} />
+        <CardHeader d={d} backHref={backHref} isAgent={isAgent} onSms={() => setSms((v) => !v)} onTask={() => setTask({ title: "", due: null })} onChanged={() => void reload()} notify={notify} />
         {!d.archive && <FunnelBar d={d} isAgent={isAgent} />}
         {(sms || splitTo || toastEl) && (
           <div className="flex flex-col gap-3 px-4 pb-4 md:px-7">

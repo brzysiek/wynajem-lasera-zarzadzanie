@@ -10,7 +10,6 @@ import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
 import type { ReviewClient } from "@/lib/history/review-load";
 import { api } from "@/components/clients/client-forms";
 import { fmtDate } from "@/components/clients/ui";
-import { useMediaQuery } from "@/components/clients/use-media-query";
 import { LeadCard, type CardIntent } from "./lead-card";
 import { toFunnel, type LinkSuggestion } from "./funnel-views";
 import { Cheatsheet } from "./cheatsheet";
@@ -19,9 +18,12 @@ import type { SeasonGoal } from "@/lib/leads/season-goal";
 import type { Playbook } from "@/lib/leads/playbook";
 import type { DayProgress } from "@/lib/leads/load";
 import { applySmsPlaceholders } from "@/lib/sms-template";
-import { ListView } from "./list-view";
 import { BoardView } from "./board-view";
 import { ReportView } from "./report-view";
+import { TodayQueue } from "./today-queue";
+import { CallOutcomeDialog } from "./call-outcome-dialog";
+import type { SignalTask } from "@/lib/leads/today-extras";
+import type { DeviceInterestKey } from "@/lib/clients/labels";
 import { callQueue } from "@/lib/leads/funnel";
 import { LostDialog, NewLeadDialog } from "./lead-dialogs";
 import { RefreshIcon, fmtRange } from "./lead-ui";
@@ -31,10 +33,11 @@ import { RefreshIcon, fmtRange } from "./lead-ui";
 // kilkaset, więc filtrowanie i widoki liczą się w przeglądarce. Karta: prawa
 // kolumna od 1280 px, poniżej panel wysuwany.
 
-// Lejek v2 (zmiana 28.09 — bez osobnej Skrzynki): Lista (domyślna, filtr
-// „Na dziś” z Planem dnia) · Tablica · Raport. „Dzwoń po kolei” w „Na dziś”.
-type View = "list" | "board" | "report";
-const VIEW_LABEL: Record<View, string> = { list: "Lista", board: "Tablica", report: "Raport" };
+// Wnioski 25 i 27: Tablica (domyślna) · Na dziś (kolejka pracy zamiast
+// Listy) · Raport. Panel pamięta ostatni widok (per użytkownik, w
+// przeglądarce). „Dzwoń po kolei” w „Na dziś”.
+type View = "board" | "today" | "report";
+const VIEW_LABEL: Record<View, string> = { board: "Tablica", today: "Na dziś", report: "Raport" };
 
 
 function csvCell(v: string | number | null): string {
@@ -98,6 +101,8 @@ export function LeadsManager({
   playbook,
   progress,
   seasonGoal,
+  freeByInterest,
+  signalTasks,
   tour,
 }: {
   rows: LeadRow[];
@@ -121,12 +126,34 @@ export function LeadsManager({
   // Skrzynka → „Plan dnia”: dzisiejsze wynajmy, obsłużone dziś, tydzień.
   progress: DayProgress;
   seasonGoal: SeasonGoal;
+  // Na dziś (wniosek 27): wolne terminy urządzeń i zadania przy sygnałach.
+  freeByInterest: Partial<Record<DeviceInterestKey, string[]>>;
+  signalTasks: SignalTask[];
   // Przewodnik po nowych Sygnałach (wniosek 19): czy pokazać i imię (wołacz).
   tour: { show: boolean; name: string };
 }) {
   const router = useRouter();
-  const wide = useMediaQuery("(min-width: 1280px)");
-  const [view, setView] = useState<View>("list");
+  const [view, setViewState] = useState<View>("board");
+  const viewKey = `wl_signals_view:${currentUserId}`;
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(viewKey);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage dostępny dopiero w przeglądarce
+      if (v === "board" || v === "today" || v === "report") setViewState(v);
+    } catch {
+      // brak localStorage — Tablica
+    }
+  }, [viewKey]);
+  const setView = (v: View) => {
+    setViewState(v);
+    try {
+      localStorage.setItem(viewKey, v);
+    } catch {
+      // tylko do odświeżenia
+    }
+  };
+  // Wniosek 24: „Wynik rozmowy” (okno) dla sygnału.
+  const [outcomeFor, setOutcomeFor] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(initialSelectedId);
   const [intent, setIntent] = useState<CardIntent>(null);
   const [showNew, setShowNew] = useState<false | "new" | "mail">(false);
@@ -341,7 +368,7 @@ export function LeadsManager({
           ? undefined
           : () => {
               setSheet(false);
-              setView("list");
+              setView("today");
               setTourOpen(true);
             }
       }
@@ -352,7 +379,7 @@ export function LeadsManager({
 
   return (
     <div style={APP_CSS_VARS} className="text-[var(--c-text)]">
-      <div className={wide && side ? `grid ${sheet ? "grid-cols-[minmax(0,1fr)_480px]" : "grid-cols-[minmax(0,1fr)_420px]"} gap-5` : ""}>
+      <div>
         <div className="flex min-w-0 flex-col gap-[18px]">
           {/* Nagłówek */}
           <div className="flex flex-wrap items-center gap-3">
@@ -375,6 +402,9 @@ export function LeadsManager({
               ))}
             </div>
             <div className="flex-grow" />
+            <button type="button" onClick={() => exportCsv(list)} className="h-[34px] rounded-lg border border-[#C9D3DC] bg-white px-3 text-[13px] text-[#0C3450] hover:border-[var(--c-brand)]" title="Eksport wszystkich sygnałów do CSV">
+              CSV
+            </button>
             <button
               type="button"
               onClick={() => setSheet((v) => !v)}
@@ -457,45 +487,55 @@ export function LeadsManager({
 
               {view === "report" && <ReportView rows={list} now={now} seasonGoal={seasonGoal} playbook={playbook} onOpen={(id: string) => open(id)} />}
 
-              {view === "list" && (
-                <ListView
+              {view === "today" && (
+                <TodayQueue
                   rows={list}
-                  archived={archivedRows}
-                  users={users}
                   now={now}
-                  selectedId={selectedId}
-                  onOpen={(id, i) => open(id, i ?? null)}
-                  onExport={exportCsv}
                   currentUserId={currentUserId}
                   readOnly={readOnly}
-                  progress={progress}
-                  seasonGoal={seasonGoal}
                   playbook={playbook}
-                  suggestions={linkSuggestions}
+                  goal={seasonGoal}
+                  progress={progress}
                   callStats={callStats}
-                  onQuick={quickOutcome}
-                  onLost={(id) => setLostIds([id])}
-                  onLink={(leadId, rentalId) => void linkRental(leadId, rentalId)}
+                  freeByInterest={freeByInterest}
+                  signalTasks={signalTasks}
+                  selectedId={selectedId}
+                  onOpen={(id, i) => open(id, i ?? null)}
+                  onOutcome={(id) => setOutcomeFor(id)}
+                  onChanged={refresh}
                   onSerial={startSerial}
+                  suggestions={linkSuggestions}
+                  onLink={(leadId, rentalId) => void linkRental(leadId, rentalId)}
                 />
               )}
             </>
           )}
         </div>
 
-        {/* Karta sygnału / Ściąga: kolumna (≥1280 px) albo panel wysuwany */}
-        {side &&
-          (wide ? (
-            <aside aria-label={sheet ? "Ściąga" : "Karta sygnału"} className="sticky top-4 h-[calc(100vh-110px)] overflow-hidden rounded-[14px] border border-[var(--c-border)]">
-              {side}
-            </aside>
-          ) : (
-            <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label={sheet ? "Ściąga" : "Karta sygnału"}>
-              <button type="button" aria-label="Zamknij" className="absolute inset-0 bg-black/25" onClick={() => (sheet ? setSheet(false) : close())} />
-              <div className="relative h-full w-full max-w-[480px] shadow-[0_0_40px_rgba(0,0,0,0.2)]">{side}</div>
-            </div>
-          ))}
+        {/* Wniosek 27 C: karta sygnału / Ściąga jako nakładka nad treścią —
+            nie zwęża listy ani kolumn Tablicy; ✕, Esc albo klik obok zamyka. */}
+        {side && (
+          <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label={sheet ? "Ściąga" : "Karta sygnału"}>
+            <button type="button" aria-label="Zamknij" className="absolute inset-0 bg-black/10" onClick={() => (sheet ? setSheet(false) : close())} />
+            <div className="relative h-full w-full max-w-[480px] shadow-[0_0_40px_rgba(0,0,0,0.2)]">{side}</div>
+          </div>
+        )}
       </div>
+
+      {outcomeFor && byId.get(outcomeFor) && (
+        <CallOutcomeDialog
+          lead={(() => {
+            const r = byId.get(outcomeFor)!;
+            return { id: r.id, stage: r.stage, attempts: r.attempts, followUpNo: r.followUpNo, nextStepType: r.nextStepType, phone: r.phone, clientId: r.clientId, clientName: r.clientName ?? r.person, requestedFrom: r.requestedFrom };
+          })()}
+          onClose={() => setOutcomeFor(null)}
+          onDone={() => {
+            setOutcomeFor(null);
+            setToast({ text: "Zapisano wynik rozmowy." });
+            refresh();
+          }}
+        />
+      )}
 
       {tourOpen && !readOnly && (
         <SignalsTour
@@ -506,7 +546,7 @@ export function LeadsManager({
           onFinish={() => void tourDone("done")}
           onLater={() => void tourDone("later")}
           onBeforeStep={() => {
-            if (view !== "list") setView("list");
+            if (view !== "today") setView("today");
             if (selectedId) close();
             setSheet(false);
           }}

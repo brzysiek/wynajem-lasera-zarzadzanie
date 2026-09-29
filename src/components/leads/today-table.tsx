@@ -38,7 +38,7 @@ function meta(r: Row): string {
   return NEXT_STEP_LABEL[(r.nextStepType as NextStepType) ?? "INNE"];
 }
 
-function step(r: Row): string {
+export function step(r: Row): string {
   if (r.spring && r.stage === "WYWIAD" && r.nextStepType === "UMOW_TERMIN") return `umówić termin${r.spring.suggest ? ` · wolne ${d2(new Date(r.spring.suggest))}` : ""}`;
   if (r.stage === "SYGNAL" && !r.firstContactAt) return r.attempts > 0 ? `${r.attempts + 1}. próba${r.nextActionAt && r.nextActionAt.getHours() >= 15 ? " (najlepiej 16–17)" : r.nextActionAt && r.nextActionAt.getHours() < 10 ? " (najlepiej 8–9)" : ""}` : "pierwszy kontakt";
   if (r.stage === "ODLOZONE" || r.nextStepType === "POWROT") return "wraca z odłożonych";
@@ -59,7 +59,7 @@ function SpringNote({ r }: { r: Row }) {
   );
 }
 
-function when(x: TodayItem<Row>, now: Date): { text: string; tone: "late" | "today" } {
+export function when(x: TodayItem<Row>, now: Date): { text: string; tone: "late" | "today" } {
   const r = x.lead;
   if (r.stage === "SYGNAL" && !r.firstContactAt) {
     const rot = rotInfo(r, now);

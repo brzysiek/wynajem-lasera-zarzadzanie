@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { loadClientStatusInfo } from "@/lib/clients/load";
 import type { ClientStatus } from "@/lib/clients/status";
-import { DEVICE_INTEREST_KEYS, type DeviceInterestKey } from "@/lib/clients/labels";
+import { CATEGORY_TO_INTEREST, DEVICE_INTEREST_KEYS, type DeviceInterestKey } from "@/lib/clients/labels";
 import { hubspotDealUrl } from "@/lib/integrations/hubspot-deals";
 import { loadQualifiedMap } from "@/lib/clients/qualify";
 import type { LeadStageKey, LeadTypeKey } from "@/lib/leads/parse-deal";
@@ -12,7 +12,7 @@ import { SPRING_REF_PREFIX } from "@/lib/leads/season-goal";
 import { freeDatesFor } from "@/lib/leads/offer-draft";
 import { loadRentalCandidates, type RentalCandidate } from "@/lib/leads/rental-candidates";
 import { loadOpenTasksFor, type OpenTaskDto } from "@/lib/task-links";
-import { arrivalGapDays, arrivalRhythmLabel } from "@/lib/clients/status";
+import { arrivalDates, arrivalGapDays, arrivalRhythmLabel } from "@/lib/clients/status";
 import { loadUnassignedRentals } from "@/lib/clients/rental-match";
 
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
@@ -59,7 +59,7 @@ const ROW_SELECT = {
   ownerId: true,
   hubspotDealId: true,
   callList: true,
-  client: { select: { name: true, city: true } },
+  client: { select: { name: true, shortName: true, city: true, distanceKm: true, contacts: { orderBy: { isPrimary: "desc" as const }, take: 1, select: { phone: true, email: true } } } },
   clientContact: { select: { firstName: true, lastName: true, phone: true, email: true } },
   owner: { select: { name: true } },
   rental: { select: { startsAt: true, device: { select: { name: true } } } },
@@ -105,6 +105,13 @@ export type LeadRow = {
   returningClient: boolean;
   // Wniosek 24: klient w stanie „Zrezygnował” (poza pulą wiosny i Planem dnia).
   clientResigned: boolean;
+  // Wniosek 27 D: dane z karty klienta, gdy sygnał ich nie ma — km, przyjazdy,
+  // rytm, ostatni wynajem i urządzenie (także podpowiedź urządzenia).
+  clientInfo: { distanceKm: number | null; arrivals: number; rhythm: string | null; lastRentalAt: string | null; lastDevice: string | null; lastInterest: DeviceInterestKey | null } | null;
+  // Wniosek 25: ostatnia notatka / rozmowa (dymek kroku na Tablicy).
+  lastNote: { at: string; by: string | null; body: string } | null;
+  // Wniosek 26: otwarte zadania przy sygnale (znacznik na Tablicy, sekcja Na dziś).
+  tasks: { count: number; first: { id: string; title: string; dueDate: string | null } | null };
   // Wniosek 21: sygnał „wraca z wiosny” (Plan dnia) — ostatni wynajem,
   // rytm i sugerowany wolny termin tego urządzenia; null u pozostałych.
   spring: { lastAt: string | null; device: string | null; rhythm: string | null; suggest: string | null; dueAt: string | null; note: { at: string; by: string | null; body: string } | null } | null;
@@ -133,13 +140,19 @@ function queryRows(where: Parameters<typeof prisma.lead.findMany>[0] extends inf
   return prisma.lead.findMany({ where, orderBy: { createdAt: "desc" }, select: ROW_SELECT });
 }
 
-type Extra = { statuses: Map<string, ClientStatus>; resigned: Set<string>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]>; lastWork: Map<string, Date> };
+type Extra = {
+  clientInfo: Map<string, NonNullable<LeadRow["clientInfo"]>>;
+  lastNote: Map<string, NonNullable<LeadRow["lastNote"]>>;
+  tasks: Map<string, LeadRow["tasks"]>;
+  statuses: Map<string, ClientStatus>;
+  resigned: Set<string>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]>; lastWork: Map<string, Date> };
 
 function toRow(l: RowSource, x: Extra): LeadRow {
   const statuses = x.statuses;
   const person = l.contactName ?? personName(l.clientContact);
-  const phone = l.contactPhone ?? l.clientContact?.phone ?? null;
-  const email = l.contactEmail ?? l.clientContact?.email ?? null;
+  // Wniosek 27 D: gdy sygnał nie ma telefonu / e-maila — z karty klienta.
+  const phone = l.contactPhone ?? l.clientContact?.phone ?? l.client?.contacts[0]?.phone ?? null;
+  const email = l.contactEmail ?? l.clientContact?.email ?? l.client?.contacts[0]?.email ?? null;
   const last = l.activities[0];
   return {
     id: l.id,
@@ -174,6 +187,9 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     returningClient: l.returningClient,
     spring: null,
     clientResigned: l.clientId ? x.resigned.has(l.clientId) : false,
+    clientInfo: l.clientId ? (x.clientInfo.get(l.clientId) ?? null) : null,
+    lastNote: x.lastNote.get(l.id) ?? null,
+    tasks: x.tasks.get(l.id) ?? { count: 0, first: null },
     rentalId: l.rentalId,
     rentalStartsAt: l.rental?.startsAt.toISOString() ?? null,
     rentalDevice: l.rental?.device.name ?? null,
@@ -204,11 +220,66 @@ async function loadExtra(leads: { id: string; clientId: string | null }[]): Prom
     }),
     prisma.client.findMany({ where: { id: { in: clientIds }, resignedAt: { not: null } }, select: { id: true } }),
   ]);
+  const leadIds = leads.map((l) => l.id);
+  const now = new Date();
+  const [lastRentals, lastHistory, clientRows, noteRows, taskRows] = await Promise.all([
+    prisma.rental.findMany({
+      where: { clientId: { in: clientIds }, deletedInGoogle: false, eventType: "WYNAJEM", startsAt: { lte: now } },
+      orderBy: { startsAt: "desc" },
+      distinct: ["clientId"],
+      select: { clientId: true, startsAt: true, device: { select: { name: true, pricingCategory: true } } },
+    }),
+    prisma.rentalHistory.findMany({
+      where: { clientId: { in: clientIds }, kind: "WYNAJEM", matchState: { in: ["AUTO", "CONFIRMED"] } },
+      orderBy: { startsAt: "desc" },
+      distinct: ["clientId"],
+      select: { clientId: true, startsAt: true, device: { select: { name: true, pricingCategory: true } } },
+    }),
+    prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, distanceKm: true } }),
+    prisma.leadActivity.findMany({
+      where: { leadId: { in: leadIds }, type: { in: ["NOTE", "CALL", "SMS", "EMAIL", "CALL_NO_ANSWER"] }, body: { not: null } },
+      orderBy: { createdAt: "desc" },
+      take: 3000,
+      select: { leadId: true, createdAt: true, body: true, user: { select: { name: true } } },
+    }),
+    prisma.task.findMany({
+      where: { status: "OPEN", OR: [{ leadId: { in: leadIds } }, { links: { some: { kind: "LEAD", refId: { in: leadIds } } } }] },
+      orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+      select: { id: true, title: true, dueDate: true, leadId: true, links: { where: { kind: "LEAD" }, select: { refId: true } } },
+    }),
+  ]);
+  const clientInfo = new Map<string, NonNullable<LeadRow["clientInfo"]>>();
+  for (const c of clientRows) {
+    const realized = info.get(c.id)?.realized ?? [];
+    const lr = lastRentals.find((r) => r.clientId === c.id);
+    const lh = lastHistory.find((h) => h.clientId === c.id);
+    const last = lr && (!lh || lr.startsAt >= lh.startsAt) ? lr : (lh ?? null);
+    clientInfo.set(c.id, {
+      distanceKm: c.distanceKm != null ? Number(c.distanceKm.toString()) : null,
+      arrivals: arrivalDates(realized).length,
+      rhythm: arrivalRhythmLabel(realized),
+      lastRentalAt: last?.startsAt.toISOString() ?? null,
+      lastDevice: last?.device.name ?? null,
+      lastInterest: last?.device.pricingCategory ? ((CATEGORY_TO_INTEREST[last.device.pricingCategory] as DeviceInterestKey | undefined) ?? null) : null,
+    });
+  }
+  const lastNote = new Map<string, NonNullable<LeadRow["lastNote"]>>();
+  for (const n of noteRows) {
+    if (!n.leadId || lastNote.has(n.leadId) || !n.body?.trim()) continue;
+    lastNote.set(n.leadId, { at: n.createdAt.toISOString(), by: n.user?.name ?? null, body: n.body.trim().slice(0, 240) });
+  }
+  const tasks = new Map<string, LeadRow["tasks"]>();
+  for (const t of taskRows) {
+    for (const lid of new Set([t.leadId, ...t.links.map((l) => l.refId)].filter((x): x is string => !!x && leadIds.includes(x)))) {
+      const cur = tasks.get(lid) ?? { count: 0, first: null };
+      tasks.set(lid, { count: cur.count + 1, first: cur.first ?? { id: t.id, title: t.title, dueDate: t.dueDate ? t.dueDate.toISOString().slice(0, 10) : null } });
+    }
+  }
   const lastWork = new Map(workRows.filter((r) => r._max.createdAt).map((r) => [r.leadId as string, r._max.createdAt as Date]));
   const stageBodies = new Map<string, (string | null)[]>();
   for (const a of stageRows) stageBodies.set(a.leadId!, [...(stageBodies.get(a.leadId!) ?? []), a.body]);
   const statuses = new Map([...info].map(([id, x]) => [id, x.status]));
-  return { statuses, resigned: new Set(resignedRows.map((r) => r.id)), qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies, lastWork };
+  return { clientInfo, lastNote, tasks, statuses, resigned: new Set(resignedRows.map((r) => r.id)), qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies, lastWork };
 }
 
 export async function loadLeadRows(): Promise<LeadRow[]> {

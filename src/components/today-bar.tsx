@@ -36,7 +36,7 @@ export function TodayBar({
 }) {
   return (
     <div className={`bg-[#2B5B82] px-4 py-2.5 ${className}`}>
-      <div className={`grid items-center gap-2 ${right ? "xl:grid-cols-[minmax(0,1fr)_260px]" : ""}`}>
+      <div className={`grid items-center gap-2 ${right ? "2xl:grid-cols-[minmax(0,1fr)_260px]" : ""}`}>
           <div className="grid items-center gap-2 md:grid-cols-[150px_repeat(var(--today-cols),minmax(0,1fr))]" style={{ ["--today-cols" as string]: String(tiles.length) }}>
             <div className="flex flex-col text-white">
               <span className="text-[15px] font-semibold leading-tight">{title}</span>
@@ -55,7 +55,7 @@ export function TodayBar({
                 >
                   <span className="text-[22px] font-semibold leading-none text-white">{t.n}</span>
                   <span className="flex min-w-0 flex-col">
-                    <span className={`truncate ${LABEL_WIDE} text-[#BFD6EA]`}>{t.label}</span>
+                    <span className={`line-clamp-2 leading-tight ${LABEL_WIDE} text-[#BFD6EA]`} title={t.label}>{t.label}</span>
                     <span className="truncate text-[12px] text-[#DCE8F2]">{t.sub}</span>
                   </span>
                 </button>

@@ -56,14 +56,14 @@ export function SignalsTour({
     },
     {
       target: "today-table",
-      title: "Lista „Na dziś”",
+      title: "Zakładka „Na dziś”",
       maxHeight: 290,
       body: (
         <>
           <p>
             Tylko to, czym trzeba zająć się dziś – od najpilniejszego. <b className="text-[#B8612F]">Terakota = po czasie.</b>
           </p>
-          <p>Nowe zapytanie? Zadzwoń w ciągu 4 godzin – wtedy szansa na rozmowę jest wielokrotnie większa.</p>
+          <p>Kliknięcie karty rozwija ją na miejscu (oś czasu, historia). Nowe zapytanie? Zadzwoń w ciągu 4 godzin – wtedy szansa na rozmowę jest wielokrotnie większa.</p>
         </>
       ),
     },
@@ -73,10 +73,10 @@ export function SignalsTour({
       body: (
         <>
           <p>
-            <b className="text-[#0C3450]">Rozmawiałam</b> – zapytanie przechodzi do „W kontakcie”, a osoba staje się Potencjalną klientką.
+            <b className="text-[#0C3450]">Wynik rozmowy</b> – wybierasz, jak poszło (umówiła termin, nie odebrała, oddzwoni, później, oferta, rezygnuje), a panel sam ustawia etap i następny krok.
           </p>
           <p>
-            <b className="text-[#0C3450]">Nie odebrała → SMS</b> – SMS z szablonu i kolejna próba jutro same się ustawią. Oferta wysłana z kontakt@ też przesunie się sama.
+            <b className="text-[#0C3450]">Nie odebrała</b> – SMS z szablonu i kolejna próba jutro same się ustawią. Oferta wysłana z kontakt@ też przesunie się sama.
           </p>
         </>
       ),
@@ -90,7 +90,7 @@ export function SignalsTour({
             <b className="text-[#0C3450]">Tablica</b> to ten sam lejek w kolumnach: Nowe → W kontakcie → Oferta → Rezerwacja. Karty przeciągasz albo klikasz przyciski.
           </p>
           <p>
-            Filtr <b className="text-[#0C3450]">„Wszystkie aktywne”</b> pokazuje pełną listę zapytań. <b className="text-[#0C3450]">„Odłożone”</b> – te, które wrócą w swoim dniu.
+            Filtry <b className="text-[#0C3450]">„Odłożone”</b> (wrócą w swoim dniu) i <b className="text-[#0C3450]">„Przegrane”</b> są na Tablicy. Najedź na termin kroku – zobaczysz notatkę i ostatni kontakt.
           </p>
         </>
       ),
@@ -180,7 +180,7 @@ export function SignalsTour({
           <p>Sygnały mają nową odsłonę – prostszą i z podpowiedziami. Pokażę Ci 5 rzeczy, zajmie to minutę.</p>
           <ul className="ml-[18px] mt-2.5 list-disc text-[#3A4450]">
             <li className="my-[3px]">Plan dnia i Twój cel sezonu</li>
-            <li className="my-[3px]">Lista „Na dziś” – od najpilniejszego</li>
+            <li className="my-[3px]">„Na dziś” – kolejka od najpilniejszego</li>
             <li className="my-[3px]">Jedno kliknięcie zamiast notatek</li>
             <li className="my-[3px]">Tablica – lejek jako kolumny</li>
             <li className="my-[3px]">Ściąga – zasady i gotowe teksty</li>

@@ -155,12 +155,15 @@ const whenLabel = (d: Date) => d.toLocaleString("pl-PL", { weekday: "short", day
 // follow-upy wg reguł lejka (src/lib/leads/funnel.ts — planOutcome).
 export async function logLeadActivity(
   id: string,
-  input: { outcome: CallOutcome; body: string | null; nextActionAt?: Date | null; stage?: LeadStageKey; postponeReason?: PostponeReasonKey | null },
+  // Wniosek 24: kanał kontaktu (telefon / SMS / mail) i rodzaj kroku
+  // („Oddzwoni / przemyśli” → ODDZWONI albo DOPYTAC).
+  input: { outcome: CallOutcome; body: string | null; nextActionAt?: Date | null; stage?: LeadStageKey; postponeReason?: PostponeReasonKey | null; channel?: "telefon" | "sms" | "mail"; stepType?: "ODDZWONI" | "DOPYTAC" | "UMOW_TERMIN" | "INNE" },
   userId: string,
 ) {
   const lead = await getLead(id);
   const now = new Date();
-  const type = input.outcome === "note" ? "NOTE" : input.outcome === "no_answer" ? "CALL_NO_ANSWER" : input.outcome === "email" ? "EMAIL" : "CALL";
+  const type =
+    input.outcome === "note" ? "NOTE" : input.outcome === "no_answer" ? "CALL_NO_ANSWER" : input.outcome === "email" || input.channel === "mail" ? "EMAIL" : input.channel === "sms" ? "SMS" : "CALL";
   if (type === "NOTE" && !input.body) throw new LeadError("Notatka nie może być pusta.");
   if (input.outcome === "callback" && !input.nextActionAt) throw new LeadError("Wybierz termin, kiedy oddzwoni.");
   if (input.outcome === "postpone" && (!input.nextActionAt || input.nextActionAt <= now)) throw new LeadError("Odłóż do: wybierz datę powrotu (od jutra).");
@@ -176,9 +179,10 @@ export async function logLeadActivity(
       if (!lead.firstContactAt) data.firstContactAt = now;
       data.lastContactAt = now;
     }
-    Object.assign(data, { nextActionAt: plan.nextActionAt, nextStepType: plan.nextStepType, nextStepNote: plan.nextStepNote, attempts: plan.attempts, followUpNo: plan.followUpNo });
+    const stepType = input.stepType && (input.outcome === "talked" || input.outcome === "callback") ? input.stepType : plan.nextStepType;
+    Object.assign(data, { nextActionAt: plan.nextActionAt, nextStepType: stepType, nextStepNote: plan.nextStepNote ?? (input.stepType && input.body ? input.body.slice(0, 500) : null), attempts: plan.attempts, followUpNo: plan.followUpNo });
     stageTo = stageTo ?? (plan.stage && plan.stage !== lead.stage ? plan.stage : null);
-    const next = plan.nextActionAt ? ` Następny krok: ${NEXT_STEP_LABEL[plan.nextStepType as NextStepType]}, ${whenLabel(plan.nextActionAt)}.` : "";
+    const next = plan.nextActionAt ? ` Następny krok: ${NEXT_STEP_LABEL[stepType as NextStepType]}, ${whenLabel(plan.nextActionAt)}.` : "";
     if (input.outcome === "postpone") Object.assign(data, { returnAt: plan.nextActionAt, postponeReason: input.postponeReason });
     const head =
       input.outcome === "postpone"

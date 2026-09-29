@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireClientsPageAccess } from "@/lib/clients/page-access";
 import { loadSeasonGoal } from "@/lib/leads/season-goal-load";
+import { loadFreeByInterest, loadSignalTasks } from "@/lib/leads/today-extras";
 import { loadArchived2025Rows, loadDayProgress, loadLeadRows, loadLinkSuggestions, loadStaffUsers, todayCallStats } from "@/lib/leads/load";
 import { syncLeadsWithRentalsSafe } from "@/lib/leads/rental-link";
 import { lastDealsSync } from "@/lib/leads/hubspot-sync";
@@ -35,7 +36,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     loadDayProgress(),
     session.user.role === "AGENT" ? false : shouldShowTour(session.user.id, "signalsV2"),
   ]);
-  const seasonGoal = await loadSeasonGoal(playbook.season);
+  const [seasonGoal, freeByInterest, signalTasks] = await Promise.all([loadSeasonGoal(playbook.season), loadFreeByInterest().catch(() => ({})), loadSignalTasks()]);
   return (
     <LeadsManager
       rows={rows}
@@ -57,6 +58,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       playbook={playbook}
       progress={progress}
       seasonGoal={seasonGoal}
+      freeByInterest={freeByInterest}
+      signalTasks={signalTasks}
       tour={{ show: showTour, name: vocative(session.user.name ?? "") }}
     />
   );

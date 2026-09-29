@@ -4,7 +4,8 @@ import { BASE_PATH } from "@/lib/base-path";
 import { useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import type { ClientDetail } from "@/lib/clients/load";
-import { CLINIC_TYPE_LABEL, STATUS_LABEL } from "@/lib/clients/labels";
+import { CLINIC_TYPE_LABEL, RESIGN_REASON_KEYS, RESIGN_REASON_LABEL, STATUS_LABEL, type ResignReasonKey } from "@/lib/clients/labels";
+import { CallOutcomeDialog } from "@/components/leads/call-outcome-dialog";
 import { PERSON_ROLE_LABEL, type PersonRole } from "@/lib/clients/profile-fields";
 import { monthsLabel } from "@/lib/clients/rhythm";
 import { AgentModeContext, INPUT, api } from "../client-forms";
@@ -23,13 +24,26 @@ export function CardHeader({
   isAgent,
   onSms,
   onTask,
+  onChanged,
+  notify,
 }: {
   d: ClientDetail;
   backHref: string;
   isAgent: boolean;
   onSms: () => void;
   onTask: () => void;
+  // Wniosek 24: po „Wynik rozmowy” / „Zrezygnował” — świeże dane karty.
+  onChanged?: () => void;
+  notify?: (text: string, error?: boolean) => void;
 }) {
+  const [outcome, setOutcome] = useState(false);
+  const [resigning, setResigning] = useState(false);
+  const openLead = d.leads.find((l) => !l.archived && ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "ODLOZONE"].includes(l.stage)) ?? null;
+  async function undoResign() {
+    const { ok } = await api(`/api/clients/${d.id}/resign`, "DELETE");
+    notify?.(ok ? "Cofnięto „Zrezygnował”." : "Nie udało się cofnąć.", !ok);
+    if (ok) onChanged?.();
+  }
   const primary = d.contacts.find((c) => c.isPrimary) ?? d.contacts[0] ?? null;
   const email = d.contacts.find((c) => c.isPrimary && c.email)?.email ?? d.contacts.find((c) => c.email)?.email ?? null;
   const hasSms = d.contacts.some((c) => c.phone || c.phone2);
@@ -81,6 +95,31 @@ export function CardHeader({
             ) : (
               <span className="flex-none border border-dashed border-[#C3C4C7] px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] text-[#5C6166]" title="Kontakt z zapytania — jeszcze bez rozmowy ani korespondencji (lejek v2)">Kontakt</span>
             )}
+            {d.resigned && (
+              <span
+                className="flex-none bg-[#FBF0E7] px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] text-[#B8612F]"
+                title={[
+                  `Zrezygnował ${new Date(d.resigned.at).toLocaleDateString("pl-PL")}`,
+                  d.resigned.reason ? RESIGN_REASON_LABEL[d.resigned.reason as ResignReasonKey] ?? d.resigned.reason : null,
+                  d.resigned.note,
+                  d.resigned.recontactAt ? `ponowny kontakt ${new Date(d.resigned.recontactAt).toLocaleDateString("pl-PL")}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              >
+                Zrezygnował
+              </span>
+            )}
+            {!isAgent &&
+              (d.resigned ? (
+                <button type="button" onClick={() => void undoResign()} className="flex-none text-[12px] text-[#5C6166] underline-offset-2 hover:text-[#1B6FA8] hover:underline">
+                  cofnij
+                </button>
+              ) : (
+                <button type="button" onClick={() => setResigning(true)} className="flex-none text-[12px] text-[#8A939B] underline-offset-2 hover:text-[#B8612F] hover:underline" title="Stan klienta „Zrezygnował” — poza kampaniami przed sezonem i przypomnieniami o rytmie">
+                  zrezygnował?
+                </button>
+              ))}
           </div>
           {d.profile.shortName && d.profile.shortName !== d.name && <div className="truncate text-[13px] text-[#5C6166]" title={d.name}>{d.name}</div>}
           <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[13px] text-[#4A4A4A]">
@@ -100,6 +139,11 @@ export function CardHeader({
           ) : (
             <button type="button" disabled className={BTN_OUTLINE}>
               Zadzwoń
+            </button>
+          )}
+          {!isAgent && openLead && (
+            <button type="button" onClick={() => setOutcome(true)} className={BTN_OUTLINE} title={`Otwarty sygnał: ${openLead.title}`}>
+              Wynik rozmowy
             </button>
           )}
           {!isAgent && (
@@ -125,6 +169,95 @@ export function CardHeader({
               Nowa rezerwacja →
             </Link>
           )}
+        </div>
+      </div>
+      {outcome && openLead && (
+        <CallOutcomeDialog
+          lead={{
+            id: openLead.id,
+            stage: openLead.stage,
+            attempts: openLead.attempts,
+            followUpNo: openLead.followUpNo,
+            nextStepType: openLead.nextStepType,
+            phone: primary?.phone ?? null,
+            clientId: d.id,
+            clientName: d.profile.shortName ?? d.name,
+            requestedFrom: openLead.requestedFrom,
+          }}
+          onClose={() => setOutcome(false)}
+          onDone={() => {
+            setOutcome(false);
+            notify?.("Zapisano wynik rozmowy.");
+            onChanged?.();
+          }}
+        />
+      )}
+      {resigning && (
+        <ResignDialog
+          clientId={d.id}
+          onClose={() => setResigning(false)}
+          onDone={() => {
+            setResigning(false);
+            notify?.("Klient oznaczony: Zrezygnował.");
+            onChanged?.();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Wniosek 24: „Zrezygnował” — powód, notatka, opcjonalny ponowny kontakt
+// (w tym dniu powstaje zadanie). To nie „Nie kontaktować”.
+function ResignDialog({ clientId, onClose, onDone }: { clientId: string; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState<ResignReasonKey>("INNE");
+  const [note, setNote] = useState("");
+  const [recontact, setRecontact] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  async function save() {
+    setBusy(true);
+    const { ok, data } = await api<{ message?: string }>(`/api/clients/${clientId}/resign`, "POST", { reason, note: note.trim() || null, recontactAt: recontact || null });
+    setBusy(false);
+    if (!ok) return setError(data.message ?? "Nie udało się zapisać.");
+    onDone();
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="flex w-full max-w-md flex-col gap-3 bg-white p-5" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Zrezygnował">
+        <h2 className="m-0 text-[17px] font-semibold text-[#0C3450]">Zrezygnował</h2>
+        <p className="m-0 text-[12.5px] text-[#5C6166]">Poza kampanią przed sezonem, pulą wiosny, przypomnieniami o rytmie i Planem dnia. Nowy wynajem sam zdejmie ten stan.</p>
+        <label className={LABEL_WIDE}>
+          Powód
+          <select className={INPUT} value={reason} onChange={(e) => setReason(e.target.value as ResignReasonKey)}>
+            {RESIGN_REASON_KEYS.map((k) => (
+              <option key={k} value={k}>
+                {RESIGN_REASON_LABEL[k]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={LABEL_WIDE}>
+          Notatka
+          <textarea rows={2} className={`${INPUT} h-auto py-2`} value={note} onChange={(e) => setNote(e.target.value)} />
+        </label>
+        <label className={LABEL_WIDE}>
+          Ponowny kontakt (opcjonalnie)
+          <input type="date" className={INPUT} value={recontact} onChange={(e) => setRecontact(e.target.value)} />
+        </label>
+        {error && <p className="m-0 text-[12.5px] text-[#B8612F]">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className={BTN_OUTLINE}>
+            Anuluj
+          </button>
+          <button type="button" disabled={busy} onClick={() => void save()} className={BTN_PRIMARY}>
+            Zapisz
+          </button>
         </div>
       </div>
     </div>

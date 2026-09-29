@@ -46,7 +46,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const text = typeof body?.body === "string" ? body.body.trim().slice(0, 5000) || null : null;
   try {
     const postponeReason = POSTPONE_REASON_KEYS.includes(body?.postponeReason) ? (body.postponeReason as PostponeReasonKey) : null;
-    await logLeadActivity(id, { outcome, body: text, nextActionAt: next, stage, postponeReason }, session.user.id);
+    const channel = body?.channel === "sms" || body?.channel === "mail" || body?.channel === "telefon" ? (body.channel as "telefon" | "sms" | "mail") : undefined;
+    const stepType = ["ODDZWONI", "DOPYTAC", "UMOW_TERMIN", "INNE"].includes(body?.stepType) ? (body.stepType as "ODDZWONI" | "DOPYTAC" | "UMOW_TERMIN" | "INNE") : undefined;
+    await logLeadActivity(id, { outcome, body: text, nextActionAt: next, stage, postponeReason, channel, stepType }, session.user.id);
     logInfo("lead_activity_logged", { userId: session.user.id, leadId: id, outcome });
     return NextResponse.json(await loadLeadDetail(id));
   } catch (err) {
