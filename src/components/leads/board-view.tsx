@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { BASE_PATH } from "@/lib/base-path";
 import Link from "next/link";
 import type { LeadRow } from "@/lib/leads/load";
 import { BOARD_STAGES, LOST_REASON_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
@@ -75,6 +76,126 @@ function stepTip(r: LeadRow, d: { late: boolean; today: boolean }): string[] {
   return lines;
 }
 
+// Wniosek 33: chip „następnego kroku” na karcie Tablicy — ikona rodzaju,
+// nazwa, data i ▾; kolor = pilność (terakota zaległe, niebieski dziś, szary
+// później). Najechanie = skrót (dymek), klik / dotyk = panel pod chipem z
+// notatką i przyciskami Wynik rozmowy · Zmień termin · Otwórz.
+const STEP_ICON: Record<string, string> = {
+  PIERWSZY_KONTAKT: "📞",
+  PONOWNA_PROBA: "📞",
+  FOLLOW_UP_OFERTY: "✉️",
+  ODDZWONI: "☎️",
+  DOPYTAC: "💬",
+  POWROT: "↩️",
+  UMOW_TERMIN: "📅",
+  INNE: "•",
+};
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+function StepChip({
+  r,
+  d,
+  now,
+  open,
+  onToggle,
+  readOnly,
+  onOutcome,
+  onOpen,
+  onChanged,
+  tourTarget = false,
+}: {
+  r: LeadRow;
+  d: { text: string; late: boolean; today: boolean };
+  now: Date;
+  open: boolean;
+  onToggle: () => void;
+  readOnly: boolean;
+  onOutcome: (id: string) => void;
+  onOpen: (id: string) => void;
+  onChanged: () => void;
+  tourTarget?: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const kindKey = (r.nextStepType ?? (r.stage === "SYGNAL" && !r.firstContactAt ? "PIERWSZY_KONTAKT" : "INNE")) as NextStepType;
+  const kind = NEXT_STEP_LABEL[kindKey] ?? "kolejny krok";
+  const Kind = kind.charAt(0).toUpperCase() + kind.slice(1);
+  const at = r.nextActionAt ? new Date(r.nextActionAt) : null;
+  const dateTxt = r.stage === "REZERWACJA" ? d.text : !at ? "brak terminu" : at.toDateString() === now.toDateString() ? "dziś" : d2(r.nextActionAt!);
+  const label = r.stage === "REZERWACJA" ? d.text : `${Kind} · ${dateTxt}`;
+  const tone = d.late ? "border-[#E6CDB8] bg-[#FBF0E7] text-[#B8612F]" : d.today ? "border-[#BFD8EC] bg-[#EAF4FB] text-[#1B6FA8]" : "border-[#E3E6E9] bg-[#F4F6F8] text-[#5C6166]";
+  async function reschedule(day: string) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(`${BASE_PATH}/api/leads/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nextActionAt: day }) });
+    setBusy(false);
+    if (!res.ok) return setError(((await res.json().catch(() => ({}))) as { message?: string }).message ?? "Nie udało się zmienić terminu.");
+    onChanged();
+  }
+  const lines = stepTip(r, d);
+  const BTN = "h-6 rounded-[5px] border border-[#C9D3DC] bg-white px-2 text-[11px] text-[#0C3450] hover:border-[#1B6FA8] disabled:opacity-40";
+  return (
+    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+      <span className="group relative inline-flex max-w-full" data-tour={tourTarget ? "step-chip" : undefined}>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className={`inline-flex max-w-full items-center gap-1 truncate rounded-full border px-2 py-[2px] text-[11.5px] font-semibold tabular-nums ${tone}`}
+        >
+          <span aria-hidden>{STEP_ICON[kindKey] ?? "•"}</span>
+          <span className="truncate">{label}</span>
+          <span aria-hidden className="text-[9px]">{open ? "▴" : "▾"}</span>
+        </button>
+        {!open && (
+          <span role="tooltip" className="pointer-events-none absolute bottom-full left-0 z-20 mb-1 hidden w-[240px] flex-col gap-0.5 bg-[#0C3450] px-2.5 py-2 text-left text-[11.5px] font-normal leading-snug text-white shadow-lg group-hover:flex">
+            {lines.map((l, i) => (
+              <span key={i} className={i === 0 ? "font-semibold" : "text-[#D6E4EF] [overflow-wrap:anywhere]"}>
+                {l}
+              </span>
+            ))}
+          </span>
+        )}
+      </span>
+      {open && (
+        <div className="mt-1 flex flex-col gap-1 border border-[#E3E6E9] bg-[#F9FAFB] px-2 py-1.5 text-[11.5px] text-[#2A3540]">
+          {lines.map((l, i) => (
+            <span key={i} className={i === 0 ? "font-semibold text-[#0C3450]" : "whitespace-pre-line [overflow-wrap:anywhere]"}>
+              {l}
+            </span>
+          ))}
+          {r.nextStepNote && r.nextStepNote.includes("\n") && <span className="whitespace-pre-line text-[#5C6166]">{r.nextStepNote}</span>}
+          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+            {!readOnly && (
+              <button type="button" className="h-6 rounded-[5px] bg-[#1B6FA8] px-2 text-[11px] font-semibold text-white hover:bg-[#0C3450]" onClick={() => onOutcome(r.id)}>
+                Wynik rozmowy
+              </button>
+            )}
+            {!readOnly && (
+              <label className="inline-flex items-center gap-1">
+                <span className="text-[11px] text-[#5C6166]">Zmień termin</span>
+                <input
+                  type="date"
+                  disabled={busy}
+                  defaultValue={at ? ymd(at) : ""}
+                  min={ymd(now)}
+                  onChange={(e) => e.target.value && void reschedule(e.target.value)}
+                  className="h-6 rounded-[5px] border border-[#C9D3DC] px-1 text-[11px]"
+                  aria-label="Nowy termin kroku"
+                />
+              </label>
+            )}
+            <button type="button" className={BTN} onClick={() => onOpen(r.id)}>
+              Otwórz
+            </button>
+          </div>
+          {error && <span className="text-[#B8612F]">{error}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Tip({ lines, children, label }: { lines: string[]; children: React.ReactNode; label: string }) {
   const [on, setOn] = useState(false);
   return (
@@ -117,6 +238,8 @@ export function BoardView({
   onLost,
   onQuick,
   onPostpone,
+  onOutcome,
+  onChanged,
   canArchive2025 = false,
 }: {
   rows: LeadRow[];
@@ -130,10 +253,15 @@ export function BoardView({
   onLost: (id: string) => void;
   onQuick: (id: string, outcome: "talked" | "offer_sent") => Promise<void>;
   onPostpone: (id: string) => void;
+  // Wniosek 33: panel pod chipem kroku.
+  onOutcome: (id: string) => void;
+  onChanged: () => void;
   canArchive2025?: boolean;
 }) {
   const [period, setPeriod] = useState<Period>("30");
   const [show, setShow] = useState<Show>("active");
+  const [stepOpen, setStepOpen] = useState<string | null>(null);
+
   const [owner, setOwner] = useState<Owner>("all");
   const old2025 = rows.filter((r) => ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"].includes(r.stage) && new Date(r.createdAt) < FUNNEL_FROM).length;
   const [dragId, setDragId] = useState<string | null>(null);
@@ -150,6 +278,14 @@ export function BoardView({
     const base = period === "archive" ? archived : rows.filter((r) => new Date(r.createdAt) >= FUNNEL_FROM && touched(r));
     return owner === "all" ? base : base.filter((r) => r.ownerId === ownerId);
   }, [rows, archived, period, periodFrom, owner, ownerId]);
+  // Przewodnik „Co nowego” (wniosek 33) wskazuje chip pierwszej widocznej karty.
+  const firstChipId = (() => {
+    for (const st of BOARD_STAGES) {
+      const col = scoped.filter((r) => r.stage === st).sort((a, b) => (a.nextActionAt ?? "9999").localeCompare(b.nextActionAt ?? "9999"));
+      if (col[0]) return col[0].id;
+    }
+    return null;
+  })();
   const [busy, setBusy] = useState<string | null>(null);
   async function quick(id: string, outcome: "talked" | "offer_sent") {
     setBusy(id);
@@ -206,6 +342,18 @@ export function BoardView({
                             : `${TYPE_LABEL[r.type]} · ${ago(r.createdAt, now)}`}
                       </div>
                       {r.nextStepNote && <div className="mt-0.5 truncate text-[11.5px] text-[#2A3540]" title={r.nextStepNote}>{r.nextStepNote.split("\n")[0]}</div>}
+                      <StepChip
+                        r={r}
+                        d={d}
+                        now={now}
+                        open={stepOpen === r.id}
+                        onToggle={() => setStepOpen((v) => (v === r.id ? null : r.id))}
+                        readOnly={readOnly}
+                        onOutcome={onOutcome}
+                        onOpen={(id) => onOpen(id)}
+                        onChanged={onChanged}
+                        tourTarget={r.id === firstChipId}
+                      />
                       <div className="mt-1.5 flex items-center justify-between gap-2 text-[11.5px]">
                         <Avatar name={r.ownerName} />
                         <span className="flex items-center gap-1.5">
@@ -215,9 +363,6 @@ export function BoardView({
                             </Tip>
                           )}
                           {r.attempts > 0 && <Dots attempts={r.attempts} />}
-                          <Tip label="Następny krok" lines={stepTip(r, d)}>
-                            <span className={`cursor-help tabular-nums ${d.late ? "font-semibold text-[#B8612F]" : d.today ? "font-semibold text-[#1B6FA8]" : "text-[#5C6166]"}`}>{d.text}</span>
-                          </Tip>
                         </span>
                       </div>
                       {!readOnly && period !== "archive" && r.stage !== "PRZEGRANA" && (

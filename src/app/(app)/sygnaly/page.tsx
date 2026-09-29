@@ -28,13 +28,14 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       select: { id: true, name: true, city: true, contacts: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true } } },
     }),
   ]);
-  const [linkSuggestions, callStats, archivedRows, playbook, progress, showTour] = await Promise.all([
+  const [linkSuggestions, callStats, archivedRows, playbook, progress, showTour, showTourV3] = await Promise.all([
     loadLinkSuggestions(rows),
     todayCallStats(),
     loadArchived2025Rows(),
     loadPlaybook(),
     loadDayProgress(),
     session.user.role === "AGENT" ? false : shouldShowTour(session.user.id, "signalsV2"),
+    session.user.role === "AGENT" ? false : shouldShowTour(session.user.id, "signalsV3"),
   ]);
   const [seasonGoal, freeByInterest, signalTasks] = await Promise.all([loadSeasonGoal(playbook.season), loadFreeByInterest().catch(() => ({})), loadSignalTasks()]);
   return (
@@ -60,7 +61,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       seasonGoal={seasonGoal}
       freeByInterest={freeByInterest}
       signalTasks={signalTasks}
-      tour={{ show: showTour, name: vocative(session.user.name ?? "") }}
+      tour={{ show: showTour, showV3: showTourV3, name: vocative(session.user.name ?? "") }}
     />
   );
 }

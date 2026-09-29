@@ -23,6 +23,7 @@ export function CalendarQueuesBar() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [showLater, setShowLater] = useState(false);
   useEffect(() => {
     let alive = true;
     fetch(`${BASE_PATH}/api/calendar/queues`, { cache: "no-store" })
@@ -55,10 +56,11 @@ export function CalendarQueuesBar() {
   }
   if (!queues) return null;
   const total = queues.reduce((s, q) => s + q.items.length, 0);
-  const sub = (q: CalendarQueue) => (q.items[0] ? `najbliższa ${d2(q.items[0].startsAt)}` : "wszystko dopięte");
+  const sub = (q: CalendarQueue) => (q.items[0] ? `najbliższa ${d2(q.items[0].startsAt)}` : q.later?.length ? `dalsze: ${q.later.length}` : "wszystko dopięte");
   const current = queues.find((q) => q.key === open);
   return (
     <TodayBar
+      compact
       className="mb-4"
       title="Do dopięcia"
       dateLabel={total ? `${total} ${total === 1 ? "sprawa" : "spraw"} przy rezerwacjach` : "wszystko dopięte"}
@@ -67,7 +69,10 @@ export function CalendarQueuesBar() {
         ...(titles && titles.length ? [{ key: "titles", label: "Tytuł ≠ nazwa robocza", n: titles.length, sub: "zamień jednym kliknięciem" }] : []),
       ]}
       active={open}
-      onToggle={setOpen}
+      onToggle={(k) => {
+        setOpen(k);
+        setShowLater(false);
+      }}
     >
       {open === "titles" && titles && (
         <div className="mt-2 border-t border-white/20 pt-2 text-[13px] text-white">
@@ -105,18 +110,27 @@ export function CalendarQueuesBar() {
         </div>
       )}
       {current && (
-        <ul className="m-0 mt-2 flex max-h-[320px] list-none flex-col gap-1 overflow-y-auto border-t border-white/20 p-0 pt-2 text-[13px] text-white">
-          {current.items.map((i) => (
-            <li key={i.rentalId}>
-              <Link href={`/kalendarz?wynajem=${i.rentalId}`} className="flex flex-wrap items-baseline gap-x-2 hover:underline">
-                <span className="tabular-nums text-[#BFD6EA]">{d2(i.startsAt)}</span>
-                <span className="font-semibold">{i.title}</span>
-                {i.device && <span className="text-[#DCE8F2]">{i.device}</span>}
-                <span className="text-[#F3C9AE]">{i.note}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div className="mt-2 border-t border-white/20 pt-2 text-[13px] text-white">
+          <ul className="m-0 flex max-h-[320px] list-none flex-col gap-1 overflow-y-auto p-0">
+            {[...current.items, ...(showLater ? (current.later ?? []) : [])].map((i) => (
+              <li key={i.rentalId}>
+                <Link href={`/kalendarz?wynajem=${i.rentalId}`} className="flex flex-wrap items-baseline gap-x-2 hover:underline">
+                  <span className="tabular-nums text-[#BFD6EA]">{d2(i.startsAt)}</span>
+                  <span className="font-semibold">{i.title}</span>
+                  {i.device && <span className="text-[#DCE8F2]">{i.device}</span>}
+                  <span className="text-[#F3C9AE]">{i.note}</span>
+                </Link>
+              </li>
+            ))}
+            {current.items.length === 0 && !showLater && <li className="text-[#DCE8F2]">W najbliższych dniach nic do dopięcia.</li>}
+          </ul>
+          {/* Wniosek 34: sprawy poza horyzontem nie liczą się do kafla. */}
+          {current.later && current.later.length > 0 && (
+            <button type="button" className="mt-1.5 text-[12.5px] text-[#BFD6EA] hover:text-white hover:underline" onClick={() => setShowLater((v) => !v)}>
+              {showLater ? "ukryj dalsze" : `+ ${current.later.length} dalszych (po ${d2(current.later[0].startsAt)}) · pokaż`}
+            </button>
+          )}
+        </div>
       )}
     </TodayBar>
   );

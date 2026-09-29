@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 // Przewodniki po panelu (wniosek 19) — flaga przy użytkowniku (User.tourSeen),
 // nie w przeglądarce. „Później” pokazuje przewodnik przy kolejnym wejściu,
 // najwyżej 3 razy; „Pomiń” / koniec = obejrzany.
-export const TOURS = ["signalsV2"] as const;
+// signalsV3 (wniosek 33): „Co nowego” — pasek na Tablicy, chip kroku, Wynik rozmowy.
+export const TOURS = ["signalsV2", "signalsV3"] as const;
 export type TourKey = (typeof TOURS)[number];
 export const TOUR_MAX_LATER = 3;
 

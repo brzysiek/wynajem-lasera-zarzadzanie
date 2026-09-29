@@ -6,27 +6,27 @@ import type { DayProgress, LeadDetail, LeadRow } from "@/lib/leads/load";
 import { ACTIVITY_LABEL, TYPE_LABEL } from "@/lib/leads/labels";
 import { DEVICE_INTEREST_LABEL, formatPhone, type DeviceInterestKey } from "@/lib/clients/labels";
 import { LEAD_DEVICE_LABEL } from "@/lib/leads/parse-deal";
-import { FIRST_CONTACT_SLA_HOURS, NO_ANSWER_LIMIT, buildToday, isFreshInquiry, type FunnelLead, type TodayGroup, type TodayItem } from "@/lib/leads/funnel";
-import { REWARD_STEP, nextReward, type Playbook } from "@/lib/leads/playbook";
-import type { SeasonGoal } from "@/lib/leads/season-goal";
+import { NO_ANSWER_LIMIT, buildToday, type FunnelLead, type TodayGroup, type TodayItem } from "@/lib/leads/funnel";
 import type { SignalTask } from "@/lib/leads/today-extras";
 import { api } from "@/components/clients/client-forms";
-import { TodayBar } from "@/components/today-bar";
 import { openTask } from "@/components/open-tasks";
 import { Dots, Seg, toFunnel, type LinkSuggestion } from "./funnel-views";
 import { StageChip } from "./lead-ui";
-import { StageLegend, WinToast, plural } from "./plan-day";
+import { StageLegend, plural } from "./plan-day";
 import { step as stepText, when as whenText } from "./today-table";
 import type { CardIntent } from "./lead-card";
 
 // Sygnały → Na dziś (wniosek 27 B, 26): kolejka pracy. Granatowy pasek „Do
-// zrobienia dziś” (klik = filtr sekcji), jedna linia filtrów, sprawy w
+// zrobienia dziś” (klik = filtr sekcji) — od wniosku 33 w SignalsTodayBar nad
+// zakładkami; tu jedna linia filtrów, sprawy w
 // sekcjach jako karty z kontekstem; klik w kartę rozwija ją w miejscu (oś
 // czasu, historia, rezerwacja) — bez panelu z boku.
 
 type Row = LeadRow & FunnelLead;
 type Section = { key: string; label: string; items: TodayItem<Row>[] };
-type Owner = "me" | "all";
+export type TodayOwner = "me" | "all";
+export type TodayGroupKey = TodayGroup | "tasks";
+type Owner = TodayOwner;
 type Source = "all" | "www" | "phone";
 
 const WWW: LeadRow["type"][] = ["POBRANIE_CENNIKA", "KONTAKT", "REZERWACJA_WWW", "SZKOLENIE_WWW"];
@@ -36,7 +36,7 @@ const d2 = (d: Date | string) => new Date(d).toLocaleDateString("pl-PL", { day: 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 // Nazwa gabinetu — e-mail tylko jako dopisek, gdy brak nazwy.
-function names(r: LeadRow): { title: string; extra: string | null } {
+export function names(r: LeadRow): { title: string; extra: string | null } {
   const title = r.clientName ?? r.person ?? null;
   return title ? { title, extra: null } : { title: r.email ?? r.title, extra: null };
 }
@@ -51,8 +51,6 @@ export function TodayQueue({
   now,
   currentUserId,
   readOnly,
-  playbook,
-  goal,
   progress,
   callStats,
   freeByInterest,
@@ -64,13 +62,15 @@ export function TodayQueue({
   onSerial,
   suggestions,
   onLink,
+  owner,
+  onOwner,
+  group,
+  onGroup,
 }: {
   rows: LeadRow[];
   now: Date;
   currentUserId: string;
   readOnly: boolean;
-  playbook: Playbook;
-  goal: SeasonGoal;
   progress: DayProgress;
   callStats: { talked: number; noAnswer: number };
   freeByInterest: Partial<Record<DeviceInterestKey, string[]>>;
@@ -83,11 +83,17 @@ export function TodayQueue({
   // Rezerwacja bez wynajmu: podpowiedź wynajmu z kalendarza (jednym kliknięciem).
   suggestions: Record<string, LinkSuggestion>;
   onLink: (leadId: string, rentalId: string) => void;
+  // Wniosek 33: pasek „Do zrobienia dziś” jest nad zakładkami (leads-manager) —
+  // „Moje / Wszyscy” i wybrany kafel wspólne z nim.
+  owner: TodayOwner;
+  onOwner: (o: TodayOwner) => void;
+  group: TodayGroupKey | null;
+  onGroup: (g: TodayGroupKey | null) => void;
 }) {
-  const [owner, setOwner] = useState<Owner>("me");
+  const setOwner = onOwner;
+  const setGroup = onGroup;
   const [source, setSource] = useState<Source>("all");
   const [device, setDevice] = useState<"all" | DeviceInterestKey>("all");
-  const [group, setGroup] = useState<TodayGroup | "tasks" | null>(null);
   const [legend, setLegend] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -99,7 +105,6 @@ export function TodayQueue({
     .filter((x) => (device === "all" ? true : devicesOf(x.lead).includes(device)));
   const tasks = signalTasks.filter((t) => (owner === "me" ? t.assigneeId === currentUserId : true));
   const of = (g: TodayGroup) => filtered.filter((x) => x.group === g);
-  const untouchedTotal = mine.filter((r) => r.stage === "SYGNAL" && !r.firstContactAt && isFreshInquiry(r, now)).length;
 
   const sections: Section[] = [
     { key: "late", label: "Po czasie", items: filtered.filter((x) => x.priority === "late") },
@@ -112,59 +117,8 @@ export function TodayQueue({
   ];
   const shownSections = group === "tasks" ? [] : group ? [{ key: group, label: sections.find((s) => s.key === group)?.label ?? "", items: of(group) }] : sections;
 
-  const se = playbook.season;
-  const names2 = (xs: TodayItem<Row>[]) => xs.slice(0, 2).map((x) => names(x.lead).title.split(/[@\s·]/)[0]).join(", ") + (xs.length > 2 ? "…" : "");
-  const tiles = [
-    { key: "new", label: "Nowe zapytania", n: of("new").length, sub: `z ${untouchedTotal} · kontakt w ${FIRST_CONTACT_SLA_HOURS} h rob.` },
-    { key: "calls", label: "Umówione telefony", n: of("calls").length, sub: names2(of("calls")) || "—" },
-    { key: "followups", label: "Follow-up ofert", n: of("followups").length, sub: names2(of("followups")) || "—" },
-    { key: "spring", label: "Wracają z wiosny", n: of("spring").length, sub: `wracają ${goal.returning} z ${se.returningTarget} · w puli ${goal.pool}` },
-    { key: "back", label: "Wracają odłożone", n: of("back").length, sub: names2(of("back")) || "—" },
-    { key: "tasks", label: "Zadania przy sygnałach", n: tasks.length, sub: tasks.length ? `${tasks.filter((t) => t.dueDate && t.dueDate < iso(now)).length} zaległe` : "—", highlight: true },
-  ];
-
-  const done = owner === "me" ? (progress.doneByUser[currentUserId] ?? 0) : progress.doneToday;
-  const total = done + filtered.length + tasks.length;
-  const pct = total ? Math.round((done / total) * 100) : 100;
-  const seasonPct = Math.min(100, Math.round((goal.total / se.target) * 100));
-  const next = nextReward(goal.total, se);
-
-  const right = (
-    <div className="flex flex-col gap-1 text-[12px] text-[#DCE8F2]">
-      <span>
-        Dziś: <b className="font-semibold text-white">{done}</b> z {total} zrobione
-      </span>
-      <div className="h-1 bg-white/20">
-        <i className="block h-1 bg-[#7FC4A8]" style={{ width: `${pct}%` }} />
-      </div>
-      <span title={next ? `Następna nagroda przy ${next.at}: ${next.text}` : "Cel osiągnięty"}>
-        Cel sezonu: <b className="font-semibold text-white">{goal.total}</b> z {se.target} · wracają {goal.returning}/{se.returningTarget} · nowe {goal.fresh}/{se.newTarget}
-        {next ? ` · do nagrody ${next.left}` : " 🎉"}
-      </span>
-      <div className="relative h-1 bg-white/20">
-        <i className="block h-1 bg-[#BFD6EA]" style={{ width: `${seasonPct}%` }} />
-        {Array.from({ length: Math.floor(se.target / REWARD_STEP) }, (_, i) => (i + 1) * REWARD_STEP).map((m) => (
-          <span key={m} className={`absolute -top-[2px] h-2 w-[2px] ${goal.total >= m ? "bg-[#7FC4A8]" : "bg-white/50"}`} style={{ left: `calc(${(m / se.target) * 100}% - 1px)` }} />
-        ))}
-      </div>
-    </div>
-  );
-
   return (
     <div className="flex flex-col gap-3">
-      <div data-tour="plan">
-        <TodayBar
-          className=""
-          title="Do zrobienia dziś"
-          dateLabel={now.toLocaleDateString("pl-PL", { weekday: "long", day: "2-digit", month: "2-digit" })}
-          tiles={tiles}
-          active={group}
-          onToggle={(k) => setGroup(k as TodayGroup | "tasks" | null)}
-          right={right}
-          allowEmpty
-        />
-      </div>
-      <WinToast goal={goal} now={now} playbook={playbook} userId={currentUserId} />
       <div className="flex flex-wrap items-center gap-2">
         <Seg<Owner>
           value={owner}

@@ -47,7 +47,7 @@ export function Cheatsheet({ playbook, onClose, onStartTour }: { playbook: Playb
         </button>
         {onStartTour && (
           <button type="button" className={BTN_SM} onClick={onStartTour}>
-            Pokaż przewodnik jeszcze raz
+            Pokaż przewodnik ponownie
           </button>
         )}
         <span className="ml-auto text-[12px] text-[#5C6166]">edytuje: Tomek · Ustawienia → Ściąga</span>

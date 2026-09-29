@@ -20,7 +20,8 @@ import type { DayProgress } from "@/lib/leads/load";
 import { applySmsPlaceholders } from "@/lib/sms-template";
 import { BoardView } from "./board-view";
 import { ReportView } from "./report-view";
-import { TodayQueue } from "./today-queue";
+import { SignalsTodayBar } from "./signals-today-bar";
+import { TodayQueue, type TodayGroupKey, type TodayOwner } from "./today-queue";
 import { CallOutcomeDialog } from "./call-outcome-dialog";
 import type { SignalTask } from "@/lib/leads/today-extras";
 import type { DeviceInterestKey } from "@/lib/clients/labels";
@@ -130,7 +131,7 @@ export function LeadsManager({
   freeByInterest: Partial<Record<DeviceInterestKey, string[]>>;
   signalTasks: SignalTask[];
   // Przewodnik po nowych Sygnałach (wniosek 19): czy pokazać i imię (wołacz).
-  tour: { show: boolean; name: string };
+  tour: { show: boolean; showV3?: boolean; name: string };
 }) {
   const router = useRouter();
   const [view, setViewState] = useState<View>("board");
@@ -228,10 +229,19 @@ export function LeadsManager({
   }
 
   const [sheet, setSheet] = useState(false);
-  const [tourOpen, setTourOpen] = useState(tour.show);
+  // Wniosek 33: pasek „Do zrobienia dziś” i kolejka „Na dziś” dzielą filtr osoby i grupę.
+  const [todayOwner, setTodayOwner] = useState<TodayOwner>("me");
+  const [todayGroup, setTodayGroup] = useState<TodayGroupKey | null>(null);
+  // Wniosek 33: pełny przewodnik (v2), a po nim „Co nowego” (v3, 3 kroki);
+  // kto widział v2 — od razu v3, raz przy pierwszym wejściu.
+  const [tourOpen, setTourOpen] = useState<false | "v2" | "v3">(tour.show ? "v2" : tour.showV3 ? "v3" : false);
+  const [v3Pending, setV3Pending] = useState(Boolean(tour.showV3));
   async function tourDone(action: "later" | "done") {
-    setTourOpen(false);
-    await api("/api/me/tour", "POST", { tour: "signalsV2", action });
+    const which = tourOpen;
+    if (which === "v2" && action === "done" && v3Pending) setTourOpen("v3");
+    else setTourOpen(false);
+    if (which === "v3") setV3Pending(false);
+    await api("/api/me/tour", "POST", { tour: which === "v3" ? "signalsV3" : "signalsV2", action });
   }
 
   function open(id: string, i: CardIntent = null) {
@@ -369,7 +379,8 @@ export function LeadsManager({
           : () => {
               setSheet(false);
               setView("today");
-              setTourOpen(true);
+              setV3Pending(true);
+              setTourOpen("v2");
             }
       }
     />
@@ -381,6 +392,27 @@ export function LeadsManager({
     <div style={APP_CSS_VARS} className="text-[var(--c-text)]">
       <div>
         <div className="flex min-w-0 flex-col gap-[18px]">
+          {/* Wniosek 33: „Do zrobienia dziś” nad zakładkami — na każdym widoku.
+              Klik w kafel poza „Na dziś” przełącza tam z filtrem tej grupy. */}
+          {rows.length > 0 && (
+            <SignalsTodayBar
+              rows={list}
+              now={now}
+              currentUserId={currentUserId}
+              owner={todayOwner}
+              playbook={playbook}
+              goal={seasonGoal}
+              progress={progress}
+              signalTasks={signalTasks}
+              active={view === "today" ? todayGroup : null}
+              onToggle={(g) => {
+                if (view !== "today") {
+                  setView("today");
+                  setTodayGroup(g);
+                } else setTodayGroup(g);
+              }}
+            />
+          )}
           {/* Nagłówek */}
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="m-0 text-[26px] font-semibold text-[var(--c-navy)]">Sygnały</h1>
@@ -481,6 +513,8 @@ export function LeadsManager({
                   onLost={(id) => setLostIds([id])}
                   onQuick={quickOutcome}
                   onPostpone={(id) => open(id, "postpone")}
+                  onOutcome={(id) => setOutcomeFor(id)}
+                  onChanged={refresh}
                   canArchive2025={isAdmin}
                 />
               )}
@@ -493,8 +527,6 @@ export function LeadsManager({
                   now={now}
                   currentUserId={currentUserId}
                   readOnly={readOnly}
-                  playbook={playbook}
-                  goal={seasonGoal}
                   progress={progress}
                   callStats={callStats}
                   freeByInterest={freeByInterest}
@@ -506,6 +538,10 @@ export function LeadsManager({
                   onSerial={startSerial}
                   suggestions={linkSuggestions}
                   onLink={(leadId, rentalId) => void linkRental(leadId, rentalId)}
+                  owner={todayOwner}
+                  onOwner={setTodayOwner}
+                  group={todayGroup}
+                  onGroup={setTodayGroup}
                 />
               )}
             </>
@@ -539,6 +575,8 @@ export function LeadsManager({
 
       {tourOpen && !readOnly && (
         <SignalsTour
+          key={tourOpen}
+          variant={tourOpen}
           name={tour.name}
           season={seasonGoal.total}
           target={playbook.season.target}
@@ -546,7 +584,9 @@ export function LeadsManager({
           onFinish={() => void tourDone("done")}
           onLater={() => void tourDone("later")}
           onBeforeStep={() => {
-            if (view !== "today") setView("today");
+            // v3 pokazuje Tablicę (chip kroku), v2 — „Na dziś”.
+            const want = tourOpen === "v3" ? "board" : "today";
+            if (view !== want) setView(want);
             if (selectedId) close();
             setSheet(false);
           }}

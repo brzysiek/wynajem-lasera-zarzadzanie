@@ -16,6 +16,7 @@ const BTN_PRI = "inline-flex h-8 items-center rounded-[6px] border border-[#1B6F
 const CARD_W = 360;
 
 export function SignalsTour({
+  variant = "v2",
   name,
   season,
   target,
@@ -24,6 +25,8 @@ export function SignalsTour({
   onLater,
   onBeforeStep,
 }: {
+  // Wniosek 33: „v3” = 3 kroki „Co nowego” (pasek na Tablicy, chip kroku, Wynik rozmowy).
+  variant?: "v2" | "v3";
   name: string;
   season: number;
   target: number;
@@ -37,7 +40,40 @@ export function SignalsTour({
   const [mobile, setMobile] = useState(false);
   const rewardText = reward.replace(/\s*\p{Extended_Pictographic}+$/u, "");
 
-  const steps: Step[] = [
+  const stepsV3: Step[] = [
+    {
+      target: "plan",
+      title: "„Do zrobienia dziś” jest też na Tablicy",
+      body: (
+        <>
+          <p>Pasek widać teraz na każdej zakładce. Kliknij kafelek, np. „Nowe zapytania” – przejdziesz do „Na dziś” tylko z tymi sprawami.</p>
+        </>
+      ),
+    },
+    {
+      target: "step-chip",
+      title: "Kolorowy „następny krok” na karcie",
+      body: (
+        <>
+          <p>
+            Kliknij chip na karcie – zobaczysz, co zrobić: rodzaj kroku, termin i ostatnią notatkę. <b className="text-[#B8612F]">Terakota = zaległe</b>, <b className="text-[#1B6FA8]">niebieski = dziś</b>, szary = później.
+          </p>
+        </>
+      ),
+    },
+    {
+      target: "step-chip",
+      title: "Po rozmowie: „Wynik rozmowy”",
+      body: (
+        <>
+          <p>
+            W rozwiniętym kroku (i w karcie sygnału) kliknij <b className="text-[#0C3450]">Wynik rozmowy</b> – panel sam ustawi etap i kolejny krok z datą.
+          </p>
+        </>
+      ),
+    },
+  ];
+  const stepsV2: Step[] = [
     {
       target: "plan",
       title: "Plan dnia i Twój cel",
@@ -108,6 +144,7 @@ export function SignalsTour({
       ),
     },
   ];
+  const steps = variant === "v3" ? stepsV3 : stepsV2;
   const current = step > 0 ? steps[step - 1] : null;
 
   const measure = useCallback(() => {
@@ -170,6 +207,33 @@ export function SignalsTour({
     if (rect.left + rect.width + 12 + CARD_W < vw) return { top: Math.max(12, Math.min(rect.top, vh - h - 12)), left: rect.left + rect.width + 14 };
     return { top: Math.max(12, Math.min(rect.top, vh - h - 12)), left: Math.max(12, rect.left - CARD_W - 14) };
   })();
+
+  if (step === 0 && variant === "v3") {
+    return (
+      <div className="fixed inset-0 z-[60] flex items-start justify-center bg-[rgba(12,52,80,0.58)] px-4 pt-[12vh]" role="dialog" aria-modal="true" aria-label="Co nowego w Sygnałach">
+        <div className="w-full max-w-[520px] rounded-[10px] bg-white px-7 py-[26px] text-[13px] text-[#2A3540] shadow-[0_10px_36px_rgba(0,0,0,0.3)]">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-[#5C6166]">Co nowego</div>
+          <h2 className="m-0 mb-2 mt-1 text-[22px] font-semibold text-[#0C3450]">{name ? `${name}, 3 zmiany w Sygnałach` : "3 zmiany w Sygnałach"}</h2>
+          <ul className="ml-[18px] mt-2.5 list-disc text-[#3A4450]">
+            <li className="my-[3px]">„Do zrobienia dziś” także na Tablicy</li>
+            <li className="my-[3px]">Kolorowy „następny krok” na karcie – kliknij</li>
+            <li className="my-[3px]">„Wynik rozmowy” ustawia etap i kolejny krok</li>
+          </ul>
+          <div className="mt-4 flex gap-2">
+            <button type="button" autoFocus className={BTN_PRI} onClick={() => setStep(1)}>
+              Dalej
+            </button>
+            <button type="button" className={BTN} onClick={onLater}>
+              Później
+            </button>
+            <button type="button" className="ml-auto text-[12px] text-[#5C6166] hover:text-[#0C3450]" onClick={onFinish}>
+              Pomiń
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (step === 0) {
     return (

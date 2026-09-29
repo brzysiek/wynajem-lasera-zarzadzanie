@@ -21,6 +21,16 @@ export type Dispatch = {
   call: (name: string, args: Record<string, unknown>) => Promise<{ ok: true; value: unknown } | { ok: false; message: string }>;
 };
 
+// Wersja serwera = skrót schematów narzędzi: każda zmiana narzędzi (np.
+// nowe pola zadanie_utworz: bez_powiazania, wynajmy, klienci, sygnaly) daje
+// nową wersję, więc klient (claude.ai) nie trzyma starej listy.
+export function toolsVersion(tools: ToolDescriptor[]): string {
+  const text = JSON.stringify(tools.map((t) => [t.name, t.description, t.inputSchema]));
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return `1.1.${h.toString(36)}`;
+}
+
 export function toolList(tools: ToolDescriptor[]) {
   return {
     tools: tools.map((t) => ({
@@ -46,8 +56,8 @@ export async function handleMessage(msg: RpcMessage, d: Dispatch): Promise<RpcRe
       const requested = typeof msg.params?.protocolVersion === "string" ? msg.params.protocolVersion : "";
       return ok({
         protocolVersion: SUPPORTED_VERSIONS.includes(requested) ? requested : SUPPORTED_VERSIONS[0],
-        capabilities: { tools: { listChanged: false } },
-        serverInfo: SERVER_INFO,
+        capabilities: { tools: { listChanged: true } },
+        serverInfo: { ...SERVER_INFO, version: toolsVersion(d.tools) },
         instructions: INSTRUCTIONS,
       });
     }

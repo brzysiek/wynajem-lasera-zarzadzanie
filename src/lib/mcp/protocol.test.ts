@@ -13,6 +13,13 @@ describe("MCP JSON-RPC", () => {
     const r2 = await handleMessage({ jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "1999-01-01" } }, d);
     expect((r2?.result as { protocolVersion: string }).protocolVersion).toBe("2025-11-25");
   });
+  it("wersja serwera zmienia się ze schematem narzędzi", async () => {
+    const v1 = ((await handleMessage({ jsonrpc: "2.0", id: 7, method: "initialize" }, d))?.result as { serverInfo: { version: string } }).serverInfo.version;
+    const d2: Dispatch = { ...d, tools: [{ ...d.tools[0], inputSchema: { type: "object", properties: { bez_powiazania: { type: "boolean" } } } }] };
+    const v2 = ((await handleMessage({ jsonrpc: "2.0", id: 8, method: "initialize" }, d2))?.result as { serverInfo: { version: string } }).serverInfo.version;
+    expect(v1).not.toBe(v2);
+    expect(v1).toMatch(/^1\.1\./);
+  });
   it("powiadomienia bez odpowiedzi", async () => {
     expect(await handleMessage({ jsonrpc: "2.0", method: "notifications/initialized" }, d)).toBeNull();
   });
