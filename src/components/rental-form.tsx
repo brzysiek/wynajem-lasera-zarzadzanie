@@ -18,6 +18,7 @@ import type { PreviewPriceRule, PreviewPulseTier } from "@/lib/pricing/preview";
 import type { RentalFinanceDto } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { variantLabel } from "@/lib/pricing/variants";
+import { titleDiffers } from "@/lib/rentals/title-rules";
 import type { ClientTermsDto } from "@/lib/clients/terms";
 
 export type Device = {
@@ -577,7 +578,7 @@ export function RentalForm({
   const isAdmin = canManageDrivers;
   const [deviceId, setDeviceId] = useState(rental?.deviceId ?? defaultDeviceId ?? devices[0]?.id ?? "");
   const [client, setClient] = useState<PickedClient | null>(initialClient);
-  const clientTitle = (c: PickedClient | null) => (c ? (c.shortName ?? c.name) : "");
+  const clientTitle = (c: PickedClient | null) => (c ? c.shortName?.trim() || c.name : "");
   const [title, setTitle] = useState(rental?.title ?? prefill?.title ?? clientTitle(initialClient));
   const [autoTitle, setAutoTitle] = useState<string | null>(rental ? null : (prefill?.title ?? clientTitle(initialClient)) || null);
   // Alias z tytułu przy pierwszym przypisaniu (domyślnie tak, bez ogólnych tytułów).
@@ -752,7 +753,10 @@ export function RentalForm({
     autoAddressRef.current = !deliveryAddressId && !deliveryAddress.trim() ? true : autoAddressRef.current || !isEditing;
     if (!c) return;
     const next = clientTitle(c);
-    if (!title.trim() || title === autoTitle) {
+    // Nowa: nadpisujemy pusty albo wygenerowany tytuł. Edycja: rezerwacja
+    // bez klienta (np. „NOWA PaNI” z Google) dostaje nazwę roboczą od razu;
+    // przy zmianie klienta — podpowiedź pod polem tytułu.
+    if (isEditing ? !initialClient : !title.trim() || title === autoTitle) {
       setTitle(next);
       setAutoTitle(next);
     }
@@ -1025,6 +1029,13 @@ export function RentalForm({
                 Tytuł w kalendarzu (nazwa robocza gabinetu – urządzenie widać po kolorze kalendarza):
                 <input value={title} onChange={(e) => setTitle(e.target.value)} required className="min-w-[220px] flex-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-900 focus:border-[#1B6FA8] focus:outline-none" />
               </label>
+              {client && titleDiffers(title, clientTitle(client)) && (
+                <p className="mt-1 text-xs text-gray-600">
+                  <button type="button" className="text-[#1B6FA8] hover:underline" onClick={() => setTitle(clientTitle(client))}>
+                    Zmienić tytuł na „{clientTitle(client)}”?
+                  </button>
+                </p>
+              )}
               {deliveryTime && !isSzkolenie && <p className="mt-1 text-xs text-gray-400">W kalendarzu: „{withDeliveryTimePrefix(title || "(bez tytułu)", deliveryTime)}”</p>}
             </div>
 

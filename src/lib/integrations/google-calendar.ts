@@ -306,6 +306,19 @@ export async function updateCalendarEvent(calendarId: string, eventId: string, i
   logInfo("google_calendar_event_updated", { calendarId, eventId });
 }
 
+// Tytuł rezerwacji = nazwa robocza klienta (poprawka wniosku 29): zmiana
+// samego tytułu wydarzenia, bez dat i opisu.
+export async function setEventTitle(calendarId: string, eventId: string, summary: string): Promise<void> {
+  const accessToken = await getAccessToken();
+  const { res, body } = await googleFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    accessToken,
+    { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ summary }) },
+  );
+  if (!res.ok) throw new Error(body?.error?.message || `Nie udało się zmienić tytułu wydarzenia (HTTP ${res.status}).`);
+  logInfo("google_calendar_event_title_set", { calendarId, eventId });
+}
+
 // Wniosek 23: po przypisaniu klienta w panelu zapisujemy go w wydarzeniu
 // (extendedProperties + znacznik w opisie) — zmiana tytułu w Google nie gubi
 // klienta. Opis bez znacznika podaje wywołujący (rentals.description).

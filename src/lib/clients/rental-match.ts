@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { loadClassifier, rematchHistory } from "@/lib/history/calendar-import";
+import { applyClientTitleSafe } from "@/lib/rentals/title-sync";
 import { normalizeTitle } from "@/lib/history/normalize-title";
 import { recordChanges, type ChangeEntry } from "@/lib/changelog/record";
 import { qualifyClient } from "@/lib/clients/qualify";
@@ -263,7 +264,10 @@ export async function loadUnassignedRentals(opts: { now?: Date } = {}): Promise<
 // Potwierdzenie biura: rezerwacje → klient. Klucz tytułu staje się aliasem
 // (jak w dopasowaniach historii), więc kolejne rezerwacje z tym tytułem
 // przypiszą się same. Istniejącego aliasu innego klienta nie nadpisujemy.
-export async function assignRentalsToClient(input: { rentalIds: string[]; clientId: string; userId: string; alias?: boolean; source?: string }): Promise<{ assigned: number; autoAssigned: number }> {
+// Poprawka wniosku 29: rezerwacja bez klienta po przypisaniu dostaje tytuł =
+// nazwa robocza klienta (Google + dziennik), chyba że retitle: false
+// (formularz rezerwacji sam ustawia tytuł).
+export async function assignRentalsToClient(input: { rentalIds: string[]; clientId: string; userId: string; alias?: boolean; source?: string; retitle?: boolean }): Promise<{ assigned: number; autoAssigned: number }> {
   const client = await prisma.client.findUnique({ where: { id: input.clientId }, select: { id: true, archivedAt: true } });
   if (!client || client.archivedAt) throw new Error("Klient nie istnieje albo jest w archiwum.");
   const rows = await prisma.rental.findMany({ where: { id: { in: input.rentalIds }, clientId: null }, select: { id: true, title: true } });
@@ -287,17 +291,18 @@ export async function assignRentalsToClient(input: { rentalIds: string[]; client
   if (keys.length) await rematchHistory();
   await writeEventClientsSafe({ rentalIds: rows.map((r) => r.id) });
   await clearResignedForRentals(rows.map((r) => r.id), input.userId);
+  if (input.retitle !== false) await applyClientTitleSafe(rows.map((r) => r.id), { userId: input.userId }, "przypisanie klienta — tytuł = nazwa robocza");
   return { assigned: rows.length, autoAssigned: more.assigned };
 }
 
 // „Zmień klienta” w karcie rezerwacji (wniosek 23) — także odpięcie (null).
 // Dziennik: przed → po, kto. Klient zapisany z powrotem w wydarzeniu Google.
-export async function changeRentalClient(input: { rentalId: string; clientId: string | null; userId: string; alias?: boolean }): Promise<{ changed: boolean; autoAssigned: number }> {
+export async function changeRentalClient(input: { rentalId: string; clientId: string | null; userId: string; alias?: boolean; retitle?: boolean }): Promise<{ changed: boolean; autoAssigned: number }> {
   const r = await prisma.rental.findUnique({ where: { id: input.rentalId }, select: { id: true, clientId: true } });
   if (!r) throw new Error("Rezerwacja nie istnieje.");
   if (r.clientId === input.clientId) return { changed: false, autoAssigned: 0 };
   if (!r.clientId && input.clientId) {
-    const res = await assignRentalsToClient({ rentalIds: [r.id], clientId: input.clientId, userId: input.userId, alias: input.alias });
+    const res = await assignRentalsToClient({ rentalIds: [r.id], clientId: input.clientId, userId: input.userId, alias: input.alias, retitle: input.retitle });
     return { changed: true, autoAssigned: res.autoAssigned };
   }
   if (input.clientId) {

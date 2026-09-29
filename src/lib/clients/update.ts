@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { syncClientFieldsToDefault } from "@/lib/clients/delivery";
+import { retitleAfterClientRename } from "@/lib/rentals/title-sync";
 import { normalizePolishPhone } from "@/lib/reminders";
 import { parseClientPatch, parseContactInput } from "@/lib/clients/validate";
 import { CLIENT_CACHE_KEYS, CONTACT_CACHE_KEYS, refreshFutureRentalCaches } from "@/lib/clients/refresh";
@@ -114,6 +115,12 @@ export async function patchClient(
   // Warunki handlowe (wniosek 28): przyszłe rezerwacje NIE przeliczają się
   // same — karta klienta pokazuje „Zmienia N przyszłych rezerwacji ·
   // Zastosuj” (GET/POST /api/clients/[id]/terms-sync), decyduje biuro.
+  // Poprawka wniosku 29: nowa nazwa / nazwa robocza → przyszłe rezerwacje z
+  // tytułem równym starej nazwie dostają nową (Google + dziennik).
+  if (changes.some((c) => c.field === "name" || c.field === "shortName")) {
+    const oldNames = [current.shortName, current.name].filter((x): x is string => !!x);
+    await retitleAfterClientRename(id, oldNames, { userId: actor.userId });
+  }
   // Nowy / zmieniony NIP → uzupełnienie z Białej listy i CEIDG w tle
   // (błąd rejestru nie wpływa na zapis).
   if (changes.some((c) => c.field === "nip") && parsed.data.nip) {

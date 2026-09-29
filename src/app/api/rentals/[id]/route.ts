@@ -188,7 +188,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     let autoAssigned = 0;
     if (clientChange && clientChange !== rental.clientId) {
-      const res = await changeRentalClient({ rentalId: id, clientId: clientChange, userId: session.user.id, alias: body?.aliasFromTitle !== false });
+      // Formularz wysyła własny tytuł (już z nazwą roboczą) — bez ponownej zmiany.
+      const res = await changeRentalClient({ rentalId: id, clientId: clientChange, userId: session.user.id, alias: body?.aliasFromTitle !== false, retitle: typeof body?.title !== "string" });
       autoAssigned = res.autoAssigned;
     }
     // Osoba na miejscu (formularz) — dane kontaktu z klienta panelu.
