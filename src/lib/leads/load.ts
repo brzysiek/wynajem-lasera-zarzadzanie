@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { loadClientStatuses } from "@/lib/clients/load";
+import { loadClientStatusInfo } from "@/lib/clients/load";
 import type { ClientStatus } from "@/lib/clients/status";
 import { DEVICE_INTEREST_KEYS, type DeviceInterestKey } from "@/lib/clients/labels";
 import { hubspotDealUrl } from "@/lib/integrations/hubspot-deals";
@@ -56,7 +56,7 @@ const ROW_SELECT = {
   client: { select: { name: true, city: true } },
   clientContact: { select: { firstName: true, lastName: true, phone: true, email: true } },
   owner: { select: { name: true } },
-  rental: { select: { startsAt: true, device: { select: { name: true } } } },
+  rental: { select: { startsAt: true, eventType: true, device: { select: { name: true } } } },
   activities: { orderBy: { createdAt: "desc" as const }, take: 1, select: { type: true, createdAt: true, body: true } },
   _count: { select: { activities: { where: { type: "CALL_NO_ANSWER" as const } } } },
 } as const;
@@ -97,6 +97,10 @@ export type LeadRow = {
   lastWorkAt: string | null;
   // Zapytanie stałej klientki — poza konwersją nowych (lejek v2).
   returningClient: boolean;
+  // Wniosek 20: rezerwacja z tego sygnału = pierwszy przyjazd nowej klientki
+  // (wynajem, nie szkolenie; wcześniej żadnego zrealizowanego przyjazdu) —
+  // tylko takie liczą się do celu sezonu i komunikatu „Brawo”.
+  firstVisitWin: boolean;
   rentalId: string | null;
   rentalStartsAt: string | null;
   rentalDevice: string | null;
@@ -122,7 +126,15 @@ function queryRows(where: Parameters<typeof prisma.lead.findMany>[0] extends inf
   return prisma.lead.findMany({ where, orderBy: { createdAt: "desc" }, select: ROW_SELECT });
 }
 
-type Extra = { statuses: Map<string, ClientStatus>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]>; lastWork: Map<string, Date> };
+type Extra = { statuses: Map<string, ClientStatus>; realized: Map<string, Date[]>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]>; lastWork: Map<string, Date> };
+
+const ARRIVAL_GAP_MS = 3 * 86_400_000;
+function firstVisitWin(l: { clientId: string | null; createdAt: Date; rental: { startsAt: Date; eventType: string } | null }, realized: Map<string, Date[]>): boolean {
+  if (l.rental?.eventType === "SZKOLENIE") return false;
+  const at = (l.rental?.startsAt ?? l.createdAt).getTime();
+  // Przyjazd z tego sygnału (± 3 dni) się nie liczy — tylko wcześniejsze.
+  return !(l.clientId && (realized.get(l.clientId) ?? []).some((d) => d.getTime() < at - ARRIVAL_GAP_MS));
+}
 
 function toRow(l: RowSource, x: Extra): LeadRow {
   const statuses = x.statuses;
@@ -161,6 +173,7 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     postponeReason: l.postponeReason,
     lastWorkAt: x.lastWork.get(l.id)?.toISOString() ?? null,
     returningClient: l.returningClient,
+    firstVisitWin: firstVisitWin(l, x.realized),
     rentalId: l.rentalId,
     rentalStartsAt: l.rental?.startsAt.toISOString() ?? null,
     rentalDevice: l.rental?.device.name ?? null,
@@ -179,8 +192,8 @@ function toRow(l: RowSource, x: Extra): LeadRow {
 
 async function loadExtra(leads: { id: string; clientId: string | null }[]): Promise<Extra> {
   const clientIds = [...new Set(leads.map((l) => l.clientId).filter((x): x is string => Boolean(x)))];
-  const [statuses, qualified, talkedRows, stageRows, workRows] = await Promise.all([
-    loadClientStatuses(clientIds),
+  const [info, qualified, talkedRows, stageRows, workRows] = await Promise.all([
+    loadClientStatusInfo(clientIds),
     loadQualifiedMap(clientIds),
     prisma.leadActivity.groupBy({ by: ["leadId"], where: { leadId: { in: leads.map((l) => l.id) }, type: { in: ["CALL", "EMAIL"] } } }),
     prisma.leadActivity.findMany({ where: { leadId: { in: leads.map((l) => l.id) }, type: "STAGE_CHANGE" }, select: { leadId: true, body: true } }),
@@ -193,7 +206,9 @@ async function loadExtra(leads: { id: string; clientId: string | null }[]): Prom
   const lastWork = new Map(workRows.filter((r) => r._max.createdAt).map((r) => [r.leadId as string, r._max.createdAt as Date]));
   const stageBodies = new Map<string, (string | null)[]>();
   for (const a of stageRows) stageBodies.set(a.leadId!, [...(stageBodies.get(a.leadId!) ?? []), a.body]);
-  return { statuses, qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies, lastWork };
+  const statuses = new Map([...info].map(([id, x]) => [id, x.status]));
+  const realized = new Map([...info].map(([id, x]) => [id, x.realized]));
+  return { statuses, realized, qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies, lastWork };
 }
 
 export async function loadLeadRows(): Promise<LeadRow[]> {
@@ -384,22 +399,30 @@ export async function loadStaffUsers(): Promise<{ id: string; name: string }[]> 
 // ile sygnałów zalogowana osoba dziś obsłużyła (rozmowa, nieodebrane, mail,
 // SMS, zmiana etapu), a w tygodniu — ile sygnałów doszło do oferty i do
 // rezerwacji (od poniedziałku).
-export type DayProgress = { rentalsToday: number; rentalsWithDriver: number; doneToday: number; weekOffers: number; weekReservations: number };
+// doneToday — sygnały, przy których ktoś z biura (nie agent, nie automat,
+// nie migracja) zrobił dziś coś sam: rozmowa, nieodebrany, oferta, SMS, zmiana
+// etapu (też przegrana i odłożenie). doneByUser — to samo per osoba (filtr
+// „Moje”). Akceptacja propozycji agenta idzie na konto agenta, więc się nie liczy.
+export type DayProgress = { rentalsToday: number; rentalsWithDriver: number; doneToday: number; doneByUser: Record<string, number>; weekOffers: number; weekReservations: number };
 
-export async function loadDayProgress(userId: string, now = new Date()): Promise<DayProgress> {
+export async function loadDayProgress(now = new Date()): Promise<DayProgress> {
   const sod = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const eod = new Date(sod.getTime() + 86_400_000);
   const monday = new Date(sod.getTime() - ((sod.getDay() + 6) % 7) * 86_400_000);
   const [rentals, done, stageRows] = await Promise.all([
     prisma.rental.findMany({ where: { deletedInGoogle: false, eventType: "WYNAJEM", startsAt: { gte: sod, lt: eod } }, select: { driverId: true } }),
-    prisma.leadActivity.groupBy({ by: ["leadId"], where: { userId, createdAt: { gte: sod }, leadId: { not: null }, type: { in: ["CALL", "CALL_NO_ANSWER", "EMAIL", "SMS", "STAGE_CHANGE"] } } }),
+    prisma.leadActivity.groupBy({
+      by: ["leadId", "userId"],
+      where: { createdAt: { gte: sod }, leadId: { not: null }, user: { role: { in: ["ADMIN", "STAFF"] } }, type: { in: ["CALL", "CALL_NO_ANSWER", "EMAIL", "SMS", "STAGE_CHANGE"] } },
+    }),
     prisma.leadActivity.findMany({ where: { type: "STAGE_CHANGE", createdAt: { gte: monday }, leadId: { not: null } }, select: { leadId: true, body: true } }),
   ]);
   const reached = (label: string) => new Set(stageRows.filter((r) => (r.body ?? "").includes(`→ ${label}`)).map((r) => r.leadId)).size;
   return {
     rentalsToday: rentals.length,
     rentalsWithDriver: rentals.filter((r) => r.driverId).length,
-    doneToday: done.length,
+    doneToday: new Set(done.map((d) => d.leadId)).size,
+    doneByUser: done.reduce<Record<string, number>>((m, d) => (d.userId ? { ...m, [d.userId]: (m[d.userId] ?? 0) + 1 } : m), {}),
     weekOffers: reached("Oferta wysłana"),
     weekReservations: reached("Rezerwacja"),
   };

@@ -66,11 +66,11 @@ export async function mergeRepeatInquiry(target: { id: string; stage: string }, 
 // próby i najbliższy krok z archiwizowanego — archiwizacja nie cofa lejka.
 const RANK: Record<string, number> = { SYGNAL: 0, WYWIAD: 1, ODLOZONE: 1, OFERTA: 2, REZERWACJA: 3 };
 
-export async function takeOverFromDuplicates(archivedIds: string[], now = new Date()): Promise<number> {
+export async function takeOverFromDuplicates(archivedIds: string[]): Promise<number> {
   let merged = 0;
   const archived = await prisma.lead.findMany({
     where: { id: { in: archivedIds }, clientId: { not: null }, stage: { in: [...LIVE] } },
-    select: { id: true, clientId: true, stage: true, firstContactAt: true, lastContactAt: true, attempts: true, followUpNo: true, nextActionAt: true, nextStepType: true, nextStepNote: true, returnAt: true, postponeReason: true, rentalId: true, title: true },
+    select: { id: true, clientId: true, stage: true, stageChangedAt: true, firstContactAt: true, lastContactAt: true, attempts: true, followUpNo: true, nextActionAt: true, nextStepType: true, nextStepNote: true, returnAt: true, postponeReason: true, rentalId: true, title: true },
   });
   for (const a of archived) {
     const s = await prisma.lead.findFirst({
@@ -94,7 +94,8 @@ export async function takeOverFromDuplicates(archivedIds: string[], now = new Da
       prisma.lead.update({
         where: { id: s.id },
         data: {
-          ...(higher ? { stage, stageChangedAt: now, ...(a.stage === "ODLOZONE" ? { returnAt: a.returnAt, postponeReason: a.postponeReason } : {}) } : {}),
+          // Data wejścia w etap (np. data oferty) z duplikatu, nie dzień scalenia.
+          ...(higher ? { stage, stageChangedAt: a.stageChangedAt, ...(a.stage === "ODLOZONE" ? { returnAt: a.returnAt, postponeReason: a.postponeReason } : {}) } : {}),
           firstContactAt: min(s.firstContactAt, a.firstContactAt),
           lastContactAt: max(s.lastContactAt, a.lastContactAt),
           attempts: Math.max(s.attempts, a.attempts),

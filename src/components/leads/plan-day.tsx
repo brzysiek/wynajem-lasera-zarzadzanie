@@ -97,25 +97,33 @@ export function plural(n: number, one: string, few: string, many: string): strin
 
 // „Brawo!” — rezerwacja z lejka (nie stała klientka) z ostatnich 48 h;
 // zamknięty komunikat nie wraca (ta przeglądarka).
-export function WinToast({ rows, now, season, playbook }: { rows: (Row & { stageChangedAt: Date })[]; now: Date; season: number; playbook: Playbook }) {
-  const [dismissed, setDismissed] = useState<string[]>([]);
+// Kontrola 29.09 09:45, pkt 6: raz na nową rezerwację z lejka, osobno dla
+// każdej osoby — znika po ✕ albo 24 h od rezerwacji. Tylko pierwszy przyjazd
+// nowej klientki (wniosek 20): bez powracających i szkoleń.
+export const WIN_TOAST_HOURS = 24;
+
+export function WinToast({ rows, now, season, playbook, userId }: { rows: (Row & { stageChangedAt: Date })[]; now: Date; season: number; playbook: Playbook; userId: string }) {
+  const key = `wl_wins_seen:${userId}`;
+  const [dismissed, setDismissed] = useState<string[] | null>(null);
   useEffect(() => {
     try {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage dostępny dopiero w przeglądarce
-      setDismissed(JSON.parse(localStorage.getItem("wl_wins_seen") ?? "[]"));
+      setDismissed(JSON.parse(localStorage.getItem(key) ?? "[]"));
     } catch {
-      // brak localStorage — komunikat pokaże się do zamknięcia
+      setDismissed([]);
     }
-  }, []);
+  }, [key]);
+  // Do odczytu localStorage nic nie pokazujemy — bez mignięcia zamkniętego banera.
+  if (!dismissed) return null;
   const win = rows
-    .filter((l) => !l.returningClient && (l.stage === "REZERWACJA" || l.stage === "WYGRANA") && now.getTime() - l.stageChangedAt.getTime() < 48 * 3_600_000 && !dismissed.includes(l.id))
+    .filter((l) => l.firstVisitWin && (l.stage === "REZERWACJA" || l.stage === "WYGRANA") && now.getTime() - l.stageChangedAt.getTime() < WIN_TOAST_HOURS * 3_600_000 && !dismissed.includes(l.id))
     .sort((x, y) => y.stageChangedAt.getTime() - x.stageChangedAt.getTime())[0];
   if (!win) return null;
   const close = () =>
     setDismissed((d) => {
-      const n = [...d, win.id].slice(-50);
+      const n = [...(d ?? []), win.id].slice(-50);
       try {
-        localStorage.setItem("wl_wins_seen", JSON.stringify(n));
+        localStorage.setItem(key, JSON.stringify(n));
       } catch {
         // tylko do odświeżenia
       }

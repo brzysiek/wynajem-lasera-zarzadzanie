@@ -27,7 +27,7 @@ import {
 } from "@/lib/porzadki/proposal-rules";
 import { createLead, updateLead } from "@/lib/leads/actions";
 import { LOST_REASON_LABEL } from "@/lib/leads/labels";
-import { stepForStage, NEXT_STEP_LABEL, type NextStepType } from "@/lib/leads/funnel";
+import { stageForStep, stepForStage, NEXT_STEP_LABEL, type NextStepType } from "@/lib/leads/funnel";
 import { upsertClientPrice } from "@/lib/clients/terms";
 import { createAddress, updateAddress } from "@/lib/clients/delivery";
 import { formatAddressLine, parseAddressInput } from "@/lib/clients/delivery-rules";
@@ -319,8 +319,17 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
     const at = v.at.length > 10 ? new Date(v.at) : new Date(`${v.at}T10:00:00`);
     if (Number.isNaN(at.getTime())) return { ok: false, message: "Nieprawidłowy termin." };
     const l = await prisma.lead.findUnique({ where: { id: p.leadId! }, select: { clientId: true, stage: true } });
+    // Follow-up oferty przed „Oferta wysłana” → sygnał przechodzi do „Oferta wysłana”.
+    const moveTo = l ? stageForStep(l.stage, v.stepType) : null;
+    if (moveTo) {
+      try {
+        await updateLead(p.leadId!, { stage: moveTo }, actor.userId);
+      } catch (err) {
+        return { ok: false, message: err instanceof Error ? err.message : String(err) };
+      }
+    }
     // Krok niezgodny z etapem (np. „pierwszy kontakt” w „W kontakcie”) — wg etapu.
-    const stepType = l ? (stepForStage(l.stage, v.stepType) ?? v.stepType) : v.stepType;
+    const stepType = l ? (stepForStage(moveTo ?? l.stage, v.stepType) ?? v.stepType) : v.stepType;
     await prisma.$transaction([
       prisma.lead.update({ where: { id: p.leadId! }, data: { nextActionAt: at, nextStepType: stepType, nextStepNote: v.note } }),
       prisma.leadActivity.create({

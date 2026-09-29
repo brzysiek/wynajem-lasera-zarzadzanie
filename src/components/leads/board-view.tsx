@@ -173,7 +173,11 @@ export function BoardView({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 min-[1200px]:grid-cols-4">
+      {/* Kontrola 29.09 09:45, pkt 5: cztery kolumny zawsze obok siebie (od
+          ok. 1000 px obszaru treści mieszczą się w całości); węższe okno —
+          przewijanie w bok zamiast łamania na 2×2. Na telefonie jedna pod drugą. */}
+      <div className="-mx-1 overflow-x-auto px-1 pb-1">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(4,minmax(232px,1fr))]">
         {BOARD_STAGES.map((stage) => {
           const col = scoped.filter((r) => r.stage === stage).sort((a, b) => (a.nextActionAt ?? "9999").localeCompare(b.nextActionAt ?? "9999"));
           const expanded = open.has(stage);
@@ -262,6 +266,7 @@ export function BoardView({
             </div>
           );
         })}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2.5">

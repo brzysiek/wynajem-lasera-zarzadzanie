@@ -69,7 +69,14 @@ export function CardHeader({
               {d.profile.shortName ?? d.name}
             </h1>
             {status ? (
-              <span className={`flex-none px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] ${statusCls}`}>{STATUS_LABEL[status]}</span>
+              <>
+                <span className={`flex-none px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] ${statusCls}`}>{STATUS_LABEL[status]}</span>
+                {d.summary.rhythmHint && status !== "POTENCJALNY" && status !== "NIE_KONTAKTOWAC" && (
+                  <span className="flex-none text-[12px] text-[#5C6166]" title={`Przyjazdy: ${d.summary.arrivals} (kilka urządzeń w ciągu 3 dni = 1 przyjazd)`}>
+                    {d.summary.rhythmHint}
+                  </span>
+                )}
+              </>
             ) : (
               <span className="flex-none border border-dashed border-[#C3C4C7] px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] text-[#5C6166]" title="Kontakt z zapytania — jeszcze bez rozmowy ani korespondencji (lejek v2)">Kontakt</span>
             )}

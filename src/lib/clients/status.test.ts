@@ -1,31 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { CONFIRMATION_TRACKED_SINCE, computeClientStatus, daysAgo, isRealizedRental } from "./status";
+import { CONFIRMATION_TRACKED_SINCE, arrivalDates, arrivalRhythmLabel, computeClientStatus, daysAgo, isRealizedRental } from "./status";
 
 const today = new Date(2026, 9, 1, 12, 0); // 1.10.2026, 12:00
 const ago = (n: number) => new Date(2026, 9, 1 - n, 10, 0);
 
-function status(dates: Date[], statusOverride: "NIE_KONTAKTOWAC" | null = null, hasFutureReservation = false) {
-  return computeClientStatus({ statusOverride, realizedRentalDates: dates, today, hasFutureReservation });
+function status(dates: Date[], statusOverride: "NIE_KONTAKTOWAC" | null = null, reservations: Date[] = []) {
+  return computeClientStatus({ statusOverride, realizedRentalDates: dates, today, reservationDates: reservations });
 }
+const soon = new Date(2026, 9, 7); // rezerwacja 07.10
 
-describe("computeClientStatus (wniosek 12, poprawka 27.09 14:20)", () => {
+describe("computeClientStatus (wniosek 20, decyzja 29.09)", () => {
   it("blokada wygrywa ze wszystkim", () => {
     expect(status([ago(1), ago(30)], "NIE_KONTAKTOWAC")).toBe("NIE_KONTAKTOWAC");
-    expect(status([ago(400)], "NIE_KONTAKTOWAC", true)).toBe("NIE_KONTAKTOWAC");
+    expect(status([ago(400)], "NIE_KONTAKTOWAC", [soon])).toBe("NIE_KONTAKTOWAC");
   });
 
-  it("bez wynajmów i rezerwacji → POTENCJALNY", () => {
+  it("bez przyjazdów i rezerwacji → POTENCJALNY", () => {
     expect(status([])).toBe("POTENCJALNY");
   });
 
-  it("rezerwacja: 2+ wynajmy w 12 mies. albo klientka od ponad roku → STALY; 0–1 wynajem → NOWY", () => {
-    expect(status([], null, true)).toBe("NOWY"); // Karpierz — sama rezerwacja
-    expect(status([ago(200)], null, true)).toBe("NOWY");
-    expect(status([ago(10), ago(60), ago(120), ago(180)], null, true)).toBe("STALY"); // Pawlik — 4 wynajmy od III
-    expect(status([ago(4), ago(30)], null, true)).toBe("STALY"); // Bloom House — 2 wynajmy
-    expect(status([ago(184), ago(400)], null, true)).toBe("STALY"); // Be Beauty
-    expect(status([ago(800)], null, true)).toBe("NOWY"); // 1 wynajem w historii (dawno) + rezerwacja
-    expect(status([ago(500), ago(800)], null, true)).toBe("STALY"); // powracająca z rezerwacją
+  it("same rezerwacje (także seria) → NOWY; ≥ 1 zrealizowany + rezerwacja → STALY", () => {
+    expect(status([], null, [soon])).toBe("NOWY"); // Cybul — sama rezerwacja 01.10
+    expect(status([], null, [soon, new Date(2026, 10, 20)])).toBe("NOWY");
+    expect(status([ago(200)], null, [soon])).toBe("STALY");
+    expect(status([ago(800)], null, [soon])).toBe("STALY"); // była klientka z historią wraca od razu do Stałych
+    expect(status([ago(590), ago(700)], null, [soon])).toBe("STALY"); // Bigos — przyjazdy 2023–2025 + rezerwacja 07.10
+  });
+
+  it("rezerwacja w ciągu 3 dni od zrealizowanego to ten sam przyjazd", () => {
+    expect(status([ago(1)], null, [new Date(2026, 9, 2)])).toBe("NOWY");
+  });
+
+  it("liczymy przyjazdy, nie urządzenia: kilka wynajmów w ciągu 3 dni = 1 przyjazd", () => {
+    expect(status([ago(10), ago(10), ago(12)])).toBe("NOWY"); // Cooltech + LightSheer tego samego dnia
+    expect(status([ago(10), ago(20)])).toBe("STALY");
   });
 
   it("bez rezerwacji: > 12 mies. → BYLY, 6–12 mies. → USPIONY", () => {
@@ -35,15 +43,23 @@ describe("computeClientStatus (wniosek 12, poprawka 27.09 14:20)", () => {
     expect(status([ago(365)])).toBe("USPIONY");
   });
 
-  it("bez rezerwacji, < 6 mies.: 2+ w 12 mies. → STALY", () => {
+  it("bez rezerwacji, ostatni ≤ 6 mies.: ≥ 2 przyjazdy w historii → STALY, 1 → NOWY", () => {
     expect(status([ago(10), ago(200)])).toBe("STALY");
-    expect(status([ago(180), ago(365)])).toBe("STALY");
-  });
-
-  it("bez rezerwacji, < 6 mies., 1 w 12 mies.: pierwszy w historii → NOWY, powracająca → USPIONY", () => {
+    expect(status([ago(170), ago(400), ago(500)])).toBe("STALY"); // Esensi — wieloletnia, ostatni 13.04
     expect(status([ago(10)])).toBe("NOWY");
     expect(status([ago(180)])).toBe("NOWY");
-    expect(status([ago(10), ago(366)])).toBe("USPIONY");
+  });
+});
+
+describe("arrivalDates / arrivalRhythmLabel", () => {
+  it("grupuje wynajmy w ciągu 3 dni od poprzedniego", () => {
+    expect(arrivalDates([ago(10), ago(12), ago(9), ago(40)]).length).toBe(2);
+  });
+
+  it("rytm: co ok. N mies., okazjonalnie (< 2 w roku), brak przy 1 przyjeździe", () => {
+    expect(arrivalRhythmLabel([ago(10), ago(70), ago(130), ago(190)])).toBe("co ok. 2 mies.");
+    expect(arrivalRhythmLabel([ago(10), ago(300), ago(600)])).toBe("okazjonalnie");
+    expect(arrivalRhythmLabel([ago(10), ago(11)])).toBeNull();
   });
 });
 

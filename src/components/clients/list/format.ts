@@ -28,8 +28,8 @@ export const daysBetween = (a: Date, b: Date) =>
 export const TAB_STATUSES: ClientStatus[] = ["STALY", "NOWY", "USPIONY", "BYLY", "NIE_KONTAKTOWAC"];
 
 export const STATUS_TILE: Record<ClientStatus, { title: string; hint: string; marker: string }> = {
-  STALY: { title: "Stali", hint: "2+ wynajmy w 12 mies.", marker: "bg-[#2F7A68]" },
-  NOWY: { title: "Nowi", hint: "pierwszy wynajem w ostatnich 12 mies.", marker: "bg-[#1B6FA8]" },
+  STALY: { title: "Stali", hint: "2+ przyjazdy albo przyjazd + rezerwacja", marker: "bg-[#2F7A68]" },
+  NOWY: { title: "Nowi", hint: "1 przyjazd, rezerwacja albo ≤ 6 mies.", marker: "bg-[#1B6FA8]" },
   USPIONY: { title: "Uśpieni", hint: "6–12 mies. bez wynajmu", marker: "border-[1.5px] border-[#E08A5C]" },
   BYLY: { title: "Byli", hint: "ponad 12 mies.", marker: "border-[1.5px] border-[#9AA1A8]" },
   NIE_KONTAKTOWAC: { title: "Nie kontaktować", hint: "decyzja Tomka", marker: "bg-[#5C6166]" },

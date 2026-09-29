@@ -6,7 +6,7 @@ import { loadClientPrices, type ClientPriceDto } from "@/lib/clients/terms";
 import { deviceCodeFor, invoiceNetOf, positionsSummary, type ClientPriceRow } from "@/lib/clients/terms-rules";
 import { getHubspotContactUrl } from "@/lib/integrations/hubspot";
 import type { ClinicTypeKey, DeviceInterestKey, SourceKey } from "@/lib/clients/labels";
-import { summarizeClient } from "@/lib/clients/summary";
+import { realizedDatesOf, summarizeClient } from "@/lib/clients/summary";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { buildTransactions, rentalRhythmDays, transactionTotals, typicalPayment, type TxRental, type TxTotals } from "@/lib/clients/transactions";
 import { paymentLabel, type PaymentStatus } from "@/lib/clients/payment-status";
@@ -162,6 +162,8 @@ export type ClientDetail = {
   tasks: { id: string; title: string; status: string; dueDate: string | null; completedAt: string | null; createdAt: string; assigneeName: string | null }[];
   summary: {
     status: ClientStatus;
+    arrivals: number;
+    rhythmHint: string | null;
     rentals12m: number;
     rentalsTotal: number;
     lastRentalAt: string | null;
@@ -723,6 +725,8 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     })),
     summary: {
       status: summary.status,
+      arrivals: summary.arrivals,
+      rhythmHint: summary.rhythmHint,
       rentals12m: summary.rentals12m,
       rentalsTotal: summary.rentalsTotal,
       lastRentalAt: summary.lastRentalAt?.toISOString() ?? null,
@@ -830,7 +834,9 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
 
 // Status wybranych klientów (np. przy sygnałach: „Powracająca klientka”,
 // „Nie kontaktować”) — ta sama reguła co lista klientów, bez przychodu.
-export async function loadClientStatuses(ids: string[], today = new Date()): Promise<Map<string, ClientStatus>> {
+// `realized` — daty zrealizowanych wynajmów (z historią i fakturami), do
+// „pierwszego przyjazdu” nowej klientki (cel sezonu, „Brawo”, wniosek 20).
+export async function loadClientStatusInfo(ids: string[], today = new Date()): Promise<Map<string, { status: ClientStatus; realized: Date[] }>> {
   if (ids.length === 0) return new Map();
   const clients = await prisma.client.findMany({
     where: { id: { in: ids } },
@@ -843,14 +849,15 @@ export async function loadClientStatuses(ids: string[], today = new Date()): Pro
     },
   });
   return new Map(
-    clients.map((c) => [
-      c.id,
-      summarizeClient({
-        statusOverride: c.statusOverride,
-        rentals: [...(c.rentals as RentalFactRow[]).map(toFact), ...c.history.map(historyToFact)],
-        invoices: c.invoices.map(invoiceToFact),
-        today,
-      }).status,
-    ]),
+    clients.map((c) => {
+      const rentals = [...(c.rentals as RentalFactRow[]).map(toFact), ...c.history.map(historyToFact)];
+      const invoices = c.invoices.map(invoiceToFact);
+      return [c.id, { status: summarizeClient({ statusOverride: c.statusOverride, rentals, invoices, today }).status, realized: realizedDatesOf(rentals, invoices) }];
+    }),
   );
+}
+
+export async function loadClientStatuses(ids: string[], today = new Date()): Promise<Map<string, ClientStatus>> {
+  const info = await loadClientStatusInfo(ids, today);
+  return new Map([...info].map(([id, x]) => [id, x.status]));
 }

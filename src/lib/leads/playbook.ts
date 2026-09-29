@@ -108,16 +108,18 @@ export function parsePlaybook(raw: string | null | undefined): Playbook {
 }
 
 // Cel sezonu: rezerwacje z sygnałów nowych klientów (bez stałych klientek),
-// które wpłynęły w sezonie i doszły co najmniej do Rezerwacji.
+// które wpłynęły w sezonie i doszły co najmniej do Rezerwacji. Wniosek 20:
+// tylko pierwszy przyjazd nowej klientki (firstVisitWin z load.ts —
+// powracające i szkolenia nie); bez tej flagi — jak dotąd, wg returningClient.
 export function seasonReservations(
-  leads: { createdAt: Date; returningClient?: boolean; stage: string; maxStage?: string; rentalId: string | null }[],
+  leads: { createdAt: Date; returningClient?: boolean; firstVisitWin?: boolean; stage: string; maxStage?: string; rentalId: string | null }[],
   season: Playbook["season"],
 ): number {
   const from = new Date(`${season.from}T00:00:00`);
   const to = new Date(`${season.to}T23:59:59`);
   return leads.filter(
     (l) =>
-      !l.returningClient &&
+      (l.firstVisitWin ?? !l.returningClient) &&
       l.createdAt >= from &&
       l.createdAt <= to &&
       l.stage !== "PRZEGRANA" &&

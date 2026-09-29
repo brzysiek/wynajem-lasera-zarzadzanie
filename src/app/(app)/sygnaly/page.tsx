@@ -31,7 +31,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     todayCallStats(),
     loadArchived2025Rows(),
     loadPlaybook(),
-    loadDayProgress(session.user.id),
+    loadDayProgress(),
     session.user.role === "AGENT" ? false : shouldShowTour(session.user.id, "signalsV2"),
   ]);
   return (

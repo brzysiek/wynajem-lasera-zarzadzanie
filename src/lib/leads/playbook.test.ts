@@ -28,6 +28,22 @@ describe("ściąga (złote zasady)", () => {
     ).toBe(2);
   });
 
+  it("wniosek 20: liczy się tylko pierwszy przyjazd nowej klientki (firstVisitWin)", () => {
+    const s = DEFAULT_PLAYBOOK.season;
+    const d = (m: number, day: number) => new Date(2026, m - 1, day);
+    expect(
+      seasonReservations(
+        [
+          { createdAt: d(9, 10), stage: "REZERWACJA", rentalId: "r", firstVisitWin: true },
+          // Bell Beauty: szkolenie 20.09 powracającej klientki — nie liczy się
+          { createdAt: d(9, 12), stage: "WYGRANA", rentalId: "r2", firstVisitWin: false },
+          { createdAt: d(9, 15), stage: "REZERWACJA", rentalId: "r4", returningClient: true, firstVisitWin: false },
+        ],
+        s,
+      ),
+    ).toBe(1);
+  });
+
   it("skrypt z wolnym terminem", () => {
     expect(fillScript("trzymam {termin}", { termin: "16.10" })).toBe("trzymam 16.10");
     expect(fillScript("trzymam {termin}", {})).toBe("trzymam [termin]");

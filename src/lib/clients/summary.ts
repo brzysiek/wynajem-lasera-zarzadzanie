@@ -1,7 +1,7 @@
 // Podsumowanie klienta z historii jego wynajmów — jedna czysta funkcja dla
 // listy i karty klienta, żeby liczby nigdy się nie rozjeżdżały. Bez
 // zależności (vitest bez aliasu "@/").
-import { computeClientStatus, daysAgo, isRealizedRental, type ClientStatus } from "./status";
+import { arrivalDates, arrivalRhythmLabel, computeClientStatus, daysAgo, isRealizedRental, type ClientStatus } from "./status";
 import type { DeviceInterestKey } from "./labels";
 import { invoiceOnlyRentalDates } from "../history/invoices";
 
@@ -26,6 +26,10 @@ export type ClientInvoiceFact = {
 
 export type ClientSummary = {
   status: ClientStatus;
+  // Wniosek 20: przyjazdy (kilka urządzeń w ciągu 3 dni = 1) i rytm obok
+  // statusu („co ok. N mies.” / „okazjonalnie”, null przy 1 przyjeździe).
+  arrivals: number;
+  rhythmHint: string | null;
   rentals12m: number;
   rentalsTotal: number;
   lastRentalAt: Date | null;
@@ -40,6 +44,13 @@ export type ClientSummary = {
   favoriteDevice: DeviceInterestKey | null;
   rentedDevices: DeviceInterestKey[]; // od najczęściej wynajmowanego
 };
+
+// Daty zrealizowanych wynajmów (status.ts) + faktury bez wynajmu w pobliżu —
+// podstawa statusu i przyjazdów (także „pierwszy przyjazd” w Sygnałach).
+export function realizedDatesOf(rentals: ClientRentalFact[], invoices: ClientInvoiceFact[] = []): Date[] {
+  const realizedRentals = rentals.filter(isRealizedRental);
+  return [...realizedRentals.map((r) => r.startsAt), ...invoiceOnlyRentalDates(invoices, realizedRentals)];
+}
 
 // Liczby wynajmów, ostatni wynajem i ulubione urządzenie — z wynajmów
 // ZREALIZOWANYCH (ta sama definicja co status, status.ts). Przychód — z
@@ -73,7 +84,7 @@ export function summarizeClient(input: {
     realizedRentalDates: realized.map((r) => r.startsAt),
     today: input.today,
     // Rezerwacja = wynajem (nie szkolenie) nieusunięty, zaczynający się po dziś.
-    hasFutureReservation: input.rentals.some((r) => r.eventType === "WYNAJEM" && !r.deletedInGoogle && r.startsAt > input.today),
+    reservationDates: input.rentals.filter((r) => r.eventType === "WYNAJEM" && !r.deletedInGoogle && r.startsAt > input.today).map((r) => r.startsAt),
   });
 
   const finished = input.rentals.filter((r) => !r.deletedInGoogle && r.endsAt <= input.today && r.totalNet != null);
@@ -90,8 +101,11 @@ export function summarizeClient(input: {
   const firstSeenAt = pastTimes.length ? new Date(Math.min(...pastTimes)) : null;
   const invoicedNet = Math.round(invoices.reduce((s, i) => s + i.totalNet, 0) * 100) / 100;
 
+  const realizedDates = realized.map((r) => r.startsAt);
   return {
     status,
+    arrivals: arrivalDates(realizedDates).length,
+    rhythmHint: arrivalRhythmLabel(realizedDates),
     rentals12m: realized.filter((r) => daysAgo(r.startsAt, input.today) <= 365).length,
     rentalsTotal: realized.length,
     lastRentalAt: realized[0]?.startsAt ?? null,

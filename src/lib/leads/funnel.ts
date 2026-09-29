@@ -449,6 +449,13 @@ export function buildToday<T extends FunnelLead & { nextStepNote?: string | null
 // Przegląd 29.09, pkt 3: „pierwszy kontakt” / „ponowna próba” tylko w etapie
 // Nowe. Po wyjściu z Nowe krok zmienia się na odpowiedni dla etapu.
 export const FIRST_CONTACT_STEPS = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA"];
+// Kontrola 29.09 09:35, pkt 2: krok „follow-up oferty” przed etapem „Oferta
+// wysłana” = oferta już poszła → sygnał idzie do „Oferta wysłana” (tylko do
+// przodu). Zwraca etap docelowy albo null, gdy etap zostaje.
+export function stageForStep(stage: LeadStageKey, step: string | null): LeadStageKey | null {
+  return step === "FOLLOW_UP_OFERTY" && (stage === "SYGNAL" || stage === "WYWIAD") ? "OFERTA" : null;
+}
+
 export function stepForStage(stage: LeadStageKey, step: string | null): string | null {
   if (stage === "SYGNAL" || !step || !FIRST_CONTACT_STEPS.includes(step)) return step;
   return stage === "OFERTA" ? "FOLLOW_UP_OFERTY" : stage === "REZERWACJA" ? "INNE" : "DOPYTAC";

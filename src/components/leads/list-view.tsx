@@ -194,8 +194,8 @@ export function ListView({
   if (state === "today") {
     return (
       <div className="flex flex-col gap-3">
-        <PlanBand items={today} untouchedTotal={untouchedTotal} progress={progress} playbook={playbook} season={season} selected={group} onSelect={setGroup} />
-        <WinToast rows={funnel} now={now} season={season} playbook={playbook} />
+        <PlanBand items={today} untouchedTotal={untouchedTotal} progress={mine === "me" ? { ...progress, doneToday: progress.doneByUser[currentUserId] ?? 0 } : progress} playbook={playbook} season={season} selected={group} onSelect={setGroup} />
+        <WinToast rows={funnel} now={now} season={season} playbook={playbook} userId={currentUserId} />
         <div className="flex flex-wrap items-center gap-2">
           {stateSeg}
           <Seg<Mine>

@@ -43,35 +43,69 @@ export function daysAgo(date: Date, today: Date): number {
   return Math.max(0, dayIndex(today) - dayIndex(date));
 }
 
-// Reguły (wniosek nr 12, poprawka Tomka 27.09.2026 14:20):
+// Przyjazdy (wniosek 20, decyzja Tomka 29.09.2026): liczymy przyjazdy, nie
+// urządzenia — kilka wynajmów tego samego dnia albo w ciągu 3 dni od
+// poprzedniego to jeden przyjazd. Zwraca datę pierwszego dnia każdego
+// przyjazdu, od najstarszego.
+export const ARRIVAL_GAP_DAYS = 3;
+
+export function arrivalDates(dates: Date[]): Date[] {
+  const sorted = [...dates].sort((a, b) => a.getTime() - b.getTime());
+  const out: Date[] = [];
+  let last: Date | null = null;
+  for (const d of sorted) {
+    if (!last || dayIndex(d) - dayIndex(last) > ARRIVAL_GAP_DAYS) out.push(d);
+    last = d;
+  }
+  return out;
+}
+
+// Reguły (wniosek 20, decyzja Tomka 29.09.2026 — zastępuje regułę 12 mies.
+// z wniosku 12). Status = relacja; „aktywna” = rezerwacja albo ostatni
+// przyjazd ≤ 6 mies. temu:
 // 1. blokada → NIE_KONTAKTOWAC
-// 2. brak zrealizowanych wynajmów i rezerwacji → POTENCJALNY
-// 3. rezerwacja w przyszłości → STALY, gdy w historii ≥ 2 zrealizowane
-//    wynajmy; 0–1 → NOWY („Nowy = najwyżej 1 wynajem w całej historii”,
-//    druga poprawka z wniosku 12, 27.09 16:27). Doprecyzowane 27.09 wieczorem wg kontroli Tomka:
-//    Pawlik, DaCorso, So Skin, Grelecka (rezerwacja + kilka wynajmów w roku)
-//    = Stałe; w Nowych tylko Karpierz (sama rezerwacja) i BlooMe (1 wynajem).
-// 4. bez rezerwacji — wg ostatniego zrealizowanego wynajmu:
-//    > 12 mies. → BYLY; 6–12 mies. → USPIONY;
-//    < 6 mies. i ≥ 2 wynajmy w 12 mies. → STALY;
-//    < 6 mies. i 1 wynajem w 12 mies.: pierwszy w historii → NOWY,
-//    klientka powracająca (wcześniejsze wynajmy) → USPIONY.
+// 2. brak przyjazdów i rezerwacji → POTENCJALNY
+// 3. same rezerwacje, bez zrealizowanego przyjazdu → NOWY (seria rezerwacji
+//    nowej klientki też)
+// 4. ≥ 1 zrealizowany + rezerwacja → STALY (także była klientka z historią,
+//    która zarezerwowała — od razu Stała, nie Nowa)
+// 5. bez rezerwacji, wg ostatniego przyjazdu: > 12 mies. → BYLY;
+//    6–12 mies. → USPIONY; ≤ 6 mies.: ≥ 2 przyjazdy → STALY, 1 → NOWY.
+// Rezerwacja liczy się od wpisania do kalendarza (wynajem, nie szkolenie,
+// nieusunięty, w przyszłości) — anulowanie w Google ją zdejmuje.
 // `realizedRentalDates` = daty rozpoczęcia wynajmów spełniających
-// isRealizedRental — filtrowanie robi wywołujący.
+// isRealizedRental (filtrowanie robi wywołujący); `reservationDates` —
+// przyszłe rezerwacje (rezerwacja w ciągu 3 dni od zrealizowanego przyjazdu
+// to ten sam przyjazd, nie nowy).
 export function computeClientStatus(input: {
   statusOverride: "NIE_KONTAKTOWAC" | null;
   realizedRentalDates: Date[];
   today: Date;
+  reservationDates?: Date[];
   hasFutureReservation?: boolean;
 }): ClientStatus {
   if (input.statusOverride === "NIE_KONTAKTOWAC") return "NIE_KONTAKTOWAC";
-  const ages = input.realizedRentalDates.map((d) => daysAgo(d, input.today));
-  if (ages.length === 0) return input.hasFutureReservation ? "NOWY" : "POTENCJALNY";
-  const inLastYear = ages.filter((a) => a <= 365).length;
-  if (input.hasFutureReservation) return ages.length >= 2 ? "STALY" : "NOWY";
-  const lastAge = Math.min(...ages);
+  const realized = arrivalDates(input.realizedRentalDates);
+  const lastRealized = realized[realized.length - 1] ?? null;
+  const reservations = (input.reservationDates ?? []).filter((d) => !lastRealized || dayIndex(d) - dayIndex(lastRealized) > ARRIVAL_GAP_DAYS);
+  const hasReservation = reservations.length > 0 || (input.hasFutureReservation === true && !input.reservationDates);
+  if (!lastRealized) return hasReservation ? "NOWY" : "POTENCJALNY";
+  if (hasReservation) return "STALY";
+  const lastAge = daysAgo(lastRealized, input.today);
   if (lastAge > 365) return "BYLY";
   if (lastAge > 180) return "USPIONY";
-  if (inLastYear >= 2) return "STALY";
-  return ages.length === 1 ? "NOWY" : "USPIONY";
+  return realized.length >= 2 ? "STALY" : "NOWY";
+}
+
+// Rytm obok statusu (wniosek 20, pkt 4): „co ok. N mies.” z mediany odstępów
+// między przyjazdami albo „okazjonalnie”, gdy wychodzi mniej niż 2 przyjazdy
+// w roku. Przy jednym przyjeździe — brak rytmu.
+export function arrivalRhythmLabel(realizedRentalDates: Date[]): string | null {
+  const a = arrivalDates(realizedRentalDates);
+  if (a.length < 2) return null;
+  const gaps = a.slice(1).map((d, i) => dayIndex(d) - dayIndex(a[i])).sort((x, y) => x - y);
+  const mid = gaps.length / 2;
+  const median = gaps.length % 2 ? gaps[Math.floor(mid)] : (gaps[mid - 1] + gaps[mid]) / 2;
+  if (median > 365 / 2) return "okazjonalnie";
+  return `co ok. ${Math.max(1, Math.round(median / 30.44))} mies.`;
 }

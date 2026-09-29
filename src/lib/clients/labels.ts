@@ -14,8 +14,8 @@ export const STATUS_LABEL: Record<ClientStatus, string> = {
 // Opis segmentu pod liczbą na kafelku (makieta) — reguły z status.ts.
 export const STATUS_HINT: Record<ClientStatus, string> = {
   POTENCJALNY: "po rozmowie, bez wynajmu",
-  NOWY: "1 wynajem w 12 mies.",
-  STALY: "2+ wynajmy w 12 mies.",
+  NOWY: "1 przyjazd, aktywna",
+  STALY: "2+ przyjazdy albo przyjazd + rezerwacja",
   USPIONY: "6–12 mies. bez wynajmu",
   BYLY: "ponad 12 mies.",
   NIE_KONTAKTOWAC: "blokada",

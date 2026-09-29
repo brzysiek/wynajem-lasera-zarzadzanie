@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { STAGE_HISTORY_LABELS } from "./labels";
-import { addWorkHours, buildInbox, buildToday, buildNaDzis, callQueue, inboxKpis, maxStageReached, medianFirstContactHours, naDzisKpis, nextWorkdayAt10, planOutcome, rotInfo, type FunnelLead } from "./funnel";
+import { stageForStep, addWorkHours, buildInbox, buildToday, buildNaDzis, callQueue, inboxKpis, maxStageReached, medianFirstContactHours, naDzisKpis, nextWorkdayAt10, planOutcome, rotInfo, type FunnelLead } from "./funnel";
 
 // Wrzesień/październik 2026: 25.09 = piątek, 28.09 = poniedziałek, 02.10 = piątek.
 const at = (day: number, h = 12, m = 0, month = 9) => new Date(2026, month - 1, day, h, m);
@@ -189,5 +189,15 @@ describe("Lista „Na dziś” (28.09)", () => {
       ["maj-zalegly", "late", "calls"],
       ["kwiecien-dzis", "today", "calls"],
     ]);
+  });
+});
+
+describe("krok zgodny z etapem (kontrola 29.09 09:35, pkt 2)", () => {
+  it("follow-up oferty przed „Oferta wysłana” → Oferta wysłana; inne kroki i dalsze etapy bez zmian", () => {
+    expect(stageForStep("WYWIAD", "FOLLOW_UP_OFERTY")).toBe("OFERTA");
+    expect(stageForStep("SYGNAL", "FOLLOW_UP_OFERTY")).toBe("OFERTA");
+    expect(stageForStep("OFERTA", "FOLLOW_UP_OFERTY")).toBeNull();
+    expect(stageForStep("REZERWACJA", "FOLLOW_UP_OFERTY")).toBeNull();
+    expect(stageForStep("WYWIAD", "DOPYTAC")).toBeNull();
   });
 });

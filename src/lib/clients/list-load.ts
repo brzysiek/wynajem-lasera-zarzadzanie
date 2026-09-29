@@ -48,6 +48,8 @@ export type ClientListRow = {
   primaryLastName: string | null;
   hasPhone: boolean;
   status: ClientStatus;
+  // Wniosek 20: „co ok. N mies.” / „okazjonalnie” obok statusu.
+  rhythmHint: string | null;
   rentals12m: number;
   rentalsTotal: number;
   lastRentalAt: string | null;
@@ -413,6 +415,7 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       primaryLastName: primary?.lastName ?? null,
       hasPhone: c.contacts.some((p) => Boolean(p.phone?.trim() || p.phone2?.trim())),
       status: summary.status,
+      rhythmHint: summary.rhythmHint,
       rentals12m: summary.rentals12m,
       rentalsTotal: summary.rentalsTotal,
       lastRentalAt: summary.lastRentalAt?.toISOString() ?? null,

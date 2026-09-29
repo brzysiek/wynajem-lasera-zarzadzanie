@@ -1106,6 +1106,7 @@ function ClientRow({
         </Link>
         <div className="flex min-w-0 items-center gap-2">
           <Badge status={r.status} />
+          {r.rhythmHint && r.status !== "POTENCJALNY" && r.status !== "NIE_KONTAKTOWAC" && <span className="flex-none text-[12px] text-[#5C6166]">{r.rhythmHint}</span>}
           <span className="truncate text-[12px] text-[#5C6166]">{meta}</span>
         </div>
         {r.check && (
