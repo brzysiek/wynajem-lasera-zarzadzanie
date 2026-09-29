@@ -1,5 +1,8 @@
 "use client";
 
+import { RentalClientField, type ClientCandidate, type PickedClient } from "@/components/rental-client-field";
+import { isGenericTitleKey } from "@/lib/clients/rental-match-rules";
+import { normalizeTitle } from "@/lib/history/normalize-title";
 import { OpenTasks } from "@/components/open-tasks";
 import type { OpenTaskDto } from "@/lib/task-links";
 import Link from "next/link";
@@ -780,6 +783,8 @@ export function RentalForm({
   defaultVatRate = 23,
   backHref,
   openTasks = [],
+  initialClient = null,
+  clientCandidates = [],
 }: {
   devices: Device[];
   rental: Rental | null;
@@ -802,11 +807,18 @@ export function RentalForm({
   backHref: string;
   // Wniosek 22: otwarte zadania powiązane z rezerwacją.
   openTasks?: OpenTaskDto[];
+  // Wniosek 23: klient rezerwacji (wymagany) i kandydaci, gdy go brak.
+  initialClient?: PickedClient | null;
+  clientCandidates?: ClientCandidate[];
 }) {
   const router = useRouter();
   const isEditing = Boolean(rental);
   const [deviceId, setDeviceId] = useState(rental?.deviceId ?? defaultDeviceId ?? devices[0]?.id ?? "");
   const [title, setTitle] = useState(rental?.title ?? prefill?.title ?? "");
+  const [client, setClient] = useState<PickedClient | null>(initialClient);
+  // Alias z tytułu przy pierwszym przypisaniu (domyślnie tak, bez ogólnych tytułów).
+  const [aliasFromTitle, setAliasFromTitle] = useState(true);
+  const [autoTitle, setAutoTitle] = useState<string | null>(null);
   const [description, setDescription] = useState(rental?.description ?? "");
   // Opis bywa pusty w większości rezerwacji — rozwijany, domyślnie otwarty
   // tylko gdy już coś w nim jest (edycja istniejącej rezerwacji z opisem).
@@ -924,6 +936,19 @@ export function RentalForm({
     });
   }
 
+  // Tytuł z nazwy roboczej klienta („Karpierz – Alma”), edytowalny: nadpisujemy
+  // tylko pusty albo wcześniej wygenerowany tytuł (wniosek 23).
+  function handleClientChange(c: PickedClient | null) {
+    setClient(c);
+    if (!c) return;
+    const dev = devices.find((d) => d.id === deviceId);
+    const next = `${c.shortName ?? c.name}${dev ? ` – ${dev.shortName ?? dev.name}` : ""}`;
+    if (!isEditing && (!title.trim() || title === autoTitle)) {
+      setTitle(next);
+      setAutoTitle(next);
+    }
+  }
+
   function handleContactChange(contact: AssignedContact | null) {
     setPendingContact(contact);
     if (contact?.address && !deliveryAddress.trim()) {
@@ -945,7 +970,14 @@ export function RentalForm({
     );
     const effectiveReminderDays = Array.from(reminderDays).filter((d) => sentDays.has(d) || remaining >= d);
 
+    if (!client) {
+      setIsSaving(false);
+      setError("Wybierz klienta rezerwacji (albo dodaj nowego).");
+      return;
+    }
     const body: Record<string, unknown> = {
+      clientId: client.id,
+      aliasFromTitle,
       deviceId,
       title,
       description,
@@ -989,6 +1021,9 @@ export function RentalForm({
       setError(`Zapisano wynajem, ale: ${data.financeError}`);
       return;
     }
+    if (typeof data?.autoAssigned === "number" && data.autoAssigned > 0) {
+      window.alert(`Przypisano też ${data.autoAssigned} ${data.autoAssigned === 1 ? "kolejny termin" : "kolejne terminy"} z tym tytułem lub serią.`);
+    }
     goBack();
   }
 
@@ -1028,6 +1063,21 @@ export function RentalForm({
           <div className="flex flex-col gap-6 lg:col-span-2">
           <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5">
             <p className="mb-2 text-sm text-gray-700">Dane rezerwacji</p>
+
+            {/* Wniosek 23: klient wybierany w panelu (obowiązkowo), nie zgadywany z tytułu. */}
+            <div className="flex flex-col gap-1 text-sm text-gray-700">
+              <span className="flex items-center gap-2">
+                Klient *
+                {!client && <span className="rounded bg-[#FBF0E7] px-1.5 py-px text-[11px] font-semibold uppercase tracking-wide text-[#B8612F]">Brak klienta</span>}
+              </span>
+              <RentalClientField value={client} onChange={handleClientChange} candidates={clientCandidates} />
+              {isEditing && !initialClient && client && !isGenericTitleKey(normalizeTitle(title).key) && (
+                <label className="flex items-center gap-2 text-xs text-gray-600">
+                  <input type="checkbox" checked={aliasFromTitle} onChange={(e) => setAliasFromTitle(e.target.checked)} />
+                  Zapamiętać „{title}” jako alias tej klientki? (kolejne terminy z tym tytułem przypiszą się same)
+                </label>
+              )}
+            </div>
 
             {/* Typ wydarzenia + Tytuł w jednym wierszu (zamiast typu osobno
                 nad pełnoszerokościowym tytułem) — dwa krótkie pola, nie ma

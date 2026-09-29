@@ -1,4 +1,5 @@
 import { createSign } from "crypto";
+import { parseClientTag, withClientTag } from "@/lib/rental-client-tag";
 import { prisma } from "@/lib/prisma";
 import { logDebug, logInfo } from "@/lib/logger";
 
@@ -104,6 +105,9 @@ export type GoogleEventInput = {
   startsAt: Date;
   endsAt: Date;
   allDay: boolean;
+  // Wniosek 23: klient z panelu — extendedProperties.private.clientId i
+  // znacznik [klient:<id>] w opisie. undefined = bez zmian w wydarzeniu.
+  clientId?: string | null;
 };
 
 export type GoogleEvent = {
@@ -115,6 +119,10 @@ export type GoogleEvent = {
   allDay: boolean;
   cancelled: boolean;
   updatedAt: Date;
+  // Wniosek 23: klient zapisany przez panel (extendedProperties albo znacznik
+  // w opisie) i seria wydarzenia cyklicznego.
+  clientId: string | null;
+  recurringEventId: string | null;
 };
 
 // Explicitly resolves the calendar date in Europe/Warsaw regardless of the
@@ -155,6 +163,15 @@ function toGoogleEventBody(input: GoogleEventInput) {
     ? { date: toDateOnly(addDays(input.endsAt, 1)), dateTime: null, timeZone: null }
     : { dateTime: input.endsAt.toISOString(), date: null };
 
+  if (input.clientId !== undefined) {
+    return {
+      summary: input.title,
+      description: withClientTag(input.description, input.clientId) ?? "",
+      start,
+      end,
+      extendedProperties: { private: { clientId: input.clientId ?? "" } },
+    };
+  }
   return {
     summary: input.title,
     description: input.description ?? undefined,
@@ -251,6 +268,8 @@ export async function listCalendarEvents(calendarId: string, timeMin: Date, time
         allDay: start.allDay,
         cancelled: false,
         updatedAt: new Date(item.updated),
+        clientId: (typeof item.extendedProperties?.private?.clientId === "string" && item.extendedProperties.private.clientId) || parseClientTag(item.description),
+        recurringEventId: typeof item.recurringEventId === "string" ? item.recurringEventId : null,
       });
     }
     pageToken = body.nextPageToken;
@@ -285,6 +304,24 @@ export async function updateCalendarEvent(calendarId: string, eventId: string, i
     throw new Error(body?.error?.message || `Nie udało się zaktualizować wydarzenia (HTTP ${res.status}).`);
   }
   logInfo("google_calendar_event_updated", { calendarId, eventId });
+}
+
+// Wniosek 23: po przypisaniu klienta w panelu zapisujemy go w wydarzeniu
+// (extendedProperties + znacznik w opisie) — zmiana tytułu w Google nie gubi
+// klienta. Opis bez znacznika podaje wywołujący (rentals.description).
+export async function setEventClient(calendarId: string, eventId: string, clientId: string | null, description: string | null): Promise<void> {
+  const accessToken = await getAccessToken();
+  const { res, body } = await googleFetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    accessToken,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: withClientTag(description, clientId) ?? "", extendedProperties: { private: { clientId: clientId ?? "" } } }),
+    },
+  );
+  if (!res.ok) throw new Error(body?.error?.message || `Nie udało się zapisać klienta w wydarzeniu (HTTP ${res.status}).`);
+  logInfo("google_calendar_event_client_set", { calendarId, eventId, clientId });
 }
 
 // Moves an event to a different calendar (used when a rental's device

@@ -181,7 +181,7 @@ export const TOOLS: McpTool[] = [
     name: "rezerwacje_bez_klienta",
     title: "Rezerwacje bez klienta",
     description:
-      "Przyszłe rezerwacje z kalendarzy urządzeń bez przypisanego klienta (wniosek 13), z propozycją klienta (alias z dopasowań, seria tytułu, podobieństwo nazwy; pewnosc 0–1). " +
+      "Przyszłe rezerwacje z kalendarzy urządzeń bez przypisanego klienta (wniosek 13 i 23), z kandydatami i powodem (powod: alias, ta sama seria, telefon / e-mail w opisie, HubSpot, „podobna nazwa 0,83 – sprawdź”, podobny tytuł wcześniejszej rezerwacji; pewnosc 0–1). Automatycznie przypisuje się tylko twardy klucz — resztę zgłoś propozycją przypisanie_klienta. " +
       "Pewne dopasowania (alias, ta sama seria, kontakt HubSpot) panel przypisuje sam przy synchronizacji kalendarzy. Tylko odczyt: agent NIE zmienia rezerwacji — " +
       "listę do potwierdzenia zgłasza biuru (np. zadanie_utworz dla Ani); potwierdza biuro w Klienci → Dopasowania historii, sekcja „Rezerwacje bez klienta”.",
     inputSchema: obj({ ...PAGE }),
@@ -196,7 +196,7 @@ export const TOOLS: McpTool[] = [
           do: r.endsAt,
           urzadzenie: r.deviceName,
           typ: r.eventType,
-          propozycje: r.candidates.map((c) => ({ klientId: c.clientId, nazwa: c.name, nazwaRobocza: c.shortName, miasto: c.city, pewnosc: c.score })),
+          propozycje: r.candidates.map((c) => ({ klientId: c.clientId, nazwa: c.name, nazwaRobocza: c.shortName, miasto: c.city, pewnosc: c.score, powod: c.reason })),
         })),
         page(a),
       );
@@ -1103,7 +1103,7 @@ export const TOOLS: McpTool[] = [
       "Dla adres_dostawy (paszport dostawy): klient_id, adres_id (zmiana istniejącego — z narzędzia klient) albo bez niego (nowy adres: nazwa + miejscowosc/kod), pola: nazwa, ulica, kod, miejscowosc, wejscie, pietro, parking, prad, odbiera, godziny, typowa_godzina, uwagi_biura, domyslny (true). " +
       "Lejek sygnałów: sygnal_nowy (sygnał z maila / telefonu — zrodlo_sygnalu EMAIL | TELEFON | OLX | POLECENIE | INNE, klient_id albo imie / telefon / email, opcjonalnie urzadzenia, termin RRRR-MM-DD, dni, notatka, odnosnik np. gmail:<id> — duplikat odnośnika jest odrzucany); " +
       "powod_przegranej (sygnal_id, powod: ODLEGLOSC, CENA, KUPILA_URZADZENIE, TERMIN_ZAJETY, BRAK_KONTAKTU, TYLKO_CENNIK, POZA_BRANZA, INNE_URZADZENIE, INNE + notatka); " +
-      "krok_sygnalu (sygnal_id, termin RRRR-MM-DD[THH:MM], rodzaj_kroku, notatka); powiazanie_wynajmu (sygnal_id, wynajem_id z kalendarz_wynajmy — wynajem bez sygnału). " +
+      "krok_sygnalu (sygnal_id, termin RRRR-MM-DD[THH:MM], rodzaj_kroku, notatka); powiazanie_wynajmu (sygnal_id, wynajem_id z kalendarz_wynajmy — wynajem bez sygnału); klient_nowy (nazwa, telefon albo email, miasto — kontrola duplikatów po telefonie i e-mailu); przypisanie_klienta (wynajem_id, klient_id, opcjonalnie alias: true — po akceptacji panel zapisuje klienta w wydarzeniu Google i alias z tytułu); alias_klienta (klient_id, tytul — tytuł wydarzenia albo jego rdzeń; bez ogólnych tytułów typu „NOWA PaNI”). " +
       "Duplikat sygnału zgłaszaj rodzajem archiwizacja (sygnal_id, powod DUPLIKAT). " +
       "Zawsze zrodlo, pewnosc, paczka; opcjonalnie klasa (np. miasto_slownik) — klasy zatwierdzone na stałe wykonują się od razu. " +
       "Odrzucone wcześniej zmiany są blokowane (dostaniesz komentarz odrzucenia).",

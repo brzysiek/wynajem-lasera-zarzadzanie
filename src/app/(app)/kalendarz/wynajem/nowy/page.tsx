@@ -20,7 +20,7 @@ export default async function NewRentalPage({
           contactName: true,
           contactPhone: true,
           contactEmail: true,
-          client: { select: { name: true, shortName: true } },
+          client: { select: { id: true, name: true, shortName: true, city: true } },
           clientContact: { select: { hubspotContactId: true, firstName: true, lastName: true, phone: true, email: true } },
         },
       })
@@ -86,6 +86,8 @@ export default async function NewRentalPage({
       defaultDeviceId={device}
       defaultDateIso={date}
       prefill={prefill}
+      // Wniosek 23: rezerwacja z sygnału — klient sygnału od razu wybrany.
+      initialClient={lead?.client ? { id: lead.client.id, name: lead.client.name, shortName: lead.client.shortName, city: lead.client.city } : null}
       reminderTemplates={reminderTemplates}
       drivers={drivers}
       vehicles={vehicles}

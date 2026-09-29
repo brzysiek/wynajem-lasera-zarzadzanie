@@ -102,6 +102,18 @@ function describe(p: ChangeProposalRow): { what: string; from: string | null; to
     const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { at: string; stepType: string; note: string | null }) : null;
     return { what: `następny krok: ${p.leadTitle ?? "sygnał"}`, from: readable(p.currentValue), to: v ? `${v.at.replace("T", " ")} · ${v.stepType.toLowerCase().replace(/_/g, " ")}${v.note ? ` — ${v.note}` : ""}` : "—" };
   }
+  if (p.kind === "CLIENT_NEW") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { name: string; phone: string | null; email: string | null; city: string | null }) : null;
+    return { what: "nowy klient", from: null, to: v ? [v.name, v.phone, v.email, v.city].filter(Boolean).join(" · ") : "—" };
+  }
+  if (p.kind === "RENTAL_CLIENT") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { title?: string; startsAt?: string; device?: string; alias?: boolean }) : null;
+    return { what: `klient rezerwacji: ${v ? [v.device, v.startsAt, v.title ? `„${v.title}”` : null].filter(Boolean).join(" · ") : "wynajem"}`, from: readable(p.currentValue), to: `${p.clientName ?? "klient"}${v?.alias ? " + alias z tytułu" : ""}` };
+  }
+  if (p.kind === "CLIENT_ALIAS") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { title: string }) : null;
+    return { what: "alias klienta (tytuł wydarzenia)", from: readable(p.currentValue), to: v ? `„${v.title}” → ${p.clientName ?? "klient"}` : "—" };
+  }
   if (p.kind === "RENTAL_LINK") {
     const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { rentalId: string }) : null;
     return { what: `powiąż z wynajmem: ${p.leadTitle ?? "sygnał"}`, from: readable(p.currentValue), to: v?.rentalId ?? "—" };

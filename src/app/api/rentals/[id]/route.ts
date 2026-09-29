@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { stripClientTag, withClientTag } from "@/lib/rental-client-tag";
+import { changeRentalClient } from "@/lib/clients/rental-match";
 import { releaseLeadForDeletedRental } from "@/lib/leads/rental-link";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
@@ -120,23 +122,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       explicitConfirmation ?? activeRules.some((r) => r.daysBefore === CONFIRMATION_OFFSET);
   }
 
+  // Wniosek 23: „Zmień klienta” — clientId w body (null = odpięcie). Klient
+  // obowiązkowy: rezerwacji z klientem nie da się zapisać bez klienta.
+  const clientChange = body && "clientId" in body ? (typeof body.clientId === "string" && body.clientId ? body.clientId : null) : undefined;
+  if (clientChange === null && rental.clientId) return NextResponse.json({ message: "Rezerwacja musi mieć klienta — wybierz innego zamiast usuwać." }, { status: 400 });
+  const nextClientId = clientChange === undefined ? rental.clientId : clientChange;
+
   try {
     if (deviceChanged) {
       await moveCalendarEvent(rental.googleCalendarId, rental.googleEventId, targetCalendarId);
     }
     await updateCalendarEvent(targetCalendarId, rental.googleEventId, {
       title: withDeliveryTimePrefix(title, deliveryTime),
-      description: description || null,
+      description: stripClientTag(description) || null,
       startsAt,
       endsAt,
       allDay,
+      // Klient zapisany w wydarzeniu (extendedProperties + znacznik w opisie).
+      ...(nextClientId ? { clientId: nextClientId } : {}),
     });
 
     const updated = await prisma.rental.update({
       where: { id },
       data: {
         title,
-        description: description || null,
+        description: nextClientId ? withClientTag(description, nextClientId) : stripClientTag(description),
+        ...(nextClientId ? { eventClientId: nextClientId } : {}),
         internalNotes,
         startsAt,
         endsAt,
@@ -157,6 +168,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     await syncReminderRules(updated, selectedDays, confirmationSelected);
+
+    let autoAssigned = 0;
+    if (clientChange && clientChange !== rental.clientId) {
+      const res = await changeRentalClient({ rentalId: id, clientId: clientChange, userId: session.user.id, alias: body?.aliasFromTitle !== false });
+      autoAssigned = res.autoAssigned;
+    }
 
     logInfo("rental_updated", { userId: session.user.id, rentalId: id, deviceChanged });
 
@@ -183,7 +200,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const withRelations = await prisma.rental.findUniqueOrThrow({ where: { id }, include: RENTAL_INCLUDE });
-    return NextResponse.json({ rental: withRelations });
+    return NextResponse.json({ rental: withRelations, autoAssigned });
   } catch (err) {
     logError("rental_update_failed", err, { userId: session.user.id, rentalId: id });
     const message = err instanceof Error ? err.message : String(err);

@@ -273,6 +273,11 @@ model Rental {
   // faktury, przypomnienia i alerty; zmienia się jedynie ich źródło w
   // późniejszym kroku. SetNull: usunięcie klienta nigdy nie usuwa wynajmu.
   clientId        String?
+  // Wniosek 23: klient zapisany w wydarzeniu Google (extendedProperties albo
+  // znacznik [klient:<id>] w opisie) i seria wydarzenia cyklicznego — twarde
+  // klucze przypisania przy synchronizacji.
+  eventClientId    String?  @db.VarChar(191)
+  recurringEventId String?  @db.VarChar(191)
   clientContactId String?
   // Adres z „Paszportu dostawy” klienta (karta klienta, etap B). null = adres
   // domyślny klienta; tekst deliveryAddress zostaje (kalendarz, nawigacja).

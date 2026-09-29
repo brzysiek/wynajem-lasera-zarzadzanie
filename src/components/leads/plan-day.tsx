@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { DayProgress, LeadRow } from "@/lib/leads/load";
 import { FIRST_CONTACT_SLA_HOURS, type TodayGroup, type TodayItem } from "@/lib/leads/funnel";
 import { REWARD_STEP, nextReward, rewardUnlockedAt, type Playbook } from "@/lib/leads/playbook";
@@ -83,6 +84,13 @@ export function PlanBand<T extends LeadRow>({
         <div className="my-1.5 h-2 bg-[#D5E9E0]">
           <i className="block h-2 bg-[#2F7A68]" style={{ width: `${pct}%` }} />
         </div>
+        {/* Wniosek 23: rezerwacje bez klienta — klik otwiera najbliższą z wyszukiwarką klienta. */}
+        {progress.unassigned.count > 0 && progress.unassigned.firstId && (
+          <Link href={`/kalendarz?wynajem=${progress.unassigned.firstId}`} className="mb-1 block text-[12px] font-semibold text-[#B8612F] hover:underline" title="Rezerwacje z kalendarza bez klienta — przypisz z panelu">
+            Przypisz klienta ({progress.unassigned.count})
+            {progress.unassigned.nextAt ? ` · najbliższy ${d2(new Date(progress.unassigned.nextAt))}` : ""} →
+          </Link>
+        )}
         {/* Wniosek 18 c): zadania w Planie dnia — klik otwiera panel Zadań („Moje”). */}
         <button type="button" onClick={() => openTask(null)} className="mb-1 block text-left text-[12px] text-[#0C3450] hover:underline" title="Otwórz Zadania">
           Zadania: {tasks.today} na dziś

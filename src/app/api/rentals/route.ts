@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withClientTag } from "@/lib/rental-client-tag";
+import { recordChanges } from "@/lib/changelog/record";
+import { qualifyClient } from "@/lib/clients/qualify";
 import { auth } from "@/auth";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
@@ -108,6 +111,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Nie znaleziono urządzenia." }, { status: 404 });
   }
 
+  // Wniosek 23: klient rezerwacji wybierany w panelu — obowiązkowy.
+  const clientId = typeof body?.clientId === "string" ? body.clientId.trim() : "";
+  if (!clientId) return NextResponse.json({ message: "Wybierz klienta rezerwacji (albo dodaj nowego)." }, { status: 400 });
+  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true, archivedAt: true } });
+  if (!client || client.archivedAt) return NextResponse.json({ message: "Wybrany klient nie istnieje albo jest w archiwum." }, { status: 400 });
+
   // Only an admin may assign a driver/vehicle; a STAFF request silently ignores the fields.
   let driverId: string | null = null;
   let vehicleId: string | null = null;
@@ -129,6 +138,7 @@ export async function POST(req: NextRequest) {
       startsAt,
       endsAt,
       allDay,
+      clientId,
     });
 
     const rental = await prisma.rental.create({
@@ -137,7 +147,9 @@ export async function POST(req: NextRequest) {
         googleEventId,
         googleCalendarId: device.googleCalendarId,
         title,
-        description: description || null,
+        clientId,
+        eventClientId: clientId,
+        description: withClientTag(description || null, clientId),
         internalNotes: internalNotes || null,
         startsAt,
         endsAt,
@@ -156,6 +168,11 @@ export async function POST(req: NextRequest) {
     });
 
     await syncReminderRules(rental, parseReminderDays(body), Boolean(body?.sendConfirmation));
+    // Dziennik: klient wybrany w panelu przy zakładaniu rezerwacji.
+    await recordChanges(prisma, { userId: session.user.id, provenance: { source: "rezerwacja z panelu — klient wybrany w formularzu", confidence: "HIGH", batch: null } }, [
+      { entity: "RENTAL", entityId: rental.id, operation: "MATCH_ASSIGN", clientId, field: "clientId", before: null, after: clientId },
+    ]);
+    await qualifyClient(clientId, "RENTAL");
 
     // Contact assignment is best-effort: the calendar event and rental are
     // already created at this point, so a HubSpot lookup failure shouldn't

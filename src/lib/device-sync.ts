@@ -35,6 +35,8 @@ export async function syncDevice(device: { id: string; name: string; googleCalen
           startsAt: event.startsAt,
           endsAt: event.endsAt,
           allDay: event.allDay,
+          eventClientId: event.clientId,
+          recurringEventId: event.recurringEventId,
           lastSyncedAt: new Date(),
         },
         update: {
@@ -43,6 +45,8 @@ export async function syncDevice(device: { id: string; name: string; googleCalen
           startsAt: event.startsAt,
           endsAt: event.endsAt,
           allDay: event.allDay,
+          eventClientId: event.clientId,
+          recurringEventId: event.recurringEventId,
           deletedInGoogle: false,
           lastSyncedAt: new Date(),
         },

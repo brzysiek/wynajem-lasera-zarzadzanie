@@ -24,6 +24,9 @@ export const PROPOSAL_KIND_LABEL = {
   LOST_REASON: "powód przegranej",
   LEAD_STEP: "następny krok sygnału",
   RENTAL_LINK: "powiązanie sygnału z wynajmem",
+  CLIENT_NEW: "nowy klient",
+  RENTAL_CLIENT: "klient rezerwacji",
+  CLIENT_ALIAS: "alias klienta (tytuł wydarzenia)",
 } as const;
 export type ProposalKind = keyof typeof PROPOSAL_KIND_LABEL;
 
@@ -55,6 +58,9 @@ const KIND_ALIASES: Record<string, ProposalKind> = {
   powod_przegranej: "LOST_REASON",
   krok_sygnalu: "LEAD_STEP",
   powiazanie_wynajmu: "RENTAL_LINK",
+  klient_nowy: "CLIENT_NEW",
+  przypisanie_klienta: "RENTAL_CLIENT",
+  alias_klienta: "CLIENT_ALIAS",
 };
 
 export type SignalNewProposal = {
@@ -72,6 +78,10 @@ export type SignalNewProposal = {
 export type LostReasonProposal = { lostReason: LostReasonKey; lostNote: string | null };
 export type LeadStepProposal = { at: string; stepType: string; note: string | null };
 export type RentalLinkProposal = { rentalId: string };
+// Wniosek 23: klient rezerwacji z panelu (agent przez propozycje).
+export type ClientNewProposal = { name: string; phone: string | null; email: string | null; city: string | null; source: string | null };
+export type RentalClientProposal = { rentalId: string; alias: boolean };
+export type ClientAliasProposal = { title: string };
 
 const LEAD_STEP_TYPES = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA", "FOLLOW_UP_OFERTY", "ODDZWONI", "DOPYTAC", "UMOW_TERMIN", "INNE"];
 const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ł/g, "l").replace(/[^a-z]+/g, " ").trim();
@@ -137,7 +147,7 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
   if (!kind)
     return {
       ok: false,
-      message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie, dopasowanie_platnosci, wykluczenie, cennik_klienta, adres_dostawy, sygnal_nowy, powod_przegranej, krok_sygnalu albo powiazanie_wynajmu.",
+      message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie, dopasowanie_platnosci, wykluczenie, cennik_klienta, adres_dostawy, sygnal_nowy, powod_przegranej, krok_sygnalu, powiazanie_wynajmu, klient_nowy, przypisanie_klienta albo alias_klienta.",
     };
   const provenance = parseProvenance(item, { required: true });
   if (!provenance.ok) return provenance;
@@ -178,6 +188,30 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
     if (!clientId && !proposed.contactName && !proposed.contactPhone && !proposed.contactEmail) return { ok: false, message: "Podaj klient_id albo imie / telefon / email." };
     if (proposed.requestedFrom && !/^\d{4}-\d{2}-\d{2}$/.test(proposed.requestedFrom)) return { ok: false, message: "termin: RRRR-MM-DD." };
     return { ok: true, value: { ...base, kind, field: proposed.sourceRef, proposed } };
+  }
+  if (kind === "CLIENT_NEW") {
+    const proposed: ClientNewProposal = {
+      name: str(item.nazwa ?? item.imie ?? item.name, 191) ?? "",
+      phone: str(item.telefon ?? item.phone, 32),
+      email: str(item.email, 191)?.toLowerCase() ?? null,
+      city: str(item.miasto ?? item.miejscowosc ?? item.city, 191),
+      source: str(item.zrodlo_klienta ?? item.clientSource, 32),
+    };
+    if (!proposed.name) return { ok: false, message: "Podaj nazwa (imię i nazwisko albo nazwa gabinetu)." };
+    if (!proposed.phone && !proposed.email) return { ok: false, message: "Podaj telefon albo email (jedno z dwóch)." };
+    return { ok: true, value: { ...base, clientId: null, kind, field: proposed.phone ?? proposed.email, proposed } };
+  }
+  if (kind === "RENTAL_CLIENT") {
+    if (!clientId) return { ok: false, message: "Podaj klient_id." };
+    const rentalId = str(item.wynajem_id ?? item.rentalId, 64);
+    if (!rentalId) return { ok: false, message: "Podaj wynajem_id (z rezerwacje_bez_klienta albo kalendarz_wynajmy)." };
+    return { ok: true, value: { ...base, kind, field: rentalId, proposed: { rentalId, alias: item.alias === true } satisfies RentalClientProposal } };
+  }
+  if (kind === "CLIENT_ALIAS") {
+    if (!clientId) return { ok: false, message: "Podaj klient_id." };
+    const title = str(item.tytul ?? item.title, 191);
+    if (!title) return { ok: false, message: "Podaj tytul (tytuł wydarzenia albo jego rdzeń)." };
+    return { ok: true, value: { ...base, kind, field: title, proposed: { title } satisfies ClientAliasProposal } };
   }
   if (kind === "LOST_REASON" || kind === "LEAD_STEP" || kind === "RENTAL_LINK") {
     const leadId = str(item.sygnal_id ?? item.leadId, 64);

@@ -286,7 +286,7 @@ function CalendarWeekRow({
             {needsClient(s.rental) && (
               <span
                 className="flex h-3.5 w-3.5 flex-none items-center justify-center rounded-full bg-[#E08A5C] text-[10px] font-bold leading-none text-white"
-                title="Rezerwacja bez klienta — przypisz w Klienci → Dopasowania historii"
+                title="Brak klienta — otwórz rezerwację i przypisz klienta"
               >
                 ?
               </span>

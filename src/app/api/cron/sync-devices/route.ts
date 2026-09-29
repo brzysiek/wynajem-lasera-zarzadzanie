@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncAllDevices } from "@/lib/device-sync";
-import { linkUnassignedRentalsSafe } from "@/lib/clients/rental-match";
+import { linkUnassignedRentalsSafe, writeEventClientsSafe } from "@/lib/clients/rental-match";
 import { syncLeadsWithRentalsSafe } from "@/lib/leads/rental-link";
 import { logWarn, logError, logInfo } from "@/lib/logger";
 
@@ -21,6 +21,9 @@ export async function POST(req: NextRequest) {
     const results = await syncAllDevices();
     // Rezerwacje bez klienta → klient po aliasie / serii (wniosek 13).
     const linked = await linkUnassignedRentalsSafe();
+    // Wniosek 23: klient z panelu → wydarzenie Google (także porządek wstecz
+    // dla przyszłych rezerwacji z klientem) — porcjami po 100 na przebieg.
+    const eventClients = await writeEventClientsSafe({ limit: 100 });
     // Lejek: nowe wynajmy → sygnał „Rezerwacja”, zakończone → „Wygrana”, anulowane → „Oferta”.
     await syncLeadsWithRentalsSafe();
     const totalEvents = results.reduce((sum, r) => sum + r.count, 0);
@@ -36,7 +39,7 @@ export async function POST(req: NextRequest) {
       logInfo("device_sync_cron_ok", { deviceCount: results.length, totalEvents });
     }
 
-    return NextResponse.json({ deviceCount: results.length, totalEvents, errorCount: errors.length, results, linkedRentals: linked?.assigned ?? null });
+    return NextResponse.json({ deviceCount: results.length, totalEvents, errorCount: errors.length, results, linkedRentals: linked?.assigned ?? null, eventClients });
   } catch (err) {
     logError("device_sync_cron_failed", err);
     return NextResponse.json({ message: err instanceof Error ? err.message : String(err) }, { status: 500 });

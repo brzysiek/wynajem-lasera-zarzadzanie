@@ -7,11 +7,14 @@ import type { UnassignedRental } from "@/lib/clients/rental-match";
 import { APP_CSS_VARS } from "@/components/shell-tokens";
 import { ClientPicker } from "./history-review";
 import { NewClientDialog, api } from "./client-forms";
+import { isGenericTitleKey } from "@/lib/clients/rental-match-rules";
 
-// Rezerwacje z kalendarza bez klienta (wniosek 13) — na górze
-// /klienci/dopasowania. Pewne dopasowania (alias, seria, HubSpot) przypisują
-// się same przy synchronizacji; tu zostają te do potwierdzenia. Jedna
-// decyzja obejmuje wszystkie rezerwacje o tym samym tytule i uczy alias.
+// Rezerwacje z kalendarza bez klienta (wniosek 13 i 23) — na górze
+// /klienci/dopasowania. Same przypisują się tylko przy twardym kluczu
+// (klient zapisany w wydarzeniu, alias, ta sama seria, telefon / e-mail w
+// opisie); tu zostają te do decyzji — kandydaci z uzasadnieniem. Jedna
+// decyzja obejmuje wszystkie rezerwacje o tym samym tytule i (domyślnie)
+// zapamiętuje tytuł jako alias — poza ogólnymi tytułami („NOWA PaNI”).
 
 type Group = { key: string; title: string; rentals: UnassignedRental[]; candidates: UnassignedRental["candidates"] };
 
@@ -27,6 +30,8 @@ export function UnassignedRentals({ rentals, clients }: { rentals: UnassignedRen
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   // „Dodaj klienta” — nowy klient od razu dostaje rezerwacje z tej grupy.
   const [adding, setAdding] = useState<Group | null>(null);
+  // Grupy, dla których „nie zapamiętuj tytułu jako aliasu”.
+  const [noAlias, setNoAlias] = useState<Set<string>>(new Set());
 
   const groups = useMemo(() => {
     const m = new Map<string, Group>();
@@ -42,14 +47,15 @@ export function UnassignedRentals({ rentals, clients }: { rentals: UnassignedRen
   async function assign(g: Group, clientId: string) {
     setBusy(g.key);
     setPicker(null);
-    const { ok, data } = await api<{ assigned: number; autoAssigned: number }>("/api/rentals/assign-client", "POST", { rentalIds: g.rentals.map((r) => r.id), clientId });
+    const alias = !noAlias.has(g.key) && !isGenericTitleKey(g.key);
+    const { ok, data } = await api<{ assigned: number; autoAssigned: number }>("/api/rentals/assign-client", "POST", { rentalIds: g.rentals.map((r) => r.id), clientId, alias });
     setBusy(null);
     if (!ok) {
       setMsg({ text: data.message ?? "Nie udało się przypisać.", error: true });
       return;
     }
     const name = clients.find((c) => c.id === clientId)?.name ?? "nowego klienta";
-    setMsg({ text: `Przypisano ${data.assigned} do: ${name}${data.autoAssigned ? ` · i ${data.autoAssigned} kolejnych przypisało się samo` : ""}.` });
+    setMsg({ text: `Przypisano ${data.assigned} do: ${name}${data.autoAssigned ? ` · przypisano też ${data.autoAssigned} kolejne terminy (alias / seria)` : ""}.` });
     router.refresh();
   }
 
@@ -61,7 +67,7 @@ export function UnassignedRentals({ rentals, clients }: { rentals: UnassignedRen
         <h2 className="m-0 text-[17px] font-semibold text-[var(--c-navy)]">
           Rezerwacje bez klienta <span className="tabular-nums text-[#B8612F]">{rentals.length}</span>
         </h2>
-        <span className="text-xs text-[var(--c-muted)]">Pewne dopasowania (alias, ta sama seria, kontakt HubSpot) przypisują się same przy synchronizacji kalendarzy.</span>
+        <span className="text-xs text-[var(--c-muted)]">Same przypisują się tylko: klient zapisany w wydarzeniu, alias, ta sama seria, telefon / e-mail w opisie. Podobna nazwa i HubSpot to tylko propozycje.</span>
       </div>
       <p className="mt-1 text-[13px] text-[var(--c-muted)]">
         Bez klienta rezerwacja nie liczy się jako „następny wynajem”, a klientka może trafić do przypomnień. Potwierdzenie zapamiętuje tytuł — kolejne
@@ -77,7 +83,20 @@ export function UnassignedRentals({ rentals, clients }: { rentals: UnassignedRen
                 <div className="text-sm font-semibold text-[var(--c-text)]">{g.title}</div>
                 <div className="text-xs text-[var(--c-muted)]">
                   <span className="tabular-nums">{g.rentals.map((r) => dm(r.startsAt)).join(", ")}</span> · {[...new Set(g.rentals.map((r) => r.deviceName))].join(", ")}
+                  {top && <span className={top.reason.includes("sprawdź") || top.reason === "HubSpot" ? " text-[#B8612F]" : " text-[var(--c-green)]"}> · {top.reason}</span>}
                 </div>
+                {isGenericTitleKey(g.key) ? (
+                  <div className="text-[11px] text-[var(--c-muted)]">ogólny tytuł — bez aliasu</div>
+                ) : (
+                  <label className="mt-0.5 flex items-center gap-1.5 text-[11px] text-[var(--c-muted)]">
+                    <input
+                      type="checkbox"
+                      checked={!noAlias.has(g.key)}
+                      onChange={(e) => setNoAlias((prev) => { const n = new Set(prev); if (e.target.checked) n.delete(g.key); else n.add(g.key); return n; })}
+                    />
+                    zapamiętaj „{g.title}” jako alias klientki
+                  </label>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {top ? (

@@ -13,6 +13,7 @@ import { freeDatesFor } from "@/lib/leads/offer-draft";
 import { loadRentalCandidates, type RentalCandidate } from "@/lib/leads/rental-candidates";
 import { loadOpenTasksFor, type OpenTaskDto } from "@/lib/task-links";
 import { arrivalGapDays, arrivalRhythmLabel } from "@/lib/clients/status";
+import { loadUnassignedRentals } from "@/lib/clients/rental-match";
 
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
@@ -443,13 +444,15 @@ export type DayProgress = {
   weekReservations: number;
   // Wniosek 18 c): otwarte zadania na dziś i zaległe — per odpowiedzialna osoba.
   tasksByUser: Record<string, { today: number; overdue: number }>;
+  // Wniosek 23: rezerwacje bez klienta — „Przypisz klienta (N)”, najbliższa pierwsza.
+  unassigned: { count: number; nextAt: string | null; firstId: string | null };
 };
 
 export async function loadDayProgress(now = new Date()): Promise<DayProgress> {
   const sod = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const eod = new Date(sod.getTime() + 86_400_000);
   const monday = new Date(sod.getTime() - ((sod.getDay() + 6) % 7) * 86_400_000);
-  const [rentals, done, stageRows, dueTasks] = await Promise.all([
+  const [rentals, done, stageRows, dueTasks, unassigned] = await Promise.all([
     prisma.rental.findMany({ where: { deletedInGoogle: false, eventType: "WYNAJEM", startsAt: { gte: sod, lt: eod } }, select: { driverId: true } }),
     prisma.leadActivity.groupBy({
       by: ["leadId", "userId"],
@@ -457,6 +460,7 @@ export async function loadDayProgress(now = new Date()): Promise<DayProgress> {
     }),
     prisma.leadActivity.findMany({ where: { type: "STAGE_CHANGE", createdAt: { gte: monday }, leadId: { not: null } }, select: { leadId: true, body: true } }),
     prisma.task.findMany({ where: { status: "OPEN", assigneeId: { not: null }, dueDate: { lt: eod } }, select: { assigneeId: true, dueDate: true } }),
+    loadUnassignedRentals({ now }).catch(() => []),
   ]);
   const tasksByUser: DayProgress["tasksByUser"] = {};
   for (const t of dueTasks) {
@@ -473,5 +477,6 @@ export async function loadDayProgress(now = new Date()): Promise<DayProgress> {
     weekOffers: reached("Oferta wysłana"),
     weekReservations: reached("Rezerwacja"),
     tasksByUser,
+    unassigned: { count: unassigned.length, nextAt: unassigned[0]?.startsAt ?? null, firstId: unassigned[0]?.id ?? null },
   };
 }

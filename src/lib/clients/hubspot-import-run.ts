@@ -192,18 +192,10 @@ export type RentalLinkResult = { linked: number; distancesSet: number; orphans: 
 // odległość klienta z najnowszego wynajmu, który ją ma (spec 5.2).
 // Cache kontaktu na wynajmach NIE jest nadpisywany.
 async function linkRentals(): Promise<RentalLinkResult> {
-  const contacts = await prisma.clientContact.findMany({
-    where: { hubspotContactId: { not: null } },
-    select: { id: true, clientId: true, hubspotContactId: true },
-  });
-  let linked = 0;
-  for (const c of contacts) {
-    const res = await prisma.rental.updateMany({
-      where: { hubspotContactId: c.hubspotContactId, clientId: null },
-      data: { clientId: c.clientId, clientContactId: c.id },
-    });
-    linked += res.count;
-  }
+  // Wniosek 23: kontakt z HubSpota nie decyduje o kliencie rezerwacji — jest
+  // tylko kandydatem w „Przypisz klienta” (rental-match-rules.ts).
+  const linked = 0;
+  const contacts = await prisma.clientContact.findMany({ where: { hubspotContactId: { not: null } }, select: { hubspotContactId: true } });
 
   const withDistance = await prisma.rental.findMany({
     where: { clientId: { not: null }, contactDistanceKm: { not: null }, deletedInGoogle: false },

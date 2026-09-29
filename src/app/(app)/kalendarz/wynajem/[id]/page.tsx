@@ -15,6 +15,8 @@ import { Prisma } from "@prisma/client";
 import { clientPulseRate, financeDto, loadFinanceFormContext } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { loadOpenTasksFor } from "@/lib/task-links";
+import { loadUnassignedRentals } from "@/lib/clients/rental-match";
+import { stripClientTag } from "@/lib/rental-client-tag";
 import { OpenTasks } from "@/components/open-tasks";
 
 const DEVICE_SELECT = {
@@ -38,6 +40,7 @@ function deviceDto<T extends { variantOptions: unknown }>(d: T) {
 
 const RENTAL_INCLUDE = {
   device: true,
+  client: { select: { id: true, name: true, shortName: true, city: true } },
   driver: { select: { id: true, name: true, driverColor: true } },
   vehicle: { select: { id: true, name: true } },
   finance: true,
@@ -244,6 +247,10 @@ export default async function RentalDetailPage({
   if (!rental) {
     notFound();
   }
+  // Wniosek 23: rezerwacja bez klienta — kandydaci z uzasadnieniem.
+  const clientCandidates = rental.clientId
+    ? []
+    : ((await loadUnassignedRentals()).find((u) => u.id === rental.id)?.candidates ?? []).map((c) => ({ clientId: c.clientId, name: c.name, shortName: c.shortName, city: c.city, reason: c.reason }));
 
   const rentalDto: Rental = {
     id: rental.id,
@@ -251,7 +258,8 @@ export default async function RentalDetailPage({
     deliveryAddressId: rental.deliveryAddressId,
     deviceId: rental.deviceId,
     title: rental.title,
-    description: rental.description,
+    // Znacznik [klient:<id>] w opisie jest techniczny — w formularzu bez niego.
+    description: stripClientTag(rental.description),
     internalNotes: rental.internalNotes,
     startsAt: rental.startsAt.toISOString(),
     endsAt: rental.endsAt.toISOString(),
@@ -310,6 +318,8 @@ export default async function RentalDetailPage({
       // Powrót do kalendarza na dniu tej rezerwacji (stały adres, wniosek 22).
       backHref={from && ALLOWED_FROM.has(from) && from !== "/kalendarz" ? from : `/kalendarz?date=${ymd(rental.startsAt)}`}
       openTasks={openTasks}
+      initialClient={rental.client ? { id: rental.client.id, name: rental.client.name, shortName: rental.client.shortName, city: rental.client.city } : null}
+      clientCandidates={clientCandidates}
     />
   );
 }

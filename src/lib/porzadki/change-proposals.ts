@@ -16,7 +16,10 @@ import {
   parseProposalItem,
   silentClearMessage,
   type ChangeProposalStatus,
+  type ClientAliasProposal,
+  type ClientNewProposal,
   type ClientPriceProposal,
+  type RentalClientProposal,
   type DeliveryAddressProposal,
   type LeadStepProposal,
   type LostReasonProposal,
@@ -29,6 +32,13 @@ import { createLead, updateLead } from "@/lib/leads/actions";
 import { LOST_REASON_LABEL } from "@/lib/leads/labels";
 import { stageForStep, stepForStage, NEXT_STEP_LABEL, type NextStepType } from "@/lib/leads/funnel";
 import { upsertClientPrice } from "@/lib/clients/terms";
+import { findClientDuplicates } from "@/lib/clients/search";
+import { quickCreateClient } from "@/lib/clients/quick-create";
+import { changeRentalClient, linkUnassignedRentals } from "@/lib/clients/rental-match";
+import { rematchHistory } from "@/lib/history/calendar-import";
+import { normalizeTitle } from "@/lib/history/normalize-title";
+import { isGenericTitleKey } from "@/lib/clients/rental-match-rules";
+import { recordChanges } from "@/lib/changelog/record";
 import { createAddress, updateAddress } from "@/lib/clients/delivery";
 import { formatAddressLine, parseAddressInput } from "@/lib/clients/delivery-rules";
 
@@ -84,6 +94,16 @@ async function currentFor(p: { kind: string; clientId: string | null; contactId:
     if (p.kind === "LEAD_STEP") return l.nextActionAt ? toLogValue(`${l.nextActionAt.toISOString().slice(0, 16)} ${l.nextStepType ?? ""}`.trim()) : null;
     return l.rentalId ? toLogValue(l.rentalId) : null;
   }
+  if (p.kind === "RENTAL_CLIENT" && p.field) {
+    const r = await prisma.rental.findUnique({ where: { id: p.field }, select: { clientId: true, client: { select: { name: true } } } });
+    if (!r) throw new PorzadkiError("Wynajem nie istnieje (wynajem_id z rezerwacje_bez_klienta).", 404);
+    return r.clientId ? toLogValue(r.client?.name ?? r.clientId) : null;
+  }
+  if (p.kind === "CLIENT_ALIAS" && p.field) {
+    const key = normalizeTitle(p.field).key;
+    const a = key ? await prisma.clientAlias.findUnique({ where: { alias: key }, select: { client: { select: { name: true } } } }) : null;
+    return a ? toLogValue(a.client.name) : null;
+  }
   if (p.kind === "CLIENT_PRICE" && p.clientId && p.field) {
     const [device, days] = p.field.split("|");
     const row = await prisma.clientPrice.findUnique({ where: { clientId_device_days: { clientId: p.clientId, device, days: Number(days) } } });
@@ -138,6 +158,32 @@ async function normalizeProposedAsync(p: ParsedProposal): Promise<unknown> {
       if (r.lead && r.lead.id !== p.leadId) throw new PorzadkiError("Ten wynajem jest już powiązany z innym sygnałem.");
     }
     return p.proposed;
+  }
+  if (p.kind === "CLIENT_NEW") {
+    // Wniosek 23: kontrola duplikatów jak przy „+ Nowy klient” w formularzu.
+    const v = p.proposed as ClientNewProposal;
+    const phone = v.phone ? normalizePolishPhone(v.phone) : null;
+    if (v.phone && !phone) throw new PorzadkiError("Nieprawidłowy numer telefonu.");
+    const dups = await findClientDuplicates({ phone, email: v.email });
+    if (dups.length) throw new PorzadkiError(`Ten telefon / e-mail jest już w panelu: ${dups.map((d) => `${d.name} (${d.id})`).join(", ")} — użyj przypisanie_klienta z tym klient_id.`);
+    return { ...v, phone };
+  }
+  if (p.kind === "RENTAL_CLIENT") {
+    const v = p.proposed as RentalClientProposal;
+    const r = await prisma.rental.findUnique({ where: { id: v.rentalId }, select: { title: true, startsAt: true, deletedInGoogle: true, device: { select: { name: true } } } });
+    if (!r) throw new PorzadkiError("Wynajem nie istnieje (wynajem_id z rezerwacje_bez_klienta).", 404);
+    if (r.deletedInGoogle) throw new PorzadkiError("Ten wynajem usunięto w kalendarzu Google.");
+    const c = await prisma.client.findUnique({ where: { id: p.clientId! }, select: { archivedAt: true } });
+    if (c?.archivedAt) throw new PorzadkiError("Klient jest w archiwum.");
+    return { ...v, title: r.title, startsAt: r.startsAt.toISOString().slice(0, 10), device: r.device.name };
+  }
+  if (p.kind === "CLIENT_ALIAS") {
+    const v = p.proposed as ClientAliasProposal;
+    const key = normalizeTitle(v.title).key;
+    if (!key || isGenericTitleKey(key)) throw new PorzadkiError("Ogólny tytuł („NOWA PaNI”, „klientka”, „rezerwacja”) nie może być aliasem.");
+    const a = await prisma.clientAlias.findUnique({ where: { alias: key }, select: { clientId: true } });
+    if (a && a.clientId !== p.clientId) throw new PorzadkiError("Ten tytuł jest już aliasem innego klienta.");
+    return { title: v.title, key };
   }
   if (p.kind === "SIGNAL_NEW") {
     const v = p.proposed as SignalNewProposal;
@@ -345,6 +391,32 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) };
     }
+  }
+  if (p.kind === "CLIENT_NEW") {
+    const v = value as ClientNewProposal;
+    const r = await quickCreateClient({ ...v, force: true }, { userId: actor.userId, source: `propozycja agenta (${p.source})` });
+    return r.ok ? { ok: true } : { ok: false, message: r.message };
+  }
+  if (p.kind === "RENTAL_CLIENT") {
+    // Po akceptacji: klient w rezerwacji, zapis w wydarzeniu Google i (opcjonalnie) alias z tytułu.
+    const v = value as RentalClientProposal;
+    try {
+      await changeRentalClient({ rentalId: v.rentalId, clientId: p.clientId!, userId: actor.userId, alias: v.alias });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (p.kind === "CLIENT_ALIAS") {
+    const v = value as { title: string; key: string };
+    await prisma.clientAlias.upsert({ where: { alias: v.key }, create: { alias: v.key, clientId: p.clientId!, createdByUserId: actor.userId || null }, update: {} });
+    await recordChanges(prisma, { userId: actor.userId, provenance: { source: p.source, confidence: p.confidence as "HIGH" | "MEDIUM" | "LOW", batch: p.batch }, approvedById }, [
+      { entity: "CLIENT", entityId: p.clientId!, clientId: p.clientId, operation: "CREATE", field: "alias", before: null, after: toLogValue(v.key) },
+    ]);
+    // Alias uczy dopasowanie: rezerwacje i historia z tym tytułem.
+    await linkUnassignedRentals({ userId: actor.userId });
+    await rematchHistory();
+    return { ok: true };
   }
   if (p.kind === "CLIENT_PRICE") {
     const v = value as { device: string; days: number; priceNet: string | null; source: string; sourceRef: string | null };

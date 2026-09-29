@@ -1,24 +1,28 @@
-// Przypisanie klienta do rezerwacji z kalendarza (wniosek nr 13). Czysty
-// moduł bez zależności (vitest bez aliasu "@/").
+// Przypisanie klienta do rezerwacji z kalendarza (wniosek 13, zmienione
+// wnioskiem 23: klient wybierany z panelu, a nie zgadywany). Czysty moduł bez
+// zależności (vitest bez aliasu "@/").
 //
-// Automatycznie — tylko przy wysokiej pewności, w tej kolejności:
-// 1. kontakt HubSpot rezerwacji = osoba klienta w panelu,
-// 2. alias potwierdzony przez biuro na /klienci/dopasowania (ten sam klucz
-//    tytułu co w historii kalendarzy),
-// 3. telefon / e-mail / NIP z tytułu albo opisu wydarzenia,
-// 4. seria: ten sam klucz tytułu ma już przypisaną rezerwację (albo wpis
-//    historii) — i to u jednego klienta.
-// Reszta (samo podobieństwo nazwy) czeka na potwierdzenie w dopasowaniach.
+// Automatycznie — tylko twardy klucz, w tej kolejności:
+// 1. clientId zapisany przez panel w wydarzeniu Google (extendedProperties
+//    albo znacznik [klient:<id>] w opisie — np. skopiowane wydarzenie),
+// 2. alias zatwierdzony przez biuro (klucz tytułu → klient),
+// 3. ta sama seria: wydarzenie cykliczne Google (recurringEventId) albo ten
+//    sam tytuł, już przypisany jednemu klientowi (kopia),
+// 4. telefon / e-mail / NIP z tytułu albo opisu wydarzenia.
+// Reszta — podobna nazwa, kontakt z HubSpota, podobny tytuł wcześniejszej
+// rezerwacji — to tylko kandydaci z uzasadnieniem, nigdy przypisanie.
 import { tokensMatch, tokensMatchStrong } from "../history/match";
 
-export type RentalMatchMethod = "HUBSPOT" | "ALIAS" | "SIGNAL" | "SERIES";
+export type RentalMatchMethod = "EVENT" | "ALIAS" | "SERIES" | "SIGNAL";
 
 export const RENTAL_MATCH_LABEL: Record<RentalMatchMethod, string> = {
-  HUBSPOT: "kontakt HubSpot",
-  ALIAS: "alias z dopasowań",
-  SIGNAL: "telefon / e-mail / NIP z opisu",
-  SERIES: "tytuł poprzedniej rezerwacji z tej serii",
+  EVENT: "klient zapisany w wydarzeniu",
+  ALIAS: "alias",
+  SERIES: "ta sama seria",
+  SIGNAL: "telefon / e-mail / NIP w opisie",
 };
+
+export type CandidateReason = { clientId: string; score: number; reason: string };
 
 export type RentalClassification = {
   kind: "WYNAJEM" | "SZKOLENIE" | "INNE";
@@ -31,15 +35,25 @@ export type RentalClassification = {
 
 export type RentalMatchDecision =
   | { type: "assign"; clientId: string; contactId: string | null; method: RentalMatchMethod }
-  | { type: "pending"; candidates: { clientId: string; score: number }[] }
+  | { type: "pending"; candidates: CandidateReason[] }
   | { type: "skip" }; // serwis, blokada, tytuł pominięty przez biuro
+
+// Ogólne tytuły („NOWA PaNI”, „klientka”, „rezerwacja”, „?”) — nie są
+// aliasem ani serią (wniosek 23). Klucz = normalizeTitle(title).key.
+const GENERIC = new Set(["nowa", "nowy", "pani", "pan", "klientka", "klient", "klienci", "rezerwacja", "rezerwacje", "wynajem", "test", "nowa klientka", "nowa pani", "nowy klient", "brak", "tbc", "tbd", "do", "potwierdzenia", "potwierdzenie", "wstepnie", "wstepna", "moze", "rezerwacja wstepna", "zapytanie"]);
+
+export function isGenericTitleKey(key: string): boolean {
+  const k = key.trim();
+  if (k.length < 3 || GENERIC.has(k)) return true;
+  return k.split(" ").every((t) => GENERIC.has(t) || t.length < 3);
+}
 
 // Klucz tytułu → klient, tylko gdy wszystkie przypisane wystąpienia wskazują
 // tego samego klienta (ten sam tytuł u dwóch klientów = nie seria).
 export function seriesIndex(rows: { key: string; clientId: string }[]): Map<string, string> {
   const seen = new Map<string, string | null>();
   for (const r of rows) {
-    if (!r.key) continue;
+    if (!r.key || isGenericTitleKey(r.key)) continue;
     const prev = seen.get(r.key);
     if (prev === undefined) seen.set(r.key, r.clientId);
     else if (prev !== r.clientId) seen.set(r.key, null);
@@ -49,23 +63,31 @@ export function seriesIndex(rows: { key: string; clientId: string }[]): Map<stri
   return out;
 }
 
+const pct = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
+
 export function decideRentalClient(input: {
   classification: RentalClassification;
+  eventClientId?: string | null;
+  recurringClientId?: string | null;
   hubspotContact: { clientId: string; contactId: string } | null;
   series: Map<string, string>;
 }): RentalMatchDecision {
   const c = input.classification;
-  if (input.hubspotContact) return { type: "assign", clientId: input.hubspotContact.clientId, contactId: input.hubspotContact.contactId, method: "HUBSPOT" };
+  if (input.eventClientId) return { type: "assign", clientId: input.eventClientId, contactId: null, method: "EVENT" };
   if (c.kind === "INNE" || c.matchState === "IGNORED") return { type: "skip" };
-  if (c.clientId && c.matchState === "CONFIRMED") return { type: "assign", clientId: c.clientId, contactId: null, method: "ALIAS" };
+  if (c.clientId && c.matchState === "CONFIRMED" && !isGenericTitleKey(c.titleKey)) return { type: "assign", clientId: c.clientId, contactId: null, method: "ALIAS" };
+  if (input.recurringClientId) return { type: "assign", clientId: input.recurringClientId, contactId: null, method: "SERIES" };
+  const fromSeries = c.titleKey ? input.series.get(c.titleKey) : undefined;
+  if (fromSeries) return { type: "assign", clientId: fromSeries, contactId: null, method: "SERIES" };
   if (c.clientId && c.matchState === "AUTO" && (c.matchMethod === "PHONE" || c.matchMethod === "EMAIL" || c.matchMethod === "NIP")) {
     return { type: "assign", clientId: c.clientId, contactId: null, method: "SIGNAL" };
   }
-  const fromSeries = c.titleKey ? input.series.get(c.titleKey) : undefined;
-  if (fromSeries) return { type: "assign", clientId: fromSeries, contactId: null, method: "SERIES" };
-  // Dopasowanie po samej nazwie (także „AUTO” z historii) — tylko propozycja.
-  const candidates = c.clientId && !c.candidates.some((x) => x.clientId === c.clientId) ? [{ clientId: c.clientId, score: 1 }, ...c.candidates] : c.candidates;
-  return { type: "pending", candidates };
+  // Tylko kandydaci: HubSpot i podobna nazwa (także „AUTO” z historii).
+  const out: CandidateReason[] = [];
+  if (input.hubspotContact) out.push({ clientId: input.hubspotContact.clientId, score: 1, reason: "HubSpot" });
+  const named = c.clientId && !c.candidates.some((x) => x.clientId === c.clientId) ? [{ clientId: c.clientId, score: 1 }, ...c.candidates] : c.candidates;
+  for (const x of named) if (!out.some((o) => o.clientId === x.clientId)) out.push({ ...x, reason: `podobna nazwa ${pct(x.score)} – sprawdź` });
+  return { type: "pending", candidates: out };
 }
 
 export type CandidateNames = {
