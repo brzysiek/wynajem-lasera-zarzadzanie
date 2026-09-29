@@ -247,6 +247,8 @@ export default async function RentalDetailPage({
   if (!rental) {
     notFound();
   }
+  // Wniosek 29: powiązany sygnał (link w edycji).
+  const linkedLead = await prisma.lead.findFirst({ where: { rentalId: rental.id }, select: { id: true, title: true } });
   // Wniosek 23: rezerwacja bez klienta — kandydaci z uzasadnieniem.
   const clientCandidates = rental.clientId
     ? []
@@ -282,6 +284,11 @@ export default async function RentalDetailPage({
     deliveryTime: rental.deliveryTime,
     pickupTime: rental.pickupTime,
     transportPrice: rental.transportPrice,
+    clientContactId: rental.clientContactId,
+    trainingPlace: rental.trainingPlace,
+    trainingLead: rental.trainingLead,
+    trainingParticipants: rental.trainingParticipants,
+    lead: linkedLead,
     reminderRules: rental.reminderRules.map((r) => ({
       id: r.id,
       daysBefore: r.daysBefore as ReminderOffset,

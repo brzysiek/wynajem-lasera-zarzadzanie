@@ -260,6 +260,11 @@ model Rental {
   // wyliczenia kosztu paliwa per wynajem (docs/prompt-claude-code-dashboard-kosztow.md, sekcja 3.1).
   contactDistanceKm   Decimal?  @db.Decimal(6, 1)
   eventType           RentalEventType @default(WYNAJEM)
+  // Wniosek 29: szkolenie zamiast dostawy — miejsce (U_KLIENTKI | U_NAS),
+  // prowadząca (Ania / Tomek / ITP…) i liczba uczestniczek.
+  trainingPlace        String?        @db.VarChar(16)
+  trainingLead         String?        @db.VarChar(64)
+  trainingParticipants Int?
   // Uwagi kierowcy: dawniej jedno pole na cały wynajem, teraz osobno per etap
   // — RentalFinance.deliveryNotes / pickupNotes (dostawa i odbiór mogą mieć
   // zupełnie inny kontekst, np. "dostawa połączona z innym klientem").
@@ -798,6 +803,11 @@ model Client {
   // Od kiedy obowiązuje kwota transportu (wniosek 15) — ustawiana przy zmianie
   // kwoty; historia zmian w dzienniku (change_logs, pole transportPriceNet).
   transportPriceSince DateTime?
+  // Wniosek 28: transport ustalony — skąd kwota (DOTYCHCZASOWA = sprzed
+  // wniosku 28, USTALONE = wpisane / zatwierdzone przez biuro, REZERWACJA =
+  // pierwsza kwota z rezerwacji, AGENT = propozycja zaakceptowana). Sugestia
+  // z km (strefa) nigdy nie trafia tu sama.
+  transportSource     String?                 @db.VarChar(32)
   distanceKm        Decimal?              @db.Decimal(6, 1) // ostatnia znana odległość (z wynajmów)
   clinicType        ClinicType?
   source            ClientSource?
@@ -963,6 +973,8 @@ model ClientPrice {
   priceNet  Decimal  @db.Decimal(10, 2)
   source    String?  @db.VarChar(32) // OFERTA | UMOWA | HISTORIA | USTALENIE | AGENT
   sourceRef String?  @db.VarChar(191) // np. „oferta 30.10.2025”, nr paczki
+  // Wniosek 28: wersja obowiązuje od (historia wersji — dziennik zmian).
+  since     DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -14,7 +14,7 @@ import {
   type PreviewPulseTier,
 } from "@/lib/pricing/preview";
 import type { ClientTermsDto } from "@/lib/clients/terms";
-import { TERMS_DEVICE_LABEL, clientOnlyVariant, clientPriceFor, deviceCodeFor, invoiceDefaults, termsDeviation } from "@/lib/clients/terms-rules";
+import { clientOnlyVariant, clientPriceFor, deviceCodeFor, invoiceDefaults, termsDeviation } from "@/lib/clients/terms-rules";
 
 export type FinancePayload = {
   deviceVariant: string | null;
@@ -32,6 +32,9 @@ export type FinancePayload = {
   invoiceNet?: string;
   // Kwota na FV do ustalenia (warunki „część” bez kwoty, wniosek 17).
   invoiceNetPending?: boolean;
+  // Wniosek 28: „zmień i zapisz w warunkach” — ręczna cena staje się
+  // wyjątkiem klienta (nowa wersja od dziś).
+  saveToTerms?: boolean;
 };
 
 function fmt(n: number): string {
@@ -100,6 +103,18 @@ function Switch({
 function Badge({ text, cls }: { text: string; cls: string }) {
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{text}</span>;
 }
+
+// Wniosek 29: jeden znacznik źródła przy kwocie — szary „cennik”, niebieski
+// „indywidualne” (dymek: od kiedy warunki), „ręcznie” (dymek: powód).
+function SourceTag({ kind, title }: { kind: "cennik" | "indywidualne" | "ręcznie" | "jeden kurs" | "tymczasowo"; title?: string }) {
+  const cls = kind === "indywidualne" ? "bg-[#E8F1F8] text-[#1B6FA8]" : kind === "ręcznie" ? "border border-gray-300 bg-white text-gray-600" : "bg-gray-100 text-gray-500";
+  return (
+    <span title={title} className={`rounded px-[7px] py-px text-[11px] font-semibold ${cls}`}>
+      {kind}
+    </span>
+  );
+}
+const dmy = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" }) : "");
 
 // Co zrobił kierowca po zrealizowaniu wynajmu — biuro tego dotąd nigdzie nie
 // widziało (dane leżały tylko w panelu kierowcy). Czytelnie na górze sekcji
@@ -271,6 +286,8 @@ export function RentalFinanceSection({
   eventType,
   pricingCategory,
   deviceVariantOptions,
+  deviceVariant,
+  onDeviceVariantChange,
   durationDays,
   transportPrice,
   onTransportPriceChange,
@@ -290,6 +307,9 @@ export function RentalFinanceSection({
   eventType: RentalEventType;
   pricingCategory: DevicePricingCategory | null;
   deviceVariantOptions: string[];
+  // Wniosek 29: wariant wybierany w wierszu „Urządzenie i termin” (dla wszystkich ról).
+  deviceVariant: string;
+  onDeviceVariantChange: (v: string) => void;
   durationDays: number;
   // Cena transportu (netto) — trzymana w rodzicu (żeby przypisanie kontaktu
   // HubSpot mogło ją podpowiedzieć na żywo), tu tylko edytowana.
@@ -312,7 +332,7 @@ export function RentalFinanceSection({
 }) {
   const isSzkolenie = eventType === "SZKOLENIE";
 
-  const [deviceVariant, setDeviceVariant] = useState<string>(initialFinance?.deviceVariant ?? "");
+  const [saveToTerms, setSaveToTerms] = useState(false);
   const [manualMode, setManualMode] = useState<boolean>(initialFinance?.baseRentalPriceSource === "MANUAL");
   const [manualPrice, setManualPrice] = useState<string>(
     initialFinance && initialFinance.baseRentalPriceSource === "MANUAL" ? initialFinance.baseRentalPriceNet : "",
@@ -326,9 +346,13 @@ export function RentalFinanceSection({
   // --- transport ---
   // Podpowiedź: warunki klienta (a gdy inna jego rezerwacja tego dnia już ma
   // transport — 0, „2 urządzenia jednego dnia = 1 kurs”), inaczej HubSpot.
+  // Wniosek 28: do rezerwacji trafia tylko transport USTALONY w karcie
+  // klienta; klient bez niego — pole obowiązkowe (kwota zapisze się w karcie).
+  // Podpowiedź z HubSpota — tylko stare rezerwacje bez klienta.
   const termsTransport = clientTerms && !isSzkolenie ? (clientTerms.transportTakenBy ? 0 : clientTerms.transportNet) : null;
   const hintSource: "terms" | "sameDay" | "hubspot" = termsTransport == null ? "hubspot" : clientTerms?.transportTakenBy ? "sameDay" : "terms";
-  const hintAmount = termsTransport ?? parseAmount(transportPriceHint);
+  const hintAmount = termsTransport ?? (clientTerms ? null : parseAmount(transportPriceHint));
+  const transportRequired = !!clientTerms && !isSzkolenie && clientTerms.transportNet == null && !clientTerms.transportTakenBy;
   // Tryb ręczny transportu: gdy nie ma czego podpowiedzieć, albo zapisana
   // wcześniej kwota różni się od aktualnej podpowiedzi z HubSpot.
   const [transportManual, setTransportManual] = useState<boolean>(() => {
@@ -372,11 +396,10 @@ export function RentalFinanceSection({
   const termsOnly = clientTerms && !isSzkolenie ? clientOnlyVariant(clientTerms.prices, pricingCategory) : null;
   const termsVariant = termsOnly?.variant && deviceVariantOptions.includes(termsOnly.variant) ? termsOnly.variant : null;
   const variantKey = !initialFinance && termsVariant ? `${clientTerms?.clientId}|${termsVariant}` : null;
-  const [appliedVariantKey, setAppliedVariantKey] = useState<string | null>(null);
-  if (variantKey !== appliedVariantKey) {
-    setAppliedVariantKey(variantKey);
-    if (variantKey && !deviceVariant) setDeviceVariant(termsVariant!);
-  }
+  useEffect(() => {
+    if (variantKey && !deviceVariant) onDeviceVariantChange(termsVariant!);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variantKey]);
 
   const showFilledTransport = !transportManual && hintAmount != null;
   const effTransportPrice = showFilledTransport ? String(hintAmount) : transportPrice;
@@ -453,23 +476,31 @@ export function RentalFinanceSection({
       // Puste przy nowym rozliczeniu = niech serwer podstawi część z warunków.
       invoiceNet: !vatApplicable ? "" : invoicePart.trim() || (initialFinance || clientTerms ? "" : undefined),
       invoiceNetPending: vatApplicable && invoicePending && !invoicePart.trim(),
+      ...(saveToTerms && priceIsManual && manualMode ? { saveToTerms: true } : {}),
     });
     // onChange celowo pomijamy w deps — rodzic przekazuje stabilną referencję.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     effVariant, isFlex, priceIsManual, manualPrice, manualMode, isSzkolenie, base.priceNet, overrideNote,
     vatApplicable, vatRate, paymentMethod,
-    effTransportPrice, transportSeparateEff, transportVat, transportPayment, invoicePart, invoicePending, clientTerms,
+    effTransportPrice, transportSeparateEff, transportVat, transportPayment, invoicePart, invoicePending, clientTerms, saveToTerms,
   ]);
 
-  const badge = isFlex
-    ? { text: "⏳ tymczasowo", cls: "bg-gray-100 text-gray-600" }
+  // Źródło ceny: jeden znacznik (dymek z datą wersji / powodem).
+  const code = deviceCodeFor(eventType, pricingCategory, effVariant);
+  const clientSince = code && clientTerms ? (clientTerms.prices.find((p) => p.device === code && p.days === durationDays)?.since ?? null) : null;
+  const dni = `${durationDays} ${durationDays === 1 ? "dzień" : "dni"}`;
+  const priceTag: { kind: "cennik" | "indywidualne" | "ręcznie" | "tymczasowo"; title?: string } = isFlex
+    ? { kind: "tymczasowo", title: "Kwota minimalna — dokładna po odczycie liczników" }
     : priceIsManual
-      ? { text: "✎ ręcznie", cls: "bg-amber-100 text-amber-800" }
+      ? { kind: "ręcznie", title: overrideNote ? `ręcznie: ${overrideNote}` : "ręcznie" }
       : clientBase != null
-        ? { text: "🤝 z warunków klienta", cls: "bg-[#EEF6F2] text-[#2F7A68]" }
-        : { text: "🏷 z cennika", cls: "bg-[#EAF4FB] text-[#1B6FA8]" };
+        ? { kind: "indywidualne", title: `warunki klienta${clientSince ? ` od ${dmy(clientSince)}` : ""}` }
+        : { kind: "cennik", title: clientTerms?.prices.length ? `cennik (brak wyjątku na ${dni})` : "cennik" };
   const autoLabel = clientBase != null ? "z warunków klienta" : "z cennika";
+  // „Ustawić jako warunki?” — ta sama ręczna cena u klienta już 2+ razy.
+  const manualNet = parseAmount(manualPrice);
+  const repeated = priceIsManual && manualNet != null && code && clientTerms ? clientTerms.manualPrices.find((m) => m.device === code && m.days === durationDays && m.priceNet === manualNet && m.count >= 2) : null;
 
   const FILLED = "flex items-center justify-between rounded-md border border-gray-200 bg-gray-50";
   const CHANGE_LINK = "text-xs font-medium text-[#1B6FA8] hover:underline";
@@ -485,8 +516,12 @@ export function RentalFinanceSection({
   const driverReported = initialFinance?.confirmedAt != null;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
-      <p className="mb-3 text-sm font-medium text-gray-700">Finanse</p>
+    <div className="rounded-[10px] border border-gray-200 bg-white p-4 sm:px-[18px]">
+      <div className="mb-2.5 flex items-center text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+        <span className="mr-1.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#1F3A5F] text-[11px] text-white">4</span>
+        Finanse
+        <span className="ml-1.5 text-[11px] font-normal normal-case tracking-normal text-gray-400">szary = cennik · niebieski = indywidualne</span>
+      </div>
 
       {hasEnded && initialFinance && rentalId && (driverReported ? (
         <DriverSummaryCard finance={initialFinance} isSzkolenie={isSzkolenie} rentalId={rentalId} />
@@ -496,48 +531,11 @@ export function RentalFinanceSection({
         </div>
       ))}
 
-      {!isSzkolenie && deviceVariantOptions.length > 0 && (
-        <label className="mb-4 flex flex-col gap-1 text-sm text-gray-700">
-          Wariant głowicy
-          <select
-            value={deviceVariant}
-            onChange={(e) => {
-              setDeviceVariant(e.target.value);
-              setManualMode(false);
-            }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-          >
-            <option value="">— wybierz —</option>
-            {deviceVariantOptions.map((v) => (
-              <option key={v} value={v}>
-                {variantLabel(pricingCategory, v)}
-              </option>
-            ))}
-          </select>
-          {termsVariant && deviceVariant !== termsVariant && deviceVariant !== FLEX_VARIANT && (
-            <span className="text-xs text-[#B8612F]">
-              W warunkach klienta tylko: {TERMS_DEVICE_LABEL[termsOnly!.code]}
-              {clientPriceFor(clientTerms!.prices, termsOnly!.code, durationDays) != null ? ` (${fmt(clientPriceFor(clientTerms!.prices, termsOnly!.code, durationDays)!)} zł)` : ""}.{" "}
-              <button
-                type="button"
-                className="font-medium text-[#1B6FA8] hover:underline"
-                onClick={() => {
-                  setDeviceVariant(termsVariant);
-                  setManualMode(false);
-                }}
-              >
-                Ustaw ten wariant
-              </button>
-            </span>
-          )}
-        </label>
-      )}
-
       {/* --- cena wynajmu --- */}
       <div className="mb-3">
-        <div className="mb-1 flex items-center justify-between text-sm text-gray-700">
-          <span>{isSzkolenie ? "Ustalona cena szkolenia (netto)" : "Cena wynajmu (netto)"}</span>
-          <Badge text={badge.text} cls={badge.cls} />
+        <div className="mb-1 flex items-center justify-between gap-2 text-sm text-gray-700">
+          <span>{isSzkolenie ? "Szkolenie (netto)" : `Wynajem ${dni}${effVariant ? ` · ${variantLabel(pricingCategory, effVariant)}` : ""}`}</span>
+          <SourceTag kind={priceTag.kind} title={priceTag.title} />
         </div>
 
         {priceIsManual ? (
@@ -549,12 +547,10 @@ export function RentalFinanceSection({
               placeholder="np. 1500"
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
             />
-            {!isSzkolenie && autoPrice == null && (
-              <p className="mt-1 text-xs text-amber-700">Brak reguły w cenniku dla tego wariantu / okresu — wpisz cenę ręcznie.</p>
-            )}
+            {!isSzkolenie && autoPrice == null && <p className="mt-1 text-xs text-gray-500">Brak ceny w cenniku dla tego okresu — wpisz ręcznie.</p>}
             {deviation && (
               <p className="mt-1 text-xs font-medium text-[#B8612F]">
-                Różni się o {Math.round(deviation.pct * 100)}% od warunków klienta ({fmt(deviation.expected)} zł) — w kalendarzu pojawi się ostrzeżenie.
+                {Math.round(deviation.pct * 100)}% od warunków klienta ({fmt(deviation.expected)} zł)
               </p>
             )}
             {manualMode && autoPrice != null && (
@@ -562,15 +558,30 @@ export function RentalFinanceSection({
                 <input
                   value={overrideNote}
                   onChange={(e) => setOverrideNote(e.target.value)}
-                  placeholder={`Powód odstępstwa ${clientBase != null ? "od warunków klienta" : "od cennika"} (opcjonalnie, ale zachęcamy)`}
+                  placeholder="Powód (opcjonalnie)"
                   className="mt-2 w-full rounded-md border border-gray-300 px-3 py-2 text-xs text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
                 />
+                {clientTerms && !isSzkolenie && (
+                  <label className="mt-1.5 flex items-center gap-2 text-xs text-gray-700">
+                    <input type="checkbox" checked={saveToTerms} onChange={(e) => setSaveToTerms(e.target.checked)} />
+                    zapisz w warunkach klienta (nowa wersja od dziś)
+                  </label>
+                )}
+                {repeated && !saveToTerms && (
+                  <p className="mt-1 text-xs text-[#1B6FA8]">
+                    Ta cena była już ręcznie {repeated.count}× u tego klienta.{" "}
+                    <button type="button" className="font-medium underline" onClick={() => setSaveToTerms(true)}>
+                      Ustawić jako warunki?
+                    </button>
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={() => {
                     setManualMode(false);
                     setManualPrice("");
                     setOverrideNote("");
+                    setSaveToTerms(false);
                   }}
                   className={`mt-1 ${CHANGE_LINK}`}
                 >
@@ -583,64 +594,84 @@ export function RentalFinanceSection({
           <div className={`${FILLED} px-3 py-2`}>
             <span className="text-lg font-semibold text-gray-900">{fmt(autoPrice ?? 0)} zł</span>
             {!isFlex && (
-              <button
-                type="button"
-                onClick={() => {
-                  setManualMode(true);
-                  setManualPrice(String(autoPrice ?? ""));
-                }}
-                className={CHANGE_LINK}
-              >
-                Zmień ręcznie →
-              </button>
+              <span className="flex flex-col items-end gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualMode(true);
+                    setManualPrice(String(autoPrice ?? ""));
+                    setSaveToTerms(false);
+                  }}
+                  className={CHANGE_LINK}
+                >
+                  Zmień cenę tylko tu
+                </button>
+                {clientTerms && !isSzkolenie && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualMode(true);
+                      setManualPrice(String(autoPrice ?? ""));
+                      setSaveToTerms(true);
+                    }}
+                    className={CHANGE_LINK}
+                  >
+                    zmień i zapisz w warunkach
+                  </button>
+                )}
+              </span>
             )}
           </div>
         )}
-        {isFlex && (
-          <p className="mt-1 text-xs text-gray-500">
-            Kwota minimalna dla tego okresu — dokładna wartość wyliczy się po odczycie liczników impulsów przez kierowcę.
-          </p>
-        )}
+        {isFlex && <p className="mt-1 text-xs text-gray-500">Kwota minimalna — dokładna po odczycie liczników impulsów.</p>}
       </div>
 
-      {/* --- cena transportu (przeniesiona z karty „Dostawa") --- */}
+      {/* --- transport: tylko kwota ustalona w karcie klienta (wniosek 28) --- */}
       {!isSzkolenie && (
         <div className="mb-4">
           <div className="mb-1 flex items-center justify-between text-sm text-gray-700">
-            <span>Cena transportu (netto)</span>
-            {transportManual ? (
-              <Badge text="✎ ręcznie" cls="bg-amber-100 text-amber-800" />
-            ) : hintSource === "hubspot" ? (
-              <Badge text="🏢 z HubSpot" cls="bg-orange-100 text-orange-700" />
+            <span>Transport (netto)</span>
+            {transportManual || transportRequired ? (
+              <SourceTag kind="ręcznie" />
+            ) : hintSource === "sameDay" ? (
+              <SourceTag kind="jeden kurs" title={`Transport tego dnia jest już w rezerwacji „${clientTerms?.transportTakenBy}” — 2 urządzenia jednego dnia = 1 kurs`} />
+            ) : hintSource === "terms" ? (
+              <SourceTag kind="indywidualne" title="transport ustalony w karcie klienta" />
             ) : (
-              <Badge text={hintSource === "sameDay" ? "🚚 jeden kurs" : "🤝 z warunków klienta"} cls="bg-[#EEF6F2] text-[#2F7A68]" />
+              <SourceTag kind="cennik" title="podpowiedź z HubSpot (stara rezerwacja bez klienta)" />
             )}
           </div>
 
           {showFilledTransport ? (
-            <>
-              <div className={`${FILLED} px-3 py-1.5`}>
-                <span className="text-base font-semibold text-gray-900">{fmt(hintAmount ?? 0)} zł</span>
-                <button type="button" onClick={() => setTransportManual(true)} className={CHANGE_LINK}>
-                  Zmień ręcznie →
-                </button>
-              </div>
-              {hintSource === "sameDay" && (
-                <p className="mt-1 text-xs text-gray-500">
-                  Transport tego dnia jest już w rezerwacji „{clientTerms?.transportTakenBy}” — 2 urządzenia jednego dnia = 1 kurs.
-                </p>
-              )}
-            </>
+            <div className={`${FILLED} px-3 py-1.5`}>
+              <span className="text-base font-semibold text-gray-900">{fmt(hintAmount ?? 0)} zł</span>
+              <button type="button" onClick={() => setTransportManual(true)} className={CHANGE_LINK}>
+                Zmień tylko tu
+              </button>
+            </div>
           ) : (
             <>
               <input
                 value={transportPrice}
                 onChange={(e) => onTransportPriceChange(e.target.value)}
                 inputMode="decimal"
-                placeholder="np. 150"
-                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                placeholder={transportRequired && clientTerms?.zone ? `sugerowane ${fmt(clientTerms.zone.priceNet)}` : "np. 150"}
+                className={`w-full rounded-md border px-3 py-1.5 text-sm font-semibold text-gray-900 focus:border-[#1B6FA8] focus:outline-none ${transportRequired && !transportPrice.trim() ? "border-[#E08A5C]" : "border-gray-300"}`}
               />
-              {hintAmount != null ? (
+              {transportRequired ? (
+                <p className="mt-1 text-xs text-gray-500">
+                  Klient bez transportu ustalonego — kwota zapisze się w karcie klienta.
+                  {clientTerms?.zone && (
+                    <>
+                      {" "}
+                      {Math.round(clientTerms.zone.km)} km · strefa {clientTerms.zone.code} ·{" "}
+                      <button type="button" className={CHANGE_LINK} onClick={() => onTransportPriceChange(String(clientTerms.zone!.priceNet))}>
+                        wstaw {fmt(clientTerms.zone.priceNet)}
+                      </button>
+                    </>
+                  )}
+                </p>
+              ) : hintAmount != null ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -649,21 +680,10 @@ export function RentalFinanceSection({
                   }}
                   className={`mt-1 ${CHANGE_LINK}`}
                 >
-                  wróć do wartości {hintSource === "hubspot" ? "z HubSpot" : "z warunków klienta"} ({fmt(hintAmount)} zł)
+                  wróć do {hintSource === "hubspot" ? "wartości z HubSpot" : "transportu ustalonego"} ({fmt(hintAmount)} zł)
                 </button>
               ) : (
-                <>
-                  {transportPriceHint && transportPriceHint.trim() && <p className="mt-1 text-xs text-gray-400">Podpowiedź z HubSpot: {transportPriceHint}</p>}
-                  {/* Wniosek 15: strefa tylko jako podpowiedź, gdy klient nie ma stałej kwoty. */}
-                  {clientTerms?.zone && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      Klient nie ma stałej kwoty transportu. Strefa {clientTerms.zone.code} ({Math.round(clientTerms.zone.km)} km od bazy): {fmt(clientTerms.zone.priceNet)} zł{" "}
-                      <button type="button" className={CHANGE_LINK} onClick={() => onTransportPriceChange(String(clientTerms.zone!.priceNet))}>
-                        wstaw
-                      </button>
-                    </p>
-                  )}
-                </>
+                !clientTerms && transportPriceHint && transportPriceHint.trim() && <p className="mt-1 text-xs text-gray-400">Podpowiedź z HubSpot: {transportPriceHint}</p>
               )}
             </>
           )}

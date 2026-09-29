@@ -1,16 +1,31 @@
 "use client";
 
-import { useContext, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ClientDetail } from "@/lib/clients/load";
 import { BASE_PATH } from "@/lib/base-path";
-import { AgentModeContext, FormError, INPUT, api } from "../client-forms";
-import { BTN_OUTLINE, BTN_PRIMARY, LINK, Missing, Row, Section, dmy, money, num } from "./kit";
-import { INVOICE_MODE_LABEL, PRICE_SOURCES, PRICE_SOURCE_LABEL, TERMS_DAYS, TERMS_DEVICES, type TermsDeviceCode } from "@/lib/clients/terms-rules";
+import { transportSuggestion } from "@/lib/clients/transport-suggest";
+import { AgentModeContext, api } from "../client-forms";
+import { LINK, Missing, Row, Section, dm, dmy, money, num } from "./kit";
+import {
+  INVOICE_MODE_LABEL,
+  PRICE_SOURCES,
+  PRICE_SOURCE_LABEL,
+  TERMS_DAYS,
+  TERMS_DEVICES,
+  TERMS_DEVICE_LABEL,
+  TRANSPORT_SOURCE_LABEL,
+  transportNeedsReview,
+  type TermsDeviceCode,
+} from "@/lib/clients/terms-rules";
 
-// „Warunki handlowe” na karcie klienta (etap C, wg karta-kierunek.html;
-// ADMIN/STAFF edytują, agent tylko proponuje): tabela cen klienta (urządzenie ×
-// dni, brak = cennik ogólny*), transport za kurs, impulsy, faktura (całość /
-// część / bez FV), forma i termin płatności, uwagi, e-mail do FV, umowa ramowa.
+// „Warunki” na karcie klienta (wniosek 28) — lewa kolumna, pod „Dane firmy”.
+// Trzy poziomy ceny: cennik ogólny → wyjątki klienta (tylko to, co inne;
+// każda zmiana = nowa wersja od daty, ze źródłem) → cena jednorazowa w
+// rezerwacji. Autozapis: klik w pole = edycja, zapis po Enter / wyjściu z
+// pola, „Zapisano ✓ · Cofnij” przez 10 s, każda zmiana w dzienniku.
+// Przyszłe rezerwacje przeliczają się dopiero po „Zastosuj”. Faktura i
+// płatność — logika bez zmian. ADMIN/STAFF edytują, agent tylko czyta
+// (propozycje przez MCP).
 
 export const PAYMENT_FORM_LABEL: Record<string, string> = {
   GOTOWKA: "gotówka",
@@ -18,490 +33,700 @@ export const PAYMENT_FORM_LABEL: Record<string, string> = {
   OBA: "gotówka i przelew",
 };
 
-// „Cena ustalona” (kafel liczb na górze): dawna cena ustalona albo — po
-// rozpisaniu na urządzenia — pierwsza cena klienta za 1 dzień.
-export function agreedTotal(d: ClientDetail): {
-  rental: number | null;
-  transport: number | null;
-  total: number | null;
-} {
+// Dawna „cena ustalona” albo pierwsza cena klienta za 1 dzień (+ transport).
+export function agreedTotal(d: ClientDetail): { rental: number | null; transport: number | null; total: number | null } {
   const firstDay = TERMS_DEVICES.map((x) => d.terms.prices.find((r) => r.device === x.code && r.days === 1)).find(Boolean);
   const rental = d.profile.agreedPrice ? Number(d.profile.agreedPrice) : (firstDay?.priceNet ?? null);
   const transport = d.transportPriceNet ? Number(d.transportPriceNet) : null;
-  return {
-    rental,
-    transport,
-    total: rental != null ? rental + (transport ?? 0) : null,
-  };
+  return { rental, transport, total: rental != null ? rental + (transport ?? 0) : null };
 }
 
-const toForm = (cash: boolean, transfer: boolean) => (cash && transfer ? "OBA" : cash ? "GOTOWKA" : transfer ? "PRZELEW" : null);
+const ymd = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Europe/Warsaw" }) : "");
+const parseAmount = (v: string): number | null | "invalid" => {
+  const t = v.replace(/\s/g, "").replace(",", ".");
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 && n <= 100000 ? Math.round(n * 100) / 100 : "invalid";
+};
 
-export function TermsSection({ d, onChanged, notify }: { d: ClientDetail; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
+// ------------------------------------------------------------------ autozapis
+
+type Saver = (label: string, run: () => Promise<ClientDetail | string>, undo?: () => Promise<ClientDetail | string>) => Promise<boolean>;
+
+// Pole edytowane w miejscu: wygląda jak tekst, klik = edycja; Enter / wyjście
+// zapisuje, Esc cofa. Błąd walidacji — obok pola, wartość się nie zapisuje.
+function AutoInput({
+  value,
+  onSave,
+  placeholder,
+  width = "w-[90px]",
+  align = "text-right",
+  type = "text",
+  multiline = false,
+  disabled = false,
+  label,
+}: {
+  value: string;
+  onSave: (v: string) => Promise<string | null>;
+  placeholder?: string;
+  width?: string;
+  align?: string;
+  type?: "text" | "date" | "email";
+  multiline?: boolean;
+  disabled?: boolean;
+  label: string;
+}) {
+  const [v, setV] = useState(value);
+  const [seen, setSeen] = useState(value);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (seen !== value) {
+    setSeen(value);
+    setV(value);
+  }
+  async function commit() {
+    if (v === value) return setError(null);
+    setBusy(true);
+    const err = await onSave(v);
+    setBusy(false);
+    setError(err);
+  }
+  const cls = `${width} ${align} rounded-[4px] border border-transparent bg-transparent px-1.5 py-[3px] text-[13px] text-[#0C3450] outline-none hover:border-[#D6DADE] focus:border-[#1B6FA8] focus:bg-white disabled:cursor-default disabled:hover:border-transparent ${error ? "border-[#E08A5C]" : ""}`;
+  const common = {
+    value: v,
+    disabled: disabled || busy,
+    "aria-label": label,
+    placeholder,
+    onBlur: () => void commit(),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !(multiline && e.shiftKey)) {
+        e.preventDefault();
+        (e.target as HTMLElement).blur();
+      }
+      if (e.key === "Escape") {
+        setV(value);
+        setError(null);
+      }
+    },
+  };
+  return (
+    <span className={`inline-flex min-w-0 flex-col ${multiline ? "w-full" : ""}`}>
+      {multiline ? (
+        <textarea rows={2} {...common} onChange={(e) => setV(e.target.value)} className={`${cls} resize-y`} />
+      ) : (
+        <input type={type} inputMode={type === "text" && align === "text-right" ? "decimal" : undefined} {...common} onChange={(e) => setV(e.target.value)} className={cls} />
+      )}
+      {error && <span className="px-1.5 text-[11.5px] text-[#B8612F]">{error}</span>}
+    </span>
+  );
+}
+
+function AutoSelect({ value, options, onSave, disabled, label }: { value: string; options: [string, string][]; onSave: (v: string) => void; disabled?: boolean; label: string }) {
+  return (
+    <select
+      aria-label={label}
+      disabled={disabled}
+      value={value}
+      onChange={(e) => onSave(e.target.value)}
+      className="h-7 cursor-pointer rounded-[4px] border border-transparent bg-transparent px-1 text-[13px] text-[#0C3450] outline-none hover:border-[#D6DADE] focus:border-[#1B6FA8] disabled:cursor-default disabled:hover:border-transparent"
+    >
+      {options.map(([k, l]) => (
+        <option key={k} value={k}>
+          {l}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+// ------------------------------------------------------------------ transport ustalony
+
+// Wspólne dla bloku Warunki i paszportu dostawy: kwota ustalona (tylko ona
+// trafia do rezerwacji) + sugestia z km obok, „do przejrzenia” przy > 20%.
+export function TransportFixed({ d, save, compact = false }: { d: ClientDetail; save: Saver; compact?: boolean }) {
   const agent = useContext(AgentModeContext);
-  const [edit, setEdit] = useState(false);
+  const fixed = d.transportPriceNet != null && d.transportPriceNet !== "" ? Number(d.transportPriceNet) : null;
+  const sug = transportSuggestion(d);
+  const review = transportNeedsReview(fixed, sug?.priceNet ?? null);
+  const src = d.terms.transportSource ? (TRANSPORT_SOURCE_LABEL[d.terms.transportSource as keyof typeof TRANSPORT_SOURCE_LABEL] ?? d.terms.transportSource) : null;
+  const setFixed = (next: number | null, source: string | null, label: string) =>
+    save(
+      label,
+      () => patch(d.id, { transportPriceNet: next == null ? null : String(next), ...(next != null ? { transportSource: source ?? "USTALONE" } : {}) }),
+      () => patch(d.id, { transportPriceNet: fixed == null ? null : String(fixed), transportSource: d.terms.transportSource, ...(d.terms.transportSince ? { transportPriceSince: ymd(d.terms.transportSince) } : {}) }),
+    );
+  return (
+    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13px]">
+      {!compact && <span className="text-[#5C6166]">Transport ustalony</span>}
+      <span className="inline-flex items-baseline">
+        <AutoInput
+          label="Transport ustalony"
+          value={fixed != null ? String(fixed) : ""}
+          placeholder={sug ? String(sug.priceNet) : "kwota"}
+          width="w-[70px]"
+          disabled={agent}
+          onSave={async (v) => {
+            const n = parseAmount(v);
+            if (n === "invalid") return "Kwota musi być liczbą, np. 140.";
+            await setFixed(n, "USTALONE", n == null ? "Wyczyszczono transport ustalony" : `Transport ustalony ${money(n)}`);
+            return null;
+          }}
+        />
+        <span className="text-[#5C6166]">zł / kurs</span>
+      </span>
+      {fixed != null && (src || d.terms.transportSince) && (
+        <span className="text-[11.5px] text-[#767C82]">{[src, d.terms.transportSince ? `od ${dmy(d.terms.transportSince)}` : null].filter(Boolean).join(" · ")}</span>
+      )}
+      {fixed == null && <Missing>brak — rezerwacja poprosi o kwotę</Missing>}
+      {sug && (
+        <span className={`text-[11.5px] ${review ? "text-[#B8612F]" : "text-[#767C82]"}`} title="Sugestia ze stref (Ustawienia → Cennik) — nigdy nie trafia do rezerwacji sama">
+          {num(sug.km)} km · strefa {sug.zone} · sugerowane {num(sug.priceNet)}
+          {review && " · do przejrzenia"}
+        </span>
+      )}
+      {sug && !agent && fixed !== sug.priceNet && (
+        <button type="button" className="text-[11.5px] text-[#1B6FA8] hover:text-[#0C3450]" onClick={() => void setFixed(sug.priceNet, "USTALONE", `Transport ustalony ${money(sug.priceNet)} (z sugestii)`)}>
+          przyjmij sugestię
+        </button>
+      )}
+    </span>
+  );
+}
+
+async function patch(id: string, body: Record<string, unknown>): Promise<ClientDetail | string> {
+  const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${id}`, "PATCH", body);
+  return ok ? data.detail : (data.message ?? "Nie udało się zapisać.");
+}
+async function priceRow(id: string, body: Record<string, unknown>): Promise<ClientDetail | string> {
+  const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${id}/prices/row`, "POST", body);
+  return ok ? data.detail : (data.message ?? "Nie udało się zapisać.");
+}
+
+// Hak autozapisu: zapis → świeże dane karty, „Zapisano ✓ · Cofnij” (10 s),
+// odświeżenie paska „Zmienia N przyszłych rezerwacji”.
+export function useTermsSaver(onChanged: (n: ClientDetail) => void, notify: (t: string, e?: boolean) => void) {
+  const [saved, setSaved] = useState<{ text: string; undo?: () => Promise<ClientDetail | string> } | null>(null);
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(null), 10000);
+    return () => clearTimeout(t);
+  }, [saved]);
+  const save: Saver = useCallback(
+    async (label, run, undo) => {
+      const res = await run();
+      if (typeof res === "string") {
+        notify(res, true);
+        return false;
+      }
+      onChanged(res);
+      setVersion((v) => v + 1);
+      setSaved({ text: label, undo });
+      return true;
+    },
+    [onChanged, notify],
+  );
+  const undo = async () => {
+    if (!saved?.undo) return;
+    const res = await saved.undo();
+    setSaved(null);
+    if (typeof res === "string") return notify(res, true);
+    onChanged(res);
+    setVersion((v) => v + 1);
+    notify("Cofnięto zmianę.");
+  };
+  const bar = saved ? (
+    <span role="status" className="flex items-center gap-2 text-[12px] text-[#2F7A68]">
+      Zapisano ✓ <span className="text-[#5C6166]">{saved.text}</span>
+      {saved.undo && (
+        <button type="button" className="font-semibold text-[#1B6FA8] hover:text-[#0C3450]" onClick={() => void undo()}>
+          Cofnij
+        </button>
+      )}
+    </span>
+  ) : null;
+  return { save, bar, version };
+}
+
+// ------------------------------------------------------------------ przyszłe rezerwacje
+
+type SyncPlan = { changes: { rentalId: string; title: string; startsAt: string; before: string | null; after: string }[]; manual: number; skipped: boolean };
+
+export function TermsSyncBar({ d, version, onChanged, notify }: { d: ClientDetail; version: number; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
+  const agent = useContext(AgentModeContext);
+  const [plan, setPlan] = useState<SyncPlan | null>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    const { ok, data } = await api<SyncPlan>(`/api/clients/${d.id}/terms-sync`, "GET");
+    setPlan(ok ? data : null);
+  }, [d.id]);
+  // Odśwież po każdej zmianie warunków — także z paszportu dostawy (transport).
+  const termsKey = [d.transportPriceNet, d.profile.invoiceMode, d.profile.invoicePartDefault, d.profile.paymentForm, d.profile.pulsesCharged, d.profile.pulseRateNet, ...d.terms.prices.map((r) => `${r.device}|${r.days}|${r.priceNet}`)].join(";");
+  useEffect(() => {
+    if (agent) return;
+    let alive = true;
+    void api<SyncPlan>(`/api/clients/${d.id}/terms-sync`, "GET").then(({ ok, data }) => alive && setPlan(ok ? data : null));
+    return () => {
+      alive = false;
+    };
+  }, [agent, d.id, version, termsKey]);
+  if (agent || !plan || plan.changes.length === 0 || plan.skipped) return null;
+  const n = plan.changes.length;
+  async function act(action: "apply" | "skip") {
+    setBusy(true);
+    const { ok, data } = await api<{ updated?: number; filled?: number; manual?: number }>(`/api/clients/${d.id}/terms-sync`, "POST", { action });
+    setBusy(false);
+    if (!ok) return notify((data as { message?: string }).message ?? "Nie udało się.", true);
+    if (action === "apply") {
+      notify(`Przeliczono przyszłe rezerwacje: ${(data.updated ?? 0) + (data.filled ?? 0)}.${data.manual ? ` Ręczne kwoty bez zmian: ${data.manual}.` : ""}`);
+      const fresh = await api<ClientDetail>(`/api/clients/${d.id}`, "GET");
+      if (fresh.ok) onChanged(fresh.data);
+    } else notify("Warunki obowiązują tylko dla nowych rezerwacji.");
+    await load();
+  }
+  return (
+    <div className="mt-1.5 border-l-[3px] border-[#1B6FA8] bg-[#EAF4FB] px-3 py-2 text-[12.5px] text-[#0C3450]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span>
+          Zmienia <b className="font-semibold">{n}</b> {n === 1 ? "przyszłą rezerwację" : n < 5 ? "przyszłe rezerwacje" : "przyszłych rezerwacji"}
+          {plan.manual ? <span className="text-[#5C6166]"> · ręcznych bez zmian: {plan.manual}</span> : null}
+        </span>
+        <button type="button" className="text-[#1B6FA8] hover:text-[#0C3450]" onClick={() => setOpen((v) => !v)}>
+          {open ? "Ukryj listę" : "Pokaż listę"}
+        </button>
+        <span className="ml-auto flex gap-2">
+          <button type="button" disabled={busy} className="h-7 rounded-[6px] bg-[#1B6FA8] px-3 font-semibold text-white hover:bg-[#0C3450] disabled:opacity-50" onClick={() => void act("apply")}>
+            Zastosuj
+          </button>
+          <button type="button" disabled={busy} className="h-7 rounded-[6px] border border-[#A9D2EC] bg-white px-3 text-[#1B6FA8] hover:border-[#1B6FA8] disabled:opacity-50" onClick={() => void act("skip")}>
+            Tylko nowe rezerwacje
+          </button>
+        </span>
+      </div>
+      {open && (
+        <ul className="mt-1.5 flex flex-col gap-1">
+          {plan.changes.map((c) => (
+            <li key={c.rentalId} className="flex flex-col">
+              <a href={`${BASE_PATH}/kalendarz?wynajem=${c.rentalId}`} className="font-medium text-[#1B6FA8] hover:text-[#0C3450]">
+                {dm(c.startsAt)} · {c.title}
+              </a>
+              <span className="text-[11.5px] text-[#5C6166]">
+                {c.before ?? "bez kwoty"} → <b className="font-semibold text-[#0C3450]">{c.after}</b>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ blok Warunki
+
+export function TermsBlock({ d, onChanged, notify }: { d: ClientDetail; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void }) {
+  const agent = useContext(AgentModeContext);
+  const { save, bar, version } = useTermsSaver(onChanged, notify);
+  const [mode, setMode] = useState<"CENNIK" | "IND" | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [adding, setAdding] = useState(false);
   const p = d.profile;
-  const fa = p.frameAgreement;
   const prices = d.terms.prices;
-  const devices = TERMS_DEVICES.filter((x) => prices.some((r) => r.device === x.code));
-  const days = [...new Set([1, 2, 3, ...prices.map((r) => r.days)])].sort((a, b) => a - b);
+  const individual = (mode ?? (prices.length ? "IND" : "CENNIK")) === "IND";
   const listPrice = (code: string, n: number) => d.terms.priceList.find((r) => r.device === code && r.days === n)?.priceNet ?? null;
-  const transport = d.transportPriceNet && Number(d.transportPriceNet) > 0 ? Number(d.transportPriceNet) : null;
-  // Wniosek 15: ostatnia zmiana kwoty transportu z poprzednią wartością.
-  const prevTransport = d.terms.transportHistory.find((h) => h.before != null && h.before !== h.after) ?? null;
-  const pulseRate = p.pulseRateNet != null ? Number(p.pulseRateNet) : null;
   const legacy = p.agreedPrice != null && prices.length === 0 ? Number(p.agreedPrice) : null;
-  const TH = "border-b border-[#D6DADE] px-1.5 py-1 text-left text-[10px] font-medium uppercase tracking-[0.08em] text-[#5C6166]";
-  const TD = "border-b border-[#F0F1F2] px-1.5 py-[5px]";
+  const latest = [...prices.map((x) => x.since), d.terms.transportSince].filter((x): x is string => !!x).sort().pop() ?? null;
+  const pulseRate = p.pulseRateNet != null ? String(Number(p.pulseRateNet)) : "";
+
+  const field = (key: string, value: unknown, before: unknown, label: string) => save(label, () => patch(d.id, { [key]: value }), () => patch(d.id, { [key]: before }));
+
+  async function toCennik() {
+    if (!prices.length) return setMode("CENNIK");
+    if (!window.confirm(`Usunąć ${prices.length} ${prices.length === 1 ? "wyjątek" : "wyjątki"}? Klient wraca do cennika ogólnego, historia wersji zostaje.`)) return;
+    const old = prices.map((r) => ({ device: r.device, days: r.days, priceNet: r.priceNet, source: r.source, sourceRef: r.sourceRef, since: ymd(r.since) }));
+    const put = async (rows: unknown[]) => {
+      const { ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}/prices`, "PUT", { prices: rows });
+      return ok ? data.detail : (data.message ?? "Nie udało się zapisać.");
+    };
+    if (await save("Cennik ogólny — bez wyjątków", () => put([]), () => put(old))) setMode("CENNIK");
+  }
 
   return (
     <Section
-      title="Warunki handlowe"
+      id="warunki"
+      title="Warunki"
       action={
-        !agent &&
-        !edit && (
-          <button type="button" onClick={() => setEdit(true)} className={LINK}>
-            Edytuj
+        <>
+          {latest && <span className="text-[11.5px] text-[#767C82]">od {dm(latest)}</span>}
+          <button type="button" className={LINK} onClick={() => setShowHistory((v) => !v)} aria-expanded={showHistory}>
+            Historia wersji
           </button>
-        )
+        </>
       }
     >
-      {edit ? (
-        <TermsEditor
-          d={d}
-          onCancel={() => setEdit(false)}
-          onSaved={(n, note) => {
-            setEdit(false);
-            onChanged(n);
-            notify(`Zapisano warunki handlowe.${note ? ` ${note}` : ""}`);
-          }}
-        />
-      ) : (
-        <>
-          <table className="mt-1 w-full border-collapse text-[12.5px]">
-            <thead>
-              <tr>
-                <th className={TH}>Urządzenie / wariant</th>
-                {days.map((n) => (
-                  <th key={n} className={`${TH} text-right`}>
-                    {n} {n === 1 ? "dzień" : "dni"}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {devices.map((x) => (
-                <tr key={x.code}>
-                  <td className={TD}>{x.label}</td>
-                  {days.map((n) => {
-                    const own = prices.find((r) => r.device === x.code && r.days === n);
-                    const list = listPrice(x.code, n);
-                    return (
-                      <td
-                        key={n}
-                        className={`${TD} text-right tabular-nums`}
-                        title={own ? [own.source ? PRICE_SOURCE_LABEL[own.source] : null, own.sourceRef].filter(Boolean).join(" · ") || undefined : "wg cennika ogólnego"}
-                      >
-                        {own ? (
-                          <span className="font-medium text-[#0C3450]">{num(own.priceNet)}</span>
-                        ) : list != null ? (
-                          <span className="text-[#8A939B]">{num(list)}*</span>
-                        ) : (
-                          <span className="text-[#C3C7CB]">—</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-              <tr>
-                <td className={`${TD} text-[#8A939B]`}>{devices.length ? "pozostałe" : "wszystkie urządzenia"}</td>
-                <td className={`${TD} text-[#8A939B]`} colSpan={days.length}>
-                  wg cennika ogólnego*
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          {legacy != null && <p className="mt-1 text-[12px] text-[#B8612F]">Dawna „cena ustalona” {money(legacy)} netto — przypisz ją do urządzenia w edycji (Edytuj).</p>}
-          <p className="mb-1 mt-1 text-[11px] text-[#8A939B]">* cennik ogólny (Ustawienia → Cennik); ceny klienta mają pierwszeństwo w nowej rezerwacji.</p>
-          <Row label="Transport">
-            {transport != null ? (
-              <>
-                {money(transport)} / kurs
-                {d.terms.transportSince && <span className="text-[#767C82]"> · od {dmy(d.terms.transportSince)}</span>}
-                <span className="text-[#767C82]"> · 2 urządzenia jednego dnia = 1 kurs</span>
-                {prevTransport && (
-                  <span
-                    className="block text-[11.5px] text-[#767C82]"
-                    title={d.terms.transportHistory.map((h) => `${dmy(h.at)}: ${h.before != null ? money(h.before) : "—"} → ${h.after != null ? money(h.after) : "—"}`).join("\n")}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex overflow-hidden rounded-[6px] border border-[#C9D3DC] text-[12px]" role="group" aria-label="Cennik klienta">
+          {(
+            [
+              ["CENNIK", "Cennik ogólny"],
+              ["IND", "Indywidualne"],
+            ] as const
+          ).map(([k, l]) => {
+            const on = (k === "IND") === individual;
+            return (
+              <button
+                key={k}
+                type="button"
+                disabled={agent}
+                aria-pressed={on}
+                onClick={() => (k === "IND" ? setMode("IND") : void toCennik())}
+                className={`border-r border-[#E3E6E9] px-[10px] py-[3px] last:border-0 disabled:cursor-default ${on ? "bg-[#0C3450] text-white" : "text-[#5C6166] hover:bg-[#F4F6F8]"}`}
+              >
+                {l}
+              </button>
+            );
+          })}
+        </span>
+        {!individual && <span className="text-[12px] text-[#767C82]">ceny z cennika dla danej liczby dni</span>}
+        {bar}
+      </div>
+
+      {individual && (
+        <div className="mt-1 flex flex-col">
+          {prices.map((r) => {
+            const list = listPrice(r.device, r.days);
+            const base = { device: r.device, days: r.days, priceNet: r.priceNet, source: r.source, sourceRef: r.sourceRef, since: ymd(r.since) };
+            const lbl = `${TERMS_DEVICE_LABEL[r.device as TermsDeviceCode] ?? r.device} · ${r.days} ${r.days === 1 ? "dzień" : "dni"}`;
+            return (
+              <div key={r.id} className="flex flex-wrap items-baseline gap-x-2 border-b border-[#F0F1F2] py-[3px] text-[13px] last:border-0">
+                <span className="min-w-[128px] text-[#333333]">{lbl}</span>
+                <AutoInput
+                  label={`Cena ${lbl}`}
+                  value={String(r.priceNet)}
+                  width="w-[72px]"
+                  disabled={agent}
+                  onSave={async (v) => {
+                    const n = parseAmount(v);
+                    if (n === "invalid" || n == null || n <= 0) return "Cena netto musi być liczbą większą od zera.";
+                    await save(`${lbl}: ${money(n)} (nowa wersja od dziś)`, () => priceRow(d.id, { ...base, priceNet: n, since: null }), () => priceRow(d.id, base));
+                    return null;
+                  }}
+                />
+                {list != null && <s className="text-[12px] text-[#8A939B]" title="Cena z cennika ogólnego">{num(list)}</s>}
+                <span className="text-[11.5px] text-[#767C82]">od</span>
+                <AutoInput
+                  label={`Obowiązuje od — ${lbl}`}
+                  type="date"
+                  value={ymd(r.since)}
+                  width="w-[128px]"
+                  align="text-left"
+                  disabled={agent}
+                  onSave={async (v) => {
+                    if (!v) return "Podaj datę.";
+                    await save(`${lbl}: obowiązuje od ${v.split("-").reverse().join(".")}`, () => priceRow(d.id, { ...base, since: v }), () => priceRow(d.id, base));
+                    return null;
+                  }}
+                />
+                <AutoSelect
+                  label={`Źródło — ${lbl}`}
+                  value={r.source ?? ""}
+                  disabled={agent}
+                  options={[["", "źródło…"], ...PRICE_SOURCES.map((k) => [k, PRICE_SOURCE_LABEL[k]] as [string, string])]}
+                  onSave={(v) => void save(`${lbl}: źródło ${v ? PRICE_SOURCE_LABEL[v] : "—"}`, () => priceRow(d.id, { ...base, source: v || null }), () => priceRow(d.id, base))}
+                />
+                {!agent && (
+                  <button
+                    type="button"
+                    className="ml-auto text-[12px] text-[#8A939B] hover:text-[#B8612F]"
+                    title="Usuń wyjątek — ta pozycja wraca do cennika"
+                    onClick={() => void save(`Usunięto wyjątek ${lbl}`, () => priceRow(d.id, { ...base, priceNet: null }), () => priceRow(d.id, base))}
                   >
-                    wcześniej {money(prevTransport.before!)} (do {dmy(prevTransport.at)})
-                  </span>
+                    ✕
+                  </button>
                 )}
-              </>
-            ) : (
-              <Missing>uzupełnij stawkę za kurs</Missing>
-            )}
-          </Row>
-          <Row label="Impulsy">
-            Alma {pulseRate != null ? `${pulseRate.toLocaleString("pl-PL")} zł/imp.` : "wg cennika"} – doliczać:{" "}
-            <b className="font-semibold">{p.pulsesCharged === true ? "tak" : p.pulsesCharged === false ? "nie" : "do potwierdzenia"}</b>
-          </Row>
-          <Row label="Faktura">
-            <Seg
-              options={(["FULL", "PARTIAL", "NONE"] as const).map((k) => ({
-                key: k,
-                label: INVOICE_MODE_LABEL[k],
-              }))}
-              value={p.invoiceMode}
+              </div>
+            );
+          })}
+          {prices.length === 0 && !adding && <span className="py-1 text-[12.5px] text-[#767C82]">Brak wyjątków — wszystko z cennika ogólnego.</span>}
+          {adding ? (
+            <NewException d={d} onCancel={() => setAdding(false)} onSave={async (row) => (await save(`Dodano wyjątek ${TERMS_DEVICE_LABEL[row.device]} · ${row.days} d.`, () => priceRow(d.id, row), () => priceRow(d.id, { ...row, priceNet: null }))) && setAdding(false)} />
+          ) : (
+            !agent && (
+              <button type="button" className={`${LINK} mt-1 self-start`} onClick={() => setAdding(true)}>
+                + dodaj wyjątek
+              </button>
+            )
+          )}
+        </div>
+      )}
+      {legacy != null && (
+        <p className="mt-1 text-[12px] text-[#B8612F]">
+          Dawna „cena ustalona” {money(legacy)} netto — dodaj ją jako wyjątek (urządzenie i liczba dni), potem zniknie stąd.
+          {!agent && (
+            <button type="button" className="ml-1 text-[#1B6FA8] hover:text-[#0C3450]" onClick={() => void field("agreedPrice", null, String(legacy), "Usunięto dawną cenę ustaloną")}>
+              usuń
+            </button>
+          )}
+        </p>
+      )}
+
+      <div className="mt-2 flex flex-col">
+        <Row label="Transport">
+          <TransportFixed d={d} save={save} compact />
+        </Row>
+        <Row label="Faktura">
+          <span className="flex flex-wrap items-baseline gap-1">
+            <AutoSelect
+              label="Faktura"
+              value={p.invoiceMode ?? ""}
+              disabled={agent}
+              options={[["", "nie ustalono"], ...(["FULL", "PARTIAL", "NONE"] as const).map((k) => [k, INVOICE_MODE_LABEL[k]] as [string, string])]}
+              onSave={(v) => void field("invoiceMode", v || null, p.invoiceMode, `Faktura: ${v ? INVOICE_MODE_LABEL[v as "FULL"] : "nie ustalono"}`)}
             />
             {p.invoiceMode === "PARTIAL" && (
-              <span className="text-[#5C6166]"> {p.invoicePartDefault ? `${money(Number(p.invoicePartDefault))} netto na FV` : <Missing>ustal kwotę na FV</Missing>}</span>
-            )}
-            {!p.invoiceMode && <span className="text-[12px] text-[#B8612F]"> ustal</span>}
-          </Row>
-          <Row label="Płatność">
-            <Seg
-              options={[
-                { key: "PRZELEW", label: "przelew" },
-                { key: "GOTOWKA", label: "gotówka" },
-                { key: "OBA", label: "oba" },
-              ]}
-              value={p.paymentForm}
-            />
-            {p.paymentTermDays != null && <span className="text-[#5C6166]"> · przelew {p.paymentTermDays} dni</span>}
-            {!p.paymentForm && <span className="text-[12px] text-[#B8612F]"> ustal</span>}
-          </Row>
-          {p.paymentTerms && <Row label="Uwagi">{p.paymentTerms}</Row>}
-          <Row label="E-mail do FV">{p.invoiceEmail ?? <Missing>uzupełnij</Missing>}</Row>
-          <Row label="Umowa ramowa">
-            {fa?.fileId ? (
               <>
-                <a href={`${BASE_PATH}/api/clients/${d.id}/frame-agreement`} target="_blank" rel="noreferrer" className="text-[#1B6FA8] hover:text-[#0C3450]">
-                  {fa.name ?? "umowa"}
-                </a>
-                {fa.signedAt && <span className="text-[#5C6166]"> · podpisana {dmy(fa.signedAt)}</span>}
-                {fa.note && <span className="text-[#5C6166]"> · {fa.note}</span>}
+                <AutoInput
+                  label="Na FV netto"
+                  value={p.invoicePartDefault != null ? String(Number(p.invoicePartDefault)) : ""}
+                  placeholder="kwota"
+                  width="w-[72px]"
+                  disabled={agent}
+                  onSave={async (v) => {
+                    const n = parseAmount(v);
+                    if (n === "invalid") return "Kwota musi być liczbą.";
+                    await field("invoicePartDefault", n == null ? null : String(n), p.invoicePartDefault != null ? String(Number(p.invoicePartDefault)) : null, `Na FV ${n == null ? "—" : money(n)}`);
+                    return null;
+                  }}
+                />
+                <span className="text-[#5C6166]">zł netto na FV</span>
               </>
-            ) : fa?.url ? (
-              <a href={fa.url} target="_blank" rel="noreferrer" className="text-[#1B6FA8] hover:text-[#0C3450]">
-                {fa.name ?? "umowa (link)"}
-              </a>
-            ) : (
-              <Missing>brak pliku</Missing>
             )}
-          </Row>
-        </>
+          </span>
+        </Row>
+        <Row label="Płatność">
+          <span className="flex flex-wrap items-baseline gap-1">
+            <AutoSelect
+              label="Forma płatności"
+              value={p.paymentForm ?? ""}
+              disabled={agent}
+              options={[
+                ["", "nie ustalono"],
+                ["PRZELEW", "przelew"],
+                ["GOTOWKA", "gotówka"],
+                ["OBA", "gotówka i przelew"],
+              ]}
+              onSave={(v) => void field("paymentForm", v || null, p.paymentForm, `Płatność: ${v ? PAYMENT_FORM_LABEL[v] : "nie ustalono"}`)}
+            />
+            <span className="text-[#5C6166]">· termin</span>
+            <AutoInput
+              label="Termin przelewu (dni)"
+              value={p.paymentTermDays != null ? String(p.paymentTermDays) : ""}
+              placeholder="—"
+              width="w-[48px]"
+              disabled={agent}
+              onSave={async (v) => {
+                const t = v.trim();
+                if (t && !/^\d{1,3}$/.test(t)) return "Liczba dni, np. 7.";
+                await field("paymentTermDays", t ? Number(t) : null, p.paymentTermDays, `Termin przelewu ${t || "—"} dni`);
+                return null;
+              }}
+            />
+            <span className="text-[#5C6166]">dni</span>
+          </span>
+        </Row>
+        <Row label="Impulsy (Alma)">
+          <span className="flex flex-wrap items-baseline gap-1">
+            <AutoSelect
+              label="Impulsy doliczać"
+              value={p.pulsesCharged === true ? "tak" : p.pulsesCharged === false ? "nie" : ""}
+              disabled={agent}
+              options={[
+                ["", "do potwierdzenia"],
+                ["tak", "doliczać"],
+                ["nie", "nie doliczać"],
+              ]}
+              onSave={(v) => void field("pulsesCharged", v || null, p.pulsesCharged === true ? "tak" : p.pulsesCharged === false ? "nie" : null, `Impulsy: ${v || "do potwierdzenia"}`)}
+            />
+            <AutoInput
+              label="Zł za impuls"
+              value={pulseRate}
+              placeholder="cennik"
+              width="w-[64px]"
+              disabled={agent}
+              onSave={async (v) => {
+                const t = v.replace(",", ".").trim();
+                if (t && !(Number(t) >= 0)) return "Stawka musi być liczbą.";
+                await field("pulseRateNet", t || null, pulseRate || null, `Stawka ${t || "wg cennika"} zł/imp.`);
+                return null;
+              }}
+            />
+            <span className="text-[#5C6166]">zł / imp.</span>
+          </span>
+        </Row>
+        <Row label="Uwagi">
+          <AutoInput label="Uwagi do warunków" value={p.paymentTerms ?? ""} placeholder="np. impulsy wg oferty 30.10.2025" multiline align="text-left" width="w-full" disabled={agent} onSave={async (v) => (await field("paymentTerms", v, p.paymentTerms ?? "", "Uwagi do warunków"), null)} />
+        </Row>
+        <Row label="E-mail do FV">
+          <AutoInput label="E-mail do FV" type="email" value={p.invoiceEmail ?? ""} placeholder="uzupełnij" align="text-left" width="w-full" disabled={agent} onSave={async (v) => (await field("invoiceEmail", v, p.invoiceEmail ?? "", "E-mail do FV"), null)} />
+        </Row>
+        <Row label="Umowa ramowa">
+          <FrameAgreement d={d} onChanged={onChanged} notify={notify} save={save} />
+        </Row>
+      </div>
+
+      <TermsSyncBar d={d} version={version} onChanged={onChanged} notify={notify} />
+
+      {showHistory && (
+        <div className="mt-2 border-t border-[#E4E7EA] pt-2">
+          {d.terms.history.length === 0 ? (
+            <p className="text-[12.5px] text-[#767C82]">Brak zmian warunków w dzienniku.</p>
+          ) : (
+            <ul className="flex flex-col gap-1 text-[12.5px]">
+              {d.terms.history.map((h) => (
+                <li key={h.id} className="flex flex-wrap gap-x-2">
+                  <span className="tabular-nums text-[#767C82]">{dmy(h.at)}</span>
+                  <span className="text-[#333333]">{historyLabel(h.field)}</span>
+                  <span className="text-[#5C6166]">
+                    {h.before ?? "—"} → <b className="font-semibold text-[#0C3450]">{h.after ?? "—"}</b>
+                  </span>
+                  {(h.by || h.source) && <span className="text-[11.5px] text-[#8A939B]">{[h.by, h.source].filter(Boolean).join(" · ")}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </Section>
   );
 }
 
-// Przełącznik jak we wzorze (tylko do odczytu): wybrana opcja ciemna.
-function Seg({ options, value }: { options: { key: string; label: string }[]; value: string | null }) {
+const HISTORY_LABEL: Record<string, string> = {
+  transportPriceNet: "Transport",
+  invoiceMode: "Faktura",
+  invoicePartDefault: "Na FV netto",
+  paymentForm: "Płatność",
+  paymentTermDays: "Termin przelewu",
+  pulsesCharged: "Impulsy",
+  pulseRateNet: "Zł / impuls",
+  paymentTerms: "Uwagi",
+};
+const historyLabel = (f: string) => HISTORY_LABEL[f] ?? f.replace(/^Cena · /, "");
+
+function NewException({ d, onCancel, onSave }: { d: ClientDetail; onCancel: () => void; onSave: (row: { device: TermsDeviceCode; days: number; priceNet: number; source: string | null; since: string | null }) => void }) {
+  const taken = new Set(d.terms.prices.map((r) => `${r.device}|${r.days}`));
+  const [device, setDevice] = useState<TermsDeviceCode>(TERMS_DEVICES[0].code);
+  const [days, setDays] = useState(1);
+  const [price, setPrice] = useState("");
+  const [source, setSource] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const ref = useRef<HTMLInputElement>(null);
+  const list = d.terms.priceList.find((r) => r.device === device && r.days === days)?.priceNet ?? null;
+  const SMALL = "h-7 rounded-[4px] border border-[#D6DADE] bg-white px-1.5 text-[13px] outline-none focus:border-[#1B6FA8]";
+  function submit() {
+    const n = parseAmount(price);
+    if (n === "invalid" || n == null || n <= 0) return setError("Cena netto musi być liczbą większą od zera.");
+    if (taken.has(`${device}|${days}`)) return setError("Ten wyjątek już jest — zmień jego cenę wyżej.");
+    onSave({ device, days, priceNet: n, source: source || null, since: null });
+  }
   return (
-    <span className="inline-flex overflow-hidden rounded-[6px] border border-[#C9D3DC] align-middle text-[12px]">
-      {options.map((o) => (
-        <span key={o.key} className={`border-r border-[#E3E6E9] px-[9px] py-px last:border-0 ${o.key === value ? "bg-[#0C3450] text-white" : "text-[#5C6166]"}`}>
-          {o.label}
-        </span>
-      ))}
-    </span>
+    <div className="mt-1 flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select className={SMALL} value={device} onChange={(e) => setDevice(e.target.value as TermsDeviceCode)} aria-label="Urządzenie / wariant">
+          {TERMS_DEVICES.map((x) => (
+            <option key={x.code} value={x.code}>
+              {x.label}
+            </option>
+          ))}
+        </select>
+        <select className={SMALL} value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Dni">
+          {TERMS_DAYS.map((n) => (
+            <option key={n} value={n}>
+              {n} {n === 1 ? "dzień" : "dni"}
+            </option>
+          ))}
+        </select>
+        <input
+          ref={ref}
+          autoFocus
+          className={`${SMALL} w-[80px] text-right`}
+          inputMode="decimal"
+          placeholder={list != null ? String(list) : "cena"}
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+            if (e.key === "Escape") onCancel();
+          }}
+          aria-label="Cena netto"
+        />
+        {list != null && <span className="text-[12px] text-[#8A939B]">cennik {num(list)}</span>}
+        <select className={SMALL} value={source} onChange={(e) => setSource(e.target.value)} aria-label="Źródło">
+          <option value="">źródło…</option>
+          {PRICE_SOURCES.map((k) => (
+            <option key={k} value={k}>
+              {PRICE_SOURCE_LABEL[k]}
+            </option>
+          ))}
+        </select>
+        <button type="button" className="h-7 rounded-[6px] bg-[#1B6FA8] px-2.5 text-[12.5px] font-semibold text-white hover:bg-[#0C3450]" onClick={submit}>
+          Dodaj
+        </button>
+        <button type="button" className="text-[12.5px] text-[#767C82] hover:text-[#0C3450]" onClick={onCancel}>
+          Anuluj
+        </button>
+      </div>
+      {error && <span className="text-[11.5px] text-[#B8612F]">{error}</span>}
+    </div>
   );
 }
 
-// Główne urządzenie klienta → kod tabeli cen (podpowiedź przy rozpisywaniu
-// dawnej „ceny ustalonej”).
-const FAVORITE_CODE: Record<string, TermsDeviceCode> = {
-  LIGHTSHEER: "LS_1G",
-  LIGHTSHEER_ET400: "ET400",
-  ALMA_HARMONY: "ALMA_DYEVL",
-  COOLTECH: "COOLTECH",
-  RESURFX: "RESURFX",
-  OBSERV: "OBSERV",
-};
-
-type PriceDraft = {
-  key: string;
-  device: TermsDeviceCode;
-  days: string;
-  priceNet: string;
-  source: string;
-  sourceRef: string;
-};
-
-function TermsEditor({ d, onCancel, onSaved }: { d: ClientDetail; onCancel: () => void; onSaved: (n: ClientDetail, note?: string) => void }) {
-  const p = d.profile;
-  const legacy = p.agreedPrice != null && d.terms.prices.length === 0 ? Number(p.agreedPrice) : null;
-  const [rows, setRows] = useState<PriceDraft[]>(() =>
-    d.terms.prices.length
-      ? d.terms.prices.map((r) => ({
-          key: r.id,
-          device: r.device as TermsDeviceCode,
-          days: String(r.days),
-          priceNet: String(r.priceNet),
-          source: r.source ?? "",
-          sourceRef: r.sourceRef ?? "",
-        }))
-      : legacy != null
-        ? [
-            {
-              key: "legacy",
-              device: (d.summary.favoriteDevice && FAVORITE_CODE[d.summary.favoriteDevice]) || "LS_1G",
-              days: "1",
-              priceNet: String(legacy),
-              source: "USTALENIE",
-              sourceRef: "dawna cena ustalona",
-            },
-          ]
-        : [],
-  );
-  const [f, setF] = useState({
-    transport: d.transportPriceNet ? String(Number(d.transportPriceNet)) : "",
-    transportSince: d.terms.transportSince?.slice(0, 10) ?? "",
-    pulsesCharged: p.pulsesCharged === true ? "tak" : p.pulsesCharged === false ? "nie" : "",
-    pulseRate: p.pulseRateNet != null ? String(Number(p.pulseRateNet)) : "",
-    invoiceMode: p.invoiceMode ?? "",
-    invoicePart: p.invoicePartDefault != null ? String(Number(p.invoicePartDefault)) : "",
-    cash: p.paymentForm === "GOTOWKA" || p.paymentForm === "OBA",
-    transfer: p.paymentForm === "PRZELEW" || p.paymentForm === "OBA",
-    termDays: p.paymentTermDays != null ? String(p.paymentTermDays) : "",
-    notes: p.paymentTerms ?? "",
-    email: p.invoiceEmail ?? "",
-    signedAt: p.frameAgreement?.signedAt ?? "",
-    note: p.frameAgreement?.note ?? "",
-  });
-  const [file, setFile] = useState<File | null>(null);
-  const [removeFile, setRemoveFile] = useState(false);
+function FrameAgreement({ d, onChanged, notify, save }: { d: ClientDetail; onChanged: (n: ClientDetail) => void; notify: (t: string, e?: boolean) => void; save: Saver }): ReactNode {
+  const agent = useContext(AgentModeContext);
+  const fa = d.profile.frameAgreement;
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
-  const setRow = (key: string, patch: Partial<PriceDraft>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-
-  async function save() {
+  async function upload(file: File) {
     setBusy(true);
-    setError(null);
-    const faChanged = !file && !removeFile && p.frameAgreement && (f.signedAt !== (p.frameAgreement.signedAt ?? "") || f.note !== (p.frameAgreement.note ?? ""));
-    // Najpierw ceny (walidacja tabeli), potem pola klienta.
-    let { ok, data } = await api<{ detail: ClientDetail; synced?: { filled: number; updated: number; manual: number } | null }>(`/api/clients/${d.id}/prices`, "PUT", {
-      prices: rows.map((r) => ({
-        device: r.device,
-        days: Number(r.days),
-        priceNet: r.priceNet,
-        source: r.source || null,
-        sourceRef: r.sourceRef || null,
-      })),
-    });
-    const synced = ok ? data.synced : null;
-    if (ok) {
-      ({ ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}`, "PATCH", {
-        transportPriceNet: f.transport,
-        // Data podana ręcznie; bez zmiany — przy nowej kwocie panel wpisze dziś.
-        ...(f.transportSince !== (d.terms.transportSince?.slice(0, 10) ?? "") ? { transportPriceSince: f.transportSince || null } : {}),
-        pulsesCharged: f.pulsesCharged || null,
-        pulseRateNet: f.pulseRate,
-        invoiceMode: f.invoiceMode || null,
-        invoicePartDefault: f.invoiceMode === "PARTIAL" ? f.invoicePart : null,
-        paymentForm: toForm(f.cash, f.transfer),
-        paymentTermDays: f.termDays.trim() ? Number(f.termDays) : null,
-        paymentTerms: f.notes,
-        invoiceEmail: f.email,
-        // Dawna „cena ustalona” rozpisana na urządzenie — nie trzymamy jej podwójnie.
-        ...(legacy != null && rows.length > 0 ? { agreedPrice: null } : {}),
-        ...(faChanged
-          ? {
-              frameAgreement: {
-                ...p.frameAgreement,
-                signedAt: f.signedAt || null,
-                note: f.note || null,
-              },
-            }
-          : {}),
-      }));
-    }
-    if (ok && removeFile) ({ ok, data } = await api<{ detail: ClientDetail }>(`/api/clients/${d.id}/frame-agreement`, "DELETE"));
-    if (ok && file) {
-      const form = new FormData();
-      form.set("file", file);
-      if (f.signedAt) form.set("signedAt", f.signedAt);
-      if (f.note) form.set("note", f.note);
-      const res = await fetch(`${BASE_PATH}/api/clients/${d.id}/frame-agreement`, { method: "POST", body: form });
-      data = await res.json().catch(() => ({}));
-      ok = res.ok;
-    }
+    const form = new FormData();
+    form.set("file", file);
+    if (fa?.signedAt) form.set("signedAt", fa.signedAt);
+    if (fa?.note) form.set("note", fa.note);
+    const res = await fetch(`${BASE_PATH}/api/clients/${d.id}/frame-agreement`, { method: "POST", body: form });
+    const data = (await res.json().catch(() => ({}))) as { detail?: ClientDetail; message?: string };
     setBusy(false);
-    if (!ok) return setError(data.message ?? "Nie udało się zapisać.");
-    const n = synced ? synced.filled + synced.updated : 0;
-    onSaved(
-      data.detail,
-      synced && (n || synced.manual)
-        ? [n ? `Przyszłe rezerwacje wg warunków: ${n}.` : null, synced.manual ? `Ręcznych kwot bez zmian: ${synced.manual} (Klienci → Kwoty wg warunków).` : null].filter(Boolean).join(" ")
-        : undefined,
-    );
+    if (!res.ok || !data.detail) return notify(data.message ?? "Nie udało się wgrać umowy.", true);
+    onChanged(data.detail);
+    notify("Zapisano umowę ramową.");
   }
-
-  const label = "flex flex-col gap-1 text-[11px] uppercase tracking-[0.12em] text-[#5C6166]";
-  const SMALL = "h-8 rounded-[6px] border border-[var(--c-border)] bg-white px-2 text-[13px] text-[var(--c-text)] outline-none focus:border-[var(--c-brand)]";
+  const meta = (k: "signedAt" | "note", v: string | null, label: string) =>
+    save(label, () => patch(d.id, { frameAgreement: { ...fa, [k]: v } }), () => patch(d.id, { frameAgreement: fa ?? null }));
   return (
-    <div className="flex flex-col gap-3 pt-1">
-      <fieldset className={label}>
-        <legend className="mb-1">Ceny klienta (netto za wynajem) — brak wiersza = cennik ogólny</legend>
-        <div className="flex flex-col gap-1.5 normal-case tracking-normal">
-          {rows.map((r) => (
-            <div key={r.key} className="flex flex-wrap items-center gap-1.5">
-              <select className={`${SMALL} w-[170px]`} value={r.device} onChange={(e) => setRow(r.key, { device: e.target.value as TermsDeviceCode })}>
-                {TERMS_DEVICES.map((x) => (
-                  <option key={x.code} value={x.code}>
-                    {x.label}
-                  </option>
-                ))}
-              </select>
-              <select className={`${SMALL} w-[88px]`} value={r.days} onChange={(e) => setRow(r.key, { days: e.target.value })}>
-                {[...new Set([...TERMS_DAYS.map(String), r.days])].map((n) => (
-                  <option key={n} value={n}>
-                    {n} {n === "1" ? "dzień" : "dni"}
-                  </option>
-                ))}
-              </select>
-              <input className={`${SMALL} w-[80px] text-right`} inputMode="decimal" value={r.priceNet} onChange={(e) => setRow(r.key, { priceNet: e.target.value })} placeholder="zł" />
-              <select className={`${SMALL} w-[104px]`} value={r.source} onChange={(e) => setRow(r.key, { source: e.target.value })} title="Skąd ta cena">
-                <option value="">źródło…</option>
-                {PRICE_SOURCES.map((x) => (
-                  <option key={x} value={x}>
-                    {PRICE_SOURCE_LABEL[x]}
-                  </option>
-                ))}
-              </select>
-              <input className={`${SMALL} min-w-[120px] flex-1`} value={r.sourceRef} onChange={(e) => setRow(r.key, { sourceRef: e.target.value })} placeholder="np. oferta 30.10.2025" />
-              <button type="button" className="text-[12.5px] text-[#767C82] hover:text-[#B8612F]" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))} title="Usuń wiersz">
-                ✕
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            className={`${LINK} self-start`}
-            onClick={() =>
-              setRows((rs) => [
-                ...rs,
-                {
-                  key: `n${Date.now()}`,
-                  device: rs[rs.length - 1]?.device ?? "LS_1G",
-                  days: "1",
-                  priceNet: "",
-                  source: "",
-                  sourceRef: "",
-                },
-              ])
-            }
-          >
-            + dodaj cenę
-          </button>
-          {legacy != null && <span className="text-[12px] text-[#B8612F]">Dawna „cena ustalona” {money(legacy)} — sprawdź urządzenie i liczbę dni; po zapisie zostanie tylko w tabeli.</span>}
-        </div>
-      </fieldset>
-      <div className="grid grid-cols-3 gap-3">
-        <label className={label}>
-          Transport / kurs
-          <input className={INPUT} inputMode="decimal" value={f.transport} onChange={(e) => set("transport", e.target.value)} placeholder="np. 70" />
-        </label>
-        <label className={label}>
-          Transport obowiązuje od
-          <input className={INPUT} type="date" value={f.transportSince} onChange={(e) => set("transportSince", e.target.value)} />
-        </label>
-        <label className={label}>
-          Impulsy
-          <select className={INPUT} value={f.pulsesCharged} onChange={(e) => set("pulsesCharged", e.target.value)}>
-            <option value="">do potwierdzenia</option>
-            <option value="tak">tak</option>
-            <option value="nie">nie</option>
-          </select>
-        </label>
-        <label className={label}>
-          Zł / impuls
-          <input className={INPUT} inputMode="decimal" value={f.pulseRate} onChange={(e) => set("pulseRate", e.target.value)} placeholder="cennik" />
-        </label>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className={label}>
-          Faktura
-          <select className={INPUT} value={f.invoiceMode} onChange={(e) => set("invoiceMode", e.target.value)}>
-            <option value="">nie ustalono</option>
-            <option value="FULL">całość na FV</option>
-            <option value="PARTIAL">część na FV</option>
-            <option value="NONE">bez FV</option>
-          </select>
-        </label>
-        {f.invoiceMode === "PARTIAL" && (
-          <label className={label}>
-            Na FV netto (zł)
-            <input className={INPUT} inputMode="decimal" value={f.invoicePart} onChange={(e) => set("invoicePart", e.target.value)} placeholder="np. 500" />
+    <span className="flex flex-col gap-0.5">
+      <span className="flex flex-wrap items-baseline gap-2">
+        {fa?.fileId ? (
+          <a href={`${BASE_PATH}/api/clients/${d.id}/frame-agreement`} target="_blank" rel="noreferrer" className="text-[#1B6FA8] hover:text-[#0C3450]">
+            {fa.name ?? "umowa"}
+          </a>
+        ) : fa?.url ? (
+          <a href={fa.url} target="_blank" rel="noreferrer" className="text-[#1B6FA8] hover:text-[#0C3450]">
+            {fa.name ?? "umowa (link)"}
+          </a>
+        ) : (
+          <Missing>brak pliku</Missing>
+        )}
+        {!agent && (
+          <label className="cursor-pointer text-[12px] text-[#1B6FA8] hover:text-[#0C3450]">
+            {busy ? "wgrywam…" : fa?.fileId ? "zmień plik" : "wgraj PDF / zdjęcie"}
+            <input type="file" accept="application/pdf,image/jpeg,image/png" className="hidden" disabled={busy} onChange={(e) => e.target.files?.[0] && void upload(e.target.files[0])} />
           </label>
         )}
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <fieldset className={label}>
-          <legend className="mb-1">Forma płatności (można obie)</legend>
-          <div className="flex gap-5 text-[13px] normal-case tracking-normal text-[#333333]">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={f.cash} onChange={(e) => set("cash", e.target.checked)} /> gotówka
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={f.transfer} onChange={(e) => set("transfer", e.target.checked)} /> przelew
-            </label>
-          </div>
-        </fieldset>
-        <label className={label}>
-          Termin przelewu (dni)
-          <input className={INPUT} inputMode="numeric" value={f.termDays} onChange={(e) => set("termDays", e.target.value)} placeholder="np. 7" />
-        </label>
-      </div>
-      <label className={label}>
-        Uwagi do warunków
-        <textarea
-          rows={2}
-          className="w-full resize-y rounded-lg border border-[var(--c-border)] px-3 py-2 text-sm normal-case tracking-normal text-[var(--c-text)] outline-none focus:border-[var(--c-brand)]"
-          value={f.notes}
-          onChange={(e) => set("notes", e.target.value)}
-          placeholder="np. impulsy nie doliczane wg oferty 30.10.2025 — do potwierdzenia"
-        />
-      </label>
-      <label className={label}>
-        E-mail do FV
-        <input className={INPUT} inputMode="email" value={f.email} onChange={(e) => set("email", e.target.value)} />
-      </label>
-      <fieldset className={`${label} border border-[#E4E7EA] p-4`}>
-        <legend className="px-1">Umowa ramowa / kaucja</legend>
-        {p.frameAgreement?.fileId && !removeFile && (
-          <div className="flex items-center gap-3 text-[13px] normal-case tracking-normal text-[#333333]">
-            obecny plik: {p.frameAgreement.name}
-            <button type="button" className="text-[12.5px] text-[#B8612F] hover:underline" onClick={() => setRemoveFile(true)}>
-              usuń
-            </button>
-          </div>
-        )}
-        <input type="file" accept="application/pdf,image/jpeg,image/png" className="text-[12.5px] normal-case tracking-normal" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        <span className="normal-case tracking-normal">PDF, JPG albo PNG, do 8 MB. Nowy plik zastępuje poprzedni.</span>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className={label}>
-            Data podpisania
-            <input type="date" className={INPUT} value={f.signedAt} onChange={(e) => set("signedAt", e.target.value)} />
-          </label>
-          <label className={label}>
-            Uwagi
-            <input className={INPUT} value={f.note} onChange={(e) => set("note", e.target.value)} placeholder="np. kaucja 2000 zł" />
-          </label>
-        </div>
-      </fieldset>
-      <FormError message={error} />
-      <div className="flex justify-end gap-2">
-        <button type="button" className={BTN_OUTLINE} onClick={onCancel}>
-          Anuluj
-        </button>
-        <button type="button" className={BTN_PRIMARY} disabled={busy} onClick={() => void save()}>
-          {busy ? "Zapisywanie…" : "Zapisz"}
-        </button>
-      </div>
-    </div>
+      </span>
+      {(fa?.fileId || fa?.url) && (
+        <span className="flex flex-wrap items-baseline gap-1 text-[12px] text-[#5C6166]">
+          podpisana
+          <AutoInput label="Data podpisania" type="date" value={fa?.signedAt ?? ""} width="w-[128px]" align="text-left" disabled={agent} onSave={async (v) => (await meta("signedAt", v || null, "Data podpisania umowy"), null)} />
+          <AutoInput label="Uwagi do umowy" value={fa?.note ?? ""} placeholder="np. kaucja 2000 zł" width="w-[160px]" align="text-left" disabled={agent} onSave={async (v) => (await meta("note", v || null, "Uwagi do umowy"), null)} />
+        </span>
+      )}
+    </span>
   );
 }

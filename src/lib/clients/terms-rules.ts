@@ -32,8 +32,33 @@ export const TERMS_DEVICES: { code: TermsDeviceCode; label: string; category: De
 
 export const TERMS_DEVICE_LABEL = Object.fromEntries(TERMS_DEVICES.map((d) => [d.code, d.label])) as Record<TermsDeviceCode, string>;
 export const TERMS_DAYS = [1, 2, 3, 7] as const;
-export const PRICE_SOURCES = ["OFERTA", "UMOWA", "USTALENIE", "HISTORIA", "AGENT"] as const;
-export const PRICE_SOURCE_LABEL: Record<string, string> = { OFERTA: "oferta", UMOWA: "umowa", USTALENIE: "ustalenie", HISTORIA: "z historii", AGENT: "agent" };
+export const PRICE_SOURCES = ["MAIL", "ROZMOWA", "OFERTA", "UMOWA", "USTALENIE", "REZERWACJA", "HISTORIA", "AGENT"] as const;
+export const PRICE_SOURCE_LABEL: Record<string, string> = {
+  MAIL: "mail",
+  ROZMOWA: "rozmowa",
+  OFERTA: "oferta",
+  UMOWA: "umowa",
+  USTALENIE: "ustalenie",
+  REZERWACJA: "z rezerwacji",
+  HISTORIA: "z historii",
+  AGENT: "agent",
+};
+
+// Wniosek 28: transport ustalony — źródło kwoty.
+export const TRANSPORT_SOURCE_LABEL = {
+  DOTYCHCZASOWA: "dotychczasowa kwota",
+  USTALONE: "ustalone",
+  REZERWACJA: "z rezerwacji",
+  AGENT: "propozycja agenta",
+} as const;
+export type TransportSourceKey = keyof typeof TRANSPORT_SOURCE_LABEL;
+export const TRANSPORT_SOURCE_KEYS = Object.keys(TRANSPORT_SOURCE_LABEL) as TransportSourceKey[];
+// Sugestia z km odbiega od ustalonej kwoty o więcej niż 20% → „do przejrzenia”.
+export const TRANSPORT_REVIEW_DEVIATION = 0.2;
+export function transportNeedsReview(fixed: number | null, suggested: number | null): boolean {
+  if (fixed == null || suggested == null || suggested <= 0) return false;
+  return Math.abs(fixed - suggested) / suggested > TRANSPORT_REVIEW_DEVIATION;
+}
 
 export function isTermsDevice(code: unknown): code is TermsDeviceCode {
   return typeof code === "string" && TERMS_DEVICES.some((d) => d.code === code);
@@ -167,4 +192,30 @@ export function positionsSummary(p: PositionsInput): string {
   if (p.capNet) parts.push(`nakładka ${zl(p.capNet)}`);
   if (p.membraneNet) parts.push(`membrana ${zl(p.membraneNet)}`);
   return parts.join(" · ");
+}
+
+// Wniosek 28: źródło ceny wynajmu — do znacznika w rezerwacji (dymek) i MCP
+// kalendarz_wynajmy. Rozróżnia „wyjątek klienta” i „cennik, bo brak wyjątku
+// na tę liczbę dni”.
+export function priceSourceDetail(input: {
+  source: "PRICE_LIST" | "CLIENT_TERMS" | "MANUAL" | "PULSE_CALCULATED" | null;
+  days: number;
+  clientHasPrices: boolean;
+  overrideNote?: string | null;
+  termsSince?: string | Date | null;
+}): { tag: "cennik" | "indywidualne" | "ręcznie" | "impulsy"; text: string } | null {
+  const dni = `${input.days} ${input.days === 1 ? "dzień" : "dni"}`;
+  const since = input.termsSince ? new Date(input.termsSince).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Warsaw" }) : null;
+  switch (input.source) {
+    case "CLIENT_TERMS":
+      return { tag: "indywidualne", text: `wyjątek klienta${since ? ` od ${since}` : ""}` };
+    case "PRICE_LIST":
+      return { tag: "cennik", text: input.clientHasPrices ? `cennik (brak wyjątku na ${dni})` : "cennik" };
+    case "MANUAL":
+      return { tag: "ręcznie", text: `ręcznie${input.overrideNote ? `: ${input.overrideNote}` : ""}` };
+    case "PULSE_CALCULATED":
+      return { tag: "impulsy", text: "z impulsów" };
+    default:
+      return null;
+  }
 }

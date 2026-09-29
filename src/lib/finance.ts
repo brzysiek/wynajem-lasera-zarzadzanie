@@ -271,6 +271,19 @@ function clientPrice(
   return terms.prices.find((p) => p.device === code && p.days === days)?.priceNet ?? null;
 }
 
+// Wynik przeliczenia (to, co trafia do RentalFinance) — także w trybie podglądu.
+export type FinanceSaveData = {
+  deviceVariant: string | null;
+  baseRentalPriceNet: Prisma.Decimal;
+  baseRentalPriceSource: PriceSource;
+  transportPriceNet: Prisma.Decimal | null;
+  totalNet: Prisma.Decimal;
+  invoiceNet: Prisma.Decimal | null;
+  invoiceNetPending: boolean;
+  vatApplicable: boolean;
+  paymentMethod: PaymentMethod;
+};
+
 // --- zapis finansów przez biuro (POST/PATCH /api/rentals) ---
 export type OfficeFinanceInput = {
   deviceVariant: string | null;
@@ -312,7 +325,8 @@ type RentalForFinanceSave = {
 export async function saveRentalFinance(
   rental: RentalForFinanceSave,
   input: OfficeFinanceInput,
-): Promise<{ ok: true } | { ok: false; message: string }> {
+  opts: { dryRun?: boolean } = {},
+): Promise<{ ok: true; data: FinanceSaveData } | { ok: false; message: string }> {
   const settings = await loadPricingSettings();
   const ctx = await loadPricingContext({ ...rental, finance: { deviceVariant: input.deviceVariant } });
   const terms = rental.clientId
@@ -468,6 +482,9 @@ export async function saveRentalFinance(
     transportTotalGross: computed.transportTotalGross,
   };
 
+  // Wniosek 28: podgląd przeliczenia („Zmienia N przyszłych rezerwacji”) — bez zapisu.
+  if (opts.dryRun) return { ok: true, data };
+
   await prisma.rentalFinance.upsert({
     where: { rentalId: rental.id },
     create: {
@@ -478,5 +495,5 @@ export async function saveRentalFinance(
     update: data,
   });
 
-  return { ok: true };
+  return { ok: true, data };
 }

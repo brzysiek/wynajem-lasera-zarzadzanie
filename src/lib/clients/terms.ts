@@ -3,11 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { recordChanges, type ChangeActor, type ChangeEntry } from "@/lib/changelog/record";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { warsawYmd } from "@/lib/clients/day-route";
-import { syncFutureRentalsToTermsSafe } from "@/lib/clients/terms-backfill";
 import { loadDeliverySettings } from "@/lib/clients/delivery";
 import { zoneFor } from "@/lib/clients/delivery-rules";
 import {
   PRICE_SOURCES,
+  PRICE_SOURCE_LABEL,
   TERMS_DEVICE_LABEL,
   deviceCodeFor,
   expectedClientPrice,
@@ -21,14 +21,24 @@ import {
 // Warunki handlowe klienta (karta klienta, etap C): tabela cen (ClientPrice),
 // odczyt dla formularza rezerwacji i ostrzeżenia „cena ≠ warunki” w kalendarzu.
 
-export type ClientPriceDto = ClientPriceRow & { id: string; source: string | null; sourceRef: string | null };
+export type ClientPriceDto = ClientPriceRow & { id: string; source: string | null; sourceRef: string | null; since: string | null };
 
 export async function loadClientPrices(clientId: string): Promise<ClientPriceDto[]> {
   const rows = await prisma.clientPrice.findMany({ where: { clientId }, orderBy: [{ device: "asc" }, { days: "asc" }] });
-  return rows.map((r) => ({ id: r.id, device: r.device, days: r.days, priceNet: Number(r.priceNet), source: r.source, sourceRef: r.sourceRef }));
+  return rows.map((r) => ({ id: r.id, device: r.device, days: r.days, priceNet: Number(r.priceNet), source: r.source, sourceRef: r.sourceRef, since: (r.since ?? r.updatedAt).toISOString() }));
 }
 
-type PriceInput = { device: string; days: number; priceNet: number; source: string | null; sourceRef: string | null };
+type PriceInput = { device: string; days: number; priceNet: number; source: string | null; sourceRef: string | null; since?: Date | null };
+
+// Wniosek 28: źródło wersji w dzienniku — „mail · oferta 30.10 · od 31.08.2025”.
+function versionSource(r: { source: string | null; sourceRef: string | null; since?: Date | null }): string | null {
+  const parts = [r.source ? (PRICE_SOURCE_LABEL[r.source] ?? r.source) : null, r.sourceRef, r.since ? `od ${r.since.toLocaleDateString("pl-PL", { timeZone: "Europe/Warsaw" })}` : null].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+export function parseSince(v: unknown): Date | null {
+  return typeof v === "string" && DAY_RE.test(v) ? new Date(`${v}T12:00:00`) : null;
+}
 
 export function parsePrices(raw: unknown): { ok: true; rows: PriceInput[] } | { ok: false; message: string } {
   if (!Array.isArray(raw)) return { ok: false, message: "prices: lista { device, days, priceNet }." };
@@ -46,7 +56,7 @@ export function parsePrices(raw: unknown): { ok: true; rows: PriceInput[] } | { 
     seen.add(key);
     const source = typeof o.source === "string" && (PRICE_SOURCES as readonly string[]).includes(o.source) ? o.source : null;
     const sourceRef = typeof o.sourceRef === "string" && o.sourceRef.trim() ? o.sourceRef.trim().slice(0, 191) : null;
-    rows.push({ device: o.device, days, priceNet: Math.round(price * 100) / 100, source, sourceRef });
+    rows.push({ device: o.device, days, priceNet: Math.round(price * 100) / 100, source, sourceRef, since: parseSince(o.since) });
   }
   return { ok: true, rows };
 }
@@ -54,7 +64,8 @@ export function parsePrices(raw: unknown): { ok: true; rows: PriceInput[] } | { 
 const label = (r: { device: string; days: number }) => `Cena · ${TERMS_DEVICE_LABEL[r.device as keyof typeof TERMS_DEVICE_LABEL] ?? r.device} · ${r.days} d.`;
 
 // Zapis całej tabeli cen (biuro) — dodane, zmienione i usunięte wiersze trafiają
-// do dziennika zmian klienta.
+// do dziennika zmian klienta. Wniosek 28: zmiana ceny = nowa wersja od
+// podanej daty (domyślnie dziś); przyszłe rezerwacje — dopiero po „Zastosuj”.
 export async function saveClientPrices(clientId: string, rows: PriceInput[], actor: { userId: string }): Promise<{ ok: true; changed: number } | { ok: false; status: number; message: string }> {
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } });
   if (!client) return { ok: false, status: 404, message: "Nie znaleziono klienta." };
@@ -64,6 +75,7 @@ export async function saveClientPrices(clientId: string, rows: PriceInput[], act
   const next = new Map(rows.map((r) => [key(r), r]));
   const entries: ChangeEntry[] = [];
   const entry = (r: { device: string; days: number }, before: string | null, after: string | null): ChangeEntry => ({ entity: "CLIENT", entityId: clientId, operation: "FIELD_CHANGE", clientId, field: label(r), before, after });
+  const sources: (string | null)[] = [];
 
   await prisma.$transaction(async (tx) => {
     for (const [k, r] of now) {
@@ -74,25 +86,35 @@ export async function saveClientPrices(clientId: string, rows: PriceInput[], act
     }
     for (const [k, r] of next) {
       const old = now.get(k);
-      const data = { priceNet: new Prisma.Decimal(r.priceNet), source: r.source, sourceRef: r.sourceRef };
+      const priceNet = new Prisma.Decimal(r.priceNet);
+      const data = { priceNet, source: r.source, sourceRef: r.sourceRef };
       if (!old) {
-        await tx.clientPrice.create({ data: { clientId, device: r.device, days: r.days, ...data } });
+        await tx.clientPrice.create({ data: { clientId, device: r.device, days: r.days, ...data, since: r.since ?? new Date() } });
         entries.push(entry(r, null, r.priceNet.toFixed(2)));
-      } else if (!old.priceNet.equals(data.priceNet) || old.source !== r.source || old.sourceRef !== r.sourceRef) {
-        await tx.clientPrice.update({ where: { id: old.id }, data });
-        if (!old.priceNet.equals(data.priceNet)) entries.push(entry(r, old.priceNet.toString(), r.priceNet.toFixed(2)));
+        sources.push(versionSource({ ...r, since: r.since ?? new Date() }));
+      } else if (!old.priceNet.equals(priceNet) || old.source !== r.source || old.sourceRef !== r.sourceRef || (r.since && old.since?.getTime() !== r.since.getTime())) {
+        const since = r.since ?? (!old.priceNet.equals(priceNet) ? new Date() : old.since);
+        await tx.clientPrice.update({ where: { id: old.id }, data: { ...data, since } });
+        if (!old.priceNet.equals(priceNet)) {
+          entries.push(entry(r, old.priceNet.toString(), r.priceNet.toFixed(2)));
+          sources.push(versionSource({ ...r, since }));
+        }
       }
     }
-    await recordChanges(tx, actor, entries);
+    // Źródło wersji w dzienniku: jedno na zapis (zwykle zmienia się jeden wiersz).
+    const src = [...new Set(sources.filter(Boolean))].join("; ") || null;
+    await recordChanges(tx, { ...actor, provenance: src ? { source: src, confidence: null, batch: null } : null }, entries);
   });
   return { ok: true, changed: entries.length };
 }
 
-// Jedna cena (propozycja agenta cennik_klienta po akceptacji): dodaj, zmień
-// albo usuń (priceNet null) wiersz urządzenie × dni.
+// Jedna cena — wyjątek z karty klienta (autozapis), z rezerwacji („zmień i
+// zapisz w warunkach”) albo propozycja agenta cennik_klienta po akceptacji:
+// dodaj, zmień (nowa wersja od `since`, domyślnie dziś) albo usuń (priceNet
+// null). Przyszłe rezerwacje — dopiero po „Zastosuj” na karcie (wniosek 28).
 export async function upsertClientPrice(
   clientId: string,
-  row: { device: string; days: number; priceNet: number | null; source: string | null; sourceRef: string | null },
+  row: { device: string; days: number; priceNet: number | null; source: string | null; sourceRef: string | null; since?: Date | null },
   actor: ChangeActor,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   if (!isTermsDevice(row.device)) return { ok: false, message: "Nieznane urządzenie." };
@@ -100,17 +122,20 @@ export async function upsertClientPrice(
   const where = { clientId_device_days: { clientId, device: row.device, days: row.days } };
   const old = await prisma.clientPrice.findUnique({ where });
   await prisma.$transaction(async (tx) => {
+    const priceChanged = row.priceNet == null ? old != null : !old || !old.priceNet.equals(new Prisma.Decimal(row.priceNet));
+    const since = row.since ?? (priceChanged ? new Date() : (old?.since ?? new Date()));
     if (row.priceNet == null) {
       if (old) await tx.clientPrice.delete({ where });
     } else {
-      const data = { priceNet: new Prisma.Decimal(row.priceNet), source: row.source, sourceRef: row.sourceRef };
+      const data = { priceNet: new Prisma.Decimal(row.priceNet), source: row.source, sourceRef: row.sourceRef, since };
       await tx.clientPrice.upsert({ where, create: { clientId, device: row.device, days: row.days, ...data }, update: data });
     }
-    await recordChanges(tx, actor, [
+    if (!priceChanged) return;
+    const src = row.priceNet == null ? null : versionSource({ source: row.source, sourceRef: row.sourceRef, since });
+    await recordChanges(tx, { ...actor, provenance: actor.provenance ?? (src ? { source: src, confidence: null, batch: null } : null) }, [
       { entity: "CLIENT", entityId: clientId, operation: "FIELD_CHANGE", clientId, field: label(row), before: old?.priceNet.toString() ?? null, after: row.priceNet?.toFixed(2) ?? null },
     ]);
   });
-  await syncFutureRentalsToTermsSafe(clientId, { userId: actor.approvedById ?? actor.userId });
   return { ok: true };
 }
 
@@ -119,8 +144,14 @@ export async function upsertClientPrice(
 export type ClientTermsDto = {
   clientId: string;
   clientName: string;
-  prices: ClientPriceRow[];
+  // Wniosek 28: wyjątki z datą wersji (dymek „warunki klienta od DD.MM”).
+  prices: (ClientPriceRow & { since: string | null })[];
+  // Transport ustalony (tylko on trafia do rezerwacji) i skąd kwota.
   transportNet: number | null;
+  transportSource: string | null;
+  // Ręczne ceny z wcześniejszych rezerwacji (urządzenie × dni × kwota, ile
+  // razy) — 2+ razy ta sama → „Ustawić jako warunki?”.
+  manualPrices: { device: string; days: number; priceNet: number; count: number }[];
   paymentForm: "GOTOWKA" | "PRZELEW" | "OBA" | null;
   invoiceMode: InvoiceMode | null;
   invoicePartDefault: number | null;
@@ -146,11 +177,12 @@ export async function loadTermsForRental(q: { clientId?: string | null; hubspotC
       name: true,
       shortName: true,
       transportPriceNet: true,
+      transportSource: true,
       distanceKm: true,
       paymentForm: true,
       invoiceMode: true,
       invoicePartDefault: true,
-      prices: { select: { device: true, days: true, priceNet: true } },
+      prices: { select: { device: true, days: true, priceNet: true, since: true, updatedAt: true } },
       deliveryAddresses: { where: { isDefault: true }, take: 1, select: { distanceKm: true } },
     },
   });
@@ -181,11 +213,31 @@ export async function loadTermsForRental(q: { clientId?: string | null; hubspotC
     transportTakenBy = same?.title ?? null;
   }
 
+  const manualRows = await prisma.rental.findMany({
+    where: { clientId, deletedInGoogle: false, finance: { baseRentalPriceSource: "MANUAL" } },
+    select: { eventType: true, startsAt: true, endsAt: true, device: { select: { pricingCategory: true } }, finance: { select: { deviceVariant: true, baseRentalPriceNet: true } } },
+    take: 200,
+    orderBy: { startsAt: "desc" },
+  });
+  const manual = new Map<string, { device: string; days: number; priceNet: number; count: number }>();
+  for (const r of manualRows) {
+    const code = deviceCodeFor(r.eventType, r.device.pricingCategory, r.finance?.deviceVariant ?? null);
+    if (!code || !r.finance) continue;
+    const days = rentalDurationDays(r.startsAt, r.endsAt);
+    const priceNet = Number(r.finance.baseRentalPriceNet);
+    const k = `${code}|${days}|${priceNet}`;
+    const cur = manual.get(k) ?? { device: code, days, priceNet, count: 0 };
+    cur.count++;
+    manual.set(k, cur);
+  }
+
   return {
     clientId: c.id,
     clientName: c.shortName ?? c.name,
-    prices: c.prices.map((p) => ({ device: p.device, days: p.days, priceNet: Number(p.priceNet) })),
+    prices: c.prices.map((p) => ({ device: p.device, days: p.days, priceNet: Number(p.priceNet), since: (p.since ?? p.updatedAt).toISOString() })),
     transportNet: c.transportPriceNet != null ? Number(c.transportPriceNet) : null,
+    transportSource: c.transportSource,
+    manualPrices: [...manual.values()],
     paymentForm: (c.paymentForm as ClientTermsDto["paymentForm"]) ?? null,
     invoiceMode: parseInvoiceMode(c.invoiceMode),
     invoicePartDefault: c.invoicePartDefault != null ? Number(c.invoicePartDefault) : null,

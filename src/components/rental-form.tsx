@@ -17,6 +17,7 @@ import { RentalFinanceSection, type FinancePayload } from "@/components/rental-f
 import type { PreviewPriceRule, PreviewPulseTier } from "@/lib/pricing/preview";
 import type { RentalFinanceDto } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
+import { variantLabel } from "@/lib/pricing/variants";
 import type { ClientTermsDto } from "@/lib/clients/terms";
 
 export type Device = {
@@ -101,15 +102,23 @@ export type Rental = {
   transportPrice?: string | null;
   reminderRules?: ReminderRuleSummary[];
   messages?: MessageSummary[];
+  // Wniosek 29: osoba na miejscu, szkolenie, powiązany sygnał (edycja).
+  clientContactId?: string | null;
+  trainingPlace?: string | null;
+  trainingLead?: string | null;
+  trainingParticipants?: number | null;
+  lead?: { id: string; title: string } | null;
 };
 
 export type ReminderTemplatePreview = { offset: ReminderOffset; templateId: string; body: string };
 
+// Wniosek 29: tylko „3 dni przed” (domyślnie) i „dzień przed”; tydzień —
+// wyłącznie dla już zaplanowanych przypomnień (niech się wyślą).
 const REMINDER_OPTIONS: { days: ReminderDays; label: string }[] = [
-  { days: 1, label: "1 dzień przed" },
   { days: 3, label: "3 dni przed" },
-  { days: 7, label: "tydzień (7 dni) przed" },
+  { days: 1, label: "dzień przed" },
 ];
+const LEGACY_WEEK_OPTION: { days: ReminderDays; label: string } = { days: 7, label: "tydzień przed (zaplanowane wcześniej)" };
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" });
@@ -246,11 +255,16 @@ function ReminderSection({
     endsAt: rental?.endsAt,
   };
 
+  const weekRule = rental?.reminderRules?.find((r) => r.daysBefore === 7 && (r.status === "SCHEDULED" || r.status === "QUEUED" || r.status === "SENT"));
+  const options = weekRule ? [...REMINDER_OPTIONS, LEGACY_WEEK_OPTION] : REMINDER_OPTIONS;
   return (
     <div className="flex flex-col gap-1.5 text-sm text-gray-700">
-      Przypomnienia SMS
+      <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+        <span className="mr-1.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#1F3A5F] text-[11px] text-white">5</span>
+        Przypomnienie SMS
+      </span>
       <div className="flex flex-col gap-2">
-        {REMINDER_OPTIONS.map(({ days, label }) => {
+        {options.map(({ days, label }) => {
           const rule = rental?.reminderRules?.find((r) => r.daysBefore === days);
           const sent = rule?.status === "SENT";
           const queued = rule?.status === "QUEUED";
@@ -410,15 +424,6 @@ function MessageHistorySection({ messages }: { messages: MessageSummary[] }) {
   );
 }
 
-type ContactSummary = {
-  id: string;
-  firstname: string | null;
-  lastname: string | null;
-  email: string | null;
-  phone: string | null;
-  company: string | null;
-};
-
 export type AssignedContact = {
   id: string;
   name: string | null;
@@ -436,7 +441,7 @@ async function api(url: string, init?: RequestInit) {
     headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
   });
   const data = await res.json().catch(() => null);
-  return { ok: res.ok, data };
+  return { ok: res.ok, status: res.status, data };
 }
 
 function toLocalInputValue(iso: string): string {
@@ -462,294 +467,40 @@ function defaultEnd(start: string): string {
   return toLocalInputValue(date.toISOString());
 }
 
-function contactFromRental(rental: Rental | null): AssignedContact | null {
-  if (!rental?.hubspotContactId) return null;
-  return {
-    id: rental.hubspotContactId,
-    name: rental.contactNameCache ?? null,
-    phone: rental.contactPhoneCache ?? null,
-    email: rental.contactEmailCache ?? null,
-    company: rental.contactCompanyCache ?? null,
-    address: rental.contactAddressCache ?? null,
-    transportPrice: rental.contactTransportPriceCache ?? null,
-    url: null,
-  };
-}
+const ymdAdd = (ymd: string, days: number) => {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+};
+const dmShort = (ymd: string) => `${ymd.slice(8, 10)}.${ymd.slice(5, 7)}`;
 
 type AddressOption = { id: string; label: string; isDefault: boolean; line: string; distanceKm: number | null; durationMin: number | null };
+type ClientBrief = {
+  client: { id: string; name: string; shortName: string | null; status: string | null; resigned: boolean; rhythm: string | null; lastRental: string | null; next: string[]; terms: string; individual: boolean };
+  contacts: { id: string; name: string; phone: string | null; isPrimary: boolean }[];
+};
+type Availability = { free: boolean; conflicts: { id: string; title: string; clientName: string | null; od: string; do: string }[]; suggestions: string[] };
+type SeriesTerm = { od: string; do: string; busy: { id: string; title: string; clientName: string | null } | null };
 
-// Paszport dostawy (etap B): adresy dostawy klienta do wyboru, domyślny
-// podstawiony. Klient z rezerwacji albo — przy nowej — z kontaktu HubSpot.
-function DeliveryAddressPicker({
-  clientId,
-  contactId,
-  value,
-  autoPick,
-  onPick,
-}: {
-  clientId: string | null;
-  contactId: string | null;
-  value: string | null;
-  // true = wolno samemu podstawić adres domyślny (adres nie był wybrany ani wpisany ręcznie)
-  autoPick: boolean;
-  onPick: (a: AddressOption | null, auto: boolean) => void;
-}) {
-  const [loaded, setLoaded] = useState<{ key: string; addresses: AddressOption[] } | null>(null);
-  const key = clientId ? `klient=${encodeURIComponent(clientId)}` : contactId ? `kontakt=${encodeURIComponent(contactId)}` : "";
-  const pickRef = useRef({ autoPick, onPick });
-  useEffect(() => {
-    pickRef.current = { autoPick, onPick };
-  });
+// Krótkie etykiety wariantów do przełącznika w wierszu „Urządzenie i termin”.
+const VARIANT_SEG: Record<string, string> = {
+  single_standard: "1 gł.",
+  single_flex: "1 gł. (impulsy)",
+  double: "2 gł.",
+  dye_vl: "Dye-VL",
+  dye_vl_ipixel: "oba",
+  er_yag_ipixel: "iPixel",
+};
 
-  useEffect(() => {
-    if (!key) return;
-    let cancelled = false;
-    void fetch(`${BASE_PATH}/api/rentals/delivery-addresses?${key}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { addresses?: AddressOption[] } | null) => {
-        if (cancelled) return;
-        const addresses = data?.addresses ?? [];
-        setLoaded({ key, addresses });
-        const def = addresses.find((a) => a.isDefault);
-        if (def && pickRef.current.autoPick) pickRef.current.onPick(def, true);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [key]);
+const CARD = "rounded-[10px] border border-gray-200 bg-white p-4 sm:px-[18px]";
+const INPUT_CLS = "w-full rounded-md border border-gray-300 px-2.5 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none";
+const LABEL_CLS = "flex flex-col gap-1 text-xs text-gray-600";
 
-  const addresses = loaded?.key === key ? loaded.addresses : [];
-  if (!key || addresses.length === 0) return null;
-  const route = (a: AddressOption) => (a.distanceKm != null ? ` · ${Math.round(a.distanceKm)} km${a.durationMin != null ? ` · ${a.durationMin} min` : ""}` : "");
+function CardTitle({ n, children, tag }: { n: number; children: React.ReactNode; tag?: string }) {
   return (
-    <label className="flex flex-col gap-1 text-sm text-gray-700">
-      Adres z karty klienta
-      <select
-        value={value ?? ""}
-        onChange={(e) => onPick(addresses.find((a) => a.id === e.target.value) ?? null, false)}
-        className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-      >
-        <option value="">— inny adres (wpisz niżej) —</option>
-        {addresses.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.label}
-            {a.isDefault ? " (domyślny)" : ""} — {a.line}
-            {route(a)}
-          </option>
-        ))}
-      </select>
-      <span className="text-xs text-gray-400">Kierowca zobaczy przy wynajmie wskazówki z paszportu dostawy tego adresu.</span>
-    </label>
-  );
-}
-
-function ContactSection({
-  rentalId,
-  initialContact,
-  onContactChange,
-}: {
-  // null while creating a new rental (it doesn't have an id yet) — in that
-  // case assign/unassign only update local state instead of calling the API,
-  // and the picked contact id travels in the rental-creation request body.
-  rentalId: string | null;
-  initialContact: AssignedContact | null;
-  onContactChange?: (contact: AssignedContact | null) => void;
-}) {
-  const [contact, setContact] = useState(initialContact);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ContactSummary[] | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isAssigning, setIsAssigning] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.trim().length < 3) {
-      return;
-    }
-
-    const controller = new AbortController();
-    debounceRef.current = setTimeout(async () => {
-      setIsSearching(true);
-      setError(null);
-      try {
-        const res = await fetch(
-          `${BASE_PATH}/api/integrations/hubspot/contacts/search?q=${encodeURIComponent(query.trim())}`,
-          { signal: controller.signal },
-        );
-        const data = await res.json().catch(() => null);
-        if (!res.ok) {
-          setError(data?.message || "Wyszukiwanie kontaktów nie powiodło się.");
-          setResults(null);
-        } else {
-          setResults(data?.contacts ?? []);
-        }
-      } catch {
-        // Aborted by a newer keystroke — ignore.
-      } finally {
-        setIsSearching(false);
-      }
-    }, 300);
-
-    return () => {
-      controller.abort();
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query]);
-
-  async function assign(c: ContactSummary) {
-    if (!rentalId) {
-      const name = [c.firstname, c.lastname].filter(Boolean).join(" ").trim() || null;
-      const next: AssignedContact = {
-        id: c.id,
-        name,
-        phone: c.phone,
-        email: c.email,
-        company: c.company,
-        address: null,
-        // Not in the search summary — the server fills it in on save from
-        // the full contact fetch (like the address).
-        transportPrice: null,
-        url: null,
-      };
-      setContact(next);
-      setQuery("");
-      setResults(null);
-      onContactChange?.(next);
-      return;
-    }
-
-    setIsAssigning(true);
-    setError(null);
-    const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}/contact`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contactId: c.id }),
-    });
-    const data = await res.json().catch(() => null);
-    setIsAssigning(false);
-    if (!res.ok) {
-      setError(data?.message || "Nie udało się przypisać kontaktu.");
-      return;
-    }
-    const r = data.rental;
-    const next: AssignedContact = {
-      id: r.hubspotContactId,
-      name: r.contactNameCache,
-      phone: r.contactPhoneCache,
-      email: r.contactEmailCache,
-      company: r.contactCompanyCache,
-      address: r.contactAddressCache,
-      transportPrice: r.contactTransportPriceCache ?? null,
-      url: data.contactUrl ?? null,
-    };
-    setContact(next);
-    setQuery("");
-    setResults(null);
-    onContactChange?.(next);
-  }
-
-  async function unassign() {
-    if (!rentalId) {
-      setContact(null);
-      onContactChange?.(null);
-      return;
-    }
-
-    setIsAssigning(true);
-    setError(null);
-    const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}/contact`, { method: "DELETE" });
-    setIsAssigning(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => null);
-      setError(data?.message || "Nie udało się odpiąć kontaktu.");
-      return;
-    }
-    setContact(null);
-    onContactChange?.(null);
-  }
-
-  if (contact) {
-    return (
-      <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="text-sm text-gray-800">
-            <p className="font-medium">{contact.name || "(bez nazwy)"}</p>
-            {contact.company && <p className="text-gray-600">{contact.company}</p>}
-            {contact.phone && <p className="text-gray-600">{contact.phone}</p>}
-            {contact.email && <p className="text-gray-600">{contact.email}</p>}
-            {contact.address && <p className="text-gray-500">{contact.address}</p>}
-            {contact.transportPrice && (
-              <p className="text-gray-500">Ustalona cena transportu: {contact.transportPrice}</p>
-            )}
-            {contact.url && (
-              <a
-                href={contact.url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1 inline-block text-[#1B6FA8] hover:underline"
-              >
-                Otwórz w HubSpot ↗
-              </a>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={unassign}
-            disabled={isAssigning}
-            className="flex-none rounded-md px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-          >
-            Odepnij
-          </button>
-        </div>
-        {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <input
-        value={query}
-        onChange={(e) => {
-          const value = e.target.value;
-          setQuery(value);
-          if (value.trim().length < 3) {
-            setResults(null);
-            setError(null);
-          }
-        }}
-        placeholder="Imię, nazwisko, firma, telefon lub e-mail (min. 3 znaki)…"
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-      />
-      {isSearching && <p className="mt-1 text-xs text-gray-400">Szukanie…</p>}
-      {error && <p className="mt-1 text-xs text-red-700">{error}</p>}
-      {results && results.length === 0 && !isSearching && (
-        <p className="mt-1 text-xs text-gray-400">Brak wyników.</p>
-      )}
-      {results && results.length > 0 && (
-        <ul className="mt-1 max-h-40 overflow-y-auto rounded-md border border-gray-200">
-          {results.map((c) => {
-            const name = [c.firstname, c.lastname].filter(Boolean).join(" ") || "(bez nazwy)";
-            return (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  disabled={isAssigning}
-                  onClick={() => assign(c)}
-                  className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:opacity-50"
-                >
-                  <span className="font-medium text-gray-900">{name}</span>
-                  {c.company && <span className="text-gray-500"> · {c.company}</span>}
-                  {c.email && <span className="block text-xs text-gray-500">{c.email}</span>}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+    <div className="mb-2.5 flex items-center text-[11px] font-semibold uppercase tracking-[0.06em] text-gray-400">
+      <span className="mr-1.5 inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[#1F3A5F] text-[11px] text-white">{n}</span>
+      {children}
+      {tag && <span className="ml-1.5 text-[11px] font-normal normal-case tracking-normal text-gray-400">{tag}</span>}
     </div>
   );
 }
@@ -766,6 +517,12 @@ function BackArrowIcon() {
   );
 }
 
+// Formularz rezerwacji (wniosek 29, wzór rezerwacja-wzor.html): 1 Klient
+// (z panelu — wczytuje warunki, adresy, transport ustalony i osoby) · 2
+// Urządzenie + wariant + od/do z kontrolą dostępności · 3 Dostawa (albo
+// Szkolenie) · 4 Finanse (znacznik źródła przy kwocie) · 5 Przypomnienia SMS.
+// Na dole seria „co N tyg.” i „Zapisz i dodaj kolejny”. Kierowca, wiadomość
+// do klientki, historia SMS, zadania i sygnał — dopiero w edycji.
 export function RentalForm({
   devices,
   rental,
@@ -785,19 +542,20 @@ export function RentalForm({
   openTasks = [],
   initialClient = null,
   clientCandidates = [],
+  initialVariant = null,
+  initialAddressId = null,
 }: {
   devices: Device[];
   rental: Rental | null;
   defaultDeviceId?: string;
   defaultDateIso?: string;
-  // Nowa rezerwacja z sygnału (lejek): kontakt HubSpot, tytuł i sygnał do
-  // powiązania z zapisanym wynajmem.
-  prefill?: { leadId: string; title: string | null; contact: AssignedContact | null };
+  // Nowa rezerwacja z sygnału (lejek): tytuł i sygnał do powiązania.
+  prefill?: { leadId: string; title: string | null; contact?: AssignedContact | null };
   reminderTemplates: ReminderTemplatePreview[];
   smsTemplates?: SmsTemplateOption[];
   drivers?: DriverOption[];
   vehicles?: VehicleOption[];
-  // Only an admin sees/edits the driver field (assignment is admin-only).
+  // Tylko ADMIN: kierowca / pojazd i zapis mimo kolizji urządzenia.
   canManageDrivers?: boolean;
   // ADMIN/STAFF widzą sekcję „Finanse".
   canManageFinance?: boolean;
@@ -810,73 +568,60 @@ export function RentalForm({
   // Wniosek 23: klient rezerwacji (wymagany) i kandydaci, gdy go brak.
   initialClient?: PickedClient | null;
   clientCandidates?: ClientCandidate[];
+  // „Zapisz i dodaj kolejny”: zostaje wariant i adres.
+  initialVariant?: string | null;
+  initialAddressId?: string | null;
 }) {
   const router = useRouter();
   const isEditing = Boolean(rental);
+  const isAdmin = canManageDrivers;
   const [deviceId, setDeviceId] = useState(rental?.deviceId ?? defaultDeviceId ?? devices[0]?.id ?? "");
-  const [title, setTitle] = useState(rental?.title ?? prefill?.title ?? "");
   const [client, setClient] = useState<PickedClient | null>(initialClient);
+  const clientTitle = (c: PickedClient | null) => (c ? (c.shortName ?? c.name) : "");
+  const [title, setTitle] = useState(rental?.title ?? prefill?.title ?? clientTitle(initialClient));
+  const [autoTitle, setAutoTitle] = useState<string | null>(rental ? null : (prefill?.title ?? clientTitle(initialClient)) || null);
   // Alias z tytułu przy pierwszym przypisaniu (domyślnie tak, bez ogólnych tytułów).
   const [aliasFromTitle, setAliasFromTitle] = useState(true);
-  const [autoTitle, setAutoTitle] = useState<string | null>(null);
   const [description, setDescription] = useState(rental?.description ?? "");
-  // Opis bywa pusty w większości rezerwacji — rozwijany, domyślnie otwarty
-  // tylko gdy już coś w nim jest (edycja istniejącej rezerwacji z opisem).
-  // Kontrolowane (nie defaultOpen), żeby wpisywanie/kasowanie tekstu nie
-  // zwijało pola pod ręką — patrz <details onToggle> niżej.
-  const [descriptionOpen, setDescriptionOpen] = useState(() => Boolean(rental?.description?.trim()));
   const [internalNotes, setInternalNotes] = useState(rental?.internalNotes ?? "");
-  // Ta sama logika co descriptionOpen powyżej — rozwijane tylko gdy już
-  // coś zawierają.
-  const [internalNotesOpen, setInternalNotesOpen] = useState(() => Boolean(rental?.internalNotes?.trim()));
-  // Reservation dates are always whole days — no time-of-day picker for
-  // startsAt/endsAt (unlike delivery/pickup, which do carry a time). Both
-  // are normalized to midnight right away (not just on change), otherwise
-  // a rental whose stored time predates the all-day switch keeps a hidden
-  // hour/minute that only the untouched field carries — invisible in the
-  // date-only input, but enough to make endsAt < startsAt even when both
-  // inputs display the same day.
   const allDay = true;
   const toDateOnlyValue = (value: string) => `${value.slice(0, 10)}T00:00`;
-  const initialStart = toDateOnlyValue(
-    rental ? toLocalInputValue(rental.startsAt) : defaultStart(defaultDateIso ? new Date(defaultDateIso) : undefined),
-  );
+  const initialStart = toDateOnlyValue(rental ? toLocalInputValue(rental.startsAt) : defaultStart(defaultDateIso ? new Date(defaultDateIso) : undefined));
   const [startsAt, setStartsAt] = useState(initialStart);
-  const [endsAt, setEndsAt] = useState(
-    toDateOnlyValue(rental ? toLocalInputValue(rental.endsAt) : defaultEnd(initialStart)),
-  );
+  const [endsAt, setEndsAt] = useState(toDateOnlyValue(rental ? toLocalInputValue(rental.endsAt) : defaultEnd(initialStart)));
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingContact, setPendingContact] = useState<AssignedContact | null>(prefill?.contact ?? null);
-  const [deliveryAddress, setDeliveryAddress] = useState(rental?.deliveryAddress ?? rental?.contactAddressCache ?? "");
-  const [deliveryAddressId, setDeliveryAddressId] = useState<string | null>(rental?.deliveryAddressId ?? null);
-  // Adres domyślny podstawiamy sami tylko, gdy nic nie wybrano ani nie wpisano
-  // ręcznie (pusty albo przepisany z kontaktu HubSpot).
-  const autoPickAddress =
-    !deliveryAddressId && (!deliveryAddress.trim() || deliveryAddress.trim() === (rental?.contactAddressCache ?? "").trim());
+  const [deliveryAddress, setDeliveryAddress] = useState(rental?.deliveryAddress ?? "");
+  const [deliveryAddressId, setDeliveryAddressId] = useState<string | null>(rental?.deliveryAddressId ?? initialAddressId ?? null);
+  const [otherAddress, setOtherAddress] = useState(Boolean(rental && !rental.deliveryAddressId && rental.deliveryAddress));
   const [deliveryTime, setDeliveryTime] = useState(rental?.deliveryTime ?? "");
   const [pickupTime, setPickupTime] = useState(rental?.pickupTime ?? "");
-  const [transportPrice, setTransportPrice] = useState(
-    rental?.transportPrice ?? rental?.contactTransportPriceCache ?? "",
-  );
+  const [transportPrice, setTransportPrice] = useState(rental?.transportPrice ?? rental?.contactTransportPriceCache ?? "");
   const [driverId, setDriverId] = useState(rental?.driverId ?? "");
   const [vehicleId, setVehicleId] = useState(rental?.vehicleId ?? "");
-  const [contactDistanceKm, setContactDistanceKm] = useState(rental?.contactDistanceKm ?? "");
   const [eventType, setEventType] = useState<RentalEventType>(rental?.eventType ?? "WYNAJEM");
+  const [deviceVariant, setDeviceVariant] = useState<string>(rental?.finance?.deviceVariant ?? initialVariant ?? "");
+  const [onSiteId, setOnSiteId] = useState<string | null>(rental?.clientContactId ?? null);
+  const [training, setTraining] = useState({ place: rental?.trainingPlace ?? "U_KLIENTKI", lead: rental?.trainingLead ?? "Ania", participants: rental?.trainingParticipants != null ? String(rental.trainingParticipants) : "" });
+  const [allowConflict, setAllowConflict] = useState(false);
+  const [series, setSeries] = useState<{ weeks: number; until: string }>({ weeks: 0, until: `${new Date().getFullYear() + 1}-06-30` });
+  const [seriesTerms, setSeriesTerms] = useState<SeriesTerm[] | null>(null);
+  const [showSeries, setShowSeries] = useState(false);
   const financeRef = useRef<FinancePayload | null>(null);
   const handleFinanceChange = useCallback((p: FinancePayload) => {
     financeRef.current = p;
   }, []);
   const isSzkolenie = eventType === "SZKOLENIE";
   const durationDays = rentalDurationDays(new Date(startsAt), new Date(endsAt));
+  const device = devices.find((d) => d.id === deviceId);
+  const variantOptions = isSzkolenie ? [] : (device?.variantOptions ?? []);
+  const clientId = client?.id ?? null;
 
-  // Warunki handlowe klienta (etap C) — ceny, transport, faktura i płatność do
-  // podstawienia w sekcji Finanse. Klient z rezerwacji albo z kontaktu HubSpot.
-  const termsContact = pendingContact?.id ?? rental?.hubspotContactId ?? null;
-  const termsWho = rental?.clientId ? `klient=${encodeURIComponent(rental.clientId)}` : termsContact ? `kontakt=${encodeURIComponent(termsContact)}` : "";
-  const termsQuery = canManageFinance && termsWho ? `${termsWho}&dzien=${startsAt.slice(0, 10)}${rental ? `&bez=${encodeURIComponent(rental.id)}` : ""}` : "";
+  // Klient z pola „Klient *” wczytuje swoje dane (wniosek 29, błąd 1):
+  // warunki, adresy z paszportu, transport ustalony, osoby.
+  const termsQuery = canManageFinance && clientId ? `klient=${encodeURIComponent(clientId)}&dzien=${startsAt.slice(0, 10)}${rental ? `&bez=${encodeURIComponent(rental.id)}` : ""}` : "";
   const [loadedTerms, setLoadedTerms] = useState<{ query: string; terms: ClientTermsDto | null } | null>(null);
   useEffect(() => {
     if (!termsQuery) return;
@@ -892,28 +637,91 @@ export function RentalForm({
     };
   }, [termsQuery]);
   const clientTerms = loadedTerms?.query === termsQuery ? loadedTerms.terms : null;
+
+  const [brief, setBrief] = useState<{ id: string; data: ClientBrief } | null>(null);
+  const [addresses, setAddresses] = useState<{ id: string; list: AddressOption[] } | null>(null);
+  const autoAddressRef = useRef(!rental || (!rental.deliveryAddressId && !rental.deliveryAddress));
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    void api(`/api/rentals/client-brief?klient=${encodeURIComponent(clientId)}${rental ? `&bez=${encodeURIComponent(rental.id)}` : ""}`).then(({ ok, data }) => {
+      if (!cancelled && ok) setBrief({ id: clientId, data: data as ClientBrief });
+    });
+    void api(`/api/rentals/delivery-addresses?klient=${encodeURIComponent(clientId)}`).then(({ ok, data }) => {
+      if (cancelled || !ok) return;
+      const list = ((data as { addresses?: AddressOption[] })?.addresses ?? []) as AddressOption[];
+      setAddresses({ id: clientId, list });
+      // Adres domyślny podstawiamy sami, gdy nic nie wybrano ani nie wpisano.
+      if (autoAddressRef.current) {
+        const pick = list.find((a) => a.id === initialAddressId) ?? list.find((a) => a.isDefault) ?? list[0];
+        if (pick) {
+          setDeliveryAddressId(pick.id);
+          setDeliveryAddress(pick.line);
+          setOtherAddress(false);
+        }
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, rental, initialAddressId]);
+  const clientBrief = brief?.id === clientId ? brief.data : null;
+  const addressList = addresses?.id === clientId ? addresses.list : [];
+  const pickedAddress = addressList.find((a) => a.id === deliveryAddressId) ?? null;
+  const contacts = clientBrief?.contacts ?? [];
+  const onSite = contacts.find((p) => p.id === onSiteId) ?? contacts.find((p) => p.isPrimary) ?? contacts[0] ?? null;
+
+  // Dostępność urządzenia (wniosek 29, błąd 3).
+  const availKey = deviceId ? `${deviceId}|${startsAt.slice(0, 10)}|${endsAt.slice(0, 10)}` : "";
+  const [avail, setAvail] = useState<{ key: string; data: Availability } | null>(null);
+  useEffect(() => {
+    if (!deviceId || endsAt < startsAt) return;
+    let cancelled = false;
+    const q = new URLSearchParams({ urzadzenie: deviceId, od: startsAt.slice(0, 10), do: endsAt.slice(0, 10), ...(rental ? { bez: rental.id } : {}) });
+    const t = setTimeout(() => {
+      void api(`/api/rentals/availability?${q.toString()}`).then(({ ok, data }) => {
+        if (!cancelled && ok) setAvail({ key: `${deviceId}|${startsAt.slice(0, 10)}|${endsAt.slice(0, 10)}`, data: data as Availability });
+      });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [deviceId, startsAt, endsAt, rental]);
+  const availability = avail?.key === availKey ? avail.data : null;
+
+  // Seria: terminy „co N tyg. do dnia …” z oznaczeniem zajętych.
+  const seriesKey = !isEditing && series.weeks ? `${deviceId}|${startsAt.slice(0, 10)}|${endsAt.slice(0, 10)}|${series.weeks}|${series.until}` : "";
+  const [seriesLoaded, setSeriesLoaded] = useState<string | null>(null);
+  useEffect(() => {
+    if (!seriesKey) return;
+    let cancelled = false;
+    void api("/api/rentals/availability", { method: "POST", body: JSON.stringify({ urzadzenie: deviceId, od: startsAt.slice(0, 10), do: endsAt.slice(0, 10), co_tyg: series.weeks, do_dnia: series.until }) }).then(({ ok, data }) => {
+      if (cancelled) return;
+      setSeriesTerms(ok ? ((data as { terms: SeriesTerm[] }).terms ?? []) : []);
+      setSeriesLoaded(seriesKey);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [seriesKey, deviceId, startsAt, endsAt, series.weeks, series.until]);
+  const seriesList = seriesKey && seriesLoaded === seriesKey ? (seriesTerms ?? []) : [];
+  const seriesBusy = seriesList.filter((t) => t.busy);
+
   const [reminderDays, setReminderDays] = useState<Set<ReminderDays>>(() => {
-    if (!rental) return new Set([1, 3, 7]);
+    // Wniosek 29: nowe — tylko „3 dni przed”; już zaplanowane 7-dniowe zostają.
+    if (!rental) return new Set([3]);
     const checked = rental.reminderRules
       ?.filter((r) => r.status === "SENT" || r.status === "SCHEDULED" || r.status === "QUEUED")
       .map((r) => r.daysBefore)
       .filter((d): d is ReminderDays => d === 1 || d === 3 || d === 7);
     return new Set(checked ?? []);
   });
-  const device = devices.find((d) => d.id === deviceId);
 
-  // Keep the currently-assigned driver selectable even if they've since been
-  // dropped from the drivers list (role changed / renamed), so saving the
-  // form doesn't silently wipe the assignment.
   const assignedDriver = rental?.driver ?? null;
-  const driverOptions: DriverOption[] =
-    assignedDriver && !drivers.some((d) => d.id === assignedDriver.id) ? [assignedDriver, ...drivers] : drivers;
-
-  // Ta sama zasada co przy kierowcy — pojazd przypisany do tego wynajmu
-  // zostaje wybieralny, nawet jeśli w międzyczasie dezaktywowany.
+  const driverOptions: DriverOption[] = assignedDriver && !drivers.some((d) => d.id === assignedDriver.id) ? [assignedDriver, ...drivers] : drivers;
   const assignedVehicle = rental?.vehicle ?? null;
-  const vehicleOptions: VehicleOption[] =
-    assignedVehicle && !vehicles.some((v) => v.id === assignedVehicle.id) ? [assignedVehicle, ...vehicles] : vehicles;
+  const vehicleOptions: VehicleOption[] = assignedVehicle && !vehicles.some((v) => v.id === assignedVehicle.id) ? [assignedVehicle, ...vehicles] : vehicles;
 
   function goBack() {
     router.push(backHref);
@@ -936,44 +744,41 @@ export function RentalForm({
     });
   }
 
-  // Tytuł z nazwy roboczej klienta („Karpierz – Alma”), edytowalny: nadpisujemy
-  // tylko pusty albo wcześniej wygenerowany tytuł (wniosek 23).
+  // Tytuł = nazwa robocza gabinetu (bez urządzenia i wariantu — urządzenie
+  // widać po kolorze kalendarza); nadpisujemy tylko pusty albo wygenerowany.
   function handleClientChange(c: PickedClient | null) {
     setClient(c);
+    setOnSiteId(null);
+    autoAddressRef.current = !deliveryAddressId && !deliveryAddress.trim() ? true : autoAddressRef.current || !isEditing;
     if (!c) return;
-    const dev = devices.find((d) => d.id === deviceId);
-    const next = `${c.shortName ?? c.name}${dev ? ` – ${dev.shortName ?? dev.name}` : ""}`;
-    if (!isEditing && (!title.trim() || title === autoTitle)) {
+    const next = clientTitle(c);
+    if (!title.trim() || title === autoTitle) {
       setTitle(next);
       setAutoTitle(next);
     }
   }
 
-  function handleContactChange(contact: AssignedContact | null) {
-    setPendingContact(contact);
-    if (contact?.address && !deliveryAddress.trim()) {
-      setDeliveryAddress(contact.address);
-    }
-    if (contact?.transportPrice && !transportPrice.trim()) {
-      setTransportPrice(contact.transportPrice);
-    }
+  function setDevice(id: string) {
+    setDeviceId(id);
+    const opts = devices.find((d) => d.id === id)?.variantOptions ?? [];
+    if (deviceVariant && !opts.includes(deviceVariant)) setDeviceVariant("");
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSaving(true);
-    setError(null);
+  function pickSuggestion(ymd: string) {
+    const len = durationDays - 1;
+    setStartsAt(`${ymd}T00:00`);
+    setEndsAt(`${ymdAdd(ymd, len)}T00:00`);
+  }
 
-    const remaining = daysUntilStart(startsAt);
-    const sentDays = new Set(
-      rental?.reminderRules?.filter((r) => r.status === "SENT" || r.status === "QUEUED").map((r) => r.daysBefore) ?? [],
-    );
+  function buildBody(range?: { od: string; do: string }): Record<string, unknown> | string {
+    const remaining = daysUntilStart(range ? `${range.od}T00:00` : startsAt);
+    const sentDays = new Set(rental?.reminderRules?.filter((r) => r.status === "SENT" || r.status === "QUEUED").map((r) => r.daysBefore) ?? []);
     const effectiveReminderDays = Array.from(reminderDays).filter((d) => sentDays.has(d) || remaining >= d);
-
-    if (!client) {
-      setIsSaving(false);
-      setError("Wybierz klienta rezerwacji (albo dodaj nowego).");
-      return;
+    if (!client) return "Wybierz klienta rezerwacji (albo dodaj nowego).";
+    if (variantOptions.length > 0 && !deviceVariant) return "Wybierz wariant urządzenia.";
+    const f = financeRef.current;
+    if (canManageFinance && !isSzkolenie && clientTerms && clientTerms.transportNet == null && !clientTerms.transportTakenBy && !(f?.transportPriceNet ?? "").trim()) {
+      return "Klient nie ma transportu ustalonego — wpisz kwotę transportu (zapisze się w karcie klienta).";
     }
     const body: Record<string, unknown> = {
       clientId: client.id,
@@ -983,48 +788,86 @@ export function RentalForm({
       description,
       internalNotes,
       allDay,
-      startsAt: new Date(startsAt).toISOString(),
-      endsAt: new Date(endsAt).toISOString(),
+      startsAt: new Date(range ? `${range.od}T00:00` : startsAt).toISOString(),
+      endsAt: new Date(range ? `${range.do}T00:00` : endsAt).toISOString(),
       reminderDays: effectiveReminderDays,
       deliveryAddress: isSzkolenie ? "" : deliveryAddress,
       deliveryAddressId: isSzkolenie ? null : deliveryAddressId,
       deliveryTime: isSzkolenie ? "" : deliveryTime,
       pickupTime: isSzkolenie ? "" : pickupTime,
       transportPrice: isSzkolenie ? "" : transportPrice,
-      contactDistanceKm: isSzkolenie ? "" : contactDistanceKm,
+      // km tylko z paszportu dostawy (bez ręcznego pola).
+      ...(pickedAddress && !isSzkolenie ? { contactDistanceKm: pickedAddress.distanceKm != null ? String(pickedAddress.distanceKm).replace(".", ",") : "" } : {}),
+      clientContactId: onSite?.id ?? null,
       eventType,
+      trainingPlace: training.place,
+      trainingLead: training.lead,
+      trainingParticipants: training.participants,
+      ...(allowConflict && isAdmin ? { allowConflict: true } : {}),
     };
-    if (canManageDrivers) {
+    if (canManageDrivers && isEditing) {
       body.driverId = driverId || null;
       body.vehicleId = vehicleId || null;
     }
-    if (canManageFinance && financeRef.current) {
-      body.finance = financeRef.current;
-    }
-    if (!isEditing && pendingContact) {
-      body.contactId = pendingContact.id;
-    }
+    if (canManageFinance && f) body.finance = { ...f, deviceVariant: isSzkolenie ? null : deviceVariant || null };
     if (!isEditing && prefill?.leadId) body.leadId = prefill.leadId;
+    return body;
+  }
 
-    const { ok, data } = isEditing
-      ? await api(`/api/rentals/${rental!.id}`, { method: "PATCH", body: JSON.stringify(body) })
-      : await api("/api/rentals", { method: "POST", body: JSON.stringify(body) });
-
-    setIsSaving(false);
+  async function save(mode: "close" | "next") {
+    setError(null);
+    if (availability && !availability.free && !(isAdmin && allowConflict)) {
+      setError(isAdmin ? "Urządzenie zajęte w tym terminie — zmień daty albo zaznacz „Zapisz mimo kolizji”." : "Urządzenie zajęte w tym terminie — zmień daty (zapis przy kolizji zatwierdza administrator).");
+      return;
+    }
+    const body = buildBody();
+    if (typeof body === "string") return setError(body);
+    setIsSaving(true);
+    const { ok, data } = isEditing ? await api(`/api/rentals/${rental!.id}`, { method: "PATCH", body: JSON.stringify(body) }) : await api("/api/rentals", { method: "POST", body: JSON.stringify(body) });
     if (!ok) {
+      setIsSaving(false);
       setError(data?.message || "Nie udało się zapisać rezerwacji.");
       return;
     }
+    // Seria: każdy wolny termin to osobna rezerwacja z tym samym klientem.
+    let created = 0;
+    const skipped: string[] = [];
+    if (!isEditing && series.weeks) {
+      for (const t of seriesList.slice(1)) {
+        if (t.busy) {
+          skipped.push(dmShort(t.od));
+          continue;
+        }
+        const b = buildBody({ od: t.od, do: t.do });
+        if (typeof b === "string") break;
+        delete b.leadId;
+        const res = await api("/api/rentals", { method: "POST", body: JSON.stringify(b) });
+        if (res.ok) created++;
+        else skipped.push(`${dmShort(t.od)} (${res.data?.message ?? "błąd"})`);
+      }
+    }
+    setIsSaving(false);
     if (data?.financeError) {
-      // Wynajem zapisany, ale finanse wymagają uzupełnienia ceny — zostajemy
-      // na formularzu z komunikatem zamiast wychodzić.
       setError(`Zapisano wynajem, ale: ${data.financeError}`);
       return;
     }
+    if (series.weeks && !isEditing) window.alert(`Seria: zapisano ${created + 1} ${created + 1 === 1 ? "termin" : "terminów"}.${skipped.length ? ` Pominięte: ${skipped.join(", ")}.` : ""}`);
     if (typeof data?.autoAssigned === "number" && data.autoAssigned > 0) {
       window.alert(`Przypisano też ${data.autoAssigned} ${data.autoAssigned === 1 ? "kolejny termin" : "kolejne terminy"} z tym tytułem lub serią.`);
     }
+    if (mode === "next" && !isEditing) {
+      // Zostaje klient, urządzenie, wariant i adres; termin — dzień po tym.
+      const q = new URLSearchParams({ klient: client!.id, device: deviceId, date: ymdAdd(endsAt.slice(0, 10), 1), ...(deviceVariant ? { wariant: deviceVariant } : {}), ...(deliveryAddressId ? { adres: deliveryAddressId } : {}) });
+      router.push(`/kalendarz/wynajem/nowy?${q.toString()}`);
+      router.refresh();
+      return;
+    }
     goBack();
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await save("close");
   }
 
   async function handleDelete() {
@@ -1041,316 +884,293 @@ export function RentalForm({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={goBack}
-          aria-label="Powrót do kalendarza"
-          title="Powrót do kalendarza"
-          className="flex-none rounded-md border border-gray-300 p-2 text-gray-600 hover:bg-gray-50"
-        >
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={goBack} aria-label="Powrót do kalendarza" title="Powrót do kalendarza" className="flex-none rounded-md border border-gray-300 bg-white p-2 text-gray-600 hover:bg-gray-50">
           <BackArrowIcon />
         </button>
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">{isEditing ? "Edytuj rezerwację" : "Nowa rezerwacja"}</h1>
-          {isEditing && device && <p className="text-sm text-gray-500">{device.name}</p>}
-        </div>
+        <h1 className="text-xl font-semibold text-gray-900">{isEditing ? "Edytuj rezerwację" : "Nowa rezerwacja"}</h1>
+        {canManageFinance && (
+          <div className="ml-auto flex overflow-hidden rounded-md border border-gray-300" role="group" aria-label="Typ wydarzenia">
+            {(["WYNAJEM", "SZKOLENIE"] as RentalEventType[]).map((t) => (
+              <button key={t} type="button" onClick={() => setEventType(t)} className={`px-3 py-1.5 text-[13px] ${eventType === t ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+                {t === "WYNAJEM" ? "Wynajem" : "Szkolenie"}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="flex flex-col gap-6 lg:col-span-2">
-          <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5">
-            <p className="mb-2 text-sm text-gray-700">Dane rezerwacji</p>
-
-            {/* Wniosek 23: klient wybierany w panelu (obowiązkowo), nie zgadywany z tytułu. */}
-            <div className="flex flex-col gap-1 text-sm text-gray-700">
-              <span className="flex items-center gap-2">
-                Klient *
-                {!client && <span className="rounded bg-[#FBF0E7] px-1.5 py-px text-[11px] font-semibold uppercase tracking-wide text-[#B8612F]">Brak klienta</span>}
-              </span>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <div className="flex flex-col gap-4">
+            {/* 1. KLIENT */}
+            <div className={CARD}>
+              <CardTitle n={1} tag="klient z panelu">
+                Klient
+              </CardTitle>
               <RentalClientField value={client} onChange={handleClientChange} candidates={clientCandidates} />
+              {clientBrief && (
+                <p className="mt-2 text-xs leading-relaxed text-gray-600">
+                  {[clientBrief.client.status, clientBrief.client.resigned ? "zrezygnował" : null, clientBrief.client.rhythm, clientBrief.client.lastRental ? `ostatni wynajem ${clientBrief.client.lastRental}` : "bez wynajmów", clientBrief.client.next.length ? `kolejne: ${clientBrief.client.next.join(", ")}` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                  <br />
+                  Warunki: <b className="font-semibold text-gray-900">{clientBrief.client.terms}</b> ·{" "}
+                  <Link href={`/klienci/${clientBrief.client.id}`} target="_blank" className="text-[#1B6FA8] hover:underline">
+                    karta klienta →
+                  </Link>
+                </p>
+              )}
               {isEditing && !initialClient && client && !isGenericTitleKey(normalizeTitle(title).key) && (
-                <label className="flex items-center gap-2 text-xs text-gray-600">
+                <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">
                   <input type="checkbox" checked={aliasFromTitle} onChange={(e) => setAliasFromTitle(e.target.checked)} />
                   Zapamiętać „{title}” jako alias tej klientki? (kolejne terminy z tym tytułem przypiszą się same)
                 </label>
               )}
             </div>
 
-            {/* Typ wydarzenia + Tytuł w jednym wierszu (zamiast typu osobno
-                nad pełnoszerokościowym tytułem) — dwa krótkie pola, nie ma
-                powodu zajmować nimi dwóch wierszy. */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              {canManageFinance && (
-                <div className="flex flex-none flex-col gap-1 text-sm text-gray-700">
-                  Typ wydarzenia
-                  <div className="flex overflow-hidden rounded-md border border-gray-300">
-                    {(["WYNAJEM", "SZKOLENIE"] as RentalEventType[]).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setEventType(t)}
-                        className={`px-3 py-2 text-sm font-medium ${
-                          eventType === t ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-700 hover:bg-gray-50"
-                        }`}
-                      >
-                        {t === "WYNAJEM" ? "Wynajem" : "Szkolenie"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <label className="flex flex-1 flex-col gap-1 text-sm text-gray-700">
-                Tytuł
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                />
-              </label>
-            </div>
-
-            {/* Urządzenie + daty w jednym wierszu, zaraz pod Typ+Tytuł —
-                nazwy urządzeń nie są długie, więc pole może być węższe niż
-                Początek/Koniec nie muszą czekać na dole karty. */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.3fr_1fr_1fr]">
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
-                Urządzenie
-                <select
-                  value={deviceId}
-                  onChange={(e) => setDeviceId(e.target.value)}
-                  required
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                >
-                  {devices
-                    .filter((d) => d.active || d.id === deviceId)
-                    .map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
-                Początek
-                <input
-                  type="date"
-                  value={startsAt.slice(0, 10)}
-                  onChange={(e) => setStartsAt(`${e.target.value}T00:00`)}
-                  required
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
-                Koniec
-                <input
-                  type="date"
-                  value={endsAt.slice(0, 10)}
-                  onChange={(e) => setEndsAt(`${e.target.value}T00:00`)}
-                  required
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                />
-              </label>
-            </div>
-            {isEditing && deviceId !== rental!.deviceId && (
-              <p className="-mt-2 text-xs text-amber-700">
-                Zmiana urządzenia przeniesie to wydarzenie do kalendarza Google innego urządzenia.
-              </p>
-            )}
-          </div>
-
-          {/* Opis + Uwaga dla kierowcy (węższa karta, oba pola rozwijane —
-              rzadko wypełniane) równolegle z kartą Klienta, na tej samej
-              wysokości. */}
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-5">
-              {/* Opis: rzadko wypełniany, więc rozwijany — domyślnie zwinięty,
-                  chyba że rezerwacja już go ma (wtedy nie chowamy istniejącej
-                  treści). Kontrolowane przez descriptionOpen/onToggle, nie
-                  `defaultOpen`, żeby pisanie/kasowanie tekstu nie zwijało pola
-                  pod ręką w trakcie edycji. */}
-              <details
-                open={descriptionOpen}
-                onToggle={(e) => setDescriptionOpen(e.currentTarget.open)}
-                className="group rounded-md border border-gray-200"
-              >
-                <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-sm text-gray-700 [&::-webkit-details-marker]:hidden">
-                  <span className="text-[10px] text-gray-400 transition-transform group-open:rotate-90">▸</span>
-                  Opis
-                  {!descriptionOpen && description.trim() && (
-                    <span className="truncate text-xs font-normal text-gray-400">— {description.trim()}</span>
-                  )}
-                </summary>
-                <div className="px-3 pb-3">
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={3}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                  />
-                </div>
-              </details>
-
-              {/* Uwaga dla kierowcy: ta sama logika co Opis — rozwijana,
-                  domyślnie zwinięta, chyba że już coś w niej jest. */}
-              <details
-                open={internalNotesOpen}
-                onToggle={(e) => setInternalNotesOpen(e.currentTarget.open)}
-                className="group rounded-md border border-gray-200"
-              >
-                <summary className="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 text-sm text-gray-700 [&::-webkit-details-marker]:hidden">
-                  <span className="text-[10px] text-gray-400 transition-transform group-open:rotate-90">▸</span>
-                  Uwaga dla kierowcy
-                  {!internalNotesOpen && internalNotes.trim() && (
-                    <span className="truncate text-xs font-normal text-gray-400">— {internalNotes.trim()}</span>
-                  )}
-                </summary>
-                <div className="px-3 pb-3">
-                  <textarea
-                    value={internalNotes}
-                    onChange={(e) => setInternalNotes(e.target.value)}
-                    rows={2}
-                    placeholder="np. domofon nie działa — dzwonić na telefon po przyjeździe"
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                  />
-                  <span className="mt-1 block text-xs text-gray-400">Widoczna dla kierowcy jako „Uwaga z biura”.</span>
-                </div>
-              </details>
-            </div>
-
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
-              <p className="mb-2 text-sm text-gray-700">Klient (HubSpot)</p>
-              <ContactSection
-                rentalId={isEditing ? rental!.id : null}
-                initialContact={isEditing ? contactFromRental(rental) : (prefill?.contact ?? null)}
-                onContactChange={handleContactChange}
-              />
-            </div>
-          </div>
-
-          {/* Dostawa i realizacja: kto jedzie (kierowca + pojazd) razem z tym,
-              gdzie i kiedy (adres/godziny/odległość) — dawniej dwie osobne
-              karty (Dostawa w lewej kolumnie, Kierowca/Pojazd w prawej),
-              teraz jedna, bo to jedno pytanie operacyjne. Kierowca/Pojazd
-              dotyczy też szkoleń; adres/godziny/odległość — tylko wynajem. */}
-          {(canManageDrivers || !isSzkolenie) && (
-          <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-white p-5">
-            <p className="mb-2 text-sm text-gray-700">Dostawa i realizacja</p>
-
-            {canManageDrivers && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
-                  Kierowca
-                  <select
-                    value={driverId}
-                    onChange={(e) => setDriverId(e.target.value)}
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                  >
-                    <option value="">— brak —</option>
-                    {driverOptions.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
+            {/* 2. URZĄDZENIE I TERMIN */}
+            <div className={CARD}>
+              <CardTitle n={2}>Urządzenie i termin</CardTitle>
+              <div className={`grid grid-cols-2 gap-2.5 ${variantOptions.length ? "sm:grid-cols-[1.3fr_1fr_0.8fr_0.8fr]" : "sm:grid-cols-[1.3fr_0.8fr_0.8fr]"}`}>
+                <label className={`${LABEL_CLS} col-span-2 sm:col-span-1`}>
+                  Urządzenie
+                  <select value={deviceId} onChange={(e) => setDevice(e.target.value)} required className={INPUT_CLS}>
+                    {devices
+                      .filter((d) => d.active || d.id === deviceId)
+                      .map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
                   </select>
-                  <span className="text-xs text-gray-400">
-                    Przypisany kierowca widzi ten wynajem w swoim kalendarzu (tylko podgląd).
-                  </span>
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
-                  Pojazd
-                  <select
-                    value={vehicleId}
-                    onChange={(e) => setVehicleId(e.target.value)}
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                  >
-                    <option value="">— brak —</option>
-                    {vehicleOptions.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-xs text-gray-400">Używane do wyliczenia kosztu paliwa (Finanse → Koszty).</span>
+                {variantOptions.length > 0 && (
+                  <div className={`${LABEL_CLS} col-span-2 sm:col-span-1`}>
+                    Wariant *
+                    <div className={`flex overflow-hidden rounded-md border ${!deviceVariant ? "border-[#E08A5C]" : "border-gray-300"}`} role="group" aria-label="Wariant">
+                      {variantOptions.map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          title={variantLabel(device?.pricingCategory ?? null, v)}
+                          onClick={() => setDeviceVariant(v)}
+                          className={`flex-1 whitespace-nowrap px-1.5 py-2 text-[13px] ${deviceVariant === v ? "bg-[#1B6FA8] text-white" : "bg-white text-gray-700 hover:bg-gray-50"}`}
+                        >
+                          {VARIANT_SEG[v] ?? v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <label className={LABEL_CLS}>
+                  Od
+                  <input
+                    type="date"
+                    value={startsAt.slice(0, 10)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (!v) return;
+                      // Przesunięcie początku zachowuje długość wynajmu.
+                      setEndsAt(`${ymdAdd(v, Math.max(0, durationDays - 1))}T00:00`);
+                      setStartsAt(`${v}T00:00`);
+                    }}
+                    required
+                    className={INPUT_CLS}
+                  />
+                </label>
+                <label className={LABEL_CLS}>
+                  Do
+                  <input type="date" value={endsAt.slice(0, 10)} min={startsAt.slice(0, 10)} onChange={(e) => e.target.value && setEndsAt(`${e.target.value}T00:00`)} required className={INPUT_CLS} />
                 </label>
               </div>
-            )}
+              {availability && (
+                <div className={`mt-2.5 rounded-md px-2.5 py-2 text-[13px] ${availability.free ? "bg-[#EEF6F2] text-[#2F7A68]" : "bg-[#FDECEC] text-[#B42318]"}`}>
+                  {availability.free ? (
+                    <>
+                      ✓ {device?.shortName ?? device?.name} wolne {dmShort(startsAt.slice(0, 10))}
+                      {durationDays > 1 ? `–${dmShort(endsAt.slice(0, 10))}` : ""} · {durationDays} {durationDays === 1 ? "dzień" : "dni"}
+                    </>
+                  ) : (
+                    <>
+                      ✕ {device?.shortName ?? device?.name} zajęte {dmShort(availability.conflicts[0].od)}
+                      {availability.conflicts[0].do !== availability.conflicts[0].od ? `–${dmShort(availability.conflicts[0].do)}` : ""} – {availability.conflicts[0].clientName ?? availability.conflicts[0].title}
+                      {availability.conflicts.length > 1 ? ` (+${availability.conflicts.length - 1})` : ""}
+                      {availability.suggestions.length > 0 && (
+                        <>
+                          {" · pokaż wolne: "}
+                          {availability.suggestions.map((s, i) => (
+                            <span key={s}>
+                              {i > 0 && ", "}
+                              <button type="button" className="underline" onClick={() => pickSuggestion(s)}>
+                                {dmShort(s)}
+                              </button>
+                            </span>
+                          ))}
+                        </>
+                      )}
+                      {isAdmin && (
+                        <label className="mt-1 flex items-center gap-2 text-xs">
+                          <input type="checkbox" checked={allowConflict} onChange={(e) => setAllowConflict(e.target.checked)} />
+                          Zapisz mimo kolizji (świadomie)
+                        </label>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              {isEditing && deviceId !== rental!.deviceId && <p className="mt-1.5 text-xs text-amber-700">Zmiana urządzenia przeniesie to wydarzenie do kalendarza Google innego urządzenia.</p>}
+              <label className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                Tytuł w kalendarzu (nazwa robocza gabinetu – urządzenie widać po kolorze kalendarza):
+                <input value={title} onChange={(e) => setTitle(e.target.value)} required className="min-w-[220px] flex-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-900 focus:border-[#1B6FA8] focus:outline-none" />
+              </label>
+              {deliveryTime && !isSzkolenie && <p className="mt-1 text-xs text-gray-400">W kalendarzu: „{withDeliveryTimePrefix(title || "(bez tytułu)", deliveryTime)}”</p>}
+            </div>
 
-            {!isSzkolenie && (
-              <>
-                <DeliveryAddressPicker
-                  clientId={rental?.clientId ?? null}
-                  contactId={pendingContact?.id ?? rental?.hubspotContactId ?? null}
-                  value={deliveryAddressId}
-                  autoPick={autoPickAddress}
-                  onPick={(a, auto) => {
-                    setDeliveryAddressId(a?.id ?? null);
-                    if (!a) return;
-                    setDeliveryAddress(a.line);
-                    if (a.distanceKm != null && (!auto || !contactDistanceKm.trim())) setContactDistanceKm(String(a.distanceKm).replace(".", ","));
-                  }}
-                />
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
-                  Adres dostawy
+            {/* 3. DOSTAWA / SZKOLENIE */}
+            {!isSzkolenie ? (
+              <div className={CARD}>
+                <CardTitle n={3} tag="z paszportu dostawy">
+                  Dostawa
+                </CardTitle>
+                <label className={LABEL_CLS}>
+                  Adres
+                  <select
+                    value={otherAddress ? "_other" : (deliveryAddressId ?? "_other")}
+                    onChange={(e) => {
+                      autoAddressRef.current = false;
+                      if (e.target.value === "_other") {
+                        setOtherAddress(true);
+                        setDeliveryAddressId(null);
+                        return;
+                      }
+                      const a = addressList.find((x) => x.id === e.target.value);
+                      setOtherAddress(false);
+                      setDeliveryAddressId(a?.id ?? null);
+                      if (a) setDeliveryAddress(a.line);
+                    }}
+                    className={INPUT_CLS}
+                  >
+                    {addressList.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.label}
+                        {a.isDefault ? " (domyślny)" : ""} — {a.line}
+                        {a.distanceKm != null ? ` · ${Math.round(a.distanceKm)} km${a.durationMin != null ? ` · ${Math.floor(a.durationMin / 60)} h ${a.durationMin % 60} min` : ""}` : ""}
+                      </option>
+                    ))}
+                    <option value="_other">— inny adres —</option>
+                  </select>
+                </label>
+                {(otherAddress || addressList.length === 0) && (
                   <textarea
                     value={deliveryAddress}
                     onChange={(e) => {
                       setDeliveryAddress(e.target.value);
-                      // Ręczna zmiana tekstu = inny adres niż z karty klienta.
                       if (deliveryAddressId) setDeliveryAddressId(null);
                     }}
                     rows={2}
-                    placeholder="Uzupełnia się automatycznie z adresu klienta, jeśli jest dostępny"
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
+                    placeholder="Adres dostawy"
+                    className={`${INPUT_CLS} mt-1.5`}
                   />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="flex flex-col gap-1 text-sm text-gray-700">
-                    Godzina dostawy
-                    <input
-                      type="time"
-                      value={deliveryTime}
-                      onChange={(e) => setDeliveryTime(e.target.value)}
-                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                    />
+                )}
+                <div className="mt-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                  <label className={LABEL_CLS}>
+                    Dostawa (godz.)
+                    <input type="time" value={deliveryTime} onChange={(e) => setDeliveryTime(e.target.value)} className={INPUT_CLS} />
                   </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-700">
-                    Godzina odbioru
-                    <input
-                      type="time"
-                      value={pickupTime}
-                      onChange={(e) => setPickupTime(e.target.value)}
-                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                    />
+                  <label className={LABEL_CLS}>
+                    Odbiór (godz.)
+                    <input type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} className={INPUT_CLS} />
+                  </label>
+                  <label className={`${LABEL_CLS} col-span-2 sm:col-span-1`}>
+                    Osoba na miejscu
+                    <select value={onSite?.id ?? ""} onChange={(e) => setOnSiteId(e.target.value || null)} className={INPUT_CLS} disabled={!contacts.length}>
+                      {!contacts.length && <option value="">— brak osób w karcie —</option>}
+                      {contacts.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                          {p.phone ? ` · ${p.phone}` : ""}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                 </div>
-                <label className="flex flex-col gap-1 text-sm text-gray-700">
-                  Odległość do klienta (km)
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={contactDistanceKm}
-                    onChange={(e) => setContactDistanceKm(e.target.value)}
-                    placeholder="np. 12,5"
-                    className="w-32 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-[#1B6FA8] focus:outline-none"
-                  />
-                  <span className="text-xs text-gray-400">
-                    Wpisz raz przy danym adresie — używane do wyliczenia kosztu paliwa (Finanse → Koszty).
-                  </span>
-                </label>
-                {deliveryTime && (
-                  <p className="text-xs text-gray-500">
-                    Godzina dostawy zostanie dodana jako prefiks do nazwy wydarzenia w kalendarzu: „
-                    {withDeliveryTimePrefix(title || "(bez tytułu)", deliveryTime)}”
-                  </p>
-                )}
-              </>
+                <details className="mt-2.5" open={Boolean(internalNotes.trim())}>
+                  <summary className="cursor-pointer text-xs text-[#1B6FA8]">+ uwaga dla kierowcy</summary>
+                  <textarea value={internalNotes} onChange={(e) => setInternalNotes(e.target.value)} rows={2} placeholder="np. domofon nie działa – dzwonić po przyjeździe" className={`${INPUT_CLS} mt-1.5`} />
+                </details>
+                <details className="mt-1.5" open={Boolean(description.trim())}>
+                  <summary className="cursor-pointer text-xs text-[#1B6FA8]">+ opis (trafia do wydarzenia w kalendarzu Google)</summary>
+                  <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={`${INPUT_CLS} mt-1.5`} />
+                </details>
+                <p className="mt-2 text-xs text-gray-400">
+                  {pickedAddress?.distanceKm != null ? `${Math.round(pickedAddress.distanceKm)} km z paszportu dostawy (tylko do odczytu)` : "km z paszportu dostawy — przy innym adresie bez km"}
+                  {onSite?.phone ? ` · telefon dla kierowcy: ${onSite.phone}` : ""}
+                </p>
+              </div>
+            ) : (
+              <div className={CARD}>
+                <CardTitle n={3}>Szkolenie</CardTitle>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                  <label className={LABEL_CLS}>
+                    Miejsce
+                    <select value={training.place} onChange={(e) => setTraining({ ...training, place: e.target.value })} className={INPUT_CLS}>
+                      <option value="U_KLIENTKI">U klientki (adres z paszportu)</option>
+                      <option value="U_NAS">U nas – Skawina</option>
+                    </select>
+                  </label>
+                  <label className={LABEL_CLS}>
+                    Prowadzi
+                    <select value={training.lead} onChange={(e) => setTraining({ ...training, lead: e.target.value })} className={INPUT_CLS}>
+                      {["Ania", "Tomek", "ITP (zewn.)"].map((x) => (
+                        <option key={x} value={x}>
+                          {x}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={LABEL_CLS}>
+                    Uczestniczek
+                    <input type="number" min={1} value={training.participants} onChange={(e) => setTraining({ ...training, participants: e.target.value })} className={INPUT_CLS} />
+                  </label>
+                </div>
+                <details className="mt-2.5" open={Boolean(description.trim())}>
+                  <summary className="cursor-pointer text-xs text-[#1B6FA8]">+ opis (trafia do wydarzenia w kalendarzu Google)</summary>
+                  <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={`${INPUT_CLS} mt-1.5`} />
+                </details>
+              </div>
             )}
-          </div>
-          )}
+
+            {/* Tylko w edycji: kierowca i pojazd (ADMIN). */}
+            {isEditing && canManageDrivers && (
+              <div className={CARD}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className={LABEL_CLS}>
+                    Kierowca
+                    <select value={driverId} onChange={(e) => setDriverId(e.target.value)} className={INPUT_CLS}>
+                      <option value="">— brak —</option>
+                      {driverOptions.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={LABEL_CLS}>
+                    Pojazd
+                    <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)} className={INPUT_CLS}>
+                      <option value="">— brak —</option>
+                      {vehicleOptions.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-4">
@@ -1359,11 +1179,13 @@ export function RentalForm({
                 rentalId={rental?.id ?? null}
                 eventType={eventType}
                 pricingCategory={device?.pricingCategory ?? null}
-                deviceVariantOptions={device?.variantOptions ?? []}
+                deviceVariantOptions={variantOptions}
+                deviceVariant={deviceVariant}
+                onDeviceVariantChange={setDeviceVariant}
                 durationDays={durationDays}
                 transportPrice={transportPrice}
                 onTransportPriceChange={setTransportPrice}
-                transportPriceHint={pendingContact?.transportPrice ?? rental?.contactTransportPriceCache ?? null}
+                transportPriceHint={rental?.contactTransportPriceCache ?? null}
                 previewPriceRules={previewPriceRules}
                 previewPulseTiers={previewPulseTiers}
                 defaultVatRate={defaultVatRate}
@@ -1374,89 +1196,125 @@ export function RentalForm({
               />
             )}
 
-            {openTasks.length > 0 && (
-              <div className="rounded-lg border border-gray-200 bg-white p-5">
-                <OpenTasks tasks={openTasks} />
-              </div>
-            )}
-
-            {isEditing && (
-              <div className="rounded-lg border border-gray-200 bg-white p-5">
-                <ClientMessageComposer rental={rental!} device={device} templates={smsTemplates} />
-              </div>
-            )}
-
-            <div className="rounded-lg border border-gray-200 bg-white p-5">
-              <ReminderSection
-                rental={rental}
-                device={device}
-                startsAt={startsAt}
-                selectedDays={reminderDays}
-                onToggleDay={toggleReminderDay}
-                onCancelQueued={cancelQueuedReminderDay}
-                templates={reminderTemplates}
-              />
+            <div className={CARD}>
+              <ReminderSection rental={rental} device={device} startsAt={startsAt} selectedDays={reminderDays} onToggleDay={toggleReminderDay} onCancelQueued={cancelQueuedReminderDay} templates={reminderTemplates} />
             </div>
-          </div>
-        </div>
 
-        {error && <p className="text-sm text-red-700">{error}</p>}
-
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-4">
-          <div>
-            {isEditing &&
-              (confirmingDelete ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">Na pewno usunąć?</span>
-                  <button
-                    type="button"
-                    onClick={handleDelete}
-                    disabled={isDeleting}
-                    className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                  >
-                    {isDeleting ? "Usuwanie…" : "Tak, usuń"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDelete(false)}
-                    className="text-sm text-gray-500 hover:underline"
-                  >
-                    Anuluj
-                  </button>
+            {isEditing ? (
+              <>
+                {rental!.lead && (
+                  <div className={CARD}>
+                    <p className="text-xs text-gray-500">Powiązany sygnał</p>
+                    <Link href={`/sygnaly?id=${rental!.lead.id}`} className="text-sm font-medium text-[#1B6FA8] hover:underline">
+                      {rental!.lead.title} →
+                    </Link>
+                  </div>
+                )}
+                {openTasks.length > 0 && (
+                  <div className={CARD}>
+                    <OpenTasks tasks={openTasks} />
+                  </div>
+                )}
+                <div className={CARD}>
+                  <ClientMessageComposer rental={rental!} device={device} templates={smsTemplates} />
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(true)}
-                  className="rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-                >
-                  Usuń rezerwację
-                </button>
-              ))}
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={goBack}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Anuluj
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="rounded-md bg-[#1B6FA8] px-3 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50"
-            >
-              {isSaving ? "Zapisywanie…" : "Zapisz"}
-            </button>
+              </>
+            ) : (
+              <div className="rounded-[10px] bg-gray-100 px-3.5 py-3 text-xs text-gray-600">
+                <b className="font-semibold">Widoczne dopiero w edycji, po zapisie:</b>
+                <br />
+                kierowca i pojazd · wiadomość do klientki · historia SMS · otwarte zadania · powiązany sygnał
+              </div>
+            )}
           </div>
         </div>
 
         {isEditing && (
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className={CARD}>
             <p className="mb-2 text-sm text-gray-700">Historia SMS</p>
             <MessageHistorySection messages={rental!.messages ?? []} />
           </div>
+        )}
+
+        {error && <p className="text-sm text-red-700">{error}</p>}
+
+        <div className="flex flex-wrap items-center gap-2.5 border-t border-gray-200 pt-3.5">
+          {isEditing ? (
+            confirmingDelete ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Na pewno usunąć?</span>
+                <button type="button" onClick={handleDelete} disabled={isDeleting} className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                  {isDeleting ? "Usuwanie…" : "Tak, usuń"}
+                </button>
+                <button type="button" onClick={() => setConfirmingDelete(false)} className="text-sm text-gray-500 hover:underline">
+                  Anuluj
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setConfirmingDelete(true)} className="rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                Usuń rezerwację
+              </button>
+            )
+          ) : (
+            <div className="flex flex-wrap items-center gap-2 text-[13px] text-gray-600">
+              Seria:
+              <select
+                value={series.weeks}
+                onChange={(e) => {
+                  setSeries({ ...series, weeks: Number(e.target.value) });
+                  setShowSeries(false);
+                }}
+                className="rounded-md border border-gray-300 px-2 py-1.5 text-[13px]"
+                aria-label="Seria"
+              >
+                <option value={0}>pojedynczy termin</option>
+                {[2, 3, 4, 5, 6, 8].map((w) => (
+                  <option key={w} value={w}>
+                    co {w} tyg.
+                  </option>
+                ))}
+              </select>
+              {series.weeks > 0 && (
+                <>
+                  do
+                  <input type="date" value={series.until} onChange={(e) => e.target.value && setSeries({ ...series, until: e.target.value })} className="rounded-md border border-gray-300 px-2 py-1 text-[13px]" aria-label="Seria do dnia" />
+                  {seriesList.length > 0 && (
+                    <span className="text-xs text-gray-400">
+                      → {seriesList.length} terminów
+                      {seriesBusy.length ? `, ${seriesBusy.length} zajęt${seriesBusy.length === 1 ? "y" : "e"} (pominięte)` : ""} ·{" "}
+                      <button type="button" className="text-[#1B6FA8] hover:underline" onClick={() => setShowSeries((v) => !v)}>
+                        {showSeries ? "ukryj" : "pokaż"}
+                      </button>{" "}
+                      – każdy jako osobna rezerwacja
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          <span className="flex-1" />
+          <button type="button" onClick={goBack} className="rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            Anuluj
+          </button>
+          {!isEditing && (
+            <button type="button" disabled={isSaving} onClick={() => void save("next")} className="rounded-md border border-gray-300 bg-white px-3.5 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+              Zapisz i dodaj kolejny
+            </button>
+          )}
+          <button type="submit" disabled={isSaving} className="rounded-md bg-[#1B6FA8] px-3.5 py-2 text-sm font-medium text-white hover:bg-[#14567F] disabled:opacity-50">
+            {isSaving ? "Zapisywanie…" : "Zapisz"}
+          </button>
+        </div>
+        {showSeries && seriesList.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5 text-xs">
+            {seriesList.map((t) => (
+              <li key={t.od} className={`rounded px-2 py-1 ${t.busy ? "bg-[#FDECEC] text-[#B42318]" : "bg-[#EEF6F2] text-[#2F7A68]"}`} title={t.busy ? `zajęte – ${t.busy.clientName ?? t.busy.title}` : "wolne"}>
+                {dmShort(t.od)}
+                {t.do !== t.od ? `–${dmShort(t.do)}` : ""}
+                {t.busy ? " ✕" : ""}
+              </li>
+            ))}
+          </ul>
         )}
       </form>
     </div>

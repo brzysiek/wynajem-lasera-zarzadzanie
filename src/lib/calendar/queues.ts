@@ -7,7 +7,7 @@ import { rentalIssues } from "@/lib/task-link-rules";
 // bez zadań. Każda pozycja linkuje do karty rezerwacji (/kalendarz?wynajem=).
 
 export type QueueItem = { rentalId: string; title: string; startsAt: string; device: string; note: string };
-export type CalendarQueue = { key: "unassigned" | "amounts" | "tomorrow" | "invoices"; label: string; items: QueueItem[] };
+export type CalendarQueue = { key: "unassigned" | "amounts" | "transport" | "tomorrow" | "invoices"; label: string; items: QueueItem[] };
 
 const num = (v: { toString(): string } | null | undefined) => (v == null ? null : Number(v.toString()));
 
@@ -26,6 +26,7 @@ export async function loadCalendarQueues(now = new Date()): Promise<CalendarQueu
         startsAt: true,
         eventType: true,
         clientId: true,
+        client: { select: { name: true, shortName: true, transportPriceNet: true } },
         deliveryAddress: true,
         deliveryAddressId: true,
         deliveryTime: true,
@@ -53,7 +54,15 @@ export async function loadCalendarQueues(now = new Date()): Promise<CalendarQueu
 
   const amounts: QueueItem[] = [];
   const tomorrowItems: QueueItem[] = [];
+  // Wniosek 28: klient bez transportu ustalonego — jedna pozycja na klienta
+  // (najbliższa rezerwacja), dopóki biuro nie wpisze kwoty na karcie.
+  const transportItems: QueueItem[] = [];
+  const transportSeen = new Set<string>();
   for (const r of future) {
+    if (r.client && r.client.transportPriceNet == null && r.clientId && !transportSeen.has(r.clientId)) {
+      transportSeen.add(r.clientId);
+      transportItems.push({ rentalId: r.id, title: r.title, startsAt: r.startsAt.toISOString(), device: r.device.name, note: `${r.client.shortName ?? r.client.name}: transport do zatwierdzenia` });
+    }
     const f = r.finance;
     const variants = Array.isArray(r.device.variantOptions) ? (r.device.variantOptions as unknown[]).filter((x): x is string => typeof x === "string") : [];
     const issues = rentalIssues({
@@ -91,6 +100,7 @@ export async function loadCalendarQueues(now = new Date()): Promise<CalendarQueu
       items: unassigned.map((u) => ({ rentalId: u.id, title: u.title, startsAt: u.startsAt, device: u.deviceName, note: u.candidates[0] ? `kandydat: ${u.candidates[0].shortName ?? u.candidates[0].name} (${u.candidates[0].reason})` : "brak kandydata" })),
     },
     { key: "amounts", label: "Kwota / wariant", items: amounts },
+    { key: "transport", label: "Transport do zatwierdzenia", items: transportItems },
     { key: "tomorrow", label: "Wydania jutro", items: tomorrowItems },
     { key: "invoices", label: "FV do wystawienia", items: fv.map((x) => ({ rentalId: x.rentalId, title: x.title, startsAt: x.startsAt, device: x.deviceName, note: `${x.clientName} · ${x.daysSinceEnd} dni po wynajmie` })) },
   ];

@@ -21,7 +21,7 @@ function RhythmSection({ d }: { d: ClientDetail }) {
   const r = d.rhythm;
   const dc = r.deviceConfig;
   const risk = r.churnRisk;
-  const price = agreedTotal(d).total;
+  const hasTerms = agreedTotal(d).total != null || d.terms.prices.length > 0;
   const year = new Date().getFullYear();
   // Bez ceny ustalonej: średnia z tegorocznych wynajmów i faktur z kwotą.
   const withAmount = d.transactions.filter((t) => new Date(t.date).getFullYear() === year && t.net);
@@ -73,10 +73,23 @@ function RhythmSection({ d }: { d: ClientDetail }) {
           sub={dc ? (dc.models.length > 1 ? dc.models.map((m) => `${m.name} ${m.count}×`).join(" · ") : `${dc.models[0]?.count ?? 0}× wynajem`) : null}
         />
         <Stat label="Czas" value={d.cardFacts.typicalDays ? `${d.cardFacts.typicalDays} ${d.cardFacts.typicalDays === 1 ? "dzień" : "dni"}` : "—"} sub="wg rezerwacji w panelu" />
+        {/* Wniosek 28: ceny ustalone są w bloku „Warunki” (lewa kolumna) — tu tylko odnośnik. */}
         <Stat
-          label={price ? "Cena ustalona" : `Cena (${year})`}
-          value={price ? `${money(price)} netto` : avgInvoice ? `≈ ${money(Math.round(avgInvoice))} netto` : "—"}
-          sub={price ? (d.transportPriceNet ? "wynajem + transport" : "wynajem (bez transportu)") : avgInvoice ? "średnia z wynajmów i faktur" : "brak kwot w tym roku"}
+          label={`Cena (${year})`}
+          value={avgInvoice ? `≈ ${money(Math.round(avgInvoice))} netto` : "—"}
+          sub={
+            <>
+              {avgInvoice ? "średnia z wynajmów i faktur" : "brak kwot w tym roku"}
+              {hasTerms && (
+                <>
+                  {" · "}
+                  <a href="#warunki" className="text-[#1B6FA8] hover:text-[#0C3450]">
+                    warunki →
+                  </a>
+                </>
+              )}
+            </>
+          }
         />
         <Stat
           label="Ryzyko odejścia"
@@ -109,7 +122,7 @@ function Legend() {
   );
 }
 
-function Stat({ label, value, sub, valueClass = "font-medium text-[#1B6FA8]" }: { label: string; value: string; sub?: string | null; valueClass?: string }) {
+function Stat({ label, value, sub, valueClass = "font-medium text-[#1B6FA8]" }: { label: string; value: string; sub?: React.ReactNode; valueClass?: string }) {
   return (
     <div>
       <div className={LABEL}>{label}</div>

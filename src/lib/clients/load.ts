@@ -146,6 +146,10 @@ export type ClientDetail = {
     // (z dziennika zmian, od najnowszej).
     transportSince: string | null;
     transportHistory: { at: string; before: number | null; after: number | null }[];
+    // Wniosek 28: źródło transportu ustalonego i historia wersji warunków
+    // (ceny, transport, faktura, płatność, impulsy — z dziennika zmian).
+    transportSource: string | null;
+    history: { id: string; at: string; field: string; before: string | null; after: string | null; by: string | null; source: string | null }[];
   };
   fieldMeta: FieldMetaDto;
   opportunities: OpportunityDto[];
@@ -249,6 +253,9 @@ export type ClientDetail = {
     requestedFrom: string | null;
   }[];
 };
+
+// Wniosek 28: pola warunków w „Historii wersji” (poza cenami „Cena · …”).
+const TERMS_HISTORY_FIELDS = ["transportPriceNet", "invoiceMode", "invoicePartDefault", "paymentForm", "paymentTermDays", "pulsesCharged", "pulseRateNet", "paymentTerms"] as const;
 
 export async function loadClientDetail(id: string, today = new Date()): Promise<ClientDetail | null> {
   const c = await prisma.client.findUnique({
@@ -605,7 +612,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     .flatMap((r) => r.messages)
     .filter((m) => m.channel === "SMS" && m.status === "SENT" && m.sentAt)
     .map((m) => m.sentAt!.getTime());
-  const [extras, deliveryAddresses, deliverySettings, clientPrices, priceRules, transportLog] = await Promise.all([
+  const [extras, deliveryAddresses, deliverySettings, clientPrices, priceRules, transportLog, termsLog] = await Promise.all([
     loadCardExtras(c.id, [c.fieldMeta, ...c.contacts.map((p) => p.fieldMeta)]),
     loadClientAddresses(c.id),
     loadDeliverySettings(),
@@ -616,6 +623,18 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       orderBy: { createdAt: "desc" },
       take: 6,
       select: { createdAt: true, before: true, after: true },
+    }),
+    prisma.changeLog.findMany({
+      where: {
+        entity: "CLIENT",
+        entityId: c.id,
+        operation: "FIELD_CHANGE",
+        undoneById: null,
+        OR: [{ field: { startsWith: "Cena ·" } }, { field: { in: TERMS_HISTORY_FIELDS as unknown as string[] } }],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: { id: true, createdAt: true, field: true, before: true, after: true, source: true, user: { select: { name: true } } },
     }),
   ]);
   const logAmount = (raw: string | null) => {
@@ -693,6 +712,14 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       }),
       transportSince: c.transportPriceSince?.toISOString() ?? null,
       transportHistory: transportLog.map((l) => ({ at: l.createdAt.toISOString(), before: logAmount(l.before), after: logAmount(l.after) })),
+      transportSource: c.transportSource,
+      history: termsLog.map((l) => {
+        const v = (raw: string | null) => {
+          const x = fromLogValue(raw);
+          return x == null || x === "" ? null : String(x);
+        };
+        return { id: l.id, at: l.createdAt.toISOString(), field: l.field ?? "", before: v(l.before), after: v(l.after), by: l.user?.name ?? null, source: l.source };
+      }),
     },
     fieldMeta: extras.withNames(c.fieldMeta),
     opportunities: extras.opportunities,

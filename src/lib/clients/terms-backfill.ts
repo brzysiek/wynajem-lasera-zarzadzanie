@@ -288,18 +288,23 @@ export async function applyBackfill(rentalIds: string[], actor: { userId: string
 // warunków — bez rozliczenia: plan jak wyżej; z ceną z cennika albo z
 // warunków: przeliczenie. Ręczne kwoty (MANUAL), potwierdzone przez kierowcę
 // i z wystawioną fakturą — bez zmian (ręczne trafiają na listę rozbieżności).
+export type TermsSyncChange = { rentalId: string; title: string; startsAt: string; before: string | null; after: string };
+export type TermsSyncResult = { filled: number; updated: number; manual: number; changes: TermsSyncChange[] };
+
 export async function syncFutureRentalsToTerms(
   clientId: string,
   actor: { userId: string },
   today = new Date(),
-  opts: { fillMissing?: boolean } = {},
-): Promise<{ filled: number; updated: number; manual: number }> {
-  const out = { filled: 0, updated: 0, manual: 0 };
+  // dryRun (wniosek 28): tylko podgląd — co by się zmieniło, bez zapisu.
+  opts: { fillMissing?: boolean; dryRun?: boolean } = {},
+): Promise<TermsSyncResult> {
+  const out: TermsSyncResult = { filled: 0, updated: 0, manual: 0, changes: [] };
   const c = await prisma.client.findUnique({
     where: { id: clientId },
     select: { transportPriceNet: true, paymentForm: true, invoiceMode: true, invoicePartDefault: true, prices: { select: { device: true, days: true, priceNet: true } } },
   });
-  if (!c || c.prices.length === 0) return out;
+  // Bez tabeli cen i bez transportu ustalonego — nie ma czego stosować.
+  if (!c || (c.prices.length === 0 && c.transportPriceNet == null)) return out;
   const terms: PlanTerms = {
     prices: c.prices.map((p) => ({ device: p.device, days: p.days, priceNet: Number(p.priceNet) })),
     transportNet: c.transportPriceNet != null ? Number(c.transportPriceNet) : null,
@@ -371,9 +376,9 @@ export async function syncFutureRentalsToTerms(
         ...invoice,
       };
     }
-    const res = await saveRentalFinance(r, input);
+    const res = await saveRentalFinance(r, input, { dryRun: opts.dryRun });
     if (!res.ok) continue;
-    const after = await prisma.rentalFinance.findUnique({ where: { rentalId: r.id } });
+    const after = opts.dryRun ? res.data : await prisma.rentalFinance.findUnique({ where: { rentalId: r.id } });
     if (!after) continue;
     if (Number(after.transportPriceNet ?? 0) > 0) dayTaken.add(day);
     const changed =
@@ -388,9 +393,10 @@ export async function syncFutureRentalsToTerms(
     if (!changed) continue;
     if (f) out.updated++;
     else out.filled++;
+    out.changes.push({ rentalId: r.id, title: r.title, startsAt: r.startsAt.toISOString(), before: f ? summary(f) : null, after: summary(after) });
     entries.push({ entity: "RENTAL", entityId: r.id, operation: "FIELD_CHANGE", clientId, field: "rozliczenie wg warunków klienta", before: f ? summary(f) : null, after: summary(after) });
   }
-  if (entries.length) await recordChanges(prisma, actor, entries);
+  if (entries.length && !opts.dryRun) await recordChanges(prisma, actor, entries);
   return out;
 }
 
@@ -417,7 +423,7 @@ export async function syncAllFutureRentalsToTerms(actor: { userId: string }): Pr
 }
 
 // Wersja „w tle” dla zapisów, które nie mogą się wywrócić przez przeliczenie.
-export async function syncFutureRentalsToTermsSafe(clientId: string, actor: { userId: string }): Promise<{ filled: number; updated: number; manual: number } | null> {
+export async function syncFutureRentalsToTermsSafe(clientId: string, actor: { userId: string }): Promise<TermsSyncResult | null> {
   try {
     return await syncFutureRentalsToTerms(clientId, actor);
   } catch (err) {

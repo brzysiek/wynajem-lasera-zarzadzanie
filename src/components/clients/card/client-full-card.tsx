@@ -21,9 +21,8 @@ import { ARCHIVE_REASON_LABEL, type ArchiveReasonKey } from "@/lib/porzadki/labe
 import type { ReviewClient } from "@/lib/history/review-load";
 import { FunnelBar } from "./funnel-bar";
 import { CardHeader, Indicators, NextStepBanner, TaskDialog } from "./card-header";
-import { CardLeft, Tile } from "./card-left";
+import { CardLeft } from "./card-left";
 import { CardRight, InvoicesSection, QualitySection } from "./card-right";
-import { TermsSection } from "./card-terms";
 
 // Pełna karta klienta /klienci/[id] z zakładkami (docs/crm/prompt-claude-code-crm-3b-karta-klienta.md,
 // wygląd: docs/crm/zrzuty/karta-*.png). Nagłówek wspólny dla zakładek,
@@ -246,8 +245,8 @@ export function ClientFullCard({
           </div>
         )}
         <Indicators d={d} />
-        {/* Dwie kolumny; drugi rząd: Warunki handlowe (lewa) na równi z
-            Fakturami i płatnościami (prawa), pod nimi Jakość danych. */}
+        {/* Dwie kolumny; Warunki w lewej kolumnie pod „Dane firmy”
+            (wniosek 28), w prawej pod rytmem Faktury i płatności, Jakość danych. */}
         <div className="flex flex-col gap-7 px-4 pb-10 pt-5 md:px-7 xl:grid xl:grid-cols-[470px_minmax(0,1fr)] xl:items-start xl:gap-x-7 xl:gap-y-6">
           <CardLeft d={d} onChanged={setD} notify={notify} isAdmin={isAdmin} isAgent={isAgent} pendingProposals={pendingProposals} onDialog={setDialog} />
           <CardRight
@@ -263,12 +262,7 @@ export function ClientFullCard({
               </>
             }
           />
-          <div className="flex xl:self-stretch [&>*]:w-full">
-            <Tile>
-              <TermsSection d={d} onChanged={setD} notify={notify} />
-            </Tile>
-          </div>
-          <div className="flex min-w-0 xl:self-stretch [&>*]:w-full">
+          <div className="flex min-w-0 xl:col-start-2 xl:self-stretch [&>*]:w-full">
             <InvoicesSection d={d} onShowAll={() => switchTab("transakcje")} onChanged={setD} notify={notify} />
           </div>
           <div className="min-w-0 xl:col-start-2">

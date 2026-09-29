@@ -5,6 +5,9 @@ import { SUPPORT_PHONE } from "@/lib/sms-template";
 
 export const REMINDER_DAYS = [1, 3, 7] as const;
 export type ReminderDays = (typeof REMINDER_DAYS)[number];
+// Wniosek 29: nowe rezerwacje — tylko „3 dni przed” (7 dni zostaje tylko dla
+// już zaplanowanych przypomnień).
+export const DEFAULT_REMINDER_DAYS: ReminderDays[] = [3];
 
 // The reservation-confirmation message used to reuse the same
 // ReminderRule/SMS pipeline (scheduling, sending, history) as the

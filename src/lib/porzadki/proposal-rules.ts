@@ -125,7 +125,7 @@ const ADDRESS_KEYS: Record<string, string> = {
 };
 const ADDRESS_FIELDS = new Set(Object.values(ADDRESS_KEYS));
 
-export type ClientPriceProposal = { device: string; days: number; priceNet: number | null; source: string; sourceRef: string | null };
+export type ClientPriceProposal = { device: string; days: number; priceNet: number | null; source: string; sourceRef: string | null; since?: string | null };
 export type DeliveryAddressProposal = { addressId: string | null; isDefault?: boolean } & Record<string, string | null | boolean | undefined>;
 
 export type ParsedProposal = {
@@ -292,6 +292,12 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
       source: (PRICE_SOURCES as readonly string[]).includes(src) ? src : "AGENT",
       sourceRef: str(item.odnosnik ?? item.sourceRef, 191),
     };
+    // Wniosek 28: wersja obowiązuje od (RRRR-MM-DD); brak = od akceptacji.
+    const od = str(item.od ?? item.since, 10);
+    if (od) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(od)) return { ok: false, message: "od: data RRRR-MM-DD (od kiedy obowiązuje cena)." };
+      proposed.since = od;
+    }
     return { ok: true, value: { ...base, kind, field: `${device}|${days}`, proposed } };
   }
   if (kind === "DELIVERY_ADDRESS") {

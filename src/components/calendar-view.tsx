@@ -501,12 +501,19 @@ export function CalendarView({
     const newEnd = addDays(new Date(rental.endsAt), deltaDays);
 
     setDragError(null);
-    const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ startsAt: newStart.toISOString(), endsAt: newEnd.toISOString() }),
-    });
-    const data = await res.json().catch(() => null);
+    const move = (allowConflict: boolean) =>
+      fetch(`${BASE_PATH}/api/rentals/${rentalId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startsAt: newStart.toISOString(), endsAt: newEnd.toISOString(), ...(allowConflict ? { allowConflict: true } : {}) }),
+      });
+    let res = await move(false);
+    let data = await res.json().catch(() => null);
+    // Wniosek 29: kolizja urządzenia — administrator może świadomie przenieść.
+    if (res.status === 409 && typeof data?.message === "string" && data.message.includes("Zapisz mimo kolizji") && window.confirm(`${data.message.split(" Zaznacz")[0]}\n\nPrzenieść mimo kolizji?`)) {
+      res = await move(true);
+      data = await res.json().catch(() => null);
+    }
     if (!res.ok) {
       setDragError(data?.message || "Nie udało się przenieść rezerwacji.");
       return;

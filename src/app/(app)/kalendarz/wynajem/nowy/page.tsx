@@ -7,9 +7,13 @@ import { RentalForm } from "@/components/rental-form";
 export default async function NewRentalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ device?: string; date?: string; sygnal?: string }>;
+  searchParams: Promise<{ device?: string; date?: string; sygnal?: string; klient?: string; wariant?: string; adres?: string }>;
 }) {
-  const { device, date, sygnal } = await searchParams;
+  const sp = await searchParams;
+  const { device, date, sygnal, klient, wariant, adres } = sp;
+  // Wniosek 29: „Nowa rezerwacja” z karty klienta (?klient=) i „Zapisz i dodaj
+  // kolejny” (klient, urządzenie, wariant, adres zostają).
+  const pickedClient = klient ? await prisma.client.findUnique({ where: { id: klient }, select: { id: true, name: true, shortName: true, city: true, archivedAt: true } }) : null;
   // Rezerwacja z sygnału (lejek): klient z sygnału, tytuł = klient, po zapisie
   // wynajem wiąże się z sygnałem (etap „Rezerwacja”).
   const lead = sygnal
@@ -76,6 +80,7 @@ export default async function NewRentalPage({
 
   return (
     <RentalForm
+      key={JSON.stringify(sp)}
       devices={devices.map((d) => ({
         ...d,
         variantOptions: Array.isArray(d.variantOptions)
@@ -87,7 +92,15 @@ export default async function NewRentalPage({
       defaultDateIso={date}
       prefill={prefill}
       // Wniosek 23: rezerwacja z sygnału — klient sygnału od razu wybrany.
-      initialClient={lead?.client ? { id: lead.client.id, name: lead.client.name, shortName: lead.client.shortName, city: lead.client.city } : null}
+      initialClient={
+        lead?.client
+          ? { id: lead.client.id, name: lead.client.name, shortName: lead.client.shortName, city: lead.client.city }
+          : pickedClient && !pickedClient.archivedAt
+            ? { id: pickedClient.id, name: pickedClient.name, shortName: pickedClient.shortName, city: pickedClient.city }
+            : null
+      }
+      initialVariant={wariant ?? null}
+      initialAddressId={adres ?? null}
       reminderTemplates={reminderTemplates}
       drivers={drivers}
       vehicles={vehicles}

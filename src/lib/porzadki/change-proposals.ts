@@ -35,7 +35,7 @@ import { createLead, logLeadActivity, recordPastContact, syncLeadTasksFromStep, 
 import { setResigned } from "@/lib/clients/resign";
 import { LOST_REASON_LABEL } from "@/lib/leads/labels";
 import { stageForStep, stepForStage, NEXT_STEP_LABEL, type NextStepType } from "@/lib/leads/funnel";
-import { upsertClientPrice } from "@/lib/clients/terms";
+import { parseSince, upsertClientPrice } from "@/lib/clients/terms";
 import { findClientDuplicates } from "@/lib/clients/search";
 import { quickCreateClient } from "@/lib/clients/quick-create";
 import { changeRentalClient, linkUnassignedRentals } from "@/lib/clients/rental-match";
@@ -467,8 +467,8 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
     return { ok: true };
   }
   if (p.kind === "CLIENT_PRICE") {
-    const v = value as { device: string; days: number; priceNet: string | null; source: string; sourceRef: string | null };
-    return upsertClientPrice(p.clientId!, { ...v, priceNet: v.priceNet != null ? Number(v.priceNet) : null }, { userId: actor.userId, provenance: { source: p.source, confidence: p.confidence as "HIGH" | "MEDIUM" | "LOW", batch: p.batch }, approvedById });
+    const v = value as { device: string; days: number; priceNet: string | null; source: string; sourceRef: string | null; since?: string | null };
+    return upsertClientPrice(p.clientId!, { device: v.device, days: v.days, source: v.source, sourceRef: v.sourceRef, priceNet: v.priceNet != null ? Number(v.priceNet) : null, since: parseSince(v.since) }, { userId: actor.userId, provenance: { source: p.source, confidence: p.confidence as "HIGH" | "MEDIUM" | "LOW", batch: p.batch }, approvedById });
   }
   if (p.kind === "DELIVERY_ADDRESS") {
     const { addressId, ...fields } = value as { addressId: string | null } & Record<string, unknown>;

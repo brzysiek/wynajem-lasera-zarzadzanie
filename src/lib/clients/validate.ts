@@ -4,6 +4,7 @@
 import { normalizeNip, parseDistanceKm, parseMoney } from "./hubspot-import";
 import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_KEYS, SOURCE_LABEL, type DeviceInterestKey } from "./labels";
 import { parseClientProfilePatch, parseContactProfilePatch, parseDay, type ClientProfilePatch, type ContactProfilePatch } from "./profile-fields";
+import { TRANSPORT_SOURCE_KEYS, type TransportSourceKey } from "./terms-rules";
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 type Deps = { normalizePhone: (raw: string) => string | null };
@@ -35,6 +36,7 @@ export type ClientPatch = Partial<{
   country: string | null;
   transportPriceNet: string | null;
   transportPriceSince: Date | null; // od kiedy obowiązuje kwota transportu (wniosek 15)
+  transportSource: TransportSourceKey | null; // wniosek 28: skąd kwota transportu ustalonego
   distanceKm: string | null;
   clinicType: keyof typeof CLINIC_TYPE_LABEL | null;
   source: keyof typeof SOURCE_LABEL | null;
@@ -65,6 +67,11 @@ export function parseClientPatch(body: Record<string, unknown>): Result<ClientPa
     const { value, invalid } = raw === "invalid" ? { value: null, invalid: true } : parseMoney(raw);
     if (invalid) return { ok: false, message: "Cena transportu musi być liczbą, np. 150." };
     out.transportPriceNet = value;
+  }
+  if ("transportSource" in body) {
+    const v = body.transportSource;
+    if (v != null && !(TRANSPORT_SOURCE_KEYS as readonly unknown[]).includes(v)) return { ok: false, message: "Nieznane źródło transportu." };
+    out.transportSource = (v as TransportSourceKey | null) ?? null;
   }
   if ("transportPriceSince" in body) {
     const d = parseDay(body.transportPriceSince);

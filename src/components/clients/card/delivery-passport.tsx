@@ -6,6 +6,7 @@ import type { DeliveryAddressDto } from "@/lib/clients/delivery";
 import { routeLabel, splitFeedback, zoneFor } from "@/lib/clients/delivery-rules";
 import { api, INPUT } from "../client-forms";
 import { BTN_OUTLINE, BTN_PRIMARY, LINK, Missing, Section, dm, money } from "./kit";
+import { TransportFixed, useTermsSaver } from "./card-terms";
 
 // Paszport dostawy (karta klienta, etap B, wg karta-kierunek.html): adresy
 // dostawy — domyślny podstawia się w rezerwacji i na mapie — z trasą od bazy
@@ -201,7 +202,6 @@ function AddressEditor({ d, a, onDone, onChanged, notify }: { d: ClientDetail; a
 function RouteLine({ d, a, onRecalc, busy, canEdit }: { d: ClientDetail; a: DeliveryAddressDto; onRecalc: () => void; busy: boolean; canEdit: boolean }) {
   const route = routeLabel(a.distanceKm, a.routeAuto ? a.durationMin : null);
   const zone = zoneFor(a.distanceKm, d.delivery.zones);
-  const terms = d.transportPriceNet && Number(d.transportPriceNet) > 0 ? Number(d.transportPriceNet) : null;
   const parts: ReactNode[] = [];
   if (route)
     parts.push(
@@ -217,8 +217,8 @@ function RouteLine({ d, a, onRecalc, busy, canEdit }: { d: ClientDetail; a: Deli
       </span>,
     );
   if (zone) parts.push(<span key="z">strefa {zone.code}</span>);
-  if (a.isDefault && terms != null) parts.push(<span key="t">transport {money(terms)}</span>);
-  else if (zone?.priceNet != null) parts.push(<span key="t" title="Podpowiedź ze stawek stref (Ustawienia → Cennik) — nie nadpisuje warunków klienta">transport wg strefy {money(zone.priceNet)}</span>);
+  // Adres domyślny: transport ustalony + sugestia w osobnym wierszu (wniosek 28).
+  if (!a.isDefault && zone?.priceNet != null) parts.push(<span key="t" title="Podpowiedź ze stawek stref (Ustawienia → Cennik) — nie nadpisuje warunków klienta">transport wg strefy {money(zone.priceNet)}</span>);
   const needs = !a.routeAuto || !a.located;
   return (
     <div className="text-[11.5px] text-[#5C6166]">
@@ -243,6 +243,7 @@ function RouteLine({ d, a, onRecalc, busy, canEdit }: { d: ClientDetail; a: Deli
 export function DeliverySection({ d, onChanged, notify, isAgent }: Props) {
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const { save, bar } = useTermsSaver(onChanged, notify);
   const addresses = d.delivery.addresses;
   const canEdit = !isAgent;
   const usual = d.cardFacts.usualStartTime ? `dostawa zwykle ${d.cardFacts.usualStartTime.time} (z rezerwacji ${dm(d.cardFacts.usualStartTime.fromAt)})` : null;
@@ -283,6 +284,12 @@ export function DeliverySection({ d, onChanged, notify, isAgent }: Props) {
             </div>
             <div className="text-[13px] text-[#333333]">{a.line || <Missing>uzupełnij adres</Missing>}</div>
             <RouteLine d={d} a={a} canEdit={canEdit} busy={busy === a.id} onRecalc={() => void recalc(a)} />
+            {a.isDefault && (
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                <TransportFixed d={d} save={save} />
+                {bar}
+              </div>
+            )}
             <div className="mt-1.5">
               <Fld label="Na miejscu">
                 <OnSite a={a} usual={a.isDefault ? usual : null} />

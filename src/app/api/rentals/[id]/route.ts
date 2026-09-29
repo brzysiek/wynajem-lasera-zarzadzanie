@@ -8,6 +8,8 @@ import { resolveDeliveryAddressId } from "@/lib/clients/delivery";
 import { updateCalendarEvent, deleteCalendarEvent, moveCalendarEvent } from "@/lib/integrations/google-calendar";
 import { logInfo, logWarn, logError } from "@/lib/logger";
 import { CONFIRMATION_OFFSET, REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
+import { checkAvailability, conflictMessage } from "@/lib/rentals/availability";
+import { afterFinanceSave, applyClientCaches, parseTraining, validateRentalForm } from "@/lib/rentals/form-save";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { resolveDriverId } from "@/lib/rental-driver";
 import { resolveContactDistanceKm, resolveVehicleId } from "@/lib/rental-vehicle";
@@ -128,6 +130,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (clientChange === null && rental.clientId) return NextResponse.json({ message: "Rezerwacja musi mieć klienta — wybierz innego zamiast usuwać." }, { status: 400 });
   const nextClientId = clientChange === undefined ? rental.clientId : clientChange;
 
+  // Wniosek 29: wariant / transport (gdy formularz wysyła rozliczenie) i
+  // kolizje urządzenia — tylko przy zmianie urządzenia albo terminu.
+  const targetDevice = await prisma.device.findUnique({ where: { id: requestedDeviceId }, select: { name: true, variantOptions: true } });
+  const invalid = await validateRentalForm({ eventType, variantOptions: targetDevice?.variantOptions, finance: body?.finance, clientId: nextClientId });
+  if (invalid) return NextResponse.json({ message: invalid }, { status: 400 });
+  const moved = deviceChanged || startsAt.getTime() !== rental.startsAt.getTime() || endsAt.getTime() !== rental.endsAt.getTime();
+  if (moved) {
+    const avail = await checkAvailability(requestedDeviceId, startsAt, endsAt, id);
+    if (!avail.free && !(session.user.role === "ADMIN" && body?.allowConflict === true)) {
+      return NextResponse.json({ message: `${conflictMessage(avail.conflicts, targetDevice?.name ?? "Urządzenie")}${session.user.role === "ADMIN" ? " Zaznacz „Zapisz mimo kolizji”, jeśli to świadome." : " Zapis przy kolizji zatwierdza administrator."}`, conflicts: avail.conflicts, suggestions: avail.suggestions }, { status: 409 });
+    }
+  }
+  const training = body && "trainingPlace" in body ? parseTraining(body, eventType === "SZKOLENIE") : eventType === "SZKOLENIE" ? {} : parseTraining(null, false);
+
   try {
     if (deviceChanged) {
       await moveCalendarEvent(rental.googleCalendarId, rental.googleEventId, targetCalendarId);
@@ -163,6 +179,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         driverId,
         vehicleId,
         eventType,
+        ...training,
         lastSyncedAt: new Date(),
       },
     });
@@ -174,6 +191,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const res = await changeRentalClient({ rentalId: id, clientId: clientChange, userId: session.user.id, alias: body?.aliasFromTitle !== false });
       autoAssigned = res.autoAssigned;
     }
+    // Osoba na miejscu (formularz) — dane kontaktu z klienta panelu.
+    if (nextClientId && body && "clientContactId" in body) await applyClientCaches(id, nextClientId, typeof body.clientContactId === "string" ? body.clientContactId : null);
 
     logInfo("rental_updated", { userId: session.user.id, rentalId: id, deviceChanged });
 
@@ -197,6 +216,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         // biuro poprawia cenę i zapisuje ponownie.
         return NextResponse.json({ message: result.message }, { status: 400 });
       }
+      await afterFinanceSave(id, body.finance, session.user.id);
     }
 
     const withRelations = await prisma.rental.findUniqueOrThrow({ where: { id }, include: RENTAL_INCLUDE });

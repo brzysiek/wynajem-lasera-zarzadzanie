@@ -12,6 +12,7 @@ import { FieldsEditor, boolInput, dateInput, type FieldDef } from "./fields-edit
 import { LINK, Missing, Quote, Row, Section, dm, dmy } from "./kit";
 import { isConfirmingSource } from "./sources";
 import { DeliverySection } from "./delivery-passport";
+import { TermsBlock } from "./card-terms";
 
 // Lewa kolumna karty wg karta-kierunek.html (etap 1, 27.09.2026): Dane firmy
 // (dane do faktury zwinięte), Osoby, Paszport dostawy, a Profil gabinetu,
@@ -647,6 +648,9 @@ export function CardLeft(props: Props & { isAdmin: boolean; isAgent: boolean; pe
     <div className="flex w-full shrink-0 flex-col gap-3 xl:w-[470px]">
       <Tile>
         <CompanySection {...props} />
+      </Tile>
+      <Tile>
+        <TermsBlock d={props.d} onChanged={props.onChanged} notify={props.notify} />
       </Tile>
       <Tile>
         <PeopleSection {...props} />

@@ -11,7 +11,9 @@ import { termsWarnings } from "@/lib/clients/terms";
 import { insertCalendarEvent } from "@/lib/integrations/google-calendar";
 import { getHubspotContact, formatHubspotAddress } from "@/lib/integrations/hubspot";
 import { logInfo, logWarn, logError } from "@/lib/logger";
-import { REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
+import { DEFAULT_REMINDER_DAYS, REMINDER_DAYS, syncReminderRules, type ReminderDays } from "@/lib/reminders";
+import { checkAvailability, conflictMessage } from "@/lib/rentals/availability";
+import { afterFinanceSave, applyClientCaches, parseTraining, validateRentalForm } from "@/lib/rentals/form-save";
 import { withDeliveryTimePrefix } from "@/lib/rental-title";
 import { resolveDriverId } from "@/lib/rental-driver";
 import { resolveContactDistanceKm, resolveVehicleId } from "@/lib/rental-vehicle";
@@ -31,7 +33,8 @@ const RENTAL_INCLUDE = {
 
 function parseReminderDays(body: unknown): ReminderDays[] {
   const raw = (body as { reminderDays?: unknown })?.reminderDays;
-  if (!Array.isArray(raw)) return [...REMINDER_DAYS];
+  // Wniosek 29: domyślnie tylko „3 dni przed” (bez tygodnia).
+  if (!Array.isArray(raw)) return [...DEFAULT_REMINDER_DAYS];
   return REMINDER_DAYS.filter((days) => raw.includes(days));
 }
 
@@ -118,6 +121,15 @@ export async function POST(req: NextRequest) {
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true, archivedAt: true } });
   if (!client || client.archivedAt) return NextResponse.json({ message: "Wybrany klient nie istnieje albo jest w archiwum." }, { status: 400 });
 
+  // Wniosek 29: wariant obowiązkowy, transport klienta bez kwoty ustalonej, kolizje urządzenia.
+  const invalid = await validateRentalForm({ eventType, variantOptions: device.variantOptions, finance: body?.finance, clientId });
+  if (invalid) return NextResponse.json({ message: invalid }, { status: 400 });
+  const avail = await checkAvailability(device.id, startsAt, endsAt);
+  if (!avail.free && !(session.user.role === "ADMIN" && body?.allowConflict === true)) {
+    return NextResponse.json({ message: `${conflictMessage(avail.conflicts, device.name)}${session.user.role === "ADMIN" ? " Zaznacz „Zapisz mimo kolizji”, jeśli to świadome." : " Zapis przy kolizji zatwierdza administrator."}`, conflicts: avail.conflicts, suggestions: avail.suggestions }, { status: 409 });
+  }
+  const training = parseTraining(body, eventType === "SZKOLENIE");
+
   // Only an admin may assign a driver/vehicle; a STAFF request silently ignores the fields.
   let driverId: string | null = null;
   let vehicleId: string | null = null;
@@ -164,11 +176,14 @@ export async function POST(req: NextRequest) {
         driverId,
         vehicleId,
         eventType,
+        ...training,
         lastSyncedAt: new Date(),
       },
     });
 
     await syncReminderRules(rental, parseReminderDays(body), Boolean(body?.sendConfirmation));
+    // Dane kontaktu z klienta panelu + „osoba na miejscu” (telefon dla kierowcy).
+    await applyClientCaches(rental.id, clientId, typeof body?.clientContactId === "string" ? body.clientContactId : null);
     // Dziennik: klient wybrany w panelu przy zakładaniu rezerwacji.
     await recordChanges(prisma, { userId: session.user.id, provenance: { source: "rezerwacja z panelu — klient wybrany w formularzu", confidence: "HIGH", batch: null } }, [
       { entity: "RENTAL", entityId: rental.id, operation: "MATCH_ASSIGN", clientId, field: "clientId", before: null, after: clientId },
@@ -261,6 +276,7 @@ export async function POST(req: NextRequest) {
         body.finance,
       );
       if (!result.ok) financeError = result.message;
+      else await afterFinanceSave(rental.id, body.finance, session.user.id);
     }
 
     const withRelations = await prisma.rental.findUniqueOrThrow({ where: { id: rental.id }, include: RENTAL_INCLUDE });

@@ -19,7 +19,9 @@ import { loadFvWithoutInvoice } from "@/lib/invoicing/fv-check-load";
 import { termsWarnings } from "@/lib/clients/terms";
 import { loadRentalsWithoutAmount } from "@/lib/clients/terms-backfill";
 import { formatAddressLine } from "@/lib/clients/delivery-rules";
-import { invoiceNetOf, positionsSummary } from "@/lib/clients/terms-rules";
+import { invoiceNetOf, positionsSummary, priceSourceDetail, transportNeedsReview } from "@/lib/clients/terms-rules";
+import { transportSuggestion } from "@/lib/clients/transport-suggest";
+import { rentalDurationDays } from "@/lib/pricing/duration";
 import { listArchive } from "@/lib/porzadki/archive";
 import { listRules } from "@/lib/porzadki/cleanup-rules";
 import { listChangeLog } from "@/lib/changelog/load";
@@ -211,13 +213,27 @@ export const TOOLS: McpTool[] = [
       "(source, sourceRef, verifiedAt, verifiedBy, lockedManual); rhythm = pola liczone (rytm, dzień tygodnia, urządzenie, przerwa, prognoza, ryzyko); opportunities = szanse sprzedaży; " +
       "delivery.addresses = paszport dostawy (adresy z km/min od bazy, pola na miejscu, uwagi biura, feedback = uwagi kierowców); " +
       "terms.prices = ceny klienta (device × days; kody: LS_1G, LS_2G, ET400, ALMA_DYEVL, ALMA_DYEVL_IPIXEL, ALMA_IPIXEL, COOLTECH, RESURFX, OBSERV, SZKOLENIE), terms.priceList = cennik ogólny; " +
-      "profile: invoiceMode, invoicePartDefault, pulsesCharged, pulseRateNet, paymentTermDays, paymentForm, paymentTerms (uwagi do warunków); transactions: positions, rentalNet, onInvoiceNet (netto na FV).",
+      "profile: invoiceMode, invoicePartDefault, pulsesCharged, pulseRateNet, paymentTermDays, paymentForm, paymentTerms (uwagi do warunków); transactions: positions, rentalNet, onInvoiceNet (netto na FV); " +
+      "terms.history = historia wersji warunków (ceny, transport, faktura, płatność — data, przed → po, kto, źródło), terms.prices[].since = wersja obowiązuje od; transport = status transportu (ustalony / sugestia / brak; do rezerwacji trafia tylko ustalony).",
     inputSchema: obj({ id: s("ID klienta.") }, ["id"]),
     readOnly: true,
     run: async (a) => {
       const d = await loadClientDetail(req(a, "id"));
       if (!d) throw new AgentApiError("Nie znaleziono klienta.", 404);
-      return d;
+      // Wniosek 28: status transportu (ustalony / sugestia / brak) i historia wersji warunków (terms.history).
+      const sug = transportSuggestion(d);
+      const fixed = d.transportPriceNet != null && d.transportPriceNet !== "" ? Number(d.transportPriceNet) : null;
+      return {
+        ...d,
+        transport: {
+          status: fixed != null ? "ustalony" : sug ? "sugestia" : "brak",
+          ustalony: fixed,
+          zrodlo: d.terms.transportSource,
+          od: d.terms.transportSince,
+          sugestia: sug,
+          doPrzejrzenia: transportNeedsReview(fixed, sug?.priceNet ?? null),
+        },
+      };
     },
   },
   {
@@ -226,7 +242,7 @@ export const TOOLS: McpTool[] = [
     description:
       "Przyszłe rezerwacje (wynajmy) bez rozliczenia, z proponowaną kwotą: plan.baseSource = CLIENT_TERMS (tabela cen klienta) albo PRICE_LIST (cennik ogólny), transport z warunków (2 urządzenia jednego dnia = 1 kurs), " +
       "faktura i płatność wg warunków; plan.ready = false z powodem (np. nie wiadomo, 1 czy 2 głowice); plan = null — rezerwacja bez klienta. " +
-      "Tylko odczyt: kwoty wpisuje panel sam po akceptacji warunków klienta (propozycje cennik_klienta i pole transportPriceNet / invoiceMode / paymentForm) albo biuro na stronie Klienci → Kwoty wg warunków. " +
+      "Tylko odczyt: kwoty przelicza biuro („Zastosuj” na karcie klienta po zmianie warunków) albo na stronie Klienci → Kwoty wg warunków. " +
       "Filtr: tylko_bez_warunkow = klienci bez tabeli cen (do rozpisania).",
     inputSchema: obj({ tylko_bez_warunkow: b("Tylko rezerwacje klientów bez tabeli cen."), ...PAGE }),
     readOnly: true,
@@ -333,7 +349,7 @@ export const TOOLS: McpTool[] = [
     title: "Kalendarz wynajmów",
     description:
       "Wynajmy i szkolenia w zakresie dat (maks. 93 dni): urządzenie, klient, adres, kierowca, rozliczenie, znacznik FV i faktura; " +
-      "positions = pozycje rozliczenia (wynajem, transport, impulsy, nakładka), invoiceNet = netto na fakturę (0 = bez FV; null + invoicePending = FV, kwota do ustalenia — warunki „część” bez kwoty), priceSource (PRICE_LIST / CLIENT_TERMS / MANUAL / PULSE_CALCULATED), termsWarning = cena ≠ warunki klienta (> 10%).",
+      "positions = pozycje rozliczenia (wynajem, transport, impulsy, nakładka), invoiceNet = netto na fakturę (0 = bez FV; null + invoicePending = FV, kwota do ustalenia — warunki „część” bez kwoty), priceSource (PRICE_LIST / CLIENT_TERMS / MANUAL / PULSE_CALCULATED), priceSourceDetail (np. „wyjątek klienta”, „cennik (brak wyjątku na 2 dni)”, „ręcznie: powód”), termsWarning = cena ≠ warunki klienta (> 10%).",
     inputSchema: obj({ od: s("Od RRRR-MM-DD."), do: s("Do RRRR-MM-DD (włącznie).") }, ["od", "do"]),
     readOnly: true,
     run: async (a) => {
@@ -369,6 +385,7 @@ export const TOOLS: McpTool[] = [
               invoiceNetPending: true,
               baseRentalPriceNet: true,
               baseRentalPriceSource: true,
+              baseRentalPriceOverrideNote: true,
               deviceVariant: true,
               transportPriceNet: true,
               pulseSurchargeNet: true,
@@ -384,6 +401,9 @@ export const TOOLS: McpTool[] = [
         },
       });
       const warnings = await termsWarnings(rows);
+      const withPrices = new Set(
+        (await prisma.clientPrice.groupBy({ by: ["clientId"], where: { clientId: { in: [...new Set(rows.map((r) => r.clientId).filter((x): x is string => !!x))] } } })).map((g) => g.clientId),
+      );
       return {
         rentals: rows.map((r) => ({
           id: r.id,
@@ -416,6 +436,9 @@ export const TOOLS: McpTool[] = [
               })
             : null,
           priceSource: r.finance?.baseRentalPriceSource ?? null,
+          priceSourceDetail: r.finance
+            ? (priceSourceDetail({ source: r.finance.baseRentalPriceSource, days: rentalDurationDays(r.startsAt, r.endsAt), clientHasPrices: !!r.clientId && withPrices.has(r.clientId), overrideNote: r.finance.baseRentalPriceOverrideNote })?.text ?? null)
+            : null,
           termsWarning: warnings.get(r.id) ?? null,
           totalGross: r.finance?.totalGross.toString() ?? null,
           payment: r.finance?.paymentMethod ?? null,
@@ -1114,7 +1137,7 @@ export const TOOLS: McpTool[] = [
       "Dla wykluczenia (lista wykluczeń domen): wartosci (lista domen albo adresów, maks. 500), typ (wyklucz | ukrywaj), dopisek — po akceptacji maile z nich nie trafiają do panelu. " +
       "Dla dopasowania_platnosci (przelew z wyciągu → faktura): przelew_id i faktura_id z narzędzia platnosci; po akceptacji faktura jest zapłacona z datą przelewu. " +
       "Dla cennik_klienta (warunki handlowe): klient_id, urzadzenie (LS_1G, LS_2G, ET400, ALMA_DYEVL, ALMA_DYEVL_IPIXEL, ALMA_IPIXEL, COOLTECH, RESURFX, OBSERV, SZKOLENIE), dni (1, 2, 3, 7…), cena (netto za wynajem) albo usun: true, " +
-      "zrodlo_ceny (OFERTA | UMOWA | USTALENIE | HISTORIA), odnosnik (np. „oferta 30.10.2025”, mail) — jedna propozycja = jedna komórka tabeli cen; po akceptacji panel sam przelicza przyszłe rezerwacje klienta (ręcznych kwot nie rusza); transport, faktura, płatność i impulsy zgłaszaj rodzajem pole " +
+      "zrodlo_ceny (MAIL | ROZMOWA | OFERTA | UMOWA | USTALENIE | HISTORIA), odnosnik (np. „oferta 30.10.2025”, mail), od (RRRR-MM-DD, od kiedy obowiązuje — nowa wersja; brak = od akceptacji) — jedna propozycja = jedna komórka tabeli cen (wyjątek od cennika; brak wyjątku = cennik dla tej liczby dni, nigdy cena 1 dnia × dni); po akceptacji biuro decyduje „Zastosuj” do przyszłych rezerwacji na karcie klienta (ręcznych kwot nie rusza); transport, faktura, płatność i impulsy zgłaszaj rodzajem pole " +
       "(transportPriceNet, invoiceMode FULL/PARTIAL/NONE, invoicePartDefault, paymentForm, paymentTermDays, pulsesCharged, pulseRateNet). " +
       "Dla adres_dostawy (paszport dostawy): klient_id, adres_id (zmiana istniejącego — z narzędzia klient) albo bez niego (nowy adres: nazwa + miejscowosc/kod), pola: nazwa, ulica, kod, miejscowosc, wejscie, pietro, parking, prad, odbiera, godziny, typowa_godzina, uwagi_biura, domyslny (true). " +
       "Lejek sygnałów: sygnal_nowy (sygnał z maila / telefonu — zrodlo_sygnalu EMAIL | TELEFON | OLX | POLECENIE | INNE, klient_id albo imie / telefon / email, opcjonalnie urzadzenia, termin RRRR-MM-DD, dni, notatka, odnosnik np. gmail:<id> — duplikat odnośnika jest odrzucany); " +
