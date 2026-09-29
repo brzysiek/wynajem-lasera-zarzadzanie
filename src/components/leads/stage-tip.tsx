@@ -19,7 +19,7 @@ function Quote({ children }: { children: string }) {
   return <div className="my-1.5 border-l-[3px] border-[#2F7A68] bg-white px-2.5 py-1.5 text-[12.5px] text-[#2A3540]">{children}</div>;
 }
 
-type Draft = { to: string | null; subject: string; body: string; freeDates: string[] };
+type Draft = { to: string | null; subject: string; body: string; freeDates: string[]; freeByDevice?: { device: string; dates: string[] }[] };
 
 export function StageTip({
   leadId,
@@ -99,7 +99,12 @@ export function StageTip({
     window.location.href = `mailto:${data.to ?? ""}?subject=${encodeURIComponent(data.subject)}&body=${encodeURIComponent(data.body)}`;
   }
 
-  const termin = draft?.freeDates[0] ?? null;
+  // Przegląd 29.09 07:15, pkt 8: 2 najbliższe wolne terminy urządzenia; bez
+  // urządzenia — „[wybierz termin]” i wolne terminy każdego urządzenia niżej.
+  const termin = draft?.freeDates.length ? draft.freeDates.slice(0, 2).join(" albo ") : draft ? "[wybierz termin]" : null;
+  const byDevice = !draft?.freeDates.length && draft?.freeByDevice?.length ? (
+    <div className="text-[12px] text-[#5C6166]">Wolne w kalendarzu: {draft.freeByDevice.map((x) => `${x.device} ${x.dates.join(", ")}`).join(" · ")}</div>
+  ) : null;
   const questions = (
     <>
       {playbook.questions.map((q, i) => (
@@ -168,6 +173,7 @@ export function StageTip({
             <>
               <div className="text-[#5C6166]">{followUpNo >= 2 ? "Follow-up 2 (+7 dni rob.) — nowa wartość:" : "Follow-up 1 (+3 dni rob.) — trzymany termin:"}</div>
               <Quote>{fillScript(followUpNo >= 2 ? playbook.scripts.offerFollowUp2 : playbook.scripts.offerFollowUp1, { termin })}</Quote>
+              {byDevice}
               <div className="text-[#5C6166]">Pytaj o wybór, nie o zgodę{draft && draft.freeDates.length === 2 ? `: „${draft.freeDates[0]} czy ${draft.freeDates[1]}?”` : "."} Nigdy samo „czy Pani się zastanowiła?”.</div>
               <div className="mt-1.5 flex flex-wrap gap-1.5">{offerBtn}</div>
             </>
@@ -176,6 +182,7 @@ export function StageTip({
             <>
               <div className="text-[#5C6166]">Gdy wracamy:</div>
               <Quote>{fillScript(playbook.scripts.postponedReturn, { termin })}</Quote>
+              {byDevice}
               <div className="mt-1.5 flex flex-wrap gap-1.5">{offerBtn}</div>
             </>
           )}

@@ -9,10 +9,37 @@ import type { DevicePricingCategory } from "@prisma/client";
 // cennik) i transportem (warunki albo strefa). Temat z „Oferta” — po wysłaniu
 // z kontakt@ automat przesunie sygnał do „Oferta wysłana” (V3).
 
-export type OfferDraft = { to: string | null; subject: string; body: string; device: string | null; freeDates: string[]; priceNet: number | null; transportNet: number | null };
+export type OfferDraft = {
+  to: string | null;
+  subject: string;
+  body: string;
+  device: string | null;
+  freeDates: string[];
+  freeByDevice: { device: string; dates: string[] }[];
+  priceNet: number | null;
+  transportNet: number | null;
+};
 
 const d2 = (d: Date) => d.toLocaleDateString("pl-PL", { day: "numeric", month: "long" });
 const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const short = (d: Date) => d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" });
+
+// 2 najbliższe dni (bez niedziel, 45 dni od startu), w które co najmniej jedno
+// aktywne urządzenie z kategorii jest wolne przez cały wynajem.
+async function freeDatesFor(categories: DevicePricingCategory[], start: Date, days: number) {
+  const devices = await prisma.device.findMany({ where: { active: true, pricingCategory: { in: categories } }, select: { id: true, pricingCategory: true, variantOptions: true } });
+  const end = new Date(start.getTime() + 45 * 86_400_000);
+  const rentals = devices.length
+    ? await prisma.rental.findMany({ where: { deviceId: { in: devices.map((d) => d.id) }, deletedInGoogle: false, startsAt: { lt: end }, endsAt: { gt: start } }, select: { deviceId: true, startsAt: true, endsAt: true } })
+    : [];
+  const dates: Date[] = [];
+  for (let d = start; d < end && dates.length < 2; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+    if (d.getDay() === 0) continue;
+    const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
+    if (devices.some((dev) => !rentals.some((r) => r.deviceId === dev.id && r.startsAt < to && r.endsAt > d))) dates.push(d);
+  }
+  return { devices, dates };
+}
 
 export async function buildOfferDraft(leadId: string, now = new Date()): Promise<OfferDraft | null> {
   const lead = await prisma.lead.findUnique({
@@ -27,25 +54,27 @@ export async function buildOfferDraft(leadId: string, now = new Date()): Promise
 
   // Wolne terminy: od jutra (albo od zgłoszonego terminu) przez 45 dni — dzień,
   // w którym co najmniej jedno urządzenie tej kategorii nie ma wynajmu.
-  const freeDates: Date[] = [];
+  const start = dayStart(new Date(Math.max(now.getTime() + 86_400_000, lead.requestedFrom?.getTime() ?? 0)));
+  let freeDates: Date[] = [];
   let category: DevicePricingCategory | null = null;
   let variant: string | null = null;
   if (categories.length) {
-    const devices = await prisma.device.findMany({ where: { active: true, pricingCategory: { in: categories } }, select: { id: true, pricingCategory: true, variantOptions: true } });
-    category = devices[0]?.pricingCategory ?? categories[0];
-    const opts = devices[0] && Array.isArray(devices[0].variantOptions) ? (devices[0].variantOptions as unknown[]).filter((x): x is string => typeof x === "string") : [];
+    const found = await freeDatesFor(categories, start, days);
+    freeDates = found.dates;
+    category = found.devices[0]?.pricingCategory ?? categories[0];
+    const opts = found.devices[0] && Array.isArray(found.devices[0].variantOptions) ? (found.devices[0].variantOptions as unknown[]).filter((x): x is string => typeof x === "string") : [];
     variant = opts.find((v) => v !== "single_flex") ?? null;
-    const start = dayStart(new Date(Math.max(now.getTime() + 86_400_000, lead.requestedFrom?.getTime() ?? 0)));
-    const end = new Date(start.getTime() + 45 * 86_400_000);
-    const rentals = devices.length
-      ? await prisma.rental.findMany({ where: { deviceId: { in: devices.map((d) => d.id) }, deletedInGoogle: false, startsAt: { lt: end }, endsAt: { gt: start } }, select: { deviceId: true, startsAt: true, endsAt: true } })
-      : [];
-    for (let d = start; d < end && freeDates.length < 2; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
-      if (d.getDay() === 0) continue;
-      const from = d;
-      const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + days);
-      const free = devices.some((dev) => !rentals.some((r) => r.deviceId === dev.id && r.startsAt < to && r.endsAt > from));
-      if (free) freeDates.push(d);
+  }
+  // Przegląd 29.09 07:15, pkt 8: bez wskazanego urządzenia — wolne terminy
+  // każdego urządzenia do wyboru w podpowiedzi follow-upu.
+  const freeByDevice: { device: string; dates: string[] }[] = [];
+  if (!interest) {
+    for (const key of Object.keys(DEVICE_INTEREST_LABEL) as DeviceInterestKey[]) {
+      if (key === "SZKOLENIE") continue;
+      const cats = Object.entries(CATEGORY_TO_INTEREST).filter(([, v]) => v === key).map(([k]) => k) as DevicePricingCategory[];
+      if (!cats.length) continue;
+      const found = await freeDatesFor(cats, start, days);
+      if (found.devices.length && found.dates.length) freeByDevice.push({ device: DEVICE_INTEREST_LABEL[key], dates: found.dates.map(short) });
     }
   }
 
@@ -81,7 +110,8 @@ export async function buildOfferDraft(leadId: string, now = new Date()): Promise
     subject: `Oferta wynajmu ${device ?? "urządzenia"} – WynajemLasera.pl`,
     body: lines.join("\n"),
     device,
-    freeDates: freeDates.map((d) => d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" })),
+    freeDates: freeDates.map(short),
+    freeByDevice,
     priceNet,
     transportNet,
   };
