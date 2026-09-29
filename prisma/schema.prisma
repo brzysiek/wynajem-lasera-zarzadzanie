@@ -807,6 +807,14 @@ model Client {
   // cron porównuje z bieżącą regułą i zapisuje zmianę (przed → po). Status
   // nadal liczony przy odczycie (status.ts), to pole go nie ustala.
   lastStatus        String?              @db.VarChar(16)
+  // Wniosek 24: stan „Zrezygnował” (nie „Nie kontaktować”) — powód (kod z
+  // RESIGN_REASON_LABEL), data, notatka i opcjonalna data ponownego kontaktu.
+  // Klient wypada z „przed sezonem”, puli celu sezonu i przypomnień o rytmie;
+  // stan znika sam przy nowej rezerwacji.
+  resignedAt          DateTime?
+  resignedReason      String?   @db.VarChar(32)
+  resignedNote        String?   @db.Text
+  resignedRecontactAt DateTime?
   notes             String?               @db.Text
   // Kwalifikacja (prompt 2 v2, 1.0): sygnał to zapytanie, klient to gabinet,
   // z którym faktycznie był kontakt. null = „kontakt z zapytania” (nie na

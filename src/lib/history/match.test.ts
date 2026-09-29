@@ -121,9 +121,9 @@ describe("buildMatcher", () => {
       expect(learned(key("Nurek Nowy Sącz 2 gł."))).toMatchObject({ clientId: "kolber", state: "AUTO" });
     });
 
-    it("potwierdzony tytuł zawarty w dłuższym → AUTO", () => {
-      expect(learned(key("SHA 1 gł. Tym razem + okulary"))).toMatchObject({ clientId: "sha", state: "AUTO" });
-      expect(learned(key("Kuter Port Nieznanowice nowa klientka"))).toMatchObject({ clientId: "mariola", state: "AUTO" });
+    it("potwierdzony tytuł zawarty w dłuższym → kandydat (wniosek 24: po nazwie < 1,0 nie przypisuje)", () => {
+      expect(learned(key("SHA 1 gł. Tym razem + okulary"))).toMatchObject({ state: "SUGGESTED", candidates: [expect.objectContaining({ clientId: "sha" })] });
+      expect(learned(key("Kuter Port Nieznanowice nowa klientka"))).toMatchObject({ state: "SUGGESTED", candidates: [expect.objectContaining({ clientId: "mariola" })] });
     });
 
     it("ogólny alias (samo imię) nie przypisuje automatycznie", () => {
@@ -131,8 +131,8 @@ describe("buildMatcher", () => {
     });
   });
 
-  it("pełne imię i nazwisko w dłuższym tytule → AUTO", () => {
-    expect(match(key("Anna Pawlik tym razem okulary"))).toMatchObject({ clientId: "anna2", state: "AUTO" });
+  it("pełne imię i nazwisko w dłuższym tytule → kandydat do potwierdzenia (wniosek 24)", () => {
+    expect(match(key("Anna Pawlik tym razem okulary"))).toMatchObject({ state: "SUGGESTED", candidates: [expect.objectContaining({ clientId: "anna2" })] });
   });
 
   it("słowa-szum z danych nie zaniżają dopasowania", () => {

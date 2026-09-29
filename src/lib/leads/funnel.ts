@@ -410,7 +410,7 @@ const CALL_STEPS = ["ODDZWONI", "PONOWNA_PROBA", "UMOW_TERMIN", "DOPYTAC"];
 // najpierw ci, którym termin (ostatni przyjazd + rytm) już minął / zbliża się.
 export const SPRING_PER_DAY = 3;
 
-export function buildToday<T extends FunnelLead & { nextStepNote?: string | null; sourceRef?: string | null; spring?: { dueAt: string | null } | null; clientStatus?: string | null }>(leads: T[], now: Date): TodayItem<T>[] {
+export function buildToday<T extends FunnelLead & { nextStepNote?: string | null; sourceRef?: string | null; spring?: { dueAt: string | null } | null; clientStatus?: string | null; clientResigned?: boolean }>(leads: T[], now: Date): TodayItem<T>[] {
   const sod = startOfDay(now);
   const eod = endOfDay(now);
   const out: TodayItem<T>[] = [];
@@ -419,7 +419,7 @@ export function buildToday<T extends FunnelLead & { nextStepNote?: string | null
     if (!in2026(l)) continue;
     if (l.sourceRef?.startsWith(SPRING_REF_PREFIX) && l.stage === "WYWIAD" && l.nextStepType === "UMOW_TERMIN" && !l.lastContactAt && l.attempts === 0) {
       // „Nie kontaktować” wypada z puli.
-      if (l.clientStatus !== "NIE_KONTAKTOWAC") springPool.push(l);
+      if (l.clientStatus !== "NIE_KONTAKTOWAC" && !l.clientResigned) springPool.push(l);
       continue;
     }
     const back = l.nextStepType === "POWROT" || (l.nextStepNote ?? "").startsWith("wraca z odłożonych");

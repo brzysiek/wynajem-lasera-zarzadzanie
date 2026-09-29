@@ -19,7 +19,10 @@ import {
   type ClientAliasProposal,
   type ClientNewProposal,
   type ClientPriceProposal,
+  type ContactLogProposal,
+  type PostponeProposal,
   type RentalClientProposal,
+  type ResignProposal,
   type DeliveryAddressProposal,
   type LeadStepProposal,
   type LostReasonProposal,
@@ -28,7 +31,8 @@ import {
   type RentalLinkProposal,
   type SignalNewProposal,
 } from "@/lib/porzadki/proposal-rules";
-import { createLead, updateLead } from "@/lib/leads/actions";
+import { createLead, logLeadActivity, recordPastContact, syncLeadTasksFromStep, updateLead } from "@/lib/leads/actions";
+import { setResigned } from "@/lib/clients/resign";
 import { LOST_REASON_LABEL } from "@/lib/leads/labels";
 import { stageForStep, stepForStage, NEXT_STEP_LABEL, type NextStepType } from "@/lib/leads/funnel";
 import { upsertClientPrice } from "@/lib/clients/terms";
@@ -94,6 +98,16 @@ async function currentFor(p: { kind: string; clientId: string | null; contactId:
     if (p.kind === "LEAD_STEP") return l.nextActionAt ? toLogValue(`${l.nextActionAt.toISOString().slice(0, 16)} ${l.nextStepType ?? ""}`.trim()) : null;
     return l.rentalId ? toLogValue(l.rentalId) : null;
   }
+  if ((p.kind === "CONTACT_LOG" || p.kind === "POSTPONE") && p.leadId) {
+    const l = await prisma.lead.findUnique({ where: { id: p.leadId }, select: { stage: true, lastContactAt: true, returnAt: true } });
+    if (!l) throw new PorzadkiError("Sygnał nie istnieje.", 404);
+    if (p.kind === "POSTPONE") return l.stage === "ODLOZONE" && l.returnAt ? toLogValue(`odłożone do ${l.returnAt.toISOString().slice(0, 10)}`) : toLogValue(`etap: ${l.stage}`);
+    return l.lastContactAt ? toLogValue(`ostatni kontakt ${l.lastContactAt.toISOString().slice(0, 16)}`) : null;
+  }
+  if (p.kind === "RESIGN" && p.clientId) {
+    const c = await prisma.client.findUnique({ where: { id: p.clientId }, select: { resignedReason: true } });
+    return c?.resignedReason ? toLogValue(c.resignedReason) : null;
+  }
   if (p.kind === "RENTAL_CLIENT" && p.field) {
     const r = await prisma.rental.findUnique({ where: { id: p.field }, select: { clientId: true, client: { select: { name: true } } } });
     if (!r) throw new PorzadkiError("Wynajem nie istnieje (wynajem_id z rezerwacje_bez_klienta).", 404);
@@ -156,6 +170,16 @@ async function normalizeProposedAsync(p: ParsedProposal): Promise<unknown> {
       const r = await prisma.rental.findUnique({ where: { id: (p.proposed as RentalLinkProposal).rentalId }, select: { id: true, lead: { select: { id: true } } } });
       if (!r) throw new PorzadkiError("Wynajem nie istnieje (wynajem_id z kalendarz_wynajmy).", 404);
       if (r.lead && r.lead.id !== p.leadId) throw new PorzadkiError("Ten wynajem jest już powiązany z innym sygnałem.");
+    }
+    return p.proposed;
+  }
+  if (p.kind === "CONTACT_LOG" || p.kind === "POSTPONE") {
+    const l = await prisma.lead.findUnique({ where: { id: p.leadId! }, select: { clientId: true, stage: true } });
+    if (!l) throw new PorzadkiError("Sygnał nie istnieje.", 404);
+    if (!p.clientId) p.clientId = l.clientId;
+    if (p.kind === "POSTPONE") {
+      if (l.stage === "WYGRANA" || l.stage === "PRZEGRANA") throw new PorzadkiError("Sygnał jest zamknięty — odłożyć można tylko otwarty.");
+      if ((p.proposed as PostponeProposal).returnAt <= new Date().toISOString().slice(0, 10)) throw new PorzadkiError("data_powrotu: od jutra.");
     }
     return p.proposed;
   }
@@ -382,6 +406,7 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
         data: { leadId: p.leadId!, clientId: l?.clientId ?? null, type: "SYSTEM", body: `Następny krok (propozycja agenta): ${NEXT_STEP_LABEL[stepType as NextStepType] ?? stepType}, ${at.toLocaleString("pl-PL")}${v.note ? ` — ${v.note}` : ""}`, userId: actor.userId || null },
       }),
     ]);
+    await syncLeadTasksFromStep(p.leadId!);
     return { ok: true };
   }
   if (p.kind === "RENTAL_LINK") {
@@ -391,6 +416,29 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) };
     }
+  }
+  if (p.kind === "CONTACT_LOG") {
+    const v = value as ContactLogProposal;
+    try {
+      await recordPastContact(p.leadId!, { at: new Date(v.at.length > 10 ? v.at : `${v.at}T12:00:00`), channel: v.channel, result: v.result, note: v.note }, actor.userId);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (p.kind === "POSTPONE") {
+    const v = value as PostponeProposal;
+    try {
+      await logLeadActivity(p.leadId!, { outcome: "postpone", body: v.note, nextActionAt: new Date(`${v.returnAt}T09:00:00`), postponeReason: v.reason }, actor.userId);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (p.kind === "RESIGN") {
+    const v = value as ResignProposal;
+    await setResigned(p.clientId!, { reason: v.reason, note: v.note, recontactAt: v.recontactAt ? new Date(`${v.recontactAt}T09:00:00`) : null }, { userId: actor.userId, source: `propozycja agenta (${p.source})` });
+    return { ok: true };
   }
   if (p.kind === "CLIENT_NEW") {
     const v = value as ClientNewProposal;

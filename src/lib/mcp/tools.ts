@@ -880,9 +880,18 @@ export const TOOLS: McpTool[] = [
     name: "zadanie_utworz",
     title: "Nowe zadanie",
     description:
-      "Tworzy zadanie dla osoby z biura (dla: id albo imię, np. „Ania”). Powiązania: wynajmy, klienci, sygnaly, faktury (tablice ID) — chipy w zadaniu; klient_id / sygnal_id jak dotąd. Szczegóły: markdown z linkami [tekst](adres).",
+      "Tworzy zadanie dla osoby z biura (dla: id albo imię, np. „Ania”) — jedna sprawa albo decyzja, zawsze przypięta do sygnału, klienta albo rezerwacji (wniosek 26; bez_powiazania: true tylko dla sprawy ogólnej, bez zadań-list). Powiązania: wynajmy, klienci, sygnaly, faktury (tablice ID) — chipy w zadaniu; klient_id / sygnal_id jak dotąd. Szczegóły: markdown z linkami [tekst](adres).",
     inputSchema: obj(
-      { tytul: s("Treść zadania."), szczegoly: s("Szczegóły (markdown, linki klikalne)."), dla: s("Odpowiedzialny: id albo imię."), termin: s("Termin RRRR-MM-DD."), klient_id: s("ID klienta."), sygnal_id: s("ID sygnału."), ...TASK_LINKS },
+      {
+        tytul: s("Treść zadania."),
+        szczegoly: s("Szczegóły (markdown, linki klikalne)."),
+        dla: s("Odpowiedzialny: id albo imię."),
+        termin: s("Termin RRRR-MM-DD."),
+        klient_id: s("ID klienta."),
+        sygnal_id: s("ID sygnału."),
+        ...TASK_LINKS,
+        bez_powiazania: b("Wniosek 26: zadanie bez powiązania — tylko świadomie (sprawa ogólna); domyślnie wymagane powiązanie z sygnałem, klientem albo rezerwacją."),
+      },
       ["tytul", "dla"],
     ),
     readOnly: false,
@@ -899,6 +908,11 @@ export const TOOLS: McpTool[] = [
       if (clientId && !(await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } }))) throw new AgentApiError("Nie znaleziono klienta.", 404);
       const parsed = await parseLinksBody(a);
       if (parsed.error) throw new AgentApiError(parsed.error);
+      // Wniosek 26: agent nie tworzy zadań-list ani zadań bez kontekstu —
+      // jedna sprawa przy sygnale, kliencie albo rezerwacji (kolejki danych są
+      // w Kalendarz → Do dopięcia).
+      const linked = Boolean(leadId || clientId || parsed.links?.some((l) => l.kind === "LEAD" || l.kind === "CLIENT" || l.kind === "RENTAL"));
+      if (!linked && a.bez_powiazania !== true) throw new AgentApiError("Zadanie musi mieć powiązanie: sygnal_id, klient_id albo wynajmy / klienci / sygnaly (albo bez_powiazania: true dla sprawy ogólnej). Kolejki danych (bez kwoty, bez klienta, FV) są w Kalendarz → Do dopięcia.");
       clientId ??= parsed.links?.find((l) => l.kind === "CLIENT")?.refId ?? null;
       const task = await prisma.task.create({
         data: { title, notes: str(a, "szczegoly"), dueDate: day(a, "termin"), assigneeId: who.id, authorId: agent.userId, clientId, leadId },
@@ -1103,7 +1117,7 @@ export const TOOLS: McpTool[] = [
       "Dla adres_dostawy (paszport dostawy): klient_id, adres_id (zmiana istniejącego — z narzędzia klient) albo bez niego (nowy adres: nazwa + miejscowosc/kod), pola: nazwa, ulica, kod, miejscowosc, wejscie, pietro, parking, prad, odbiera, godziny, typowa_godzina, uwagi_biura, domyslny (true). " +
       "Lejek sygnałów: sygnal_nowy (sygnał z maila / telefonu — zrodlo_sygnalu EMAIL | TELEFON | OLX | POLECENIE | INNE, klient_id albo imie / telefon / email, opcjonalnie urzadzenia, termin RRRR-MM-DD, dni, notatka, odnosnik np. gmail:<id> — duplikat odnośnika jest odrzucany); " +
       "powod_przegranej (sygnal_id, powod: ODLEGLOSC, CENA, KUPILA_URZADZENIE, TERMIN_ZAJETY, BRAK_KONTAKTU, TYLKO_CENNIK, POZA_BRANZA, INNE_URZADZENIE, INNE + notatka); " +
-      "krok_sygnalu (sygnal_id, termin RRRR-MM-DD[THH:MM], rodzaj_kroku, notatka); powiazanie_wynajmu (sygnal_id, wynajem_id z kalendarz_wynajmy — wynajem bez sygnału); klient_nowy (nazwa, telefon albo email, miasto — kontrola duplikatów po telefonie i e-mailu); przypisanie_klienta (wynajem_id, klient_id, opcjonalnie alias: true — po akceptacji panel zapisuje klienta w wydarzeniu Google i alias z tytułu); alias_klienta (klient_id, tytul — tytuł wydarzenia albo jego rdzeń; bez ogólnych tytułów typu „NOWA PaNI”). " +
+      "krok_sygnalu (sygnal_id, termin RRRR-MM-DD[THH:MM], rodzaj_kroku, notatka); powiazanie_wynajmu (sygnal_id, wynajem_id z kalendarz_wynajmy — wynajem bez sygnału); klient_nowy (nazwa, telefon albo email, miasto — kontrola duplikatów po telefonie i e-mailu); przypisanie_klienta (wynajem_id, klient_id, opcjonalnie alias: true — po akceptacji panel zapisuje klienta w wydarzeniu Google i alias z tytułu); alias_klienta (klient_id, tytul — tytuł wydarzenia albo jego rdzeń; bez ogólnych tytułów typu „NOWA PaNI”); kontakt (sygnal_id, data RRRR-MM-DD[THH:MM], kanal telefon|sms|mail, wynik rozmowa|nie_odebrala, notatka — kontakt odnotowany wstecz z notatek / maili); odlozenie (sygnal_id, data_powrotu, powod SEZON|ZBIERA_OFERTY|URLOP|REMONT|INNE, notatka — tylko dłuższa przerwa; krótki urlop = krok_sygnalu z datą); rezygnacja (klient_id, powod KUPILA_URZADZENIE|BRAK_KLIENTEK|ZAMKNELA_GABINET|CENA|KONKURENCJA|INNE, notatka, data_ponownego_kontaktu — stan „Zrezygnował”, nie „Nie kontaktować”). " +
       "Duplikat sygnału zgłaszaj rodzajem archiwizacja (sygnal_id, powod DUPLIKAT). " +
       "Zawsze zrodlo, pewnosc, paczka; opcjonalnie klasa (np. miasto_slownik) — klasy zatwierdzone na stałe wykonują się od razu. " +
       "Odrzucone wcześniej zmiany są blokowane (dostaniesz komentarz odrzucenia).",

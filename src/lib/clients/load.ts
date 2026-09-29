@@ -646,6 +646,9 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       .filter((l) => openLeadIds.includes(l.id) && l.nextActionAt)
       .map((l) => ({ text: `${l.title} — zaplanowany kontakt`, at: l.nextActionAt as Date | null, href: `/sygnaly?id=${l.id}` })),
     ...tasks.map((t) => ({ text: t.title, at: t.dueDate, href: t.leadId ? `/sygnaly?id=${t.leadId}` : null })),
+    // Wniosek 26: ręczny krok (np. po wynajmie) to jedna z otwartych spraw —
+    // karta pokazuje najbliższą z nich, nie osobną datę.
+    ...(c.nextStepText ? [{ text: c.nextStepText.split("\n")[0], at: c.nextStepDueAt as Date | null, href: null }] : []),
   ].sort((a, b) => (a.at?.getTime() ?? Infinity) - (b.at?.getTime() ?? Infinity));
   const step = steps[0];
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());

@@ -8,6 +8,7 @@ import { recordChanges } from "@/lib/changelog/record";
 import { logInfo } from "@/lib/logger";
 import { parseDueDate, taskDto } from "@/lib/tasks";
 import { parseLinksBody, setTaskLinks, withLinks } from "@/lib/task-links";
+import { syncLeadStepFromTask } from "@/lib/leads/actions";
 
 const TASK_INCLUDE = {
   author: { select: { id: true, name: true, grammaticalGender: true } },
@@ -65,12 +66,16 @@ export async function POST(req: NextRequest) {
   // Wniosek 22: powiązania {wynajmy, klienci, sygnaly, faktury} (tablice ID).
   const parsed = await parseLinksBody(body);
   if (parsed.error) return NextResponse.json({ message: parsed.error }, { status: 400 });
-  const firstClient = parsed.links?.find((l) => l.kind === "CLIENT")?.refId ?? null;
+  const firstLead = parsed.links?.find((l) => l.kind === "LEAD")?.refId ?? null;
+  const leadClient = firstLead ? ((await prisma.lead.findUnique({ where: { id: firstLead }, select: { clientId: true } }))?.clientId ?? null) : null;
+  const firstClient = parsed.links?.find((l) => l.kind === "CLIENT")?.refId ?? leadClient;
   const task = await prisma.task.create({
-    data: { title, notes, dueDate, assigneeId, authorId: session.user.id, clientId: firstClient },
+    data: { title, notes, dueDate, assigneeId, authorId: session.user.id, clientId: firstClient, leadId: firstLead },
     include: TASK_INCLUDE,
   });
   if (parsed.links) await setTaskLinks(task.id, parsed.links);
+  // Wniosek 26: zadanie przy sygnale — jeden termin z krokiem sygnału (nie agent: agent nie zmienia sygnałów).
+  if (firstLead && dueDate && !isAgent) await syncLeadStepFromTask(firstLead, dueDate, session.user.id);
   if (isAgent) {
     await recordChanges(prisma, { userId: session.user.id }, [
       { entity: "TASK", entityId: task.id, operation: "CREATE", before: "null", after: toLogValue({ title, assigneeId, dueDate }) },

@@ -19,7 +19,7 @@ export type SeasonRental = { clientId: string; clientName: string; startsAt: Dat
 
 export type SeasonWin = { clientId: string; name: string; kind: "returning" | "new"; at: string; startsAt: string; device: string | null; no: number };
 
-export type SpringOutcome = "BOOKED" | "TALKING" | "POSTPONED" | "LOST" | "DO_NOT_CONTACT" | "TODO";
+export type SpringOutcome = "BOOKED" | "TALKING" | "POSTPONED" | "LOST" | "RESIGNED" | "DO_NOT_CONTACT" | "TODO";
 export type SpringRow = { clientId: string; name: string; outcome: SpringOutcome; leadId: string | null; bookedAt: string | null };
 
 // pool — gabinety z listy wiosny wciąż do odzyskania: bez rezerwacji, nie
@@ -71,9 +71,11 @@ export function computeSeasonGoal(input: {
 // Wynik gabinetu z listy wiosny (Raport → „Cel sezonu”): zarezerwowała /
 // w rozmowie / odłożona / rezygnuje / do telefonu — z rezerwacji w sezonie
 // albo etapu jego sygnału „wraca z wiosny”.
-export function springOutcome(booked: boolean, lead: { stage: string; lastContactAt: Date | null } | null, doNotContact = false): SpringOutcome {
+export function springOutcome(booked: boolean, lead: { stage: string; lastContactAt: Date | null } | null, doNotContact = false, resigned = false): SpringOutcome {
   if (booked) return "BOOKED";
   if (doNotContact) return "DO_NOT_CONTACT";
+  // Wniosek 24: „Zrezygnował” wypada z puli celu sezonu.
+  if (resigned) return "RESIGNED";
   if (!lead) return "TODO";
   if (lead.stage === "REZERWACJA" || lead.stage === "WYGRANA") return "BOOKED";
   if (lead.stage === "ODLOZONE") return "POSTPONED";
@@ -86,6 +88,7 @@ export const SPRING_OUTCOME_LABEL: Record<SpringOutcome, string> = {
   TALKING: "w rozmowie",
   POSTPONED: "odłożona",
   LOST: "rezygnuje",
+  RESIGNED: "zrezygnowała",
   DO_NOT_CONTACT: "nie kontaktować",
   TODO: "do telefonu",
 };

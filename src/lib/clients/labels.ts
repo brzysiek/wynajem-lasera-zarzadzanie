@@ -85,3 +85,15 @@ export function initials(name: string): string {
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return (words[0][0] + words[1][0]).toUpperCase();
 }
+
+// Wniosek 24: stan „Zrezygnował” — powody.
+export const RESIGN_REASON_LABEL = {
+  KUPILA_URZADZENIE: "kupiła urządzenie",
+  BRAK_KLIENTEK: "brak klientek",
+  ZAMKNELA_GABINET: "zamknęła gabinet",
+  CENA: "cena",
+  KONKURENCJA: "konkurencja",
+  INNE: "inne",
+} as const;
+export type ResignReasonKey = keyof typeof RESIGN_REASON_LABEL;
+export const RESIGN_REASON_KEYS = Object.keys(RESIGN_REASON_LABEL) as ResignReasonKey[];

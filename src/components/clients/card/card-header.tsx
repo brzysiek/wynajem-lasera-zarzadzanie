@@ -1,5 +1,6 @@
 "use client";
 
+import { BASE_PATH } from "@/lib/base-path";
 import { useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import type { ClientDetail } from "@/lib/clients/load";
@@ -245,19 +246,24 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
     onChanged(data.detail);
   }
 
-  const [title, ...rest] = (step?.text ?? "").split("\n");
+  const [manualTitle, ...rest] = (step?.text ?? "").split("\n");
   const derived = d.overview.nextStep;
+  // Wniosek 26: pokazujemy najbliższą otwartą sprawę (krok sygnału, zadanie
+  // albo ręczny krok) — jedno źródło; ręczny krok edytuje się jak dotąd.
+  const fromCase = Boolean(derived && step && derived.text !== manualTitle && (!step.dueAt || (derived.at && derived.at < step.dueAt)));
+  const title = fromCase ? derived!.text : manualTitle;
+  const shownDue = fromCase ? derived!.at : (step?.dueAt ?? null);
   const r = d.rhythm;
   const footer = [r.forecast.length ? `prognoza: ${r.forecast.slice(0, 3).map((x) => dm(x)).join(", ")}` : null, r.rhythmDays ? `rytm co ${r.rhythmDays} dni` : null, r.churnRisk ? `ryzyko odejścia: ${r.churnRisk.level}` : null]
     .filter(Boolean)
     .join(" · ");
-  const overdue = step?.dueAt && new Date(step.dueAt).getTime() < new Date().setHours(0, 0, 0, 0);
+  const overdue = shownDue && new Date(shownDue).getTime() < new Date().setHours(0, 0, 0, 0);
 
   return (
     <div className="flex flex-col gap-2 bg-[#2B5B82] px-4 py-3.5">
       <div className="text-[11px] uppercase tracking-[0.18em] text-[#CFE3F2]">
         Następny krok
-        {step?.dueAt && !edit && <span className={overdue ? "text-white" : ""}> · {overdue ? "zaległe od" : "do"} {dm(step.dueAt)}</span>}
+        {shownDue && !edit && <span className={overdue ? "text-white" : ""}> · {overdue ? "zaległe od" : "do"} {dm(shownDue)}</span>}
       </div>
       {edit ? (
         <>
@@ -281,12 +287,28 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
         </>
       ) : step ? (
         <>
-          <button type="button" onClick={() => setEdit(true)} className="text-left text-[16px] font-medium leading-[1.3] text-white hover:underline" title="Zmień">
-            {title}
-          </button>
-          {rest.join(" ").trim() && <div className="text-[13px] leading-[1.5] text-[#EAF4FB]">{rest.join(" ").trim()}</div>}
+          {fromCase && derived?.href ? (
+            <a href={`${BASE_PATH}${derived.href}`} className="text-left text-[16px] font-medium leading-[1.3] text-white hover:underline" title="Otwórz sygnał">
+              {title}
+            </a>
+          ) : (
+            <button type="button" onClick={() => setEdit(true)} className="text-left text-[16px] font-medium leading-[1.3] text-white hover:underline" title="Zmień">
+              {title}
+            </button>
+          )}
+          {fromCase ? (
+            <div className="text-[13px] leading-[1.5] text-[#EAF4FB]">
+              Ręczny krok: {manualTitle}
+              {step?.dueAt ? ` · ${dm(step.dueAt)}` : ""}{" "}
+              <button type="button" onClick={() => setEdit(true)} className="underline underline-offset-2">
+                zmień
+              </button>
+            </div>
+          ) : (
+            rest.join(" ").trim() && <div className="text-[13px] leading-[1.5] text-[#EAF4FB]">{rest.join(" ").trim()}</div>
+          )}
           <div className="flex flex-wrap items-center gap-3 border-t border-[#46749A] pt-2">
-            <button type="button" onClick={() => onTask(title, step.dueAt)} className={BTN_TERRA}>
+            <button type="button" onClick={() => onTask(title, shownDue)} className={BTN_TERRA}>
               Utwórz zadanie dla Ani →
             </button>
             {footer && <span className="text-[12.5px] text-[#CFE3F2]">{footer}</span>}
@@ -294,10 +316,25 @@ export function NextStepBanner({ d, onChanged, notify, onTask }: { d: ClientDeta
         </>
       ) : (
         <>
-          <div className="text-[16px] font-medium leading-[1.3] text-white">Nie ustalono następnego kroku</div>
-          <div className="text-[13px] leading-[1.5] text-[#EAF4FB]">
-            {derived ? `Z zadań i sygnałów: ${derived.text}${derived.at ? ` · ${dm(derived.at)}` : ""}` : "Wpisz, co dalej z tym klientem — agent też może go zaproponować."}
-          </div>
+          {derived ? (
+            // Wniosek 26: bez ręcznego kroku — najbliższa sprawa z sygnału / zadania.
+            derived.href ? (
+              <a href={`${BASE_PATH}${derived.href}`} className="text-[16px] font-medium leading-[1.3] text-white hover:underline">
+                {derived.text}
+                {derived.at ? ` · ${dm(derived.at)}` : ""}
+              </a>
+            ) : (
+              <div className="text-[16px] font-medium leading-[1.3] text-white">
+                {derived.text}
+                {derived.at ? ` · ${dm(derived.at)}` : ""}
+              </div>
+            )
+          ) : (
+            <>
+              <div className="text-[16px] font-medium leading-[1.3] text-white">Nie ustalono następnego kroku</div>
+              <div className="text-[13px] leading-[1.5] text-[#EAF4FB]">Wpisz, co dalej z tym klientem — agent też może go zaproponować.</div>
+            </>
+          )}
           <div className="flex flex-wrap items-center gap-3 border-t border-[#46749A] pt-2">
             <button type="button" onClick={() => setEdit(true)} className={BTN_TERRA}>
               Ustaw następny krok →

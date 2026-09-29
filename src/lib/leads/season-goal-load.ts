@@ -27,7 +27,7 @@ export async function loadSeasonGoal(season: Playbook["season"]): Promise<Season
       select: { clientId: true, startsAt: true, createdAt: true, eventType: true, deletedInGoogle: true, device: { select: { name: true } }, client: { select: { name: true, shortName: true } } },
     }),
     loadClientStatusInfo(clientIds),
-    prisma.client.findMany({ where: { id: { in: springIds } }, select: { id: true, name: true, shortName: true, statusOverride: true } }),
+    prisma.client.findMany({ where: { id: { in: springIds } }, select: { id: true, name: true, shortName: true, statusOverride: true, resignedAt: true } }),
     prisma.lead.findMany({
       where: { clientId: { in: springIds }, archivedAt: null, createdAt: { gte: new Date(from.getTime() - 60 * 86_400_000) } },
       orderBy: { createdAt: "desc" },
@@ -58,7 +58,7 @@ export async function loadSeasonGoal(season: Playbook["season"]): Promise<Season
       return {
         clientId: c.id,
         name: c.shortName ?? c.name,
-        outcome: springOutcome(booked.has(c.id), lead, c.statusOverride === "NIE_KONTAKTOWAC"),
+        outcome: springOutcome(booked.has(c.id), lead, c.statusOverride === "NIE_KONTAKTOWAC", Boolean(c.resignedAt)),
         leadId: lead?.id ?? null,
         bookedAt: goal.wins.find((w) => w.clientId === c.id)?.startsAt ?? null,
       };

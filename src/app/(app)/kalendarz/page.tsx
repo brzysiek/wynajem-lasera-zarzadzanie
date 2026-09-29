@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/auth";
 import { VIEW_COOKIE, actsAsDriver } from "@/lib/effective-role";
 import { CalendarView } from "@/components/calendar-view";
+import { CalendarQueuesBar } from "@/components/calendar-queues-bar";
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
@@ -27,5 +28,11 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   // /api/rentals/alerts. Lista urządzeń do filtra tak samo idzie przez
   // współdzielony CalendarDeviceFilterProvider (AppShell), nie przez props tej strony.
   // AGENT: kalendarz tylko do odczytu (bez tworzenia i przesuwania rezerwacji).
-  return <CalendarView canEdit={!driverMode && session?.user.role !== "AGENT"} initialDate={date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null} />;
+  return (
+    <>
+      {/* Wniosek 26: „Do dopięcia” — biuro i agent (bez widoku kierowcy). */}
+      {!driverMode && <CalendarQueuesBar />}
+      <CalendarView canEdit={!driverMode && session?.user.role !== "AGENT"} initialDate={date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null} />
+    </>
+  );
 }

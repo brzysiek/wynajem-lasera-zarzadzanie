@@ -102,6 +102,18 @@ function describe(p: ChangeProposalRow): { what: string; from: string | null; to
     const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { at: string; stepType: string; note: string | null }) : null;
     return { what: `następny krok: ${p.leadTitle ?? "sygnał"}`, from: readable(p.currentValue), to: v ? `${v.at.replace("T", " ")} · ${v.stepType.toLowerCase().replace(/_/g, " ")}${v.note ? ` — ${v.note}` : ""}` : "—" };
   }
+  if (p.kind === "CONTACT_LOG") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { at: string; channel: string; result: string; note: string | null }) : null;
+    return { what: `kontakt: ${p.leadTitle ?? "sygnał"}`, from: readable(p.currentValue), to: v ? `${v.at.replace("T", " ")} · ${v.channel} · ${v.result === "rozmowa" ? "rozmowa" : "nie odebrała"}${v.note ? ` — ${v.note}` : ""}` : "—" };
+  }
+  if (p.kind === "POSTPONE") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { returnAt: string; reason: string; note: string | null }) : null;
+    return { what: `odłóż sygnał: ${p.leadTitle ?? "sygnał"}`, from: readable(p.currentValue), to: v ? `do ${v.returnAt} · ${v.reason.toLowerCase()}${v.note ? ` — ${v.note}` : ""}` : "—" };
+  }
+  if (p.kind === "RESIGN") {
+    const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { reason: string; note: string | null; recontactAt: string | null }) : null;
+    return { what: "klient zrezygnował", from: readable(p.currentValue), to: v ? `${v.reason.toLowerCase().replace(/_/g, " ")}${v.recontactAt ? ` · ponowny kontakt ${v.recontactAt}` : ""}${v.note ? ` — ${v.note}` : ""}` : "—" };
+  }
   if (p.kind === "CLIENT_NEW") {
     const v = p.proposedValue ? (JSON.parse(p.proposedValue) as { name: string; phone: string | null; email: string | null; city: string | null }) : null;
     return { what: "nowy klient", from: null, to: v ? [v.name, v.phone, v.email, v.city].filter(Boolean).join(" · ") : "—" };

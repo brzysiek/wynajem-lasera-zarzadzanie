@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withClientTag } from "@/lib/rental-client-tag";
 import { recordChanges } from "@/lib/changelog/record";
 import { qualifyClient } from "@/lib/clients/qualify";
+import { clearResignedForRentals } from "@/lib/clients/resign";
 import { auth } from "@/auth";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
@@ -173,6 +174,8 @@ export async function POST(req: NextRequest) {
       { entity: "RENTAL", entityId: rental.id, operation: "MATCH_ASSIGN", clientId, field: "clientId", before: null, after: clientId },
     ]);
     await qualifyClient(clientId, "RENTAL");
+    // Wniosek 24: nowa rezerwacja zdejmuje stan „Zrezygnował”.
+    await clearResignedForRentals([rental.id], session.user.id);
 
     // Contact assignment is best-effort: the calendar event and rental are
     // already created at this point, so a HubSpot lookup failure shouldn't

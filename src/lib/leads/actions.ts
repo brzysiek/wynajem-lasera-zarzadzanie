@@ -20,6 +20,7 @@ type Lead = {
   clientId: string | null;
   ownerId: string | null;
   firstContactAt: Date | null;
+  lastContactAt: Date | null;
   rentalId: string | null;
   nextStepType: string | null;
   attempts: number;
@@ -29,7 +30,7 @@ type Lead = {
 async function getLead(id: string): Promise<Lead> {
   const lead = await prisma.lead.findUnique({
     where: { id },
-    select: { id: true, title: true, stage: true, clientId: true, ownerId: true, firstContactAt: true, rentalId: true, nextStepType: true, attempts: true, followUpNo: true },
+    select: { id: true, title: true, stage: true, clientId: true, ownerId: true, firstContactAt: true, lastContactAt: true, rentalId: true, nextStepType: true, attempts: true, followUpNo: true },
   });
   if (!lead) throw new LeadError("Sygnał nie istnieje.", 404);
   return lead;
@@ -140,6 +141,7 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
   if (patch.stage && patch.stage !== lead.stage && (["WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA", "ODLOZONE"].includes(patch.stage) || (patch.stage === "PRZEGRANA" && lead.firstContactAt))) {
     await qualifyClient(lead.clientId, "MANUAL");
   }
+  if (patch.nextActionAt !== undefined || patch.stage !== undefined) await syncLeadTasksFromStep(id);
 }
 
 // „email” = „Odpowiedziałam mailem” (prompt 2 v2, 3.3) — kwalifikuje klienta
@@ -201,6 +203,7 @@ export async function logLeadActivity(
   ]);
   if (input.outcome === "talked" || input.outcome === "callback" || input.outcome === "offer_sent") await qualifyClient(lead.clientId, "CALL");
   if (input.outcome === "email") await qualifyClient(lead.clientId, "EMAIL_REPLY");
+  if (input.outcome !== "note") await syncLeadTasksFromStep(id);
 }
 
 // SMS z karty sygnału — ta sama bramka co reszta panelu (szybkisms), zapis
@@ -228,6 +231,27 @@ export async function sendLeadSms(id: string, phone: string, message: string, us
   ]);
 }
 
+// Wniosek 24: kontakt odnotowany wstecz (propozycja agenta „kontakt” z
+// notatek / maili, np. rozmowy Ani z 28.09) — wpis na osi czasu z datą
+// kontaktu, ostatni / pierwszy kontakt sygnału, kwalifikacja klienta.
+export async function recordPastContact(id: string, input: { at: Date; channel: "telefon" | "sms" | "mail"; result: "rozmowa" | "nie_odebrala"; note: string | null }, userId: string) {
+  const lead = await getLead(id);
+  const talked = input.result === "rozmowa";
+  const type = !talked ? "CALL_NO_ANSWER" : input.channel === "sms" ? "SMS" : input.channel === "mail" ? "EMAIL" : "CALL";
+  const head = talked ? `Kontakt (${input.channel})` : "Nie odebrała";
+  const later = (a: Date | null, b: Date) => (a && a > b ? a : b);
+  await prisma.$transaction([
+    prisma.lead.update({
+      where: { id },
+      data: talked
+        ? { lastContactAt: later(lead.lastContactAt, input.at), ...(!lead.firstContactAt || lead.firstContactAt > input.at ? { firstContactAt: input.at } : {}) }
+        : { attempts: { increment: 1 } },
+    }),
+    prisma.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type, body: [head, input.note].filter(Boolean).join(": "), userId, createdAt: input.at } }),
+  ]);
+  if (talked) await qualifyClient(lead.clientId, input.channel === "mail" ? "EMAIL_REPLY" : "CALL");
+}
+
 // Sama notatka przy sygnale — bez przejmowania sygnału, zmiany etapu i
 // terminu (rola AGENT: dopisuje obserwacje, nie prowadzi sygnałów).
 export async function addLeadNote(id: string, body: string, userId: string): Promise<{ activityId: string; clientId: string | null }> {
@@ -238,23 +262,58 @@ export async function addLeadNote(id: string, body: string, userId: string): Pro
   return { activityId: activity.id, clientId: lead.clientId };
 }
 
+// Wniosek 26: sygnał ma jeden następny krok. Zadanie przy sygnale nie tworzy
+// drugiej, rozbieżnej daty — termin kroku i termin otwartych zadań sygnału
+// są zawsze te same (zmiana w jednym miejscu zmienia drugie).
+const OPEN_LEAD_STAGES = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "ODLOZONE"];
+// Termin zadania to dzień (RRRR-MM-DD w UTC) — z lokalnego dnia kroku.
+export function taskDayOf(at: Date): Date {
+  return new Date(Date.UTC(at.getFullYear(), at.getMonth(), at.getDate(), 7));
+}
+
+// Krok sygnału → otwarte zadania przy nim (po każdej zmianie kroku).
+export async function syncLeadTasksFromStep(leadId: string): Promise<void> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { nextActionAt: true, stage: true } });
+  if (!lead?.nextActionAt || !OPEN_LEAD_STAGES.includes(lead.stage)) return;
+  const day = taskDayOf(lead.nextActionAt);
+  await prisma.task.updateMany({ where: { leadId, status: "OPEN", NOT: { dueDate: day } }, data: { dueDate: day } });
+}
+
+// Termin zadania → krok sygnału (zmiana terminu w zadaniu), godzina kroku zostaje.
+export async function syncLeadStepFromTask(leadId: string, due: Date | null, userId: string | null): Promise<void> {
+  if (!due) return;
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { nextActionAt: true, nextStepType: true, stage: true, clientId: true } });
+  if (!lead || !OPEN_LEAD_STAGES.includes(lead.stage) || lead.stage === "ODLOZONE") return;
+  const prev = lead.nextActionAt;
+  const at = new Date(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate(), prev ? prev.getHours() : 9, prev ? prev.getMinutes() : 0);
+  if (prev && prev.getTime() === at.getTime()) return;
+  await prisma.$transaction([
+    prisma.lead.update({ where: { id: leadId }, data: { nextActionAt: at, ...(lead.nextStepType ? {} : { nextStepType: "INNE" }) } }),
+    prisma.leadActivity.create({ data: { leadId, clientId: lead.clientId, type: "SYSTEM", body: `Termin kroku z zadania: ${at.toLocaleDateString("pl-PL")}`, userId } }),
+  ]);
+  await syncLeadTasksFromStep(leadId);
+}
+
 export async function createLeadTask(id: string, input: { title: string; dueDate: Date | null; assigneeId: string | null }, userId: string): Promise<string> {
   const lead = await getLead(id);
   const [task] = await prisma.$transaction([
     prisma.task.create({
       data: {
         title: input.title.slice(0, 191),
-        dueDate: input.dueDate,
+        dueDate: input.dueDate ? taskDayOf(input.dueDate) : null,
         authorId: userId,
         assigneeId: input.assigneeId ?? lead.ownerId ?? userId,
         leadId: id,
         clientId: lead.clientId,
+        links: { create: { kind: "LEAD", refId: id } },
       },
     }),
     prisma.leadActivity.create({
       data: { leadId: id, clientId: lead.clientId, type: "SYSTEM", body: `Zadanie: ${input.title}${input.dueDate ? ` (${input.dueDate.toLocaleDateString("pl-PL")})` : ""}`, userId },
     }),
   ]);
+  // Termin zadania = termin kroku sygnału (jedna data).
+  if (input.dueDate) await syncLeadStepFromTask(id, taskDayOf(input.dueDate), userId);
   return task.id;
 }
 

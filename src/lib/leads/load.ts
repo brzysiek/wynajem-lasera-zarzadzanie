@@ -103,6 +103,8 @@ export type LeadRow = {
   lastWorkAt: string | null;
   // Zapytanie stałej klientki — poza konwersją nowych (lejek v2).
   returningClient: boolean;
+  // Wniosek 24: klient w stanie „Zrezygnował” (poza pulą wiosny i Planem dnia).
+  clientResigned: boolean;
   // Wniosek 21: sygnał „wraca z wiosny” (Plan dnia) — ostatni wynajem,
   // rytm i sugerowany wolny termin tego urządzenia; null u pozostałych.
   spring: { lastAt: string | null; device: string | null; rhythm: string | null; suggest: string | null; dueAt: string | null; note: { at: string; by: string | null; body: string } | null } | null;
@@ -131,7 +133,7 @@ function queryRows(where: Parameters<typeof prisma.lead.findMany>[0] extends inf
   return prisma.lead.findMany({ where, orderBy: { createdAt: "desc" }, select: ROW_SELECT });
 }
 
-type Extra = { statuses: Map<string, ClientStatus>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]>; lastWork: Map<string, Date> };
+type Extra = { statuses: Map<string, ClientStatus>; resigned: Set<string>; qualified: Map<string, boolean>; talked: Set<string>; stageBodies: Map<string, (string | null)[]>; lastWork: Map<string, Date> };
 
 function toRow(l: RowSource, x: Extra): LeadRow {
   const statuses = x.statuses;
@@ -171,6 +173,7 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     lastWorkAt: x.lastWork.get(l.id)?.toISOString() ?? null,
     returningClient: l.returningClient,
     spring: null,
+    clientResigned: l.clientId ? x.resigned.has(l.clientId) : false,
     rentalId: l.rentalId,
     rentalStartsAt: l.rental?.startsAt.toISOString() ?? null,
     rentalDevice: l.rental?.device.name ?? null,
@@ -189,7 +192,7 @@ function toRow(l: RowSource, x: Extra): LeadRow {
 
 async function loadExtra(leads: { id: string; clientId: string | null }[]): Promise<Extra> {
   const clientIds = [...new Set(leads.map((l) => l.clientId).filter((x): x is string => Boolean(x)))];
-  const [info, qualified, talkedRows, stageRows, workRows] = await Promise.all([
+  const [info, qualified, talkedRows, stageRows, workRows, resignedRows] = await Promise.all([
     loadClientStatusInfo(clientIds),
     loadQualifiedMap(clientIds),
     prisma.leadActivity.groupBy({ by: ["leadId"], where: { leadId: { in: leads.map((l) => l.id) }, type: { in: ["CALL", "EMAIL"] } } }),
@@ -199,12 +202,13 @@ async function loadExtra(leads: { id: string; clientId: string | null }[]): Prom
       where: { leadId: { in: leads.map((l) => l.id) }, type: { in: ["CALL", "CALL_NO_ANSWER", "SMS", "EMAIL", "NOTE", "STAGE_CHANGE"] } },
       _max: { createdAt: true },
     }),
+    prisma.client.findMany({ where: { id: { in: clientIds }, resignedAt: { not: null } }, select: { id: true } }),
   ]);
   const lastWork = new Map(workRows.filter((r) => r._max.createdAt).map((r) => [r.leadId as string, r._max.createdAt as Date]));
   const stageBodies = new Map<string, (string | null)[]>();
   for (const a of stageRows) stageBodies.set(a.leadId!, [...(stageBodies.get(a.leadId!) ?? []), a.body]);
   const statuses = new Map([...info].map(([id, x]) => [id, x.status]));
-  return { statuses, qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies, lastWork };
+  return { statuses, resigned: new Set(resignedRows.map((r) => r.id)), qualified, talked: new Set(talkedRows.map((r) => r.leadId as string)), stageBodies, lastWork };
 }
 
 export async function loadLeadRows(): Promise<LeadRow[]> {

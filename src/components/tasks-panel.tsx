@@ -182,6 +182,21 @@ function DuePicker({ value, onChange }: { value: string | null; onChange: (v: st
   );
 }
 
+// Wniosek 26: „Dodaj zadanie” z każdej zakładki — powiązanie z tym, co jest
+// otwarte (sygnał ?id=, karta klienta, karta rezerwacji).
+type ContextLink = { kind: "LEAD" | "CLIENT" | "RENTAL"; id: string; label: string };
+function contextLink(): ContextLink | null {
+  if (typeof window === "undefined") return null;
+  const path = window.location.pathname.slice(BASE_PATH.length) || "/";
+  const q = new URLSearchParams(window.location.search);
+  if (path.startsWith("/sygnaly") && q.get("id")) return { kind: "LEAD", id: q.get("id")!, label: "otwarty sygnał" };
+  const client = path.match(/^\/klienci\/([^/?#]+)$/);
+  if (client && client[1] !== "dopasowania") return { kind: "CLIENT", id: client[1], label: "ten klient" };
+  const rental = path.match(/^\/kalendarz\/wynajem\/([^/?#]+)$/);
+  if (rental && rental[1] !== "nowy") return { kind: "RENTAL", id: rental[1], label: "ta rezerwacja" };
+  return null;
+}
+
 function sortOpen(a: TaskDto, b: TaskDto): number {
   // z terminem przed bez terminu; wśród z terminem — rosnąco wg daty.
   if (a.dueDate && b.dueDate) return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
@@ -219,14 +234,20 @@ export function TasksPanel({
   const [newDue, setNewDue] = useState<string | null>(null);
   const [newAssignee, setNewAssignee] = useState("");
   const [adding, setAdding] = useState(false);
+  const [ctx, setCtx] = useState<ContextLink | null>(null);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
   // Wniosek 18 c): domyślnie „Moje” (odpowiedzialna = zalogowana osoba);
   // agent — „Wszystkie” (tworzy zadania dla biura).
   const [mine, setMine] = useState(!isAgent);
-  const [showStale, setShowStale] = useState(false);
-  const [staleBefore] = useState(() => new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10));
+  // Wniosek 26: grupy wg terminu (dzień lokalny, RRRR-MM-DD).
+  const [days] = useState(() => {
+    const now = new Date();
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const add = (n: number) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
+    return { today: iso(now), tomorrow: iso(add(1)), weekEnd: iso(add(7 - ((now.getDay() + 6) % 7) - 1)) };
+  });
   const [focused, setFocused] = useState<string | null>(null);
   if (focusId !== focused) {
     // „adjust state during render” — nowe zadanie do pokazania.
@@ -288,6 +309,7 @@ export function TasksPanel({
           notes: newNotes.trim() || undefined,
           dueDate: newDue || undefined,
           assigneeId: newAssignee || undefined,
+          ...(ctx ? { [ctx.kind === "LEAD" ? "sygnaly" : ctx.kind === "CLIENT" ? "klienci" : "wynajmy"]: [ctx.id] } : {}),
         }),
       });
       const data = await res.json().catch(() => null);
@@ -362,8 +384,16 @@ export function TasksPanel({
   const scoped = mine ? tasks.filter(isMine) : tasks;
   // Zaległe ponad tydzień — oznaczone i zwinięte, żeby nie zalewały listy.
   const allOpen = scoped.filter((t) => t.status === "OPEN").sort(sortOpen);
-  const staleTasks = allOpen.filter((t) => t.dueDate && t.dueDate < staleBefore && t.id !== expandedId);
-  const openTasks = allOpen.filter((t) => !staleTasks.includes(t));
+  const groupOf = (t: TaskDto) =>
+    !t.dueDate ? "none" : t.dueDate < days.today ? "overdue" : t.dueDate === days.today ? "today" : t.dueDate === days.tomorrow ? "tomorrow" : t.dueDate <= days.weekEnd ? "week" : "later";
+  const GROUPS: { key: ReturnType<typeof groupOf>; label: string }[] = [
+    { key: "overdue", label: "Zaległe" },
+    { key: "today", label: "Dziś" },
+    { key: "tomorrow", label: "Jutro" },
+    { key: "week", label: "Ten tydzień" },
+    { key: "later", label: "Później" },
+    { key: "none", label: "Bez terminu" },
+  ];
   const doneTasks = scoped
     .filter((t) => t.status === "DONE")
     .sort((a, b) => ((a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1));
@@ -418,7 +448,10 @@ export function TasksPanel({
           {!composing ? (
             <button
               type="button"
-              onClick={() => setComposing(true)}
+              onClick={() => {
+                setCtx(contextLink());
+                setComposing(true);
+              }}
               className="flex w-full items-center gap-3 px-[18px] py-3.5 text-sm font-medium hover:bg-[#f8f9fa]"
               style={{ color: C.blue, borderBottom: `1px solid ${C.border}` }}
             >
@@ -452,6 +485,14 @@ export function TasksPanel({
                 className="mt-2 w-full resize-none bg-transparent text-[13px] outline-none placeholder:text-[#9aa0a6]"
                 style={{ color: C.text }}
               />
+              {ctx && (
+                <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: C.sub }}>
+                  Powiązane: {ctx.label}
+                  <button type="button" onClick={() => setCtx(null)} className="hover:underline" aria-label="Bez powiązania">
+                    ✕
+                  </button>
+                </div>
+              )}
               <div className="mt-1 flex items-center gap-2">
                 <DuePicker value={newDue} onChange={setNewDue} />
                 <select
@@ -513,47 +554,34 @@ export function TasksPanel({
           </div>
 
           <div className="py-1">
-            {openTasks.map((t) => (
-              <TaskRow
-                key={t.id}
-                task={t}
-                assignees={assignees}
-                expanded={expandedId === t.id}
-                onToggleExpand={() => setExpandedId((id) => (id === t.id ? null : t.id))}
-                onComplete={() => void patchTask(t.id, { status: "DONE" })}
-                onPatch={(p) => void patchTask(t.id, p)}
-                onDelete={() => void deleteTask(t.id)}
-                canEdit={!isAgent || t.author?.id === currentUserId}
-                canDelete={!isAgent}
-              />
-            ))}
+            {GROUPS.map((g) => {
+              const list = allOpen.filter((t) => groupOf(t) === g.key);
+              if (!list.length) return null;
+              return (
+                <div key={g.key}>
+                  <div className="px-[18px] pb-0.5 pt-2.5 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: g.key === "overdue" ? C.red : C.sub }}>
+                    {g.label} ({list.length})
+                  </div>
+                  {list.map((t) => (
+                    <TaskRow
+                      key={t.id}
+                      task={t}
+                      assignees={assignees}
+                      expanded={expandedId === t.id}
+                      onToggleExpand={() => setExpandedId((id) => (id === t.id ? null : t.id))}
+                      onComplete={() => void patchTask(t.id, { status: "DONE" })}
+                      onPatch={(p) => void patchTask(t.id, p)}
+                      onDelete={() => void deleteTask(t.id)}
+                      canEdit={!isAgent || t.author?.id === currentUserId}
+                      canDelete={!isAgent}
+                    />
+                  ))}
+                </div>
+              );
+            })}
           </div>
 
-          {staleTasks.length > 0 && (
-            <div style={{ borderTop: `1px solid ${C.border}` }}>
-              <button type="button" onClick={() => setShowStale((v) => !v)} className="flex w-full items-center gap-1.5 px-[18px] py-3 text-[13px] font-semibold" style={{ color: C.red }}>
-                <span className="text-xs">{showStale ? "▾" : "▸"}</span>
-                Zaległe ponad tydzień ({staleTasks.length})
-              </button>
-              {showStale &&
-                staleTasks.map((t) => (
-                  <TaskRow
-                    key={t.id}
-                    task={t}
-                    assignees={assignees}
-                    expanded={expandedId === t.id}
-                    onToggleExpand={() => setExpandedId((id) => (id === t.id ? null : t.id))}
-                    onComplete={() => void patchTask(t.id, { status: "DONE" })}
-                    onPatch={(p) => void patchTask(t.id, p)}
-                    onDelete={() => void deleteTask(t.id)}
-                    canEdit={!isAgent || t.author?.id === currentUserId}
-                    canDelete={!isAgent}
-                  />
-                ))}
-            </div>
-          )}
-
-          {openTasks.length === 0 && staleTasks.length === 0 && !loading && (
+          {allOpen.length === 0 && !loading && (
             <p className="px-[18px] py-8 text-center text-sm" style={{ color: C.sub }}>
               Brak zadań. Miło.
             </p>
@@ -663,6 +691,11 @@ function TaskRow({
             {!done && <DueBadge dueDate={task.dueDate} status={task.status} />}
             {task.assignee && <AssigneePill person={task.assignee} />}
             {!expanded && task.links.length > 0 && <LinkChips links={task.links} compact />}
+            {!expanded && task.links.length === 0 && (
+              <span className="text-xs" style={{ color: C.faint }}>
+                bez powiązania
+              </span>
+            )}
             {task.commentCount > 0 && (
               <span className="text-xs" style={{ color: C.sub }} title="Komentarze">
                 💬 {task.commentCount}

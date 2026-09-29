@@ -231,7 +231,10 @@ export function buildMatcher(
 
     const [top, second] = ranked;
     const clear = !second || top.score - second.score > config.ambiguityMargin;
-    if (top.score >= config.autoThreshold && top.variant >= config.autoMinVariant && clear) {
+    // Wniosek 24: po samej nazwie automatycznie tylko pełne dopasowanie
+    // (wynik 1,0) — niżej wyłącznie kandydat („Beauty” z „Beauty Inn” i
+    // „Pearl Beauty” przypisało 14 cudzych wynajmów Beauty Wood).
+    if (top.score >= Math.max(config.autoThreshold, 1 - 1e-9) && top.variant >= config.autoMinVariant && clear) {
       return { clientId: top.clientId, method: "NAME_AUTO", state: "AUTO", score: top.score, candidates: scored };
     }
     return { clientId: null, method: null, state: "SUGGESTED", score: top.score, candidates: scored };

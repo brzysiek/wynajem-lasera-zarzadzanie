@@ -70,7 +70,7 @@ const PCT_OF = ["", "z zapytań", "z kontaktu", "z ofert", "z rezerwacji"];
 // gabinetów z wiosny z wynikiem.
 function SeasonTile({ goal, playbook, onOpen }: { goal: SeasonGoal; playbook: Playbook; onOpen: (leadId: string) => void }) {
   const se = playbook.season;
-  const tone: Record<SpringOutcome, string> = { BOOKED: "text-[#2F7A68] font-semibold", TALKING: "text-[#1B6FA8]", POSTPONED: "text-[#5C6166]", LOST: "text-[#B8612F]", DO_NOT_CONTACT: "text-[#B8612F]", TODO: "text-[#5C6166]" };
+  const tone: Record<SpringOutcome, string> = { BOOKED: "text-[#2F7A68] font-semibold", TALKING: "text-[#1B6FA8]", POSTPONED: "text-[#5C6166]", LOST: "text-[#B8612F]", RESIGNED: "text-[#B8612F]", DO_NOT_CONTACT: "text-[#B8612F]", TODO: "text-[#5C6166]" };
   return (
     <div className="border border-[#E3E6E9] bg-white px-4 py-3.5">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">

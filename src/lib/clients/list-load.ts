@@ -103,6 +103,8 @@ export type ClientListRow = {
   nextStep: { text: string; dueAt: string | null; person: string | null; agent: boolean; href: string | null } | null;
   check: string | null; // „do sprawdzenia: …”
   beforeSeason: boolean;
+  // Wniosek 24: stan „Zrezygnował” (powód, data ponownego kontaktu) albo null.
+  resigned: { reason: string; at: string; recontactAt: string | null } | null;
   overdueRatio: number | null; // dni od ostatniego / rytm, bez rezerwacji
   pickupAt: string | null; // odbiór 1–3 dni temu bez kontaktu po nim
   trained: boolean; // było szkolenie (widok „Alma po szkoleniu”)
@@ -202,6 +204,9 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       geoQuery: true,
       nip: true,
       statusOverride: true,
+      resignedAt: true,
+      resignedReason: true,
+      resignedRecontactAt: true,
       source: true,
       clinicType: true,
       deviceInterests: true,
@@ -344,15 +349,15 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
     const author = meta?.verifiedBy ? authorBy.get(meta.verifiedBy) : undefined;
     const task = taskBy.get(c.id);
     const lead = c.leads.find((l) => !l.archivedAt && (OPEN_LEAD_STAGES as readonly string[]).includes(l.stage) && l.nextActionAt);
-    const nextStep: ClientListRow["nextStep"] = c.nextStepText
-      ? { text: c.nextStepText, dueAt: c.nextStepDueAt?.toISOString() ?? null, person: author?.name ?? null, agent: author?.role === "AGENT" || meta?.source === "agent", href: null }
-      : proposalBy.has(c.id)
-        ? { text: proposalBy.get(c.id)!, dueAt: null, person: null, agent: true, href: "/propozycje" }
-        : task
-          ? { text: task.title, dueAt: task.dueDate?.toISOString() ?? null, person: task.assignee?.name ?? null, agent: task.author?.role === "AGENT", href: null }
-          : lead
-            ? { text: `${lead.title} — zaplanowany kontakt`, dueAt: lead.nextActionAt!.toISOString(), person: null, agent: false, href: `/sygnaly?id=${lead.id}` }
-            : null;
+    // Wniosek 26: następny krok = najbliższa otwarta sprawa klienta (krok
+    // sygnału, zadanie albo ręczny krok) — jedno źródło, bez rozbieżnych dat.
+    const stepOptions: NonNullable<ClientListRow["nextStep"]>[] = [
+      ...(c.nextStepText ? [{ text: c.nextStepText, dueAt: c.nextStepDueAt?.toISOString() ?? null, person: author?.name ?? null, agent: author?.role === "AGENT" || meta?.source === "agent", href: null }] : []),
+      ...(task ? [{ text: task.title, dueAt: task.dueDate?.toISOString() ?? null, person: task.assignee?.name ?? null, agent: task.author?.role === "AGENT", href: null }] : []),
+      ...(lead ? [{ text: lead.nextStepNote ? `${lead.title} — ${lead.nextStepNote}` : `${lead.title} — zaplanowany kontakt`, dueAt: lead.nextActionAt!.toISOString(), person: null, agent: false, href: `/sygnaly?id=${lead.id}` }] : []),
+    ].sort((a, b) => (a.dueAt ?? "9999").localeCompare(b.dueAt ?? "9999"));
+    const nextStep: ClientListRow["nextStep"] =
+      stepOptions[0] ?? (proposalBy.has(c.id) ? { text: proposalBy.get(c.id)!, dueAt: null, person: null, agent: true, href: "/propozycje" } : null);
 
     // --- Do sprawdzenia, przed sezonem, po terminie, kontakt po wynajmie ---
     const facts = rentalRows.map(toFact);
@@ -467,9 +472,11 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       forecastAt: rhythm.forecast[0]?.toISOString() ?? null,
       nextStep,
       check,
-      beforeSeason,
+      // „Zrezygnował” wypada z „przed sezonem” i „Kontaktu po wynajmie” (wniosek 24).
+      beforeSeason: beforeSeason && !c.resignedAt,
+      resigned: c.resignedAt && c.resignedReason ? { reason: c.resignedReason, at: c.resignedAt.toISOString(), recontactAt: c.resignedRecontactAt?.toISOString() ?? null } : null,
       overdueRatio,
-      pickupAt,
+      pickupAt: c.resignedAt ? null : pickupAt,
       geo,
       geoPending: (!!addr && c.geoSource !== "MANUAL" && geoKey(addr) !== c.geoQuery) || (!!delivery && addressNeedsGeo(delivery)),
       // Trasa od bazy z paszportu dostawy (OSRM), inaczej linia prosta.

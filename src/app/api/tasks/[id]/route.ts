@@ -9,6 +9,7 @@ import { fieldEntries, recordChanges } from "@/lib/changelog/record";
 import { logInfo } from "@/lib/logger";
 import { parseDueDate, taskDto } from "@/lib/tasks";
 import { parseLinksBody, setTaskLinks, withLinks } from "@/lib/task-links";
+import { syncLeadStepFromTask } from "@/lib/leads/actions";
 
 const TASK_INCLUDE = {
   author: { select: { id: true, name: true, grammaticalGender: true } },
@@ -86,6 +87,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     const task = Object.keys(data).length ? await prisma.task.update({ where: { id }, data, include: TASK_INCLUDE }) : await prisma.task.findUniqueOrThrow({ where: { id }, include: TASK_INCLUDE });
+    // Wniosek 26: termin zadania przy sygnale = termin kroku sygnału.
+    if ("dueDate" in data && task.leadId && task.status === "OPEN") await syncLeadStepFromTask(task.leadId, task.dueDate, session.user.id);
     if (parsed.links) {
       await setTaskLinks(id, parsed.links);
       if (isAgent) await recordChanges(prisma, { userId: session.user.id }, [{ entity: "TASK", entityId: id, clientId: task.clientId, operation: "FIELD_CHANGE", field: "links", before: null, after: toLogValue(parsed.links) }]);

@@ -7,6 +7,7 @@ import { logError, logInfo } from "@/lib/logger";
 import { decideRentalClient, isGenericTitleKey, plausibleCandidate, seriesIndex, RENTAL_MATCH_LABEL, type CandidateNames, type RentalMatchMethod } from "@/lib/clients/rental-match-rules";
 import { setEventClient } from "@/lib/integrations/google-calendar";
 import { stripClientTag, withClientTag } from "@/lib/rental-client-tag";
+import { clearResignedForRentals } from "@/lib/clients/resign";
 
 // Rezerwacje bez klienta (wniosek nr 13). Wynajem z kalendarza dostawał
 // klienta tylko przez kontakt HubSpot — rezerwacje wpisane w kalendarzu
@@ -105,6 +106,7 @@ export async function linkUnassignedRentals(opts: { userId?: string; rentalIds?:
   if (assigned > 0) {
     logInfo("rentals_client_linked", { assigned, pending, byMethod: Object.fromEntries(byMethod) });
     await writeEventClientsSafe({ rentalIds: linked });
+    await clearResignedForRentals(linked, opts.userId ?? "");
   }
   return { assigned, pending };
 }
@@ -284,6 +286,7 @@ export async function assignRentalsToClient(input: { rentalIds: string[]; client
   const more = keys.length ? await linkUnassignedRentals({ userId: input.userId }) : { assigned: 0 };
   if (keys.length) await rematchHistory();
   await writeEventClientsSafe({ rentalIds: rows.map((r) => r.id) });
+  await clearResignedForRentals(rows.map((r) => r.id), input.userId);
   return { assigned: rows.length, autoAssigned: more.assigned };
 }
 
@@ -309,5 +312,6 @@ export async function changeRentalClient(input: { rentalId: string; clientId: st
   });
   if (input.clientId) await qualifyClient(input.clientId, "RENTAL");
   await writeEventClientsSafe({ rentalIds: [r.id] });
+  await clearResignedForRentals([r.id], input.userId);
   return { changed: true, autoAssigned: 0 };
 }

@@ -1,11 +1,12 @@
 "use client";
 
+import { TodayBar } from "@/components/today-bar";
 import { useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
 import { CARD_CSS_VARS } from "@/components/shell-tokens";
-import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_KEYS, DEVICE_INTEREST_LABEL, SOURCE_LABEL, STATUS_LABEL, type ClinicTypeKey, type DeviceInterestKey, type SourceKey } from "@/lib/clients/labels";
+import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_KEYS, DEVICE_INTEREST_LABEL, RESIGN_REASON_LABEL, SOURCE_LABEL, STATUS_LABEL, type ClinicTypeKey, type DeviceInterestKey, type ResignReasonKey, type SourceKey } from "@/lib/clients/labels";
 import type { ClientListRow } from "@/lib/clients/list-load";
 import type { ClientStatus } from "@/lib/clients/status";
 import type { SeasonWindow } from "@/lib/clients/list-rules";
@@ -42,12 +43,14 @@ const SORT_LABEL: Record<SortKey, string> = {
 type Risk = "niskie" | "średnie" | "wysokie" | "brak";
 type Gap = "phone" | "nip" | "city" | "email" | "zip" | "emailName";
 const GAP_LABEL: Record<Gap, string> = { phone: "bez telefonu", nip: "bez NIP", city: "bez miasta", email: "bez e-maila", zip: "bez kodu pocztowego", emailName: "nazwa = e-mail" };
-type Special = "season" | "afterRental" | "stepSoon" | "check" | null;
+type Special = "season" | "afterRental" | "stepSoon" | "check" | "resigned" | null;
 const SPECIAL_LABEL: Record<Exclude<Special, null>, string> = {
   season: "Przed sezonem",
   afterRental: "Kontakt po wynajmie",
   stepSoon: "Następny krok ≤ 7 dni",
   check: "Do sprawdzenia",
+  // Wniosek 24: filtr „Zrezygnowali” (klik w znacznik przy kliencie, ?widok=resigned).
+  resigned: "Zrezygnowali",
 };
 
 const PAGE = 50;
@@ -251,13 +254,14 @@ export function ClientsList({
     return clientsRows.filter((r) => r.nextStep?.dueAt && r.nextStep.dueAt < limitDay).sort((a, b) => (a.nextStep!.dueAt ?? "").localeCompare(b.nextStep!.dueAt ?? ""));
   }, [clientsRows, today]);
   const checks = useMemo(() => allRows.filter((r) => r.check), [allRows]);
+  const resignedRows = useMemo(() => allRows.filter((r) => r.resigned), [allRows]);
 
   const visible = useMemo(() => {
     const q = debounced.trim().toLowerCase();
     const qDigits = q.replace(/\D/g, "").replace(/^48(?=\d{3,})/, "");
     const specialSet =
-      special === "season" ? new Set(seasonRows.map((r) => r.id)) : special === "afterRental" ? new Set(afterRental.map((r) => r.id)) : special === "stepSoon" ? new Set(soon.map((r) => r.id)) : special === "check" ? new Set(checks.map((r) => r.id)) : null;
-    const base = special === "check" ? checks : tabRows;
+      special === "season" ? new Set(seasonRows.map((r) => r.id)) : special === "afterRental" ? new Set(afterRental.map((r) => r.id)) : special === "stepSoon" ? new Set(soon.map((r) => r.id)) : special === "check" ? new Set(checks.map((r) => r.id)) : special === "resigned" ? new Set(resignedRows.map((r) => r.id)) : null;
+    const base = special === "check" ? checks : special === "resigned" ? resignedRows : tabRows;
     const list = base.filter((r) => {
       if (q.length >= 2) {
         const textHit = r.search.includes(q);
@@ -293,7 +297,7 @@ export function ClientsList({
       created: (a, b) => b.createdAt.localeCompare(a.createdAt),
     };
     return list.sort(sorters[sort]);
-  }, [tabRows, tab, debounced, special, seasonRows, afterRental, soon, checks, status, stage, leadStage, region, device, clinicType, source, risk, overdue, noStep, gap, trained, sort]);
+  }, [tabRows, tab, debounced, special, seasonRows, afterRental, soon, checks, resignedRows, status, stage, leadStage, region, device, clinicType, source, risk, overdue, noStep, gap, trained, sort]);
 
   const page = visible.slice(0, limit);
   const selectedRows = allRows.filter((r) => selected.has(r.id));
@@ -320,9 +324,10 @@ export function ClientsList({
     resetPage();
   }
 
-  function applyView(v: "seasonLs" | "almaTrained" | "noNip") {
+  function applyView(v: "seasonLs" | "almaTrained" | "noNip" | "resigned") {
     clearFilters();
     setTab("KLIENCI");
+    if (v === "resigned") setSpecial("resigned");
     if (v === "seasonLs") {
       setSpecial("season");
       setDevice("LIGHTSHEER");
@@ -683,34 +688,13 @@ export function ClientsList({
           </div>
 
           {/* Do zrobienia dziś — jeden rząd kafli; lista pozycji po kliknięciu */}
-          <div className="mx-4 mt-4 bg-[#2B5B82] px-4 py-2.5 md:mx-7">
-            <div className="grid items-center gap-2 md:grid-cols-[150px_repeat(4,minmax(0,1fr))]">
-              <div className="flex flex-col text-white">
-                <span className="text-[15px] font-semibold leading-tight">Do zrobienia dziś</span>
-                <span className="text-[12px] text-[#BFD6EA]">
-                  {wdLong(today)} {dm(todayIso)}
-                </span>
-              </div>
-              {todayTiles.map((t) => {
-                const on = todayOpen === t.key;
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    aria-expanded={on}
-                    disabled={t.n === 0}
-                    onClick={() => setTodayOpen(on ? null : t.key)}
-                    className={`flex h-[52px] items-center gap-3 border px-3 text-left disabled:cursor-default ${on ? "border-white/70 bg-white/15" : "border-white/20 hover:bg-white/10"}`}
-                  >
-                    <span className="text-[22px] font-semibold leading-none text-white">{t.n}</span>
-                    <span className="flex min-w-0 flex-col">
-                      <span className={`truncate ${LABEL_WIDE} text-[#BFD6EA]`}>{t.label}</span>
-                      <span className="truncate text-[12px] text-[#DCE8F2]">{t.sub}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+          <TodayBar
+            title="Do zrobienia dziś"
+            dateLabel={`${wdLong(today)} ${dm(todayIso)}`}
+            tiles={todayTiles.map((t) => ({ key: t.key, label: t.label, n: t.n, sub: t.sub }))}
+            active={todayOpen}
+            onToggle={(k) => setTodayOpen(k as TodayKey | null)}
+          >
             {openTile && (
               <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-white/20 pt-2 text-[13px] text-white">
                 <span className="min-w-0 flex-1">{openTile.items.slice(0, 8).join(" · ")}{openTile.items.length > 8 ? ` · i ${openTile.items.length - 8} więcej` : ""}</span>
@@ -726,7 +710,7 @@ export function ClientsList({
                   ))}
               </div>
             )}
-          </div>
+          </TodayBar>
         </>
       )}
 
@@ -822,13 +806,14 @@ export function ClientsList({
             <select
               aria-label="Zapisane widoki"
               value=""
-              onChange={(e) => e.target.value && applyView(e.target.value as "seasonLs" | "almaTrained" | "noNip")}
+              onChange={(e) => e.target.value && applyView(e.target.value as "seasonLs" | "almaTrained" | "noNip" | "resigned")}
               className="absolute inset-0 cursor-pointer opacity-0"
             >
               <option value="">Zapisane widoki</option>
               <option value="seasonLs">Przed sezonem · LightSheer</option>
               <option value="almaTrained">Alma po szkoleniu ITP</option>
               <option value="noNip">Bez NIP</option>
+              <option value="resigned">Zrezygnowali ({resignedRows.length})</option>
             </select>
           </label>
         </div>
@@ -1106,6 +1091,11 @@ function ClientRow({
         </Link>
         <div className="flex min-w-0 items-center gap-2">
           <Badge status={r.status} />
+          {r.resigned && (
+            <span className="flex-none whitespace-nowrap bg-[#FBF0E7] px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] text-[#B8612F]" title={`Zrezygnował (${RESIGN_REASON_LABEL[r.resigned.reason as ResignReasonKey] ?? r.resigned.reason})${r.resigned.recontactAt ? ` · ponowny kontakt ${new Date(r.resigned.recontactAt).toLocaleDateString("pl-PL")}` : ""}`}>
+              zrezygnował
+            </span>
+          )}
           {r.rhythmHint && r.status !== "POTENCJALNY" && r.status !== "NIE_KONTAKTOWAC" && <span className="flex-none text-[12px] text-[#5C6166]">{r.rhythmHint}</span>}
           <span className="truncate text-[12px] text-[#5C6166]">{meta}</span>
         </div>

@@ -28,17 +28,20 @@ function PulseNavIcon() {
   );
 }
 
-// Liczba nowych sygnałów bez kontaktu (plakietka przy „Sygnały”) — pobierana
-// przy wejściu i co 2 minuty; błąd = brak plakietki, menu działa dalej.
-function useFreshLeadsCount(enabled: boolean, pathname: string) {
-  const [count, setCount] = useState(0);
+// Plakietki w menu (wniosek 26): Sygnały — moje na dziś, Klienci — pasek
+// „Do zrobienia dziś”, Kalendarz — „Do dopięcia”. Pobierane przy wejściu i
+// co 2 minuty; błąd = brak plakietek, menu działa dalej.
+type NavCounts = { sygnaly: number; klienci: number; kalendarz: number };
+const NO_COUNTS: NavCounts = { sygnaly: 0, klienci: 0, kalendarz: 0 };
+function useNavCounts(enabled: boolean, pathname: string): NavCounts {
+  const [counts, setCounts] = useState<NavCounts>(NO_COUNTS);
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
     const load = () =>
-      fetch(`${BASE_PATH}/api/leads/count`)
-        .then((r) => (r.ok ? r.json() : { count: 0 }))
-        .then((d) => alive && setCount(Number(d.count) || 0))
+      fetch(`${BASE_PATH}/api/nav-counts`)
+        .then((r) => (r.ok ? r.json() : NO_COUNTS))
+        .then((d) => alive && setCounts({ sygnaly: Number(d.sygnaly) || 0, klienci: Number(d.klienci) || 0, kalendarz: Number(d.kalendarz) || 0 }))
         .catch(() => {});
     load();
     const t = setInterval(load, 120_000);
@@ -47,7 +50,7 @@ function useFreshLeadsCount(enabled: boolean, pathname: string) {
       clearInterval(t);
     };
   }, [enabled, pathname]);
-  return enabled ? count : 0;
+  return enabled ? counts : NO_COUNTS;
 }
 
 function CalendarIcon() {
@@ -368,7 +371,7 @@ export function SidebarNav({
   }
 
   const items = itemsFor(role);
-  const freshLeads = useFreshLeadsCount(role === "ADMIN" || role === "STAFF" || role === "AGENT", pathname);
+  const counts = useNavCounts(role === "ADMIN" || role === "STAFF" || role === "AGENT", pathname);
 
   return (
     <nav
@@ -391,7 +394,7 @@ export function SidebarNav({
                 icon={item.icon}
                 collapsed={collapsed}
                 active={active}
-                badge={item.href === "/sygnaly" ? freshLeads : 0}
+                badge={item.href === "/sygnaly" ? counts.sygnaly : item.href === "/klienci" ? counts.klienci : item.href === "/kalendarz" ? counts.kalendarz : 0}
               />
               {/* Tylko na samej sekcji Kalendarz — na innych stronach (np. Finanse)
                   ten filtr nie ma znaczenia, więc się nie pokazuje. */}

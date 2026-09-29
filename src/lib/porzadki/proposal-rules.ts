@@ -7,7 +7,8 @@ import { parseSplitInput } from "../clients/split-rules";
 import { parseExclusionList } from "./exclusion-rules";
 import { PRICE_SOURCES, isTermsDevice } from "../clients/terms-rules";
 import { LOST_REASON_KEYS, LOST_REASON_LABEL, TYPE_KEYS, type LostReasonKey } from "../leads/labels";
-import { DEVICE_INTEREST_KEYS, type DeviceInterestKey } from "../clients/labels";
+import { DEVICE_INTEREST_KEYS, RESIGN_REASON_KEYS, type DeviceInterestKey, type ResignReasonKey } from "../clients/labels";
+import { POSTPONE_REASON_KEYS, type PostponeReasonKey } from "../leads/labels";
 import type { LeadTypeKey } from "../leads/parse-deal";
 
 export const PROPOSAL_KIND_LABEL = {
@@ -27,6 +28,9 @@ export const PROPOSAL_KIND_LABEL = {
   CLIENT_NEW: "nowy klient",
   RENTAL_CLIENT: "klient rezerwacji",
   CLIENT_ALIAS: "alias klienta (tytuł wydarzenia)",
+  CONTACT_LOG: "kontakt z klientką",
+  POSTPONE: "odłożenie sygnału",
+  RESIGN: "rezygnacja klienta",
 } as const;
 export type ProposalKind = keyof typeof PROPOSAL_KIND_LABEL;
 
@@ -61,6 +65,9 @@ const KIND_ALIASES: Record<string, ProposalKind> = {
   klient_nowy: "CLIENT_NEW",
   przypisanie_klienta: "RENTAL_CLIENT",
   alias_klienta: "CLIENT_ALIAS",
+  kontakt: "CONTACT_LOG",
+  odlozenie: "POSTPONE",
+  rezygnacja: "RESIGN",
 };
 
 export type SignalNewProposal = {
@@ -82,6 +89,13 @@ export type RentalLinkProposal = { rentalId: string };
 export type ClientNewProposal = { name: string; phone: string | null; email: string | null; city: string | null; source: string | null };
 export type RentalClientProposal = { rentalId: string; alias: boolean };
 export type ClientAliasProposal = { title: string };
+// Wniosek 24: kontakt odnotowany przez agenta (z notatek / maili), odłożenie
+// sygnału i rezygnacja klienta.
+export const CONTACT_CHANNELS = ["telefon", "sms", "mail"] as const;
+export const CONTACT_RESULTS = ["rozmowa", "nie_odebrala"] as const;
+export type ContactLogProposal = { at: string; channel: (typeof CONTACT_CHANNELS)[number]; result: (typeof CONTACT_RESULTS)[number]; note: string | null };
+export type PostponeProposal = { returnAt: string; reason: PostponeReasonKey; note: string | null };
+export type ResignProposal = { reason: ResignReasonKey; note: string | null; recontactAt: string | null };
 
 const LEAD_STEP_TYPES = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA", "FOLLOW_UP_OFERTY", "ODDZWONI", "DOPYTAC", "UMOW_TERMIN", "INNE"];
 const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ł/g, "l").replace(/[^a-z]+/g, " ").trim();
@@ -147,7 +161,7 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
   if (!kind)
     return {
       ok: false,
-      message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie, dopasowanie_platnosci, wykluczenie, cennik_klienta, adres_dostawy, sygnal_nowy, powod_przegranej, krok_sygnalu, powiazanie_wynajmu, klient_nowy, przypisanie_klienta albo alias_klienta.",
+      message: "rodzaj: pole, osoba, archiwizacja, scalenie, wydzielenie, dopasowanie_platnosci, wykluczenie, cennik_klienta, adres_dostawy, sygnal_nowy, powod_przegranej, krok_sygnalu, powiazanie_wynajmu, klient_nowy, przypisanie_klienta, alias_klienta, kontakt, odlozenie albo rezygnacja.",
     };
   const provenance = parseProvenance(item, { required: true });
   if (!provenance.ok) return provenance;
@@ -188,6 +202,32 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
     if (!clientId && !proposed.contactName && !proposed.contactPhone && !proposed.contactEmail) return { ok: false, message: "Podaj klient_id albo imie / telefon / email." };
     if (proposed.requestedFrom && !/^\d{4}-\d{2}-\d{2}$/.test(proposed.requestedFrom)) return { ok: false, message: "termin: RRRR-MM-DD." };
     return { ok: true, value: { ...base, kind, field: proposed.sourceRef, proposed } };
+  }
+  if (kind === "CONTACT_LOG" || kind === "POSTPONE") {
+    const leadId = str(item.sygnal_id ?? item.leadId, 64);
+    if (!leadId) return { ok: false, message: "Podaj sygnal_id." };
+    if (kind === "CONTACT_LOG") {
+      const at = str(item.data ?? item.at, 16);
+      if (!at || !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(at)) return { ok: false, message: "data: RRRR-MM-DD albo RRRR-MM-DDTHH:MM." };
+      const channel = (str(item.kanal ?? item.channel, 16)?.toLowerCase() ?? "telefon") as ContactLogProposal["channel"];
+      if (!CONTACT_CHANNELS.includes(channel)) return { ok: false, message: "kanal: telefon, sms albo mail." };
+      const result = (str(item.wynik ?? item.result, 16)?.toLowerCase() ?? "rozmowa") as ContactLogProposal["result"];
+      if (!CONTACT_RESULTS.includes(result)) return { ok: false, message: "wynik: rozmowa albo nie_odebrala." };
+      return { ok: true, value: { ...base, kind, leadId, field: `${at}|${channel}`, proposed: { at, channel, result, note: str(item.notatka ?? item.note, 2000) } satisfies ContactLogProposal } };
+    }
+    const returnAt = str(item.data_powrotu ?? item.returnAt, 10);
+    if (!returnAt || !/^\d{4}-\d{2}-\d{2}$/.test(returnAt)) return { ok: false, message: "data_powrotu: RRRR-MM-DD." };
+    const reasonRaw = str(item.powod ?? item.reason, 32)?.toUpperCase() ?? "";
+    if (!(POSTPONE_REASON_KEYS as readonly string[]).includes(reasonRaw)) return { ok: false, message: `powod: ${POSTPONE_REASON_KEYS.join(", ")}.` };
+    return { ok: true, value: { ...base, kind, leadId, field: "returnAt", proposed: { returnAt, reason: reasonRaw as PostponeReasonKey, note: str(item.notatka ?? item.note, 1000) } satisfies PostponeProposal } };
+  }
+  if (kind === "RESIGN") {
+    if (!clientId) return { ok: false, message: "Podaj klient_id." };
+    const reasonRaw = str(item.powod ?? item.reason, 32)?.toUpperCase() ?? "";
+    if (!(RESIGN_REASON_KEYS as readonly string[]).includes(reasonRaw)) return { ok: false, message: `powod: ${RESIGN_REASON_KEYS.join(", ")}.` };
+    const recontactAt = str(item.data_ponownego_kontaktu ?? item.recontactAt, 10);
+    if (recontactAt && !/^\d{4}-\d{2}-\d{2}$/.test(recontactAt)) return { ok: false, message: "data_ponownego_kontaktu: RRRR-MM-DD." };
+    return { ok: true, value: { ...base, kind, field: "resigned", proposed: { reason: reasonRaw as ResignReasonKey, note: str(item.notatka ?? item.note, 1000), recontactAt } satisfies ResignProposal } };
   }
   if (kind === "CLIENT_NEW") {
     const proposed: ClientNewProposal = {
