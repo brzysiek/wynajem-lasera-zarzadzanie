@@ -57,6 +57,17 @@ export function AppShell({
   const showNotifications = role === "ADMIN" && !driverPreview;
   const [tasksOpen, setTasksOpen] = useState(false);
   const [openTaskCount, setOpenTaskCount] = useState<number | null>(null);
+  // Wniosek 22 / 18 c): „Otwarte zadania” na kartach i Plan dnia otwierają
+  // panel Zadań zdarzeniem wl:open-task (detail = id zadania albo null).
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      setTasksOpen(true);
+      setFocusTaskId((e as CustomEvent<string | null>).detail ?? null);
+    };
+    window.addEventListener("wl:open-task", onOpen);
+    return () => window.removeEventListener("wl:open-task", onOpen);
+  }, []);
 
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
@@ -139,6 +150,7 @@ export function AppShell({
                 currentUserId={userId}
                 onCountChange={setOpenTaskCount}
                 isAgent={role === "AGENT"}
+                focusId={focusTaskId}
               />
             )}
             {showNotifications && <NotificationsPanel />}

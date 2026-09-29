@@ -5,6 +5,7 @@ import type { DayProgress, LeadRow } from "@/lib/leads/load";
 import { FIRST_CONTACT_SLA_HOURS, type TodayGroup, type TodayItem } from "@/lib/leads/funnel";
 import { REWARD_STEP, nextReward, rewardUnlockedAt, type Playbook } from "@/lib/leads/playbook";
 import type { SeasonGoal, SeasonWin } from "@/lib/leads/season-goal";
+import { openTask } from "@/components/open-tasks";
 import { StageChip } from "./lead-ui";
 
 // Sygnały → Lista „Na dziś” (zasady-wzor.html, ekran 1): „Plan dnia” w
@@ -21,6 +22,7 @@ export function PlanBand<T extends LeadRow>({
   progress,
   playbook,
   goal,
+  tasks,
   selected,
   onSelect,
 }: {
@@ -29,6 +31,7 @@ export function PlanBand<T extends LeadRow>({
   progress: DayProgress;
   playbook: Playbook;
   goal: SeasonGoal;
+  tasks: { today: number; overdue: number };
   selected: TodayGroup | null;
   onSelect: (g: TodayGroup | null) => void;
 }) {
@@ -46,7 +49,7 @@ export function PlanBand<T extends LeadRow>({
     { no: 1, title: "Dzisiejsze wynajmy", n: progress.rentalsToday, sub: progress.rentalsToday ? `${progress.rentalsWithDriver} z ${progress.rentalsToday} z kierowcą` : "brak dziś", group: null },
     { no: 2, title: "Nowe zapytania", n: of("new").length, sub: `z ${untouchedTotal} · kontakt w ${FIRST_CONTACT_SLA_HOURS} h rob.`, group: "new" },
     { no: 3, title: "Umówione telefony", n: of("calls").length, sub: names(of("calls")), group: "calls" },
-    { no: 4, title: "Wracają z wiosny", n: of("spring").length, sub: `wracają ${goal.returning} z ${se.returningTarget}`, group: "spring" },
+    { no: 4, title: "Wracają z wiosny", n: of("spring").length, sub: `wracają ${goal.returning} z ${se.returningTarget} · w puli ${goal.pool}`, group: "spring" },
     { no: 5, title: "Follow-upy ofert", n: of("followups").length, sub: names(of("followups")), group: "followups" },
     { no: 6, title: "Wracają odłożone", n: of("back").length, sub: names(of("back")), group: "back" },
   ];
@@ -80,6 +83,11 @@ export function PlanBand<T extends LeadRow>({
         <div className="my-1.5 h-2 bg-[#D5E9E0]">
           <i className="block h-2 bg-[#2F7A68]" style={{ width: `${pct}%` }} />
         </div>
+        {/* Wniosek 18 c): zadania w Planie dnia — klik otwiera panel Zadań („Moje”). */}
+        <button type="button" onClick={() => openTask(null)} className="mb-1 block text-left text-[12px] text-[#0C3450] hover:underline" title="Otwórz Zadania">
+          Zadania: {tasks.today} na dziś
+          {tasks.overdue > 0 && <span className="font-semibold text-[#B8612F]"> · {tasks.overdue} zaległe</span>} →
+        </button>
         <div className="text-[12px] text-[#5C6166]">
           Tydzień: {progress.weekOffers} {plural(progress.weekOffers, "oferta", "oferty", "ofert")} → {progress.weekReservations} {plural(progress.weekReservations, "rezerwacja", "rezerwacje", "rezerwacji")}
         </div>

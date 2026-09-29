@@ -201,3 +201,17 @@ describe("krok zgodny z etapem (kontrola 29.09 09:35, pkt 2)", () => {
     expect(stageForStep("WYWIAD", "DOPYTAC")).toBeNull();
   });
 });
+
+describe("Wracają z wiosny — 3 dziennie wg rytmu (wniosek 21)", () => {
+  it("z puli nieobdzwonionych bierze 3 z najbliższym terminem rytmu; zaplanowane ręcznie wg swojej daty", () => {
+    const now = at(30, 12);
+    const spring = (id: string, dueDay: number | null, x: Partial<FunnelLead> = {}) =>
+      ({ ...lead({ id, firstContactAt: null, stage: "WYWIAD", nextStepType: "UMOW_TERMIN", nextActionAt: at(7, 9, 0, 10), ...x }), sourceRef: `wiosna:${id}`, spring: { dueAt: dueDay ? at(dueDay, 9, 0, 9).toISOString() : null } });
+    const t = buildToday([spring("a", 20), spring("b", 5), spring("c", null), spring("d", 10), spring("e", 1), spring("oddzwoni", 1, { nextStepType: "ODDZWONI", nextActionAt: at(16, 9, 0, 10) })], now);
+    expect(t.map((x) => [x.lead.id, x.group])).toEqual([
+      ["e", "spring"],
+      ["b", "spring"],
+      ["d", "spring"],
+    ]);
+  });
+});

@@ -9,6 +9,7 @@ import { FUNNEL_FROM, REACH_ORDER, funnelFromRow, rotInfo, type FunnelLead } fro
 import { Avatar, Dots, Seg, periodTouch } from "./funnel-views";
 import { StageChip } from "./lead-ui";
 import { StageLegend } from "./plan-day";
+import type { CardIntent } from "./lead-card";
 import { LEAD_STAGE_COLORS } from "@/components/shell-tokens";
 
 // Sygnały → Tablica (wzór lejek-v2-wzor.html, s2): jedyny lejek w panelu.
@@ -77,7 +78,7 @@ export function BoardView({
   now: Date;
   selectedId: string | null;
   readOnly: boolean;
-  onOpen: (id: string) => void;
+  onOpen: (id: string, intent?: CardIntent) => void;
   onMove: (id: string, stage: LeadStageKey) => void;
   onLost: (id: string) => void;
   onQuick: (id: string, outcome: "talked" | "offer_sent") => Promise<void>;
@@ -184,7 +185,7 @@ export function BoardView({
           const shown = expanded ? col : col.slice(0, PER_COLUMN);
           const c = conv(stage);
           return (
-            <div key={stage} {...dropProps(stage)} className={`min-h-[200px] p-2.5 ${drop === stage ? "bg-[#EAF4FB] outline outline-2 outline-[#1B6FA8]" : "bg-[#F4F6F8]"}`}>
+            <div key={stage} {...dropProps(stage)} className={`min-h-[200px] min-w-0 p-2.5 ${drop === stage ? "bg-[#EAF4FB] outline outline-2 outline-[#1B6FA8]" : "bg-[#F4F6F8]"}`}>
               <div className="-mx-2.5 -mt-2.5 mb-2 h-1" style={{ background: LEAD_STAGE_COLORS[stage].dot }} />
               <div className="mb-2 flex items-baseline justify-between gap-2">
                 <b className="text-[14px] font-semibold text-[#0C3450]">
@@ -212,9 +213,10 @@ export function BoardView({
                         setDrop(null);
                       }}
                       onClick={() => onOpen(r.id)}
-                      className={`cursor-pointer border border-l-[3px] px-2.5 py-2 ${d.late ? "border-l-[#E08A5C] bg-[#FFFBF8]" : "border-l-[#1B6FA8] bg-white"} ${selectedId === r.id ? "border-[#1B6FA8]" : "border-[#E3E6E9]"} ${dragId === r.id ? "opacity-50" : ""}`}
+                      className={`min-w-0 cursor-pointer border border-l-[3px] px-2.5 py-2 ${d.late ? "border-l-[#E08A5C] bg-[#FFFBF8]" : "border-l-[#1B6FA8] bg-white"} ${selectedId === r.id ? "border-[#1B6FA8]" : "border-[#E3E6E9]"} ${dragId === r.id ? "opacity-50" : ""}`}
                     >
-                      <div className="font-semibold text-[#0C3450]">
+                      {/* Wniosek 18 a): długi e-mail jako nazwa nie rozpycha karty — 2 linie z zawijaniem, pełna nazwa w dymku. */}
+                      <div className="line-clamp-2 min-w-0 font-semibold text-[#0C3450] [overflow-wrap:anywhere]" title={`${who(r)}${dev ? ` · ${dev}` : ""}`}>
                         {who(r)}
                         {dev && <span className="font-normal text-[#5C6166]"> · {dev}</span>}
                       </div>
@@ -240,6 +242,11 @@ export function BoardView({
                           {(r.stage === "SYGNAL" || r.stage === "WYWIAD") && (
                             <button type="button" disabled={busy === r.id} className={QA} onClick={() => void quick(r.id, "offer_sent")} title="Wysłałam ofertę → Oferta wysłana, follow-up +3 dni rob.">
                               Oferta
+                            </button>
+                          )}
+                          {r.stage === "REZERWACJA" && !r.rentalId && (
+                            <button type="button" className={QA} onClick={() => onOpen(r.id, "link")} title="Lista wynajmów tego klienta i podobnych — wybór jednym kliknięciem">
+                              Powiąż z wynajmem
                             </button>
                           )}
                           <button type="button" className={QA} onClick={() => onPostpone(r.id)} title="Odłóż do… — data powrotu i powód">

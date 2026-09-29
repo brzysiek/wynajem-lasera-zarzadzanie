@@ -56,8 +56,9 @@ describe("arrivalDates / arrivalRhythmLabel", () => {
     expect(arrivalDates([ago(10), ago(12), ago(9), ago(40)]).length).toBe(2);
   });
 
-  it("rytm: co ok. N mies., okazjonalnie (< 2 w roku), brak przy 1 przyjeździe", () => {
-    expect(arrivalRhythmLabel([ago(10), ago(70), ago(130), ago(190)])).toBe("co ok. 2 mies.");
+  it("rytm: co ~N tyg. / co ~N mies., okazjonalnie (< 2 w roku), brak przy 1 przyjeździe", () => {
+    expect(arrivalRhythmLabel([ago(10), ago(45), ago(80)])).toBe("co ~5 tyg.");
+    expect(arrivalRhythmLabel([ago(10), ago(100), ago(190)])).toBe("co ~3 mies.");
     expect(arrivalRhythmLabel([ago(10), ago(300), ago(600)])).toBe("okazjonalnie");
     expect(arrivalRhythmLabel([ago(10), ago(11)])).toBeNull();
   });

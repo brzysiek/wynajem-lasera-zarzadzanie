@@ -1,5 +1,7 @@
 "use client";
 
+import { OpenTasks } from "@/components/open-tasks";
+import type { OpenTaskDto } from "@/lib/task-links";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
@@ -777,6 +779,7 @@ export function RentalForm({
   previewPulseTiers = [],
   defaultVatRate = 23,
   backHref,
+  openTasks = [],
 }: {
   devices: Device[];
   rental: Rental | null;
@@ -797,6 +800,8 @@ export function RentalForm({
   previewPulseTiers?: PreviewPulseTier[];
   defaultVatRate?: number;
   backHref: string;
+  // Wniosek 22: otwarte zadania powiązane z rezerwacją.
+  openTasks?: OpenTaskDto[];
 }) {
   const router = useRouter();
   const isEditing = Boolean(rental);
@@ -1317,6 +1322,12 @@ export function RentalForm({
                 onChange={handleFinanceChange}
                 clientTerms={clientTerms}
               />
+            )}
+
+            {openTasks.length > 0 && (
+              <div className="rounded-lg border border-gray-200 bg-white p-5">
+                <OpenTasks tasks={openTasks} />
+              </div>
             )}
 
             {isEditing && (

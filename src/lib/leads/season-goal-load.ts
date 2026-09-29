@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { loadClientStatusInfo } from "@/lib/clients/load";
 import type { Playbook } from "@/lib/leads/playbook";
-import { SPRING_LIST_KEY, SPRING_REF_PREFIX, computeSeasonGoal, parseSpringList, seasonBounds, springOutcome, type SeasonGoal } from "@/lib/leads/season-goal";
+import { SPRING_LIST_KEY, SPRING_REF_PREFIX, computeSeasonGoal, inSpringPool, parseSpringList, seasonBounds, springOutcome, type SeasonGoal } from "@/lib/leads/season-goal";
 
 // Cel sezonu z bazy (wniosek 21): wynajmy w sezonie, wcześniejsze przyjazdy
 // klientów i zamrożona lista „wracają z wiosny”.
@@ -27,7 +27,7 @@ export async function loadSeasonGoal(season: Playbook["season"]): Promise<Season
       select: { clientId: true, startsAt: true, createdAt: true, eventType: true, deletedInGoogle: true, device: { select: { name: true } }, client: { select: { name: true, shortName: true } } },
     }),
     loadClientStatusInfo(clientIds),
-    prisma.client.findMany({ where: { id: { in: springIds } }, select: { id: true, name: true, shortName: true } }),
+    prisma.client.findMany({ where: { id: { in: springIds } }, select: { id: true, name: true, shortName: true, statusOverride: true } }),
     prisma.lead.findMany({
       where: { clientId: { in: springIds }, archivedAt: null, createdAt: { gte: new Date(from.getTime() - 60 * 86_400_000) } },
       orderBy: { createdAt: "desc" },
@@ -58,10 +58,10 @@ export async function loadSeasonGoal(season: Playbook["season"]): Promise<Season
       return {
         clientId: c.id,
         name: c.shortName ?? c.name,
-        outcome: springOutcome(booked.has(c.id), lead),
+        outcome: springOutcome(booked.has(c.id), lead, c.statusOverride === "NIE_KONTAKTOWAC"),
         leadId: lead?.id ?? null,
         bookedAt: goal.wins.find((w) => w.clientId === c.id)?.startsAt ?? null,
       };
     });
-  return { ...goal, spring };
+  return { ...goal, spring, pool: spring.filter((r) => inSpringPool(r.outcome)).length };
 }

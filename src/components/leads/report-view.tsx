@@ -70,7 +70,7 @@ const PCT_OF = ["", "z zapytań", "z kontaktu", "z ofert", "z rezerwacji"];
 // gabinetów z wiosny z wynikiem.
 function SeasonTile({ goal, playbook, onOpen }: { goal: SeasonGoal; playbook: Playbook; onOpen: (leadId: string) => void }) {
   const se = playbook.season;
-  const tone: Record<SpringOutcome, string> = { BOOKED: "text-[#2F7A68] font-semibold", TALKING: "text-[#1B6FA8]", POSTPONED: "text-[#5C6166]", LOST: "text-[#B8612F]", TODO: "text-[#5C6166]" };
+  const tone: Record<SpringOutcome, string> = { BOOKED: "text-[#2F7A68] font-semibold", TALKING: "text-[#1B6FA8]", POSTPONED: "text-[#5C6166]", LOST: "text-[#B8612F]", DO_NOT_CONTACT: "text-[#B8612F]", TODO: "text-[#5C6166]" };
   return (
     <div className="border border-[#E3E6E9] bg-white px-4 py-3.5">
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -90,7 +90,9 @@ function SeasonTile({ goal, playbook, onOpen }: { goal: SeasonGoal; playbook: Pl
           nowi <b className="text-[#0C3450]">{goal.fresh}</b> / {se.newTarget}
         </span>
       </div>
-      <div className="text-[10px] uppercase tracking-[0.1em] text-[#5C6166]">Wracają z wiosny ({goal.spring.length})</div>
+      <div className="text-[10px] uppercase tracking-[0.1em] text-[#5C6166]">
+        Wracają z wiosny ({goal.spring.length}) · w puli {goal.pool}
+      </div>
       <ul className="m-0 mt-1 grid list-none gap-x-4 p-0 text-[12.5px] sm:grid-cols-2">
         {goal.spring.map((r) => (
           <li key={r.clientId} className="flex items-baseline justify-between gap-2 border-b border-[#F0F1F2] py-1">

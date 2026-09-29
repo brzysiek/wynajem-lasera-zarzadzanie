@@ -10,7 +10,9 @@ import { ARCHIVE_2025, FUNNEL_FROM, buildToday, maxStageReached } from "@/lib/le
 import { STAGE_HISTORY_LABELS } from "@/lib/leads/labels";
 import { SPRING_REF_PREFIX } from "@/lib/leads/season-goal";
 import { freeDatesFor } from "@/lib/leads/offer-draft";
-import { arrivalRhythmLabel } from "@/lib/clients/status";
+import { loadRentalCandidates, type RentalCandidate } from "@/lib/leads/rental-candidates";
+import { loadOpenTasksFor, type OpenTaskDto } from "@/lib/task-links";
+import { arrivalGapDays, arrivalRhythmLabel } from "@/lib/clients/status";
 
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
@@ -102,7 +104,7 @@ export type LeadRow = {
   returningClient: boolean;
   // Wniosek 21: sygnał „wraca z wiosny” (Plan dnia) — ostatni wynajem,
   // rytm i sugerowany wolny termin tego urządzenia; null u pozostałych.
-  spring: { lastAt: string | null; device: string | null; rhythm: string | null; suggest: string | null } | null;
+  spring: { lastAt: string | null; device: string | null; rhythm: string | null; suggest: string | null; dueAt: string | null; note: { at: string; by: string | null; body: string } | null } | null;
   rentalId: string | null;
   rentalStartsAt: string | null;
   rentalDevice: string | null;
@@ -220,7 +222,7 @@ async function loadSpringInfo(leads: { id: string; clientId: string | null; stag
   if (!todo.length) return out;
   const ids = todo.map((l) => l.clientId as string);
   const now = new Date();
-  const [rentals, history, info] = await Promise.all([
+  const [rentals, history, info, notes] = await Promise.all([
     prisma.rental.findMany({
       where: { clientId: { in: ids }, eventType: "WYNAJEM", deletedInGoogle: false, startsAt: { lte: now } },
       select: { clientId: true, startsAt: true, device: { select: { name: true, pricingCategory: true } } },
@@ -230,6 +232,13 @@ async function loadSpringInfo(leads: { id: string; clientId: string | null; stag
       select: { clientId: true, startsAt: true, device: { select: { name: true, pricingCategory: true } } },
     }),
     loadClientStatusInfo(ids),
+    // Wniosek 18 d): notatka z ostatnich 14 dni (sygnał albo karta klienta),
+    // żeby nie dzwonić drugi raz do tej samej osoby.
+    prisma.leadActivity.findMany({
+      where: { clientId: { in: ids }, type: { in: ["NOTE", "CALL", "CALL_NO_ANSWER", "SMS"] }, createdAt: { gte: new Date(now.getTime() - 14 * 86_400_000) }, body: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { clientId: true, createdAt: true, body: true, user: { select: { name: true } } },
+    }),
   ]);
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   for (const l of todo) {
@@ -237,11 +246,18 @@ async function loadSpringInfo(leads: { id: string; clientId: string | null; stag
     const last = all[0] ?? null;
     const cat = last?.device.pricingCategory ?? null;
     const free = cat ? (await freeDatesFor([cat], tomorrow, 1)).dates[0] : null;
+    const realized = info.get(l.clientId as string)?.realized ?? [];
+    const gap = arrivalGapDays(realized);
+    const lastArrival = realized.length ? Math.max(...realized.map((x) => x.getTime())) : null;
+    const note = notes.find((n) => n.clientId === l.clientId && n.body?.trim());
     out.set(l.id, {
       lastAt: last?.startsAt.toISOString() ?? null,
       device: last?.device.name ?? null,
-      rhythm: arrivalRhythmLabel(info.get(l.clientId as string)?.realized ?? []),
+      rhythm: arrivalRhythmLabel(realized),
       suggest: free?.toISOString() ?? null,
+      // Wniosek 21: „komu zbliża się termin” — ostatni przyjazd + rytm.
+      dueAt: lastArrival != null && gap != null ? new Date(lastArrival + gap * 86_400_000).toISOString() : null,
+      note: note ? { at: note.createdAt.toISOString(), by: note.user?.name ?? null, body: (note.body ?? "").trim().slice(0, 160) } : null,
     });
   }
   return out;
@@ -259,7 +275,7 @@ export async function loadArchived2025Rows(): Promise<LeadRow[]> {
 export async function countLeadWork(userId: string, now = new Date()): Promise<number> {
   const leads = await prisma.lead.findMany({
     where: { archivedAt: null, ownerId: userId, stage: { in: ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "ODLOZONE"] }, createdAt: { gte: FUNNEL_FROM } },
-    select: { id: true, stage: true, type: true, createdAt: true, firstContactAt: true, lastContactAt: true, stageChangedAt: true, nextActionAt: true, nextStepType: true, nextStepNote: true, attempts: true, ownerId: true, rentalId: true, contactPhone: true, returnAt: true },
+    select: { id: true, stage: true, type: true, createdAt: true, firstContactAt: true, lastContactAt: true, stageChangedAt: true, nextActionAt: true, nextStepType: true, nextStepNote: true, attempts: true, ownerId: true, rentalId: true, contactPhone: true, returnAt: true, sourceRef: true },
   });
   return buildToday(leads.map((l) => ({ ...l, phone: l.contactPhone })), now).length;
 }
@@ -319,7 +335,9 @@ export type LeadDetail = LeadRow & {
   activities: LeadActivityDto[];
   otherLeads: { id: string; title: string; stage: LeadStageKey; createdAt: string }[];
   clientRentals: { id: string; startsAt: string; deviceName: string }[];
-  rentalOptions: { id: string; startsAt: string; deviceName: string; title: string }[];
+  rentalOptions: RentalCandidate[];
+  // Wniosek 22: otwarte zadania powiązane z sygnałem.
+  openTasks: OpenTaskDto[];
 };
 
 export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
@@ -330,7 +348,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
   if (!lead) return null;
   const row = toRow(lead, await loadExtra([lead]));
 
-  const [activities, otherLeads, clientRentals, rentalOptions, emails] = await Promise.all([
+  const [activities, otherLeads, clientRentals, rentalOptions, emails, openTasks] = await Promise.all([
     prisma.leadActivity.findMany({
       where: { OR: [{ leadId: id }, ...(lead.clientId ? [{ clientId: lead.clientId }] : [])] },
       orderBy: { createdAt: "desc" },
@@ -353,26 +371,8 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
           select: { id: true, startsAt: true, device: { select: { name: true } } },
         })
       : Promise.resolve([]),
-    // Do „Powiąż z rezerwacją”: wynajmy klienta i wynajmy w pobliżu
-    // zgłoszonego terminu, bez już powiązanych z innym sygnałem.
-    prisma.rental.findMany({
-      where: {
-        deletedInGoogle: false,
-        eventType: "WYNAJEM",
-        lead: null,
-        startsAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
-        OR: [
-          ...(lead.clientId ? [{ clientId: lead.clientId }] : []),
-          ...(lead.requestedFrom
-            ? [{ startsAt: { gte: new Date(lead.requestedFrom.getTime() - 7 * 86_400_000), lte: new Date(lead.requestedFrom.getTime() + 7 * 86_400_000) } }]
-            : []),
-          { createdAt: { gte: lead.createdAt } },
-        ],
-      },
-      orderBy: { startsAt: "asc" },
-      take: 25,
-      select: { id: true, startsAt: true, title: true, device: { select: { name: true } } },
-    }),
+    // Do „Powiąż z wynajmem” (wniosek 18 b): kandydaci od razu w karcie.
+    lead.rentalId ? Promise.resolve([]) : loadRentalCandidates(id),
     // E-maile klienta z ostatnich 30 dni (prompt 3, 4.4) — tylko metadane.
     lead.clientId
       ? prisma.emailMessage.findMany({
@@ -382,6 +382,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
           select: { id: true, direction: true, subject: true, snippet: true, sentAt: true, mailbox: true },
         })
       : Promise.resolve([]),
+    loadOpenTasksFor("LEAD", id),
   ]);
 
   return {
@@ -416,7 +417,8 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
     ].sort((a, b) => b.at.localeCompare(a.at)),
     otherLeads: otherLeads.map((l) => ({ id: l.id, title: l.title, stage: l.stage, createdAt: l.createdAt.toISOString() })),
     clientRentals: clientRentals.map((r) => ({ id: r.id, startsAt: r.startsAt.toISOString(), deviceName: r.device.name })),
-    rentalOptions: rentalOptions.map((r) => ({ id: r.id, startsAt: r.startsAt.toISOString(), deviceName: r.device.name, title: r.title })),
+    rentalOptions,
+    openTasks,
   };
 }
 
@@ -432,20 +434,36 @@ export async function loadStaffUsers(): Promise<{ id: string; name: string }[]> 
 // nie migracja) zrobił dziś coś sam: rozmowa, nieodebrany, oferta, SMS, zmiana
 // etapu (też przegrana i odłożenie). doneByUser — to samo per osoba (filtr
 // „Moje”). Akceptacja propozycji agenta idzie na konto agenta, więc się nie liczy.
-export type DayProgress = { rentalsToday: number; rentalsWithDriver: number; doneToday: number; doneByUser: Record<string, number>; weekOffers: number; weekReservations: number };
+export type DayProgress = {
+  rentalsToday: number;
+  rentalsWithDriver: number;
+  doneToday: number;
+  doneByUser: Record<string, number>;
+  weekOffers: number;
+  weekReservations: number;
+  // Wniosek 18 c): otwarte zadania na dziś i zaległe — per odpowiedzialna osoba.
+  tasksByUser: Record<string, { today: number; overdue: number }>;
+};
 
 export async function loadDayProgress(now = new Date()): Promise<DayProgress> {
   const sod = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const eod = new Date(sod.getTime() + 86_400_000);
   const monday = new Date(sod.getTime() - ((sod.getDay() + 6) % 7) * 86_400_000);
-  const [rentals, done, stageRows] = await Promise.all([
+  const [rentals, done, stageRows, dueTasks] = await Promise.all([
     prisma.rental.findMany({ where: { deletedInGoogle: false, eventType: "WYNAJEM", startsAt: { gte: sod, lt: eod } }, select: { driverId: true } }),
     prisma.leadActivity.groupBy({
       by: ["leadId", "userId"],
       where: { createdAt: { gte: sod }, leadId: { not: null }, user: { role: { in: ["ADMIN", "STAFF"] } }, type: { in: ["CALL", "CALL_NO_ANSWER", "EMAIL", "SMS", "STAGE_CHANGE"] } },
     }),
     prisma.leadActivity.findMany({ where: { type: "STAGE_CHANGE", createdAt: { gte: monday }, leadId: { not: null } }, select: { leadId: true, body: true } }),
+    prisma.task.findMany({ where: { status: "OPEN", assigneeId: { not: null }, dueDate: { lt: eod } }, select: { assigneeId: true, dueDate: true } }),
   ]);
+  const tasksByUser: DayProgress["tasksByUser"] = {};
+  for (const t of dueTasks) {
+    const u = (tasksByUser[t.assigneeId as string] ??= { today: 0, overdue: 0 });
+    if (t.dueDate && t.dueDate < sod) u.overdue++;
+    else u.today++;
+  }
   const reached = (label: string) => new Set(stageRows.filter((r) => (r.body ?? "").includes(`→ ${label}`)).map((r) => r.leadId)).size;
   return {
     rentalsToday: rentals.length,
@@ -454,5 +472,6 @@ export async function loadDayProgress(now = new Date()): Promise<DayProgress> {
     doneByUser: done.reduce<Record<string, number>>((m, d) => (d.userId ? { ...m, [d.userId]: (m[d.userId] ?? 0) + 1 } : m), {}),
     weekOffers: reached("Oferta wysłana"),
     weekReservations: reached("Rezerwacja"),
+    tasksByUser,
   };
 }

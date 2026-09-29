@@ -97,15 +97,23 @@ export function computeClientStatus(input: {
   return realized.length >= 2 ? "STALY" : "NOWY";
 }
 
-// Rytm obok statusu (wniosek 20, pkt 4): „co ok. N mies.” z mediany odstępów
+// Rytm obok statusu (wniosek 20, pkt 4): „co ~N tyg.” / „co ~N mies.” z mediany odstępów
 // między przyjazdami albo „okazjonalnie”, gdy wychodzi mniej niż 2 przyjazdy
 // w roku. Przy jednym przyjeździe — brak rytmu.
-export function arrivalRhythmLabel(realizedRentalDates: Date[]): string | null {
+// Mediana odstępu między przyjazdami w dniach (≥ 2 przyjazdy) albo null.
+export function arrivalGapDays(realizedRentalDates: Date[]): number | null {
   const a = arrivalDates(realizedRentalDates);
   if (a.length < 2) return null;
   const gaps = a.slice(1).map((d, i) => dayIndex(d) - dayIndex(a[i])).sort((x, y) => x - y);
   const mid = gaps.length / 2;
-  const median = gaps.length % 2 ? gaps[Math.floor(mid)] : (gaps[mid - 1] + gaps[mid]) / 2;
+  return gaps.length % 2 ? gaps[Math.floor(mid)] : (gaps[mid - 1] + gaps[mid]) / 2;
+}
+
+export function arrivalRhythmLabel(realizedRentalDates: Date[]): string | null {
+  const median = arrivalGapDays(realizedRentalDates);
+  if (median == null) return null;
   if (median > 365 / 2) return "okazjonalnie";
-  return `co ok. ${Math.max(1, Math.round(median / 30.44))} mies.`;
+  // Do ~10 tygodni w tygodniach („co ~5 tyg.”), dalej w miesiącach.
+  if (median < 70) return `co ~${Math.max(1, Math.round(median / 7))} tyg.`;
+  return `co ~${Math.round(median / 30.44)} mies.`;
 }

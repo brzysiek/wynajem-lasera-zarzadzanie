@@ -66,6 +66,11 @@ export async function mergeClients(
     moved.sygnaly = (await tx.lead.updateMany({ where, data })).count;
     moved.notatki = (await tx.leadActivity.updateMany({ where, data })).count;
     moved.zadania = (await tx.task.updateMany({ where, data })).count;
+    // Powiązania zadań (wniosek 22): klient scalany → docelowy; gdy zadanie
+    // ma już docelowego, stare powiązanie po prostu znika.
+    const targetLinked = (await tx.taskLink.findMany({ where: { kind: "CLIENT", refId: targetId }, select: { taskId: true } })).map((l) => l.taskId);
+    await tx.taskLink.deleteMany({ where: { kind: "CLIENT", refId: sourceId, taskId: { in: targetLinked } } });
+    await tx.taskLink.updateMany({ where: { kind: "CLIENT", refId: sourceId }, data: { refId: targetId } });
     moved.sms = (await tx.message.updateMany({ where, data })).count;
     moved.emaile = (await tx.emailMessage.updateMany({ where, data })).count;
     moved.uwagi = (await tx.remark.updateMany({ where, data })).count;

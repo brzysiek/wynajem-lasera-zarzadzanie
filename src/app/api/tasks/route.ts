@@ -7,6 +7,7 @@ import { toLogValue } from "@/lib/changelog/diff";
 import { recordChanges } from "@/lib/changelog/record";
 import { logInfo } from "@/lib/logger";
 import { parseDueDate, taskDto } from "@/lib/tasks";
+import { parseLinksBody, setTaskLinks, withLinks } from "@/lib/task-links";
 
 const TASK_INCLUDE = {
   author: { select: { id: true, name: true, grammaticalGender: true } },
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
     orderBy: [{ status: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
   });
 
-  return NextResponse.json({ tasks: tasks.map(taskDto) });
+  return NextResponse.json({ tasks: await withLinks(tasks.map(taskDto)) });
 }
 
 export async function POST(req: NextRequest) {
@@ -61,10 +62,15 @@ export async function POST(req: NextRequest) {
   // dla osób z włączonym „agentAssignable” (Tomek, Ania).
   if (isAgent && !(await agentMayAssign(assigneeId))) return NextResponse.json({ message: AGENT_ASSIGNEE_MESSAGE }, { status: 400 });
 
+  // Wniosek 22: powiązania {wynajmy, klienci, sygnaly, faktury} (tablice ID).
+  const parsed = await parseLinksBody(body);
+  if (parsed.error) return NextResponse.json({ message: parsed.error }, { status: 400 });
+  const firstClient = parsed.links?.find((l) => l.kind === "CLIENT")?.refId ?? null;
   const task = await prisma.task.create({
-    data: { title, notes, dueDate, assigneeId, authorId: session.user.id },
+    data: { title, notes, dueDate, assigneeId, authorId: session.user.id, clientId: firstClient },
     include: TASK_INCLUDE,
   });
+  if (parsed.links) await setTaskLinks(task.id, parsed.links);
   if (isAgent) {
     await recordChanges(prisma, { userId: session.user.id }, [
       { entity: "TASK", entityId: task.id, operation: "CREATE", before: "null", after: toLogValue({ title, assigneeId, dueDate }) },
@@ -72,7 +78,7 @@ export async function POST(req: NextRequest) {
   }
   logInfo("task_created", { userId: session.user.id, taskId: task.id });
 
-  return NextResponse.json({ task: taskDto(task) });
+  return NextResponse.json({ task: (await withLinks([taskDto(task)]))[0] });
 }
 
 // Kasuje wszystkie ukończone zadania („Wyczyść ukończone"). Wymaga ?status=done

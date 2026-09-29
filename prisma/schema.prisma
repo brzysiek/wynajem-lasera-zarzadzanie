@@ -177,6 +177,9 @@ model Task {
   client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   comments TaskComment[]
+  // Wniosek 22: powiązania zadania (wiele wynajmów, klientów, sygnałów,
+  // faktur). clientId / leadId zostają dla zgodności i też są powiązaniami.
+  links       TaskLink[]
 
   @@index([status])
   @@index([authorId])
@@ -795,6 +798,10 @@ model Client {
   source            ClientSource?
   deviceInterests   Json? // DeviceInterest[]
   statusOverride    ClientStatusOverride?
+  // Ostatni policzony status (wniosek 20) — tylko do dziennika zmian: codzienny
+  // cron porównuje z bieżącą regułą i zapisuje zmianę (przed → po). Status
+  // nadal liczony przy odczycie (status.ts), to pole go nie ustala.
+  lastStatus        String?              @db.VarChar(16)
   notes             String?               @db.Text
   // Kwalifikacja (prompt 2 v2, 1.0): sygnał to zapytanie, klient to gabinet,
   // z którym faktycznie był kontakt. null = „kontakt z zapytania” (nie na
@@ -1394,6 +1401,21 @@ model ChangeLog {
 }
 
 // Komentarze do zadań (panel Zadań).
+// Wniosek 22: powiązanie zadania z wynajmem / klientem / sygnałem / fakturą.
+// refId bez klucza obcego (różne tabele) — brak rekordu = powiązanie pomijane.
+model TaskLink {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  kind      String   @db.VarChar(16) // RENTAL | CLIENT | LEAD | INVOICE
+  refId     String   @db.VarChar(191)
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, kind, refId])
+  @@index([kind, refId])
+  @@map("task_links")
+}
+
 model TaskComment {
   id        String   @id @default(cuid())
   taskId    String

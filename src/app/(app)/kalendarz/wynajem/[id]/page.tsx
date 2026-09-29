@@ -14,6 +14,8 @@ import { AgentRentalSummary } from "@/components/agent-rental-summary";
 import { Prisma } from "@prisma/client";
 import { clientPulseRate, financeDto, loadFinanceFormContext } from "@/lib/finance";
 import { rentalDurationDays } from "@/lib/pricing/duration";
+import { loadOpenTasksFor } from "@/lib/task-links";
+import { OpenTasks } from "@/components/open-tasks";
 
 const DEVICE_SELECT = {
   id: true,
@@ -43,17 +45,20 @@ const RENTAL_INCLUDE = {
   messages: { orderBy: { sentAt: "desc" as const } },
 };
 
-const ALLOWED_FROM = new Set(["/kalendarz", "/nadchodzace"]);
+const ALLOWED_FROM = new Set(["/kalendarz", "/nadchodzace", "/sygnaly"]);
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export default async function RentalDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ from?: string }>;
+  searchParams: Promise<{ from?: string; date?: string }>;
 }) {
   const { id } = await params;
   const { from } = await searchParams;
+  // Wniosek 22: „Otwarte zadania” powiązane z rezerwacją (biuro i agent).
+  const openTasks = await loadOpenTasksFor("RENTAL", id);
   const session = await auth();
   const role = session?.user.role;
   const viewCookie = (await cookies()).get(VIEW_COOKIE)?.value;
@@ -173,7 +178,9 @@ export default async function RentalDetailPage({
       <RentalReadonlyView
         rental={tripRental}
         financeSlot={
-          <AgentRentalSummary
+          <>
+            <OpenTasks tasks={openTasks} className="mb-4" />
+            <AgentRentalSummary
             tripInfo={
               <>
                 <DriverTripInfo rental={tripRental} />
@@ -208,6 +215,7 @@ export default async function RentalDetailPage({
               })),
             }}
           />
+          </>
         }
       />
     );
@@ -299,7 +307,9 @@ export default async function RentalDetailPage({
       previewPriceRules={financeCtx.previewPriceRules}
       previewPulseTiers={financeCtx.previewPulseTiers}
       defaultVatRate={financeCtx.defaultVatRate}
-      backHref={from && ALLOWED_FROM.has(from) ? from : "/kalendarz"}
+      // Powrót do kalendarza na dniu tej rezerwacji (stały adres, wniosek 22).
+      backHref={from && ALLOWED_FROM.has(from) && from !== "/kalendarz" ? from : `/kalendarz?date=${ymd(rental.startsAt)}`}
+      openTasks={openTasks}
     />
   );
 }

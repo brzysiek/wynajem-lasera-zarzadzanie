@@ -1,6 +1,7 @@
 // Współdzielone typy i czysta logika listy zadań (API + panel kliencki).
 // Bez importu wartości z @prisma/client — plik bezpieczny w bundlu przeglądarki.
 import type { GrammaticalGender, Task, TaskStatus } from "@prisma/client";
+import type { TaskLinkDto } from "./task-link-rules";
 
 export type TaskPerson = { id: string; name: string } | null;
 export type TaskAuthor = { id: string; name: string; gender: GrammaticalGender | null } | null;
@@ -19,6 +20,8 @@ export type TaskDto = {
   leadId: string | null;
   clientId: string | null;
   commentCount: number;
+  // Wniosek 22: powiązania (chipy) — uzupełnia serwer (task-links.ts).
+  links: TaskLinkDto[];
 };
 
 export type TaskCommentDto = { id: string; body: string; createdAt: string; author: string | null };
@@ -45,6 +48,7 @@ export function taskDto(row: TaskRow): TaskDto {
     leadId: row.leadId,
     clientId: row.clientId,
     commentCount: row._count?.comments ?? 0,
+    links: [],
   };
 }
 

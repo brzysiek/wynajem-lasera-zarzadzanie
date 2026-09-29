@@ -7,6 +7,7 @@ import { deviceCodeFor, invoiceNetOf, positionsSummary, type ClientPriceRow } fr
 import { getHubspotContactUrl } from "@/lib/integrations/hubspot";
 import type { ClinicTypeKey, DeviceInterestKey, SourceKey } from "@/lib/clients/labels";
 import { realizedDatesOf, summarizeClient } from "@/lib/clients/summary";
+import { loadOpenTasksFor, type OpenTaskDto } from "@/lib/task-links";
 import { rentalDurationDays } from "@/lib/pricing/duration";
 import { buildTransactions, rentalRhythmDays, transactionTotals, typicalPayment, type TxRental, type TxTotals } from "@/lib/clients/transactions";
 import { paymentLabel, type PaymentStatus } from "@/lib/clients/payment-status";
@@ -160,6 +161,8 @@ export type ClientDetail = {
   };
   // Zadania klienta (oś zdarzeń na karcie) — otwarte i ostatnie zamknięte.
   tasks: { id: string; title: string; status: string; dueDate: string | null; completedAt: string | null; createdAt: string; assigneeName: string | null }[];
+  // Wniosek 22: otwarte zadania powiązane z klientem (także przez task_links).
+  openTasks: OpenTaskDto[];
   summary: {
     status: ClientStatus;
     arrivals: number;
@@ -631,6 +634,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     take: 5,
     select: { title: true, dueDate: true, leadId: true },
   });
+  const openTasks = await loadOpenTasksFor("CLIENT", id);
   const clientTasks = await prisma.task.findMany({
     where: { clientId: id },
     orderBy: { createdAt: "desc" },
@@ -696,6 +700,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
         };
       })(),
     },
+    openTasks,
     tasks: clientTasks.map((t) => ({
       id: t.id,
       title: t.title,

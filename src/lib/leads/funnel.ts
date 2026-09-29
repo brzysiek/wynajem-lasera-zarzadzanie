@@ -405,12 +405,23 @@ export const isFreshInquiry = (l: { createdAt: Date }, now: Date) => now.getTime
 const PRIORITY_ORDER: Record<TodayPriority, number> = { late: 0, new: 1, today: 2, back: 3 };
 const CALL_STEPS = ["ODDZWONI", "PONOWNA_PROBA", "UMOW_TERMIN", "DOPYTAC"];
 
-export function buildToday<T extends FunnelLead & { nextStepNote?: string | null; sourceRef?: string | null }>(leads: T[], now: Date): TodayItem<T>[] {
+// Wniosek 21: „Wracają z wiosny” — 3 telefony dziennie z puli gabinetów
+// jeszcze nieobdzwonionych (krok „umówić termin”, bez kontaktu), wg rytmu:
+// najpierw ci, którym termin (ostatni przyjazd + rytm) już minął / zbliża się.
+export const SPRING_PER_DAY = 3;
+
+export function buildToday<T extends FunnelLead & { nextStepNote?: string | null; sourceRef?: string | null; spring?: { dueAt: string | null } | null; clientStatus?: string | null }>(leads: T[], now: Date): TodayItem<T>[] {
   const sod = startOfDay(now);
   const eod = endOfDay(now);
   const out: TodayItem<T>[] = [];
+  const springPool: T[] = [];
   for (const l of leads) {
     if (!in2026(l)) continue;
+    if (l.sourceRef?.startsWith(SPRING_REF_PREFIX) && l.stage === "WYWIAD" && l.nextStepType === "UMOW_TERMIN" && !l.lastContactAt && l.attempts === 0) {
+      // „Nie kontaktować” wypada z puli.
+      if (l.clientStatus !== "NIE_KONTAKTOWAC") springPool.push(l);
+      continue;
+    }
     const back = l.nextStepType === "POWROT" || (l.nextStepNote ?? "").startsWith("wraca z odłożonych");
     if (l.stage === "ODLOZONE") {
       if (l.returnAt && l.returnAt <= eod) out.push({ lead: l, priority: "back", group: "back" });
@@ -444,6 +455,11 @@ export function buildToday<T extends FunnelLead & { nextStepNote?: string | null
     if (!l.nextActionAt || l.nextActionAt > eod) continue;
     out.push({ lead: l, priority: l.nextActionAt < sod ? "late" : back ? "back" : "today", group });
   }
+  const due = (l: T) => (l.spring?.dueAt ? new Date(l.spring.dueAt).getTime() : Number.MAX_SAFE_INTEGER);
+  springPool
+    .sort((a, b) => due(a) - due(b) || (a.nextActionAt?.getTime() ?? 0) - (b.nextActionAt?.getTime() ?? 0))
+    .slice(0, SPRING_PER_DAY)
+    .forEach((l) => out.push({ lead: l, priority: "today", group: "spring" }));
   const t = (x: TodayItem<T>) => (x.priority === "today" || x.priority === "back" ? (x.lead.nextActionAt ?? x.lead.returnAt ?? x.lead.createdAt).getTime() : -x.lead.createdAt.getTime());
   return out.sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || t(a) - t(b));
 }

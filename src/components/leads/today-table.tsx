@@ -46,6 +46,19 @@ function step(r: Row): string {
   return r.nextStepNote ?? NEXT_STEP_LABEL[(r.nextStepType as NextStepType) ?? "INNE"];
 }
 
+// Wniosek 18 d): gabinet z wiosny — notatka z ostatnich 14 dni, żeby nie
+// dzwonić drugi raz do tej samej osoby.
+function SpringNote({ r }: { r: Row }) {
+  const n = r.spring?.note;
+  if (!n) return null;
+  return (
+    <div className="line-clamp-2 text-[12px] text-[#B8612F]" title={n.body}>
+      ✎ {d2(new Date(n.at))}
+      {n.by ? ` ${n.by}` : ""}: {n.body}
+    </div>
+  );
+}
+
 function when(x: TodayItem<Row>, now: Date): { text: string; tone: "late" | "today" } {
   const r = x.lead;
   if (r.stage === "SYGNAL" && !r.firstContactAt) {
@@ -115,9 +128,14 @@ export function TodayTable({
             Powiąż z wynajmem
           </button>
         ) : noRental ? (
+          <>
+          <button type="button" className={BTN_SM} onClick={() => onOpen(r.id, "link")} title="Lista wynajmów tego klienta i podobnych — wybór jednym kliknięciem">
+            Powiąż z wynajmem
+          </button>
           <Link href={`/kalendarz/wynajem/nowy?${new URLSearchParams({ ...(r.requestedFrom ? { date: r.requestedFrom.slice(0, 10) } : {}), sygnal: r.id }).toString()}`} className={BTN_SM}>
             Wpisz do kalendarza
           </Link>
+          </>
         ) : r.phone ? (
           <a href={`tel:${r.phone}`} onClick={() => onOpen(r.id, "call")} className={BTN_SM}>
             Zadzwoń
@@ -168,6 +186,7 @@ export function TodayTable({
                   </>
                 )}
               </div>
+              <SpringNote r={r} />
               <div className="mt-1 flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
                 {actions(r, untouched, noRental)}
               </div>
@@ -220,6 +239,7 @@ export function TodayTable({
                   )}
                   {note ? ` · ${note}` : ""}
                 </div>
+                <SpringNote r={r} />
               </div>
               <span>
                 <StageChip stage={r.stage} />

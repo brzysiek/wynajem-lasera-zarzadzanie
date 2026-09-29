@@ -446,7 +446,7 @@ export function LeadsManager({
                   now={now}
                   selectedId={selectedId}
                   readOnly={readOnly}
-                  onOpen={(id) => open(id)}
+                  onOpen={(id, i) => open(id, i ?? null)}
                   onMove={(id, stage) => void moveTo(id, stage)}
                   onLost={(id) => setLostIds([id])}
                   onQuick={quickOutcome}

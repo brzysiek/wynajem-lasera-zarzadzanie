@@ -1,5 +1,6 @@
 "use client";
 
+import { OpenTasks } from "@/components/open-tasks";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { APP_CSS_VARS, CARD_CSS_VARS } from "@/components/shell-tokens";
@@ -255,7 +256,12 @@ export function ClientFullCard({
             notify={notify}
             onOpenItem={openItem}
             onTab={switchTab}
-            top={<NextStepBanner d={d} onChanged={setD} notify={notify} onTask={(title, due) => setTask({ title, due })} />}
+            top={
+              <>
+                <NextStepBanner d={d} onChanged={setD} notify={notify} onTask={(title, due) => setTask({ title, due })} />
+                <OpenTasks tasks={d.openTasks} />
+              </>
+            }
           />
           <div className="flex xl:self-stretch [&>*]:w-full">
             <Tile>

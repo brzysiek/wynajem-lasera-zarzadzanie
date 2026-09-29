@@ -19,10 +19,12 @@ export type SeasonRental = { clientId: string; clientName: string; startsAt: Dat
 
 export type SeasonWin = { clientId: string; name: string; kind: "returning" | "new"; at: string; startsAt: string; device: string | null; no: number };
 
-export type SpringOutcome = "BOOKED" | "TALKING" | "POSTPONED" | "LOST" | "TODO";
+export type SpringOutcome = "BOOKED" | "TALKING" | "POSTPONED" | "LOST" | "DO_NOT_CONTACT" | "TODO";
 export type SpringRow = { clientId: string; name: string; outcome: SpringOutcome; leadId: string | null; bookedAt: string | null };
 
-export type SeasonGoal = { returning: number; fresh: number; total: number; wins: SeasonWin[]; spring: SpringRow[] };
+// pool — gabinety z listy wiosny wciąż do odzyskania: bez rezerwacji, nie
+// przegrane i bez „Nie kontaktować” (wniosek 21: przegrana / blokada wypada).
+export type SeasonGoal = { returning: number; fresh: number; total: number; wins: SeasonWin[]; spring: SpringRow[]; pool: number };
 
 export function seasonBounds(season: { from: string; to: string }): { from: Date; to: Date } {
   return { from: new Date(`${season.from}T00:00:00`), to: new Date(`${season.to}T23:59:59`) };
@@ -36,7 +38,7 @@ export function computeSeasonGoal(input: {
   springIds: string[];
   rentals: SeasonRental[];
   priorArrivals: Map<string, Date[]>;
-}): Omit<SeasonGoal, "spring"> {
+}): Omit<SeasonGoal, "spring" | "pool"> {
   const { from, to } = seasonBounds(input.season);
   const spring = new Set(input.springIds);
   const live = input.rentals.filter((r) => r.eventType === "WYNAJEM" && !r.deletedInGoogle);
@@ -69,8 +71,9 @@ export function computeSeasonGoal(input: {
 // Wynik gabinetu z listy wiosny (Raport → „Cel sezonu”): zarezerwowała /
 // w rozmowie / odłożona / rezygnuje / do telefonu — z rezerwacji w sezonie
 // albo etapu jego sygnału „wraca z wiosny”.
-export function springOutcome(booked: boolean, lead: { stage: string; lastContactAt: Date | null } | null): SpringOutcome {
+export function springOutcome(booked: boolean, lead: { stage: string; lastContactAt: Date | null } | null, doNotContact = false): SpringOutcome {
   if (booked) return "BOOKED";
+  if (doNotContact) return "DO_NOT_CONTACT";
   if (!lead) return "TODO";
   if (lead.stage === "REZERWACJA" || lead.stage === "WYGRANA") return "BOOKED";
   if (lead.stage === "ODLOZONE") return "POSTPONED";
@@ -83,10 +86,13 @@ export const SPRING_OUTCOME_LABEL: Record<SpringOutcome, string> = {
   TALKING: "w rozmowie",
   POSTPONED: "odłożona",
   LOST: "rezygnuje",
+  DO_NOT_CONTACT: "nie kontaktować",
   TODO: "do telefonu",
 };
 
 // Zamrożona lista (Setting season_spring_list: {"frozenAt","clientIds"}).
+export const inSpringPool = (o: SpringOutcome) => o === "TODO" || o === "TALKING" || o === "POSTPONED";
+
 export function parseSpringList(raw: string | null | undefined): string[] {
   try {
     const v = JSON.parse(raw ?? "") as { clientIds?: unknown };

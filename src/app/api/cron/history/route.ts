@@ -4,6 +4,7 @@ import { importInvoiceHistory } from "@/lib/history/invoice-import";
 import { getFakturowniaConfigStatus } from "@/lib/integrations/fakturownia";
 import { logWarn, logError, logInfo } from "@/lib/logger";
 import { enrichStaleClients } from "@/lib/clients/enrich";
+import { recordStatusChanges } from "@/lib/clients/status-log";
 
 // Codzienny cron historii klienta (prompt 3, 2.1 i 3): dopisuje wydarzenia,
 // które wypadły z 30-dniowego okna synchronizacji kalendarzy (jeśli nie ma
@@ -43,6 +44,13 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     logError("history_cron_enrich_failed", err);
     out.enrich = { error: err instanceof Error ? err.message : String(err) };
+  }
+  // Wniosek 20: zmiany statusu klientów (po imporcie historii) → dziennik.
+  try {
+    out.statuses = await recordStatusChanges();
+  } catch (err) {
+    logError("history_cron_status_failed", err);
+    out.statuses = { error: err instanceof Error ? err.message : String(err) };
   }
   if (!failed) logInfo("history_cron_ok", out);
   return NextResponse.json(out, { status: failed ? 500 : 200 });

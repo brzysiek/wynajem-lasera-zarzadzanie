@@ -18,13 +18,15 @@ import { BTN, BTN_PRIMARY, LostDialog } from "./lead-dialogs";
 import { StageChip, TaskIcon, XCircleIcon, fmtRange, fmtWhen } from "./lead-ui";
 import { Dots } from "./funnel-views";
 import { StageTip } from "./stage-tip";
+import { RentalPicker } from "./rental-picker";
+import { OpenTasks } from "@/components/open-tasks";
 import type { Playbook } from "@/lib/leads/playbook";
 
 // Karta sygnału (prompt 2, 3.3) — panel boczny z każdego widoku. Szybkie
 // akcje na górze, zawsze widoczne; pod nimi następny krok, rezerwacja, dane
 // z formularza i oś czasu (sygnał + inne aktywności tego klienta).
 
-export type CardIntent = "call" | "sms" | "postpone" | null;
+export type CardIntent = "call" | "sms" | "postpone" | "link" | null;
 type Panel = "call" | "sms" | "note" | "task" | null;
 type Template = { id: string; key: string; label: string; body: string };
 
@@ -47,9 +49,9 @@ const ACTIVITY_TONE: Record<ActivityTypeKey, { bg: string; fg: string; mark: str
   SYSTEM: { bg: "var(--c-bg)", fg: "var(--c-muted)", mark: "•" },
 };
 
-function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+function Section({ title, action, children, id }: { title: string; action?: React.ReactNode; children: React.ReactNode; id?: string }) {
   return (
-    <div className="flex flex-col gap-2">
+    <div id={id} className="flex scroll-mt-4 flex-col gap-2">
       <div className="flex items-center">
         <h3 className="m-0 flex-grow text-sm font-semibold text-[var(--c-navy)]">{title}</h3>
         {action}
@@ -87,7 +89,7 @@ export function LeadCard({
 }) {
   const [d, setD] = useState<LeadDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel>(intent === "postpone" || (agent && (intent === "call" || intent === "sms")) ? null : intent);
+  const [panel, setPanel] = useState<Panel>(intent === "postpone" || intent === "link" || (agent && (intent === "call" || intent === "sms")) ? null : intent);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [lost, setLost] = useState<false | { preset?: LostReasonKey }>(false);
@@ -109,6 +111,12 @@ export function LeadCard({
       alive = false;
     };
   }, [leadId]);
+
+  // „Powiąż z wynajmem” z listy / Tablicy — od razu do listy kandydatów.
+  const loadedId = d?.id;
+  useEffect(() => {
+    if (intent === "link" && loadedId) document.getElementById("lead-rental-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [intent, loadedId]);
 
   useEffect(() => {
     if (!toast || toast.error) return;
@@ -509,8 +517,10 @@ export function LeadCard({
           </div>
         )}
 
+        {d.openTasks.length > 0 && <OpenTasks tasks={d.openTasks} />}
+
         {/* Rezerwacja */}
-        <Section title="Rezerwacja">
+        <Section title="Rezerwacja" id="lead-rental-section">
           {d.rentalId ? (
             <div className="flex items-center gap-2 rounded-[10px] border border-[var(--c-border)] px-3 py-2 text-[13px]">
               <Link href={`/kalendarz/wynajem/${d.rentalId}?from=/sygnaly`} className="flex-grow font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
@@ -524,22 +534,8 @@ export function LeadCard({
             </div>
           ) : agent ? (
             <p className="text-[13px] text-[var(--c-faint)]">Brak powiązanego wynajmu.</p>
-          ) : d.rentalOptions.length > 0 ? (
-            <select
-              className={`${INPUT} cursor-pointer`}
-              defaultValue=""
-              disabled={busy}
-              onChange={(e) => e.target.value && void patch({ rentalId: e.target.value }, "Powiązano z rezerwacją — etap: Rezerwacja.")}
-            >
-              <option value="">Powiąż z wynajmem z kalendarza…</option>
-              {d.rentalOptions.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {fmtDate(r.startsAt)} · {r.deviceName} · {r.title}
-                </option>
-              ))}
-            </select>
           ) : (
-            <p className="text-[13px] text-[var(--c-faint)]">Brak wynajmu do powiązania. Utwórz rezerwację w kalendarzu przyciskiem wyżej.</p>
+            <RentalPicker leadId={d.id} initial={d.rentalOptions} busy={busy} onPick={(id) => void patch({ rentalId: id }, "Powiązano z rezerwacją — etap: Rezerwacja.")} />
           )}
           <p className="text-[12px] text-[var(--c-muted)]">Wynajem dla tego klienta w kalendarzu sam przesuwa sygnał do „Rezerwacja”, a zrealizowany — do „Wygrana”.</p>
         </Section>

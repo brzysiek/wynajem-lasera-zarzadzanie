@@ -121,6 +121,10 @@ export function ListView({
     .filter((x) => (todaySource === "all" ? true : todaySource === "www" ? WWW.includes(x.lead.type) : x.lead.type === "TELEFON"))
     .filter((x) => (f.device === "all" ? true : x.lead.devices.includes(f.device)));
   const untouchedTotal = scopedMine.filter((r) => r.stage === "SYGNAL" && !r.firstContactAt && r.createdAt >= FUNNEL_FROM && isFreshInquiry(r, now)).length;
+  const myTasks =
+    mine === "me"
+      ? (progress.tasksByUser[currentUserId] ?? { today: 0, overdue: 0 })
+      : Object.values(progress.tasksByUser).reduce((a, b) => ({ today: a.today + b.today, overdue: a.overdue + b.overdue }), { today: 0, overdue: 0 });
   const activeCount = rows.filter((r) => OPEN_STAGES.includes(r.stage) && new Date(r.createdAt) >= FUNNEL_FROM).length;
   const postponedCount = rows.filter((r) => r.stage === "ODLOZONE").length;
   const [query, setQuery] = useState("");
@@ -196,7 +200,7 @@ export function ListView({
   if (state === "today") {
     return (
       <div className="flex flex-col gap-3">
-        <PlanBand items={today} untouchedTotal={untouchedTotal} progress={mine === "me" ? { ...progress, doneToday: progress.doneByUser[currentUserId] ?? 0 } : progress} playbook={playbook} goal={seasonGoal} selected={group} onSelect={setGroup} />
+        <PlanBand items={today} untouchedTotal={untouchedTotal} progress={mine === "me" ? { ...progress, doneToday: progress.doneByUser[currentUserId] ?? 0 } : progress} playbook={playbook} goal={seasonGoal} tasks={myTasks} selected={group} onSelect={setGroup} />
         <WinToast goal={seasonGoal} now={now} playbook={playbook} userId={currentUserId} />
         <div className="flex flex-wrap items-center gap-2">
           {stateSeg}

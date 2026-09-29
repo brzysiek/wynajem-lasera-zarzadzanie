@@ -4,10 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { requireSession, requireStaffSession } from "@/lib/auth-guards";
 import { OFFICE_AND_AGENT } from "@/lib/permissions";
 import { AGENT_ASSIGNEE_MESSAGE, agentMayAssign } from "@/lib/agent-api/assignees";
-import { changedFields } from "@/lib/changelog/diff";
+import { changedFields, toLogValue } from "@/lib/changelog/diff";
 import { fieldEntries, recordChanges } from "@/lib/changelog/record";
 import { logInfo } from "@/lib/logger";
 import { parseDueDate, taskDto } from "@/lib/tasks";
+import { parseLinksBody, setTaskLinks, withLinks } from "@/lib/task-links";
 
 const TASK_INCLUDE = {
   author: { select: { id: true, name: true, grammaticalGender: true } },
@@ -75,12 +76,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  if (Object.keys(data).length === 0) {
+  // Wniosek 22: powiązania {wynajmy, klienci, sygnaly, faktury} — zastępują dotychczasowe.
+  const parsed = await parseLinksBody(body);
+  if (parsed.error) return NextResponse.json({ message: parsed.error }, { status: 400 });
+
+  if (Object.keys(data).length === 0 && !parsed.links) {
     return NextResponse.json({ message: "Brak zmian." }, { status: 400 });
   }
 
   try {
-    const task = await prisma.task.update({ where: { id }, data, include: TASK_INCLUDE });
+    const task = Object.keys(data).length ? await prisma.task.update({ where: { id }, data, include: TASK_INCLUDE }) : await prisma.task.findUniqueOrThrow({ where: { id }, include: TASK_INCLUDE });
+    if (parsed.links) {
+      await setTaskLinks(id, parsed.links);
+      if (isAgent) await recordChanges(prisma, { userId: session.user.id }, [{ entity: "TASK", entityId: id, clientId: task.clientId, operation: "FIELD_CHANGE", field: "links", before: null, after: toLogValue(parsed.links) }]);
+    }
     if (isAgent && current) {
       const changes = changedFields(current as unknown as Record<string, unknown>, {
         title: task.title,
@@ -92,7 +101,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await recordChanges(prisma, { userId: session.user.id }, fieldEntries("TASK", id, task.clientId, changes));
     }
     logInfo("task_updated", { userId: session.user.id, taskId: id, fields: Object.keys(data) });
-    return NextResponse.json({ task: taskDto(task) });
+    return NextResponse.json({ task: (await withLinks([taskDto(task)]))[0] });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
       return NextResponse.json({ message: "Nie znaleziono zadania." }, { status: 404 });

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { avatarColor, avatarInitial } from "@/lib/avatar-color";
 import { dueChip, verbZlecil, type DueChipKind, type TaskCommentDto, type TaskDto } from "@/lib/tasks";
+import { allLinksResolved, type TaskLinkDto } from "@/lib/task-link-rules";
+import { MarkdownLite } from "@/components/markdown-lite";
 
 type Person = { id: string; name: string };
 
@@ -196,12 +198,15 @@ export function TasksPanel({
   currentUserId,
   onCountChange,
   isAgent = false,
+  focusId = null,
 }: {
   open: boolean;
   onClose: () => void;
   currentUserId: string;
   onCountChange?: (myOpenCount: number) => void;
   isAgent?: boolean;
+  // Zadanie do rozwinięcia (klik w „Otwarte zadania” na karcie / w Planie dnia).
+  focusId?: string | null;
 }) {
   const [tasks, setTasks] = useState<TaskDto[]>([]);
   const [assignees, setAssignees] = useState<Person[]>([]);
@@ -217,6 +222,20 @@ export function TasksPanel({
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
+  // Wniosek 18 c): domyślnie „Moje” (odpowiedzialna = zalogowana osoba);
+  // agent — „Wszystkie” (tworzy zadania dla biura).
+  const [mine, setMine] = useState(!isAgent);
+  const [showStale, setShowStale] = useState(false);
+  const [staleBefore] = useState(() => new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10));
+  const [focused, setFocused] = useState<string | null>(null);
+  if (focusId !== focused) {
+    // „adjust state during render” — nowe zadanie do pokazania.
+    setFocused(focusId);
+    if (focusId) {
+      setExpandedId(focusId);
+      setMine(false);
+    }
+  }
 
   const applyTasks = useCallback(
     (list: TaskDto[]) => {
@@ -339,8 +358,13 @@ export function TasksPanel({
     void fetchTasks();
   }
 
-  const openTasks = tasks.filter((t) => t.status === "OPEN").sort(sortOpen);
-  const doneTasks = tasks
+  const isMine = (t: TaskDto) => t.assignee?.id === currentUserId || (!t.assignee && t.author?.id === currentUserId);
+  const scoped = mine ? tasks.filter(isMine) : tasks;
+  // Zaległe ponad tydzień — oznaczone i zwinięte, żeby nie zalewały listy.
+  const allOpen = scoped.filter((t) => t.status === "OPEN").sort(sortOpen);
+  const staleTasks = allOpen.filter((t) => t.dueDate && t.dueDate < staleBefore && t.id !== expandedId);
+  const openTasks = allOpen.filter((t) => !staleTasks.includes(t));
+  const doneTasks = scoped
     .filter((t) => t.status === "DONE")
     .sort((a, b) => ((a.completedAt ?? "") < (b.completedAt ?? "") ? 1 : -1));
 
@@ -472,6 +496,22 @@ export function TasksPanel({
             </p>
           )}
 
+          <div className="flex items-center gap-1 px-[18px] pt-2 text-xs">
+            {([true, false] as const).map((m) => (
+              <button
+                key={String(m)}
+                type="button"
+                onClick={() => setMine(m)}
+                className={`rounded-full border px-2.5 py-[3px] ${mine === m ? "border-[#1B6FA8] bg-[#EAF4FB] font-semibold text-[#1B6FA8]" : "border-[#dadce0] text-[#5f6368] hover:bg-[#f1f3f4]"}`}
+              >
+                {m ? "Moje" : "Wszystkie"}
+              </button>
+            ))}
+            <span className="ml-auto" style={{ color: C.sub }}>
+              {allOpen.length} otwartych
+            </span>
+          </div>
+
           <div className="py-1">
             {openTasks.map((t) => (
               <TaskRow
@@ -489,7 +529,31 @@ export function TasksPanel({
             ))}
           </div>
 
-          {openTasks.length === 0 && !loading && (
+          {staleTasks.length > 0 && (
+            <div style={{ borderTop: `1px solid ${C.border}` }}>
+              <button type="button" onClick={() => setShowStale((v) => !v)} className="flex w-full items-center gap-1.5 px-[18px] py-3 text-[13px] font-semibold" style={{ color: C.red }}>
+                <span className="text-xs">{showStale ? "▾" : "▸"}</span>
+                Zaległe ponad tydzień ({staleTasks.length})
+              </button>
+              {showStale &&
+                staleTasks.map((t) => (
+                  <TaskRow
+                    key={t.id}
+                    task={t}
+                    assignees={assignees}
+                    expanded={expandedId === t.id}
+                    onToggleExpand={() => setExpandedId((id) => (id === t.id ? null : t.id))}
+                    onComplete={() => void patchTask(t.id, { status: "DONE" })}
+                    onPatch={(p) => void patchTask(t.id, p)}
+                    onDelete={() => void deleteTask(t.id)}
+                    canEdit={!isAgent || t.author?.id === currentUserId}
+                    canDelete={!isAgent}
+                  />
+                ))}
+            </div>
+          )}
+
+          {openTasks.length === 0 && staleTasks.length === 0 && !loading && (
             <p className="px-[18px] py-8 text-center text-sm" style={{ color: C.sub }}>
               Brak zadań. Miło.
             </p>
@@ -566,6 +630,7 @@ function TaskRow({
   const done = task.status === "DONE";
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes ?? "");
+  const [editingNotes, setEditingNotes] = useState(false);
 
   // „adjust state during render" (bez efektu) — sync po zmianie z serwera.
   const [synced, setSynced] = useState({ title: task.title, notes: task.notes ?? "" });
@@ -597,11 +662,7 @@ function TaskRow({
           <span className="mt-1 flex flex-wrap items-center gap-2">
             {!done && <DueBadge dueDate={task.dueDate} status={task.status} />}
             {task.assignee && <AssigneePill person={task.assignee} />}
-            {task.leadId && (
-              <span className="text-xs" style={{ color: C.sub }}>
-                · sygnał
-              </span>
-            )}
+            {!expanded && task.links.length > 0 && <LinkChips links={task.links} compact />}
             {task.commentCount > 0 && (
               <span className="text-xs" style={{ color: C.sub }} title="Komentarze">
                 💬 {task.commentCount}
@@ -626,16 +687,40 @@ function TaskRow({
             className="w-full bg-transparent text-sm outline-none"
             style={{ color: C.text }}
           />
-          <textarea
-            value={notes}
-            readOnly={!canEdit}
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={() => canEdit && notes.trim() !== (task.notes ?? "") && onPatch({ notes: notes.trim() })}
-            rows={2}
-            placeholder="Szczegóły"
-            className="mt-2 w-full resize-none bg-transparent text-[13px] outline-none placeholder:text-[#9aa0a6]"
-            style={{ color: C.text }}
-          />
+          {task.notes && !editingNotes ? (
+            // Wniosek 22, pkt 7: szczegóły jako markdown z klikalnymi linkami.
+            <div className="mt-2 text-[13px]" style={{ color: C.text }}>
+              <MarkdownLite text={task.notes} />
+              {canEdit && (
+                <button type="button" onClick={() => setEditingNotes(true)} className="mt-1 text-xs hover:underline" style={{ color: C.sub }}>
+                  Edytuj szczegóły
+                </button>
+              )}
+            </div>
+          ) : (
+            <textarea
+              value={notes}
+              readOnly={!canEdit}
+              autoFocus={editingNotes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={() => {
+                if (canEdit && notes.trim() !== (task.notes ?? "")) onPatch({ notes: notes.trim() });
+                setEditingNotes(false);
+              }}
+              rows={editingNotes ? 5 : 2}
+              placeholder="Szczegóły (linki: [tekst](adres))"
+              className="mt-2 w-full resize-none bg-transparent text-[13px] outline-none placeholder:text-[#9aa0a6]"
+              style={{ color: C.text }}
+            />
+          )}
+          {task.links.length > 0 && (
+            <div className="mt-2">
+              <LinkChips links={task.links} />
+              {!done && allLinksResolved(task.links) && (
+                <p className="mt-1.5 text-xs font-semibold text-[#2F7A68]">✓ Wszystko poprawione – zamknij zadanie</p>
+              )}
+            </div>
+          )}
           <div className={`mt-1 flex items-center gap-2 ${canEdit ? "" : "pointer-events-none opacity-60"}`}>
             <DuePicker value={task.dueDate} onChange={(v) => onPatch({ dueDate: v })} />
             <select
@@ -654,14 +739,6 @@ function TaskRow({
             </select>
           </div>
           <div className="mt-2 flex items-center justify-end gap-3">
-            {(task.leadId || task.clientId) && (
-              <a
-                href={task.leadId ? `${BASE_PATH}/sygnaly?id=${task.leadId}` : `${BASE_PATH}/klienci/${task.clientId}`}
-                className="mr-auto text-xs font-semibold text-[#1B6FA8] hover:underline"
-              >
-                {task.leadId ? "Otwórz sygnał →" : "Otwórz klienta →"}
-              </a>
-            )}
             {canDelete && (
               <button
                 type="button"
@@ -764,5 +841,43 @@ function TaskComments({ taskId }: { taskId: string }) {
         </p>
       )}
     </div>
+  );
+}
+
+// Powiązania zadania (wniosek 22): chip wynajmu z brakami liczonymi na
+// bieżąco („brak kwoty”, …) albo ✓; klik otwiera kartę rezerwacji / klienta /
+// sygnału. compact — w zwiniętym wierszu (bez braków, maks. 3).
+const KIND_ICON: Record<TaskLinkDto["kind"], string> = { RENTAL: "📅", CLIENT: "👤", LEAD: "◎", INVOICE: "FV" };
+
+function LinkChips({ links, compact = false }: { links: TaskLinkDto[]; compact?: boolean }) {
+  const shown = compact ? links.slice(0, 3) : links;
+  return (
+    <span className="flex flex-wrap items-center gap-1" onClick={compact ? undefined : (e) => e.stopPropagation()}>
+      {shown.map((l) => {
+        const issues = l.issues ?? [];
+        const ok = l.kind === "RENTAL" && issues.length === 0;
+        const body = (
+          <>
+            <span aria-hidden>{KIND_ICON[l.kind]}</span>
+            <span className="max-w-[220px] truncate">{l.label}</span>
+            {ok && <span className="font-semibold text-[#2F7A68]">✓</span>}
+            {!compact && issues.length > 0 && <span className="text-[#d93025]">{issues.join(" · ")}</span>}
+            {compact && issues.length > 0 && <span className="text-[#d93025]">⚠</span>}
+          </>
+        );
+        const cls = `inline-flex max-w-full flex-wrap items-center gap-x-1 rounded-[10px] border px-2 py-[1px] text-[11.5px] ${issues.length ? "border-[#f3c2bd] bg-[#fdf3f2]" : "border-[#dadce0] bg-white"}`;
+        // W zwiniętym wierszu chip jest w przycisku rozwijania — bez linku.
+        return l.href && !compact ? (
+          <a key={`${l.kind}-${l.refId}`} href={`${BASE_PATH}${l.href}`} className={`${cls} hover:border-[#1B6FA8]`} title={issues.length ? `${l.label}: ${issues.join(", ")}` : l.label} style={{ color: C.text }}>
+            {body}
+          </a>
+        ) : (
+          <span key={`${l.kind}-${l.refId}`} className={cls} title={l.label} style={{ color: C.text }}>
+            {body}
+          </span>
+        );
+      })}
+      {compact && links.length > shown.length && <span className="text-xs" style={{ color: C.sub }}>+{links.length - shown.length}</span>}
+    </span>
   );
 }

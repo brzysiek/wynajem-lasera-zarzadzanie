@@ -361,8 +361,13 @@ const VIEW_STATE_KEY = "kalendarz:view";
 
 export function CalendarView({
   canEdit = true,
+  initialDate = null,
 }: {
   canEdit?: boolean;
+  // „RRRR-MM-DD” z adresu (?date=) — np. powrót z karty rezerwacji otwartej
+  // stałym adresem /kalendarz?wynajem=… (wniosek 22); ma pierwszeństwo przed
+  // zapamiętanym widokiem.
+  initialDate?: string | null;
 }) {
   const router = useRouter();
   // Lista urządzeń + zaznaczenie widoczności — współdzielone z flyoutem
@@ -401,8 +406,10 @@ export function CalendarView({
     } catch {
       // sessionStorage unavailable or malformed — fall back to defaults.
     }
+    const m = initialDate?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) setCurrent(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
     viewStateRestored.current = true;
-  }, []);
+  }, [initialDate]);
 
   useEffect(() => {
     if (!viewStateRestored.current) return;

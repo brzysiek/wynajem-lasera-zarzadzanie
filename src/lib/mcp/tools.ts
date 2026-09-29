@@ -31,6 +31,8 @@ import { isStatus, parseProposalInput, type ProposalInput } from "@/lib/porzadki
 import { createRemark, listRemarks, parseRemarkInput, updateRemark, type RemarkInput } from "@/lib/porzadki/remarks";
 import { normalizeRemarkBody } from "@/lib/agent-api/remark-body";
 import { taskDto } from "@/lib/tasks";
+import { parseLinksBody, setTaskLinks, withLinks } from "@/lib/task-links";
+import { allLinksResolved } from "@/lib/task-link-rules";
 import { agentAssignees } from "@/lib/agent-api/assignees";
 import { agentMatchDecision } from "@/lib/agent-api/match-decision";
 import { listSuspectedBlobs } from "@/lib/clients/blob-load";
@@ -69,6 +71,14 @@ const PROVENANCE = {
   paczka: s("Paczka akceptacji, np. P-2026-09-27-01."),
 };
 const PAGE = { strona: n("Numer strony (od 1)."), na_strone: n("Rozmiar strony, 1–200 (domyślnie 50).") };
+// Wniosek 22: powiązania zadania — tablice ID (zastępują dotychczasowe).
+const ids = (description: string) => ({ type: "array", items: { type: "string" }, description });
+const TASK_LINKS = {
+  wynajmy: ids("ID wynajmów (rezerwacji z kalendarza). Chip pokazuje braki: brak wariantu / klienta / kwoty, kwota ≠ pozycje."),
+  klienci: ids("ID klientów."),
+  sygnaly: ids("ID sygnałów."),
+  faktury: ids("ID faktur (client_invoices)."),
+};
 
 function str(a: Args, k: string): string | null {
   const v = a[k];
@@ -661,7 +671,8 @@ export const TOOLS: McpTool[] = [
   {
     name: "zadania_lista",
     title: "Zadania",
-    description: "Zadania zespołu. status: open (domyślnie), done, all. moje = tylko utworzone przez agenta.",
+    description:
+      "Zadania zespołu. status: open (domyślnie), done, all. moje = tylko utworzone przez agenta. Każde zadanie ma links: [{kind RENTAL|CLIENT|LEAD|INVOICE, refId, label, issues}] — issues tylko dla wynajmu, [] = poprawione; allResolved = wszystkie wynajmy bez braków (można zamknąć).",
     inputSchema: obj({ status: s("Status.", { enum: ["open", "done", "all"] }), moje: b("Tylko moje (utworzone przez agenta).") }),
     readOnly: true,
     run: async (a, agent) => {
@@ -672,7 +683,8 @@ export const TOOLS: McpTool[] = [
         orderBy: [{ status: "asc" }, { dueDate: "asc" }, { createdAt: "desc" }],
         take: 500,
       });
-      return { tasks: rows.map(taskDto) };
+      const tasks = await withLinks(rows.map(taskDto));
+      return { tasks: tasks.map((t) => ({ ...t, allResolved: allLinksResolved(t.links) })) };
     },
   },
   {
@@ -867,9 +879,10 @@ export const TOOLS: McpTool[] = [
   {
     name: "zadanie_utworz",
     title: "Nowe zadanie",
-    description: "Tworzy zadanie dla osoby z biura (dla: id albo imię, np. „Ania”). Opcjonalnie przy kliencie albo sygnale.",
+    description:
+      "Tworzy zadanie dla osoby z biura (dla: id albo imię, np. „Ania”). Powiązania: wynajmy, klienci, sygnaly, faktury (tablice ID) — chipy w zadaniu; klient_id / sygnal_id jak dotąd. Szczegóły: markdown z linkami [tekst](adres).",
     inputSchema: obj(
-      { tytul: s("Treść zadania."), szczegoly: s("Szczegóły."), dla: s("Odpowiedzialny: id albo imię."), termin: s("Termin RRRR-MM-DD."), klient_id: s("ID klienta."), sygnal_id: s("ID sygnału.") },
+      { tytul: s("Treść zadania."), szczegoly: s("Szczegóły (markdown, linki klikalne)."), dla: s("Odpowiedzialny: id albo imię."), termin: s("Termin RRRR-MM-DD."), klient_id: s("ID klienta."), sygnal_id: s("ID sygnału."), ...TASK_LINKS },
       ["tytul", "dla"],
     ),
     readOnly: false,
@@ -884,11 +897,15 @@ export const TOOLS: McpTool[] = [
         clientId ??= lead.clientId;
       }
       if (clientId && !(await prisma.client.findUnique({ where: { id: clientId }, select: { id: true } }))) throw new AgentApiError("Nie znaleziono klienta.", 404);
+      const parsed = await parseLinksBody(a);
+      if (parsed.error) throw new AgentApiError(parsed.error);
+      clientId ??= parsed.links?.find((l) => l.kind === "CLIENT")?.refId ?? null;
       const task = await prisma.task.create({
         data: { title, notes: str(a, "szczegoly"), dueDate: day(a, "termin"), assigneeId: who.id, authorId: agent.userId, clientId, leadId },
       });
+      if (parsed.links) await setTaskLinks(task.id, parsed.links);
       await recordChanges(prisma, { userId: agent.userId }, [
-        { entity: "TASK", entityId: task.id, clientId, operation: "CREATE", before: "null", after: toLogValue({ title, assignee: who.name, leadId }) },
+        { entity: "TASK", entityId: task.id, clientId, operation: "CREATE", before: "null", after: toLogValue({ title, assignee: who.name, leadId, links: parsed.links ?? undefined }) },
       ]);
       return { id: task.id, dla: who.name };
     },
@@ -896,8 +913,8 @@ export const TOOLS: McpTool[] = [
   {
     name: "zadanie_zmien",
     title: "Zmień własne zadanie",
-    description: "Zmienia albo zamyka zadanie utworzone przez agenta (tytuł, szczegóły, termin, status open/done).",
-    inputSchema: obj({ id: s("ID zadania."), tytul: s("Tytuł."), szczegoly: s("Szczegóły."), termin: s("Termin RRRR-MM-DD albo pusty."), status: s("Status.", { enum: ["open", "done"] }) }, ["id"]),
+    description: "Zmienia albo zamyka zadanie utworzone przez agenta (tytuł, szczegóły, termin, status open/done, powiązania — podane tablice zastępują wszystkie dotychczasowe powiązania).",
+    inputSchema: obj({ id: s("ID zadania."), tytul: s("Tytuł."), szczegoly: s("Szczegóły (markdown)."), termin: s("Termin RRRR-MM-DD albo pusty."), status: s("Status.", { enum: ["open", "done"] }), ...TASK_LINKS }, ["id"]),
     readOnly: false,
     run: async (a, agent) => {
       const id = req(a, "id");
@@ -910,8 +927,14 @@ export const TOOLS: McpTool[] = [
       if ("termin" in a) data.dueDate = day(a, "termin");
       if (str(a, "status") === "done") Object.assign(data, { status: "DONE", completedAt: new Date() });
       if (str(a, "status") === "open") Object.assign(data, { status: "OPEN", completedAt: null });
-      if (!Object.keys(data).length) throw new AgentApiError("Brak zmian.");
-      await prisma.task.update({ where: { id }, data });
+      const parsed = await parseLinksBody(a);
+      if (parsed.error) throw new AgentApiError(parsed.error);
+      if (!Object.keys(data).length && !parsed.links) throw new AgentApiError("Brak zmian.");
+      if (Object.keys(data).length) await prisma.task.update({ where: { id }, data });
+      if (parsed.links) {
+        await setTaskLinks(id, parsed.links);
+        await recordChanges(prisma, { userId: agent.userId }, [{ entity: "TASK", entityId: id, clientId: t.clientId, operation: "FIELD_CHANGE", field: "links", before: null, after: toLogValue(parsed.links) }]);
+      }
       const entries = Object.entries(data)
         .filter(([k]) => k !== "completedAt")
         .map(([k, v]) => ({ entity: "TASK" as const, entityId: id, clientId: t.clientId, operation: "FIELD_CHANGE" as const, field: k, before: toLogValue((t as Record<string, unknown>)[k]), after: toLogValue(v) }));
