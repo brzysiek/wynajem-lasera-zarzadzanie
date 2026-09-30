@@ -131,7 +131,7 @@ export function LeadsManager({
   freeByInterest: Partial<Record<DeviceInterestKey, string[]>>;
   signalTasks: SignalTask[];
   // Przewodnik po nowych Sygnałach (wniosek 19): czy pokazać i imię (wołacz).
-  tour: { show: boolean; showV3?: boolean; name: string };
+  tour: { show: boolean; showV3?: boolean; showV4?: boolean; name: string };
 }) {
   const router = useRouter();
   const [view, setViewState] = useState<View>("board");
@@ -234,14 +234,15 @@ export function LeadsManager({
   const [todayGroup, setTodayGroup] = useState<TodayGroupKey | null>(null);
   // Wniosek 33: pełny przewodnik (v2), a po nim „Co nowego” (v3, 3 kroki);
   // kto widział v2 — od razu v3, raz przy pierwszym wejściu.
-  const [tourOpen, setTourOpen] = useState<false | "v2" | "v3">(tour.show ? "v2" : tour.showV3 ? "v3" : false);
+  // 30.09: „Tablica – jak pracujemy” (v4) zastępuje v2 i v3.
+  const [tourOpen, setTourOpen] = useState<false | "v2" | "v3" | "v4">(tour.showV4 ? "v4" : tour.show ? "v2" : tour.showV3 ? "v3" : false);
   const [v3Pending, setV3Pending] = useState(Boolean(tour.showV3));
   async function tourDone(action: "later" | "done") {
     const which = tourOpen;
     if (which === "v2" && action === "done" && v3Pending) setTourOpen("v3");
     else setTourOpen(false);
     if (which === "v3") setV3Pending(false);
-    await api("/api/me/tour", "POST", { tour: which === "v3" ? "signalsV3" : "signalsV2", action });
+    await api("/api/me/tour", "POST", { tour: which === "v4" ? "signalsV4" : which === "v3" ? "signalsV3" : "signalsV2", action });
   }
 
   function open(id: string, i: CardIntent = null) {
@@ -378,9 +379,8 @@ export function LeadsManager({
           ? undefined
           : () => {
               setSheet(false);
-              setView("today");
-              setV3Pending(true);
-              setTourOpen("v2");
+              setView("board");
+              setTourOpen("v4");
             }
       }
     />
@@ -585,7 +585,7 @@ export function LeadsManager({
           onLater={() => void tourDone("later")}
           onBeforeStep={() => {
             // v3 pokazuje Tablicę (chip kroku), v2 — „Na dziś”.
-            const want = tourOpen === "v3" ? "board" : "today";
+            const want = tourOpen === "v2" ? "today" : "board";
             if (view !== want) setView(want);
             if (selectedId) close();
             setSheet(false);

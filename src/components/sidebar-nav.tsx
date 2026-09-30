@@ -387,7 +387,7 @@ export function SidebarNav({
         if (item.kind === "link") {
           const active = item.matchAny ? item.matchAny.some((m) => pathname.startsWith(m)) : pathname.startsWith(item.match ?? item.href);
           return (
-            <div key={item.href}>
+            <div key={item.href} data-tour={item.href === "/wnioski" ? "nav-porzadki" : undefined}>
               <NavRow
                 href={item.href}
                 label={item.label}

@@ -26,7 +26,9 @@ export function SignalsTour({
   onBeforeStep,
 }: {
   // Wniosek 33: „v3” = 3 kroki „Co nowego” (pasek na Tablicy, chip kroku, Wynik rozmowy).
-  variant?: "v2" | "v3";
+  // „v4” = „Tablica – jak pracujemy” (dla Ani): powitanie + 9 kroków, teksty z
+  // docs przewodnik-tablica-ania.md (30.09.2026).
+  variant?: "v2" | "v3" | "v4";
   name: string;
   season: number;
   target: number;
@@ -38,6 +40,8 @@ export function SignalsTour({
   const [step, setStep] = useState(0); // 0 = powitanie
   const [rect, setRect] = useState<Rect | null>(null);
   const [mobile, setMobile] = useState(false);
+  // Liczba kart w kolumnie pokazywanej w kroku (data-count na celu).
+  const [count, setCount] = useState<number | null>(null);
   const rewardText = reward.replace(/\s*\p{Extended_Pictographic}+$/u, "");
 
   const stepsV3: Step[] = [
@@ -144,12 +148,170 @@ export function SignalsTour({
       ),
     },
   ];
-  const steps = variant === "v3" ? stepsV3 : stepsV2;
+  const B = "text-[#0C3450]";
+  const n = count ?? 0;
+  const cardsLabel = `${n} ${n === 1 ? "karta" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? "karty" : "kart"}`;
+  const stepsV4: Step[] = [
+    {
+      target: "plan",
+      title: "Pasek „Do zrobienia dziś”",
+      body: <p>Tu widzisz, co czeka na Ciebie dzisiaj. Kliknij kafelek, a zobaczysz tylko te sprawy. Każda odhaczona rzecz przybliża nas do celu sezonu 🎬</p>,
+    },
+    {
+      target: "col-SYGNAL",
+      title: "Kolumna „Nowe”",
+      maxHeight: 380,
+      body: (
+        <>
+          {count != null && (
+            <p className="text-[12px] text-[#5C6166]">
+              Teraz w kolumnie: <b className={B}>{cardsLabel}</b>
+            </p>
+          )}
+          <p>Tu trafiają świeże zapytania: formularz ze strony, pobrany cennik, sygnał dodany ręcznie. Nikt jeszcze z tymi osobami nie rozmawiał.</p>
+          <p>Najlepiej zadzwonić w ciągu 4 godzin, bo wtedy klientka ma nas jeszcze w głowie i najchętniej rozmawia. Fajnie, jeśli na koniec dnia ta kolumna jest pusta, ale jeśli coś zostanie na jutro, to też jest w porządku.</p>
+        </>
+      ),
+    },
+    {
+      target: "col-WYWIAD",
+      title: "Kolumna „W kontakcie”",
+      maxHeight: 380,
+      body: (
+        <>
+          {count != null && (
+            <p className="text-[12px] text-[#5C6166]">
+              Teraz w kolumnie: <b className={B}>{cardsLabel}</b>
+            </p>
+          )}
+          <p>Tu jest wszystko, co już się toczy:</p>
+          <ul className="mb-1.5 ml-[18px] list-disc">
+            <li>zapytania, z którymi była rozmowa albo na które odpisałyśmy mailem;</li>
+            <li>nasze klientki z poprzedniego sezonu, które w tym roku jeszcze nie wynajmowały. Dlatego na kafelku często widzisz nazwę gabinetu;</li>
+            <li>sprawy, które wróciły z „Odłożonych” w swoim dniu.</li>
+          </ul>
+          <p>
+            Kolumna jest ułożona według daty następnego kroku. <b className={B}>Zaczynasz od góry</b>: na górze jest to, co najpilniejsze.
+          </p>
+        </>
+      ),
+    },
+    {
+      target: "step-chip",
+      title: "Następny krok na kafelku",
+      body: (
+        <>
+          <p>Każda karta ma swój następny krok. Najedź na niego, a zobaczysz, co było ostatnio i dlaczego wypada właśnie wtedy. Kliknij, żeby go wykonać.</p>
+          <p>
+            Kolory: <b className="text-[#B8612F]">terakota</b> = zaległe, <b className="text-[#1B6FA8]">niebieski</b> = na dziś, <b className="text-[#5C6166]">szary</b> = później.
+          </p>
+        </>
+      ),
+    },
+    {
+      target: "step-chip",
+      title: "Po każdym kontakcie: „Wynik rozmowy”",
+      body: (
+        <>
+          <p>
+            Po telefonie, SMS-ie albo mailu kliknij <b className={B}>Wynik rozmowy</b> i wybierz, jak poszło. Panel sam przesunie kartę i ustawi kolejny krok:
+          </p>
+          <ul className="mb-1.5 ml-[18px] list-disc">
+            <li>
+              <b className={B}>Umówiła termin</b> → Rezerwacja (liczy się do celu sezonu 🎉)
+            </li>
+            <li>
+              <b className={B}>Oddzwoni / przemyśli</b> → krok z datą
+            </li>
+            <li>
+              <b className={B}>Urlop / później</b> → zostaje w kontakcie, z datą
+            </li>
+            <li>
+              <b className={B}>Wysłać ofertę</b> → przypomnienie ustawi się samo za 3 dni
+            </li>
+            <li>
+              <b className={B}>Nie odebrała</b> → patrz następny krok
+            </li>
+            <li>
+              <b className={B}>Rezygnuje</b> → Przegrana, z powodem
+            </li>
+          </ul>
+        </>
+      ),
+    },
+    {
+      target: "step-chip",
+      title: "Klientka nie odbiera",
+      body: (
+        <>
+          <p>
+            Zdarza się bardzo często i to normalne. Kliknij <b className={B}>Wynik rozmowy → Nie odebrała</b>. Panel:
+          </p>
+          <ul className="mb-1.5 ml-[18px] list-disc">
+            <li>zaproponuje krótki SMS: „dzwoniłam, kiedy mogę oddzwonić?”;</li>
+            <li>sam ustawi kolejną próbę o innej porze: jutro ok. 16:00, potem rano ok. 8:30.</li>
+          </ul>
+          <p>Po 3 próbach w różne dni możesz spokojnie zamknąć sprawę jako „brak kontaktu”. Panel Ci to podpowie.</p>
+        </>
+      ),
+    },
+    {
+      target: "col-WYWIAD",
+      title: "Jak zakończyć rozmowę",
+      maxHeight: 380,
+      body: (
+        <>
+          <p>Dobrze, żeby każda rozmowa kończyła się umówionym kolejnym kontaktem. Gdy klientka potrzebuje czasu, nie może teraz rozmawiać albo chce się zastanowić, zapytaj:</p>
+          <p className="italic">„Kiedy mogę się odezwać – w czwartek rano czy w piątek po 16?”</p>
+          <p>Wpisz tę datę w Wyniku rozmowy.</p>
+          <p>
+            Jeśli teraz zupełnie nie (np. „wrócę przed sezonem”), kliknij na karcie <b className={B}>Odłóż</b> i wybierz datę i powód. Karta sama wróci w tym dniu.
+          </p>
+          <p>
+            Pytania do rozmowy i gotowe teksty znajdziesz w karcie sygnału w ramce <b className={B}>„Podpowiedź”</b>.
+          </p>
+        </>
+      ),
+    },
+    {
+      target: "nav-porzadki",
+      title: "Coś niejasne? Pomoc i maile",
+      body: (
+        <>
+          <p>
+            Jeśli coś jest niezrozumiałe, nie pasuje albo nie działa, wpisz to w <b className={B}>Porządki/optymalizacje → Uwagi</b>. Każda uwaga się liczy, dzięki nim poprawiamy panel pod Ciebie.
+          </p>
+          <p>
+            Jeśli potrzebujesz czegoś od razu albo nie możesz czegoś znaleźć, napisz do agenta Klaudiusza w aplikacji Claude, w projekcie <b className={B}>„asystent obsługi klienta”</b>.
+          </p>
+          <p>
+            <b className={B}>Maile i SMS-y do klientek też robimy teraz tam.</b> Agent zna historię klientki, cennik, warunki i wolne terminy, więc przygotuje gotowy szkic w Twoim stylu. Ty go tylko sprawdzasz i wysyłasz.
+          </p>
+        </>
+      ),
+    },
+    {
+      target: "cheatsheet",
+      title: "Ściąga",
+      body: (
+        <>
+          <p>Złote zasady, kolejność dnia i gotowe SMS-y są zawsze tutaj. Tu też włączysz ten przewodnik jeszcze raz.</p>
+          <p>
+            Powodzenia! Już {season} z {target} gabinetów w tym sezonie 🎬
+          </p>
+        </>
+      ),
+    },
+  ];
+  const steps = variant === "v4" ? stepsV4 : variant === "v3" ? stepsV3 : stepsV2;
   const current = step > 0 ? steps[step - 1] : null;
 
   const measure = useCallback(() => {
     if (!current) return setRect(null);
-    const el = document.querySelector<HTMLElement>(`[data-tour="${current.target}"]`);
+    // Pierwszy WIDOCZNY cel (np. menu: boczne na komputerze, górne na telefonie).
+    const el = [...document.querySelectorAll<HTMLElement>(`[data-tour="${current.target}"]`)].find((x) => x.getClientRects().length > 0) ?? null;
+    const c = el?.getAttribute("data-count");
+    setCount(c != null && c !== "" ? Number(c) : null);
     if (!el) return setRect(null);
     const r = el.getBoundingClientRect();
     setRect({ top: r.top, left: r.left, width: r.width, height: current.maxHeight ? Math.min(r.height, current.maxHeight) : r.height });
@@ -207,6 +369,27 @@ export function SignalsTour({
     if (rect.left + rect.width + 12 + CARD_W < vw) return { top: Math.max(12, Math.min(rect.top, vh - h - 12)), left: rect.left + rect.width + 14 };
     return { top: Math.max(12, Math.min(rect.top, vh - h - 12)), left: Math.max(12, rect.left - CARD_W - 14) };
   })();
+
+  if (step === 0 && variant === "v4") {
+    // Powitanie zawsze do Ani (Tomek widzi dokładnie to, co Ania).
+    return (
+      <div className="fixed inset-0 z-[60] flex items-start justify-center bg-[rgba(12,52,80,0.58)] px-4 pt-[12vh]" role="dialog" aria-modal="true" aria-label="Tablica – jak pracujemy">
+        <div className="w-full max-w-[520px] rounded-[10px] bg-white px-7 py-[26px] text-[13px] text-[#2A3540] shadow-[0_10px_36px_rgba(0,0,0,0.3)]">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-[#5C6166]">Tablica – jak pracujemy</div>
+          <h2 className="m-0 mb-2 mt-1 text-[22px] font-semibold text-[#0C3450]">Dzień dobry, Aniu! 👋</h2>
+          <p>Tablica to Twoje centrum dowodzenia zapytaniami. W 2 minuty pokażę Ci, jak z nią pracować, żeby nic nie uciekło, a dzień szedł spokojnie i po kolei.</p>
+          <div className="mt-4 flex gap-2">
+            <button type="button" autoFocus className={BTN_PRI} onClick={() => setStep(1)}>
+              Zaczynamy
+            </button>
+            <button type="button" className={BTN} onClick={onLater}>
+              Później
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (step === 0 && variant === "v3") {
     return (

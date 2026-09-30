@@ -262,6 +262,7 @@ export function TopNav({
                 <Link
                   key={item.href}
                   href={item.href}
+                  data-tour={item.href === "/wnioski" ? "nav-porzadki" : undefined}
                   className={`rounded-md px-3 py-2 text-sm font-medium ${
                     isActive
                       ? "bg-gray-900 text-white"

@@ -28,14 +28,15 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       select: { id: true, name: true, city: true, contacts: { where: { isPrimary: true }, take: 1, select: { firstName: true, lastName: true } } },
     }),
   ]);
-  const [linkSuggestions, callStats, archivedRows, playbook, progress, showTour, showTourV3] = await Promise.all([
+  const office = session.user.role === "ADMIN" || session.user.role === "STAFF";
+  const [linkSuggestions, callStats, archivedRows, playbook, progress, showTourV4] = await Promise.all([
     loadLinkSuggestions(rows),
     todayCallStats(),
     loadArchived2025Rows(),
     loadPlaybook(),
     loadDayProgress(),
-    session.user.role === "AGENT" ? false : shouldShowTour(session.user.id, "signalsV2"),
-    session.user.role === "AGENT" ? false : shouldShowTour(session.user.id, "signalsV3"),
+    // Przewodnik „Tablica – jak pracujemy” (v4) — zastępuje v2 i v3.
+    office ? shouldShowTour(session.user.id, "signalsV4") : false,
   ]);
   const [seasonGoal, freeByInterest, signalTasks] = await Promise.all([loadSeasonGoal(playbook.season), loadFreeByInterest().catch(() => ({})), loadSignalTasks()]);
   return (
@@ -61,7 +62,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       seasonGoal={seasonGoal}
       freeByInterest={freeByInterest}
       signalTasks={signalTasks}
-      tour={{ show: showTour, showV3: showTourV3, name: vocative(session.user.name ?? "") }}
+      tour={{ show: false, showV3: false, showV4: showTourV4, name: vocative(session.user.name ?? "") }}
     />
   );
 }

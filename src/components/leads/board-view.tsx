@@ -477,9 +477,16 @@ export function BoardView({
           const shown = expanded ? col : col.slice(0, PER_COLUMN);
           const c = conv(stage);
           return (
-            <div key={stage} {...dropProps(stage)} className={`min-h-[200px] min-w-0 p-2.5 ${drop === stage ? "bg-[#EAF4FB] outline outline-2 outline-[#1B6FA8]" : "bg-[#F4F6F8]"}`}>
+            <div
+              key={stage}
+              {...dropProps(stage)}
+              // Przewodnik v4: ramka na kolumnie (pusta — sam nagłówek), liczba kart w data-count.
+              data-tour={col.length ? `col-${stage}` : undefined}
+              data-count={col.length}
+              className={`min-h-[200px] min-w-0 p-2.5 ${drop === stage ? "bg-[#EAF4FB] outline outline-2 outline-[#1B6FA8]" : "bg-[#F4F6F8]"}`}
+            >
               <div className="-mx-2.5 -mt-2.5 mb-2 h-1" style={{ background: LEAD_STAGE_COLORS[stage].dot }} />
-              <div className="mb-2 flex items-baseline justify-between gap-2">
+              <div className="mb-2 flex items-baseline justify-between gap-2" data-tour={col.length ? undefined : `col-${stage}`} data-count={col.length}>
                 <b className="text-[14px] font-semibold text-[#0C3450]">
                   <StageChip stage={stage} /> {col.length}
                 </b>

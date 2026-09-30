@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 // nie w przeglądarce. „Później” pokazuje przewodnik przy kolejnym wejściu,
 // najwyżej 3 razy; „Pomiń” / koniec = obejrzany.
 // signalsV3 (wniosek 33): „Co nowego” — pasek na Tablicy, chip kroku, Wynik rozmowy.
-export const TOURS = ["signalsV2", "signalsV3"] as const;
+// signalsV4 (30.09): „Tablica – jak pracujemy” (dla Ani) — zastępuje v2 i v3:
+// pokazywany raz ADMIN i STAFF, także tym, którzy widzieli v2/v3.
+export const TOURS = ["signalsV2", "signalsV3", "signalsV4"] as const;
 export type TourKey = (typeof TOURS)[number];
 export const TOUR_MAX_LATER = 3;
 
