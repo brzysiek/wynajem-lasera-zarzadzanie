@@ -1,18 +1,6 @@
 "use client";
 
 import { SHELL } from "@/components/shell-tokens";
-import { useNotifications } from "@/components/notifications-context";
-import { ClipboardIcon, InvoiceIcon, MailMissingIcon } from "@/components/status-icons";
-
-function WarnIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 4.5 21 19.5H3L12 4.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-      <path d="M12 10v4.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="12" cy="17" r="0.9" fill="currentColor" />
-    </svg>
-  );
-}
 
 function TasksIcon() {
   return (
@@ -20,15 +8,6 @@ function TasksIcon() {
       <rect x="4" y="3" width="16" height="18" rx="3" stroke="currentColor" strokeWidth="1.8" />
       <path d="M8 9.5l2 2 4-4.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M8 14h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function BellOffIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-      <path d="M6 8a4 4 0 1 1 8 0c0 3 1.2 4.2 1.2 4.2H4.8S6 11 6 8Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M8.3 15a1.8 1.8 0 0 0 3.4 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
@@ -121,55 +100,11 @@ export function IconRail({
   onToggleTasks: () => void;
   showNotifications: boolean;
 }) {
-  // Hook zawsze wywołany (reguły hooków) — warunkowe jest tylko renderowanie
-  // samej ikony niżej, żeby nie odpytywać kontekstu na kontach bez uprawnień.
-  // Jedna ikonka na oba źródła (kalendarz + przychody, patrz
-  // notifications-context.tsx) — badge to suma obu, kolorystyka per typ żyje
-  // dopiero w karcie (notifications-panel.tsx), nie na samej ikonce.
-  // "Brak raportu kierowcy" i "brak faktury" mają OSOBNE ikonki i karty
-  // (report-alerts-panel.tsx, invoice-alerts-panel.tsx) — celowo bez
-  // auto-popu i bez wliczania do powyższego badge'a, na życzenie użytkownika
-  // (to informacja "na żądanie", nie coś co ma wyskakiwać samo przy wejściu
-  // na kalendarz).
-  const {
-    alerts,
-    unpriced,
-    open: notifOpen,
-    show: showNotif,
-    hide: hideNotif,
-    reportAlerts,
-    reportOpen,
-    showReport,
-    hideReport,
-    invoiceAlerts,
-    invoiceOpen,
-    showInvoice,
-    hideInvoice,
-    missingEmailAlerts,
-    missingEmailOpen,
-    showMissingEmail,
-    hideMissingEmail,
-  } = useNotifications();
-  const notifCount = alerts.length + unpriced.length;
-  const hasNotifications = showNotifications && notifCount > 0;
-  const reportCount = reportAlerts.length;
-  const hasReportAlerts = showNotifications && reportCount > 0;
-  const invoiceCount = invoiceAlerts.length;
-  const hasInvoiceAlerts = showNotifications && invoiceCount > 0;
-  const missingEmailCount = missingEmailAlerts.length;
-  const hasMissingEmailAlerts = showNotifications && missingEmailCount > 0;
-  const hasAnyAlertIcon = hasNotifications || hasReportAlerts || hasInvoiceAlerts || hasMissingEmailAlerts;
-  if (!showTasks && !hasAnyAlertIcon) return null;
-
-  // Klik w jedną z czterech kart powiadomień zamyka pozostałe — żeby się nie
-  // nakładały w tym samym rogu ekranu (wszystkie kotwiczą się w tym samym
-  // miejscu, patrz *-alerts-panel.tsx).
-  function closeOtherCards(except: "notif" | "report" | "invoice" | "mail") {
-    if (except !== "notif") hideNotif();
-    if (except !== "report") hideReport();
-    if (except !== "invoice") hideInvoice();
-    if (except !== "mail") hideMissingEmail();
-  }
+  // 30.09: braki przy rezerwacjach są w jednym miejscu — Kalendarz → „Do
+  // dopięcia” (kafle). Ikony „Powiadomienia”, „Brak raportu kierowcy”, „Brak
+  // faktury” i „Brak maila” usunięte z paska; zostają Zadania.
+  void showNotifications;
+  if (!showTasks) return null;
 
   return (
     <div
@@ -181,73 +116,6 @@ export function IconRail({
           <TasksIcon />
         </RailIcon>
       )}
-      {/* Subtelny separator — Zadania to osobny, "roboczy" kanał (lista do
-          zrobienia przez użytkownika), poniżej są powiadomienia o brakach w
-          danych wynajmów. Tylko gdy jest cokolwiek do oddzielenia. */}
-      {showTasks && hasAnyAlertIcon && (
-        <div className="my-0.5 h-px w-6 rounded-full" style={{ background: SHELL.border }} />
-      )}
-      {hasNotifications && (
-        <RailIcon
-          tooltip={`Powiadomienia (${notifCount})`}
-          open={notifOpen}
-          onClick={() => {
-            closeOtherCards("notif");
-            if (!notifOpen) showNotif();
-          }}
-          badge={notifCount}
-          tone="danger"
-        >
-          <WarnIcon />
-        </RailIcon>
-      )}
-      {hasReportAlerts && (
-        <RailIcon
-          tooltip={`Brak raportu kierowcy (${reportCount})`}
-          open={reportOpen}
-          onClick={() => {
-            closeOtherCards("report");
-            if (!reportOpen) showReport();
-          }}
-          badge={reportCount}
-          tone="report"
-        >
-          <ClipboardIcon />
-        </RailIcon>
-      )}
-      {hasInvoiceAlerts && (
-        <RailIcon
-          tooltip={`Brak faktury (${invoiceCount})`}
-          open={invoiceOpen}
-          onClick={() => {
-            closeOtherCards("invoice");
-            if (!invoiceOpen) showInvoice();
-          }}
-          badge={invoiceCount}
-          tone="invoice"
-        >
-          <InvoiceIcon />
-        </RailIcon>
-      )}
-      {hasMissingEmailAlerts && (
-        <RailIcon
-          tooltip={`Brak maila kontrahenta (${missingEmailCount})`}
-          open={missingEmailOpen}
-          onClick={() => {
-            closeOtherCards("mail");
-            if (!missingEmailOpen) showMissingEmail();
-          }}
-          badge={missingEmailCount}
-          tone="mail"
-        >
-          <MailMissingIcon />
-        </RailIcon>
-      )}
-      {/* Osobny, wyłączony placeholder — inny kanał niż powyższe ikony
-          (push/dzwonek), które już działają i pokazują realne dane. */}
-      <RailIcon tooltip="Powiadomienia push — wkrótce" disabled>
-        <BellOffIcon />
-      </RailIcon>
     </div>
   );
 }

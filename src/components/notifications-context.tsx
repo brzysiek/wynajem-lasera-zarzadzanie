@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
 import type { RentalAlert } from "@/lib/rental-alerts";
@@ -161,26 +161,9 @@ export function NotificationsProvider({
   const invoiceAlerts = enabled ? rawInvoiceAlerts : EMPTY_INVOICE_ALERTS;
   const missingEmailAlerts = enabled ? rawMissingEmailAlerts : EMPTY_MISSING_EMAIL_ALERTS;
 
-  // Auto-pop: raz na każde WEJŚCIE na /kalendarz (świeże ładowanie strony
-  // albo nawigacja klientem z innej podstrony) karta sama się pokazuje, jeśli
-  // jest COKOLWIEK do zgłoszenia (dowolne z dwóch źródeł) — nie czeka aż ktoś
-  // kliknie ikonę. Jeśli dane jeszcze się ładują w momencie wejścia, efekt
-  // poniżej doczeka ich (reaguje też na zmianę `alerts`/`unpriced`), ale
-  // pokaże kartę tylko raz na wizytę — ręczne zamknięcie na tej samej
-  // podstronie zostaje zamknięte.
-  const autoOpenedPathRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (pathname !== "/kalendarz") {
-      autoOpenedPathRef.current = null;
-      return;
-    }
-    // Celowo BEZ reportAlerts tutaj — ta sekcja nie ma auto-popu (decyzja
-    // użytkownika), tylko klik we własną ikonę na pasku (icon-rail.tsx).
-    if (!enabled || (alerts.length === 0 && unpriced.length === 0)) return;
-    if (autoOpenedPathRef.current === pathname) return;
-    show();
-    autoOpenedPathRef.current = pathname;
-  }, [pathname, enabled, alerts, unpriced, show]);
+  // 30.09: bez auto-popu karty powiadomień na /kalendarz — braki są w pasku
+  // „Do dopięcia” nad kalendarzem. Ostrzeżenia (alertIds) zostają dla ramek ⚠
+  // na kafelkach siatki kalendarza.
 
   const alertIds = useMemo(() => new Set(alerts.map((a) => a.id)), [alerts]);
 

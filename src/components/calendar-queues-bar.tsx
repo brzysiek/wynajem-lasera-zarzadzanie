@@ -24,6 +24,18 @@ export function CalendarQueuesBar() {
   const [note, setNote] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const [showLater, setShowLater] = useState(false);
+  const [linking, setLinking] = useState<string | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  // „FV do podpięcia” — ten sam endpoint co Finanse → FV bez faktury (tylko ADMIN).
+  async function linkInvoice(rentalId: string, clientInvoiceId: string) {
+    setLinking(rentalId);
+    setLinkError(null);
+    const res = await fetch(`${BASE_PATH}/api/rentals/${rentalId}/invoice-link`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientInvoiceId }) });
+    const d = (await res.json().catch(() => ({}))) as { message?: string };
+    setLinking(null);
+    if (!res.ok) return setLinkError(d.message ?? "Nie udało się podpiąć faktury.");
+    setReload((x) => x + 1);
+  }
   useEffect(() => {
     let alive = true;
     fetch(`${BASE_PATH}/api/calendar/queues`, { cache: "no-store" })
@@ -65,7 +77,8 @@ export function CalendarQueuesBar() {
       title="Do dopięcia"
       dateLabel={total ? `${total} ${total === 1 ? "sprawa" : "spraw"} przy rezerwacjach` : "wszystko dopięte"}
       tiles={[
-        ...queues.map((q) => ({ key: q.key, label: q.label, n: q.items.length, sub: sub(q) })),
+        // Od 30.09 do 10 rodzajów spraw — pokazujemy tylko kafle, w których coś jest.
+        ...queues.filter((q) => q.items.length || q.later?.length).map((q) => ({ key: q.key, label: q.label, n: q.items.length, sub: sub(q), highlight: q.key === "invoiceLink" })),
         ...(titles && titles.length ? [{ key: "titles", label: "Tytuł ≠ nazwa robocza", n: titles.length, sub: "zamień jednym kliknięciem" }] : []),
       ]}
       active={open}
@@ -114,16 +127,30 @@ export function CalendarQueuesBar() {
           <ul className="m-0 flex max-h-[320px] list-none flex-col gap-1 overflow-y-auto p-0">
             {[...current.items, ...(showLater ? (current.later ?? []) : [])].map((i) => (
               <li key={i.rentalId}>
-                <Link href={`/kalendarz?wynajem=${i.rentalId}`} className="flex flex-wrap items-baseline gap-x-2 hover:underline">
-                  <span className="tabular-nums text-[#BFD6EA]">{d2(i.startsAt)}</span>
-                  <span className="font-semibold">{i.title}</span>
-                  {i.device && <span className="text-[#DCE8F2]">{i.device}</span>}
-                  <span className="text-[#F3C9AE]">{i.note}</span>
-                </Link>
+                <span className="flex flex-wrap items-baseline gap-x-2">
+                  <Link href={`/kalendarz?wynajem=${i.rentalId}`} className="flex flex-wrap items-baseline gap-x-2 hover:underline">
+                    <span className="tabular-nums text-[#BFD6EA]">{d2(i.startsAt)}</span>
+                    <span className="font-semibold">{i.title}</span>
+                    {i.device && <span className="text-[#DCE8F2]">{i.device}</span>}
+                    <span className={i.link?.amountDiffers ? "font-semibold text-[#F3C9AE]" : "text-[#F3C9AE]"}>{i.note}</span>
+                  </Link>
+                  {i.link && (
+                    <button
+                      type="button"
+                      disabled={linking === i.rentalId}
+                      onClick={() => void linkInvoice(i.rentalId, i.link!.invoiceId)}
+                      className="rounded-[5px] bg-white px-2 py-px text-[12px] font-semibold text-[#2B5B82] hover:bg-[#EAF4FB] disabled:opacity-50"
+                      title={`Podepnij fakturę ${i.link.number} do tej rezerwacji`}
+                    >
+                      {linking === i.rentalId ? "…" : "Podepnij"}
+                    </button>
+                  )}
+                </span>
               </li>
             ))}
             {current.items.length === 0 && !showLater && <li className="text-[#DCE8F2]">W najbliższych dniach nic do dopięcia.</li>}
           </ul>
+          {linkError && <p className="m-0 mt-1 text-[12.5px] text-[#F3C9AE]">{linkError}</p>}
           {/* Wniosek 34: sprawy poza horyzontem nie liczą się do kafla. */}
           {current.later && current.later.length > 0 && (
             <button type="button" className="mt-1.5 text-[12.5px] text-[#BFD6EA] hover:text-white hover:underline" onClick={() => setShowLater((v) => !v)}>
