@@ -519,7 +519,7 @@ export function LeadsManager({
                 />
               )}
 
-              {view === "report" && <ReportView rows={list} now={now} seasonGoal={seasonGoal} playbook={playbook} onOpen={(id: string) => open(id)} />}
+              {view === "report" && <ReportView rows={list} now={now} seasonGoal={seasonGoal} playbook={playbook} onOpen={(id: string) => open(id)} users={users} currentUserId={currentUserId} />}
 
               {view === "today" && (
                 <TodayQueue

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { PulseReportView } from "./pulse-report";
 import type { LeadRow } from "@/lib/leads/load";
 import { LOST_REASON_LABEL, type LostReasonKey } from "@/lib/leads/labels";
 import { FIRST_CONTACT_SLA_HOURS, rotInfo, workDurationLabel, type FunnelLead } from "@/lib/leads/funnel";
@@ -116,7 +117,23 @@ function SeasonTile({ goal, playbook, onOpen }: { goal: SeasonGoal; playbook: Pl
   );
 }
 
-export function ReportView({ rows, now, seasonGoal, playbook, onOpen }: { rows: LeadRow[]; now: Date; seasonGoal: SeasonGoal; playbook: Playbook; onOpen: (leadId: string) => void }) {
+export function ReportView({
+  rows,
+  now,
+  seasonGoal,
+  playbook,
+  onOpen,
+  users = [],
+  currentUserId = "",
+}: {
+  rows: LeadRow[];
+  now: Date;
+  seasonGoal: SeasonGoal;
+  playbook: Playbook;
+  onOpen: (leadId: string) => void;
+  users?: { id: string; name: string }[];
+  currentUserId?: string;
+}) {
   const [range, setRange] = useState<ReportRange>("month");
   const [source, setSource] = useState<ReportSource>("all");
   // Stałe klientki poza lejkiem nowych (lejek v2, 3.3 pkt 4).
@@ -138,7 +155,21 @@ export function ReportView({ rows, now, seasonGoal, playbook, onOpen }: { rows: 
   const label = range === "2026" ? "2026" : range === "month" ? MONTHS[now.getMonth()].toLowerCase() : "30 dni";
   const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "—");
 
+  // Wniosek 36: „puls” na górze, dotychczasowe wykresy lejka niżej, w „Szczegółach”.
   return (
+    <div className="flex flex-col gap-[22px]">
+      <PulseReportView users={users} currentUserId={currentUserId} onOpen={onOpen} />
+      <details className="border border-[#E3E6E9] bg-white px-4 py-3">
+        <summary className="cursor-pointer text-[14px] font-semibold text-[#0C3450]">Szczegóły — lejek według daty wpłynięcia zapytania (dotychczasowy raport)</summary>
+        <div className="mt-3">
+          {reportDetails()}
+        </div>
+      </details>
+    </div>
+  );
+
+  function reportDetails() {
+    return (
     <div className="flex flex-col gap-[18px]">
       <div className="flex flex-wrap items-center gap-2">
         <Seg<ReportRange>
@@ -204,5 +235,6 @@ export function ReportView({ rows, now, seasonGoal, playbook, onOpen }: { rows: 
       </div>
       <StageLegend />
     </div>
-  );
+    );
+  }
 }

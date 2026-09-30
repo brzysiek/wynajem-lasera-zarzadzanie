@@ -45,6 +45,7 @@ import { dropNullJson } from "@/lib/clients/profile-fields";
 import { addOpportunity } from "@/lib/clients/opportunities";
 import { listExclusions } from "@/lib/porzadki/exclusions";
 import { getHideKeywords } from "@/lib/porzadki/exclusion-load";
+import { loadPulseReport } from "@/lib/leads/pulse";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
 // co panel i API agenta (src/lib/permissions.ts): odczyt + zapisy agenta,
@@ -285,6 +286,20 @@ export const TOOLS: McpTool[] = [
         })),
         page(a),
       );
+    },
+  },
+  {
+    name: "raport_tydzien",
+    title: "Raport tygodnia (Sygnały)",
+    description:
+      "Puls sprzedaży (wniosek 36) do poniedziałkowego podsumowania: pulse = „czy coś nam ucieka” (follow-upy ofert po terminie, zaległe kroki, nowe bez kontaktu > 4 h rob., sygnały bez kroku, wracające z wiosny — z krokiem informacja, bez kroku alarm, odłożone po dacie powrotu, rezerwacje bez klienta, FV do wystawienia; każda pozycja z listą spraw); " +
+      "work = kafle okresu vs poprzedni (kontakty, oferty, rezerwacje, przegrane, odłożone) według DATY ZDARZENIA, podział na osoby, auto = porządki agenta i wpisy automatyczne (nigdy praca); effect = cel sezonu, lejek zapytań z okresu (bez wracających), mediana czasu do pierwszego kontaktu, powody przegranych; events = kronika (do 14 dni, porzadki = wpisy automatyczne). " +
+      "okres: week (ten tydzień od poniedziałku vs poprzedni, domyślnie), 7, 14, 30 dni.",
+    inputSchema: obj({ okres: s("week | 7 | 14 | 30.", { enum: ["week", "7", "14", "30"] }), osoba: s("ID użytkownika (Ania / Tomek) — tylko jego praca.") }),
+    readOnly: true,
+    run: async (a) => {
+      const okres = str(a, "okres");
+      return loadPulseReport({ period: okres === "7" || okres === "14" || okres === "30" ? okres : "week", personId: str(a, "osoba") });
     },
   },
   {
