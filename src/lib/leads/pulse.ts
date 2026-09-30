@@ -41,6 +41,9 @@ export type PulseReport = {
 };
 
 const OPEN = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA"];
+// Maile wysłane ze skrzynki biura liczą się osobie, która ją prowadzi
+// (decyzja Tomka 30.09: kontakt@ = zawsze Ania).
+const MAILBOX_OWNER: Record<string, string> = { "kontakt@wynajemlasera.pl": "Ania" };
 const DAY = 86_400_000;
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const dm = (d: Date | string) => new Date(d).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", timeZone: "Europe/Warsaw" });
@@ -55,7 +58,7 @@ export async function loadPulseReport(opts: { period?: PulsePeriod; personId?: s
   // Okno danych: poprzedni okres, wykres 10 dni i kronika do 14 dni.
   const windowFrom = new Date(Math.min(b.prevFrom.getTime(), today.getTime() - 13 * DAY));
 
-  const [rows, activities, mails, queues, playbook] = await Promise.all([
+  const [rows, activities, mails, queues, playbook, office] = await Promise.all([
     loadLeadRows(),
     prisma.leadActivity.findMany({
       where: { createdAt: { gte: windowFrom }, leadId: { not: null } },
@@ -69,7 +72,9 @@ export async function loadPulseReport(opts: { period?: PulsePeriod; personId?: s
     }),
     loadCalendarQueues(now).catch(() => []),
     loadPlaybook(),
+    prisma.user.findMany({ where: { role: { in: ["ADMIN", "STAFF"] } }, select: { id: true, name: true } }),
   ]);
+  const userByName = new Map(office.map((u) => [u.name, u]));
   const season = await loadSeasonGoal(playbook.season);
   const byId = new Map(rows.map((r) => [r.id, r]));
   // Mail → sygnał: najnowszy sygnał klienta albo sygnał z tym adresem.
@@ -104,7 +109,8 @@ export async function loadPulseReport(opts: { period?: PulsePeriod; personId?: s
     const lead = (m.clientId ? leadByClient.get(m.clientId) : undefined) ?? to.map((x) => leadByEmail.get(x)).find(Boolean);
     if (!lead) continue;
     const c = classifyOutMail(m.subject);
-    const base = { leadId: lead.id, name: nameOf(lead), spring: !!lead.sourceRef?.startsWith(SPRING_REF_PREFIX), who: m.mailbox.split("@")[0] + "@", userId: null };
+    const owner = userByName.get(MAILBOX_OWNER[m.mailbox.toLowerCase()] ?? "");
+    const base = { leadId: lead.id, name: nameOf(lead), spring: !!lead.sourceRef?.startsWith(SPRING_REF_PREFIX), who: owner?.name ?? `${m.mailbox.split("@")[0]}@`, userId: owner?.id ?? null };
     if (c.auto) events.push({ ...base, at: m.sentAt.toISOString(), kind: "porzadki", human: false, body: `Automatyczny mail: ${m.subject ?? ""}` });
     else events.push({ ...base, at: m.sentAt.toISOString(), kind: c.offer ? "oferta" : "kontakt", human: true, body: `Mail do klientki: ${m.subject ?? "(bez tematu)"}` });
   }
