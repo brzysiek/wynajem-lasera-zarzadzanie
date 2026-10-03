@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parseWebhookBody, parseWwwForm, tokenMatches } from "@/lib/leads/www-form";
 import { intakeWwwForm } from "@/lib/leads/www-intake";
+import { deliverAutoMail, queueWwwPriceMail } from "@/lib/leads/auto-mail";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 
 // Formularze Contact Form 7 z wynajemlasera.pl → sygnał w panelu (03.10.2026),
@@ -35,6 +36,16 @@ export async function POST(req: NextRequest) {
     const form = parseWwwForm(body);
     const res = await intakeWwwForm(form);
     await log(res.result, { payload, leadId: res.leadId ?? null });
+    // Cennik do klienta (04.10.2026): po odpowiedzi stronie — formularz nie
+    // czeka na Gmaila. Błąd wysyłki nie psuje zgłoszenia (ponowi cron).
+    if (res.result === "CREATED" && form.type === "POBRANIE_CENNIKA") {
+      try {
+        const mailId = await queueWwwPriceMail({ leadId: res.leadId ?? null, email: form.email, name: form.name });
+        if (mailId) after(() => deliverAutoMail(mailId).then(() => undefined));
+      } catch (err) {
+        logError("auto_mail_queue_failed", err);
+      }
+    }
     logInfo("www_webhook_ok", { result: res.result, leadId: res.leadId ?? null, type: form.type });
     return NextResponse.json({ ok: true, result: res.result, leadId: res.leadId ?? null });
   } catch (err) {

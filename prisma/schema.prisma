@@ -1749,3 +1749,46 @@ model WebhookLog {
   @@index([kind, createdAt])
   @@map("webhook_logs")
 }
+
+// Mail automatyczny z cennikiem po formularzu WWW (04.10.2026) — panel wysyła
+// go sam z kontakt@ (wyjątek od zasady „panel niczego nie wysyła sam”, decyzja
+// Tomka). Treść i temat: MessageTemplate (EMAIL, key www_cennik_auto),
+// załączniki tutaj (PDF-y w bazie — nie giną przy wdrożeniach).
+model EmailTemplateAttachment {
+  id          String   @id @default(cuid())
+  templateKey String   @db.VarChar(64)
+  filename    String   @db.VarChar(191)
+  mime        String   @db.VarChar(100)
+  size        Int
+  data        Bytes    @db.LongBlob
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([templateKey])
+  @@map("email_template_attachments")
+}
+
+// Każda automatyczna wysyłka (i próbna z ustawień): kolejka ponowień i ślad.
+// gmailMessageId odróżnia automat od maili biura w raporcie i automatach
+// lejka niezależnie od tematu.
+model AutoMail {
+  id             String    @id @default(cuid())
+  kind           String    @db.VarChar(32) // www_cennik | www_cennik_test
+  leadId         String?
+  clientId       String?
+  toAddress      String    @db.VarChar(191)
+  name           String?   @db.VarChar(191)
+  subject        String?   @db.Text
+  status         String    @db.VarChar(12) // PENDING | SENT | FAILED
+  attempts       Int       @default(0)
+  lockedAt       DateTime?
+  error          String?   @db.Text
+  gmailMessageId String?   @db.VarChar(64)
+  createdAt      DateTime  @default(now())
+  sentAt         DateTime?
+
+  @@index([status, createdAt])
+  @@index([gmailMessageId])
+  @@index([toAddress, createdAt])
+  @@map("auto_mails")
+}

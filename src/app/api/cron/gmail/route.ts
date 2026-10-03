@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runGmailSync } from "@/lib/gmail/sync";
+import { retryAutoMails } from "@/lib/leads/auto-mail";
 import { logWarn, logError } from "@/lib/logger";
 
 // Historia e-maili co 5 minut (prompt 3, 4.3) — ten sam wzorzec co
@@ -10,8 +11,15 @@ export async function POST(req: NextRequest) {
     logWarn("gmail_cron_rejected", { hasSecret: Boolean(secret) });
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
+  // Ponowienia maila z cennikiem (formularz WWW) — także przy wyłączonej
+  // synchronizacji historii.
+  const autoMail = await retryAutoMails().catch((err) => {
+    logError("auto_mail_retry_failed", err);
+    return null;
+  });
   try {
     const results = await runGmailSync({ budgetMs: 40_000 });
+    if (autoMail && (autoMail.sent || autoMail.failed)) logWarn("auto_mail_retried", autoMail);
     return NextResponse.json(results ? { results } : { skipped: "Synchronizacja e-maili wyłączona." });
   } catch (err) {
     logError("gmail_cron_failed", err);

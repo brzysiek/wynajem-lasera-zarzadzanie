@@ -8,6 +8,7 @@ import { loadPlaybook } from "@/lib/leads/playbook-load";
 import { workHoursBetween } from "@/lib/leads/work-time";
 import { loadCalendarQueues } from "@/lib/calendar/queues";
 import { classifyActivity, classifyOutMail, median, periodBounds, type PulseKind, type PulsePeriod } from "@/lib/leads/pulse-rules";
+import { autoMailGmailIds } from "@/lib/leads/auto-mail";
 
 // Wniosek 36: Raport w Sygnałach jako „puls” — czy coś ucieka (stan na
 // teraz), ile pracy (okres vs poprzedni, według dat zdarzeń), czy daje efekt
@@ -68,13 +69,14 @@ export async function loadPulseReport(opts: { period?: PulsePeriod; personId?: s
     prisma.emailMessage.findMany({
       where: { direction: "OUT", sentAt: { gte: windowFrom }, hiddenReason: null },
       orderBy: { sentAt: "desc" },
-      select: { subject: true, sentAt: true, clientId: true, toAddresses: true, mailbox: true },
+      select: { subject: true, sentAt: true, clientId: true, toAddresses: true, mailbox: true, gmailMessageId: true },
     }),
     loadCalendarQueues(now).catch(() => []),
     loadPlaybook(),
     prisma.user.findMany({ where: { role: { in: ["ADMIN", "STAFF"] } }, select: { id: true, name: true } }),
   ]);
   const userByName = new Map(office.map((u) => [u.name, u]));
+  const autoIds = await autoMailGmailIds(mails.map((m) => m.gmailMessageId));
   const season = await loadSeasonGoal(playbook.season);
   const byId = new Map(rows.map((r) => [r.id, r]));
   // Mail → sygnał: najnowszy sygnał klienta albo sygnał z tym adresem.
@@ -108,7 +110,7 @@ export async function loadPulseReport(opts: { period?: PulsePeriod; personId?: s
     const to = Array.isArray(m.toAddresses) ? (m.toAddresses as unknown[]).filter((x): x is string => typeof x === "string").map((x) => x.toLowerCase()) : [];
     const lead = (m.clientId ? leadByClient.get(m.clientId) : undefined) ?? to.map((x) => leadByEmail.get(x)).find(Boolean);
     if (!lead) continue;
-    const c = classifyOutMail(m.subject);
+    const c = autoIds.has(m.gmailMessageId) ? { contact: false, offer: false, auto: true } : classifyOutMail(m.subject);
     const owner = userByName.get(MAILBOX_OWNER[m.mailbox.toLowerCase()] ?? "");
     const base = { leadId: lead.id, name: nameOf(lead), spring: !!lead.sourceRef?.startsWith(SPRING_REF_PREFIX), who: owner?.name ?? `${m.mailbox.split("@")[0]}@`, userId: owner?.id ?? null };
     if (c.auto) events.push({ ...base, at: m.sentAt.toISOString(), kind: "porzadki", human: false, body: `Automatyczny mail: ${m.subject ?? ""}` });

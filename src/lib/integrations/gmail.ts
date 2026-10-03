@@ -66,3 +66,23 @@ export async function createInvoiceEmailDraft(input: {
   logInfo("gmail_invoice_draft_created", { draftId: body?.id, to: input.to });
   return { draftId: body.id };
 }
+
+// Wysyłka gotowej wiadomości MIME z podanej skrzynki (04.10.2026 — mail
+// automatyczny z cennikiem po formularzu WWW; jedyna wysyłka bez udziału
+// biura, decyzja Tomka). Zakres gmail.compose pozwala też wysyłać
+// (users.messages.send). Endpoint „upload” przyjmuje maile do 35 MB —
+// załączniki PDF nie zmieszczą się w zwykłym żądaniu JSON.
+export async function sendGmailMessage(mailbox: string, raw: string): Promise<{ id: string; threadId: string }> {
+  const accessToken = await getAccessToken(GMAIL_COMPOSE_SCOPE, mailbox);
+  const res = await fetch("https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "message/rfc822" },
+    body: raw,
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.id) {
+    throw new Error(body?.error?.message || `Gmail API zwróciło błąd (HTTP ${res.status}).`);
+  }
+  logInfo("gmail_message_sent", { mailbox, id: body.id });
+  return { id: body.id, threadId: body.threadId };
+}

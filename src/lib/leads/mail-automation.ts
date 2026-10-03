@@ -5,6 +5,7 @@ import { addWorkdays } from "@/lib/leads/work-time";
 import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { MAIL_AUTOMATION_MAX_AGE_DAYS, isOfferMail, planMailForLead } from "@/lib/leads/mail-rules";
+import { autoMailGmailIds } from "@/lib/leads/auto-mail";
 
 // Lejek v2, etap V3 — automaty z Gmaila (wołane po zapisie nowych maili w
 // src/lib/gmail/sync.ts): mail z kontakt@ / od klientki przesuwa jej otwarty
@@ -19,7 +20,10 @@ type MailRow = { gmailMessageId: string; clientId: string; direction: "IN" | "OU
 export async function applyMailToLeads(rows: MailRow[], now = new Date()): Promise<{ moved: number; created: number }> {
   let moved = 0;
   let created = 0;
-  const fresh = rows.filter((r) => now.getTime() - r.sentAt.getTime() <= MAIL_AUTOMATION_MAX_AGE_DAYS * 86_400_000);
+  // Mail automatyczny z cennikiem wysłany przez panel (auto_mails) — nie jest
+  // kontaktem biura, niezależnie od tematu ustawionego w szablonie.
+  const auto = await autoMailGmailIds(rows.map((r) => r.gmailMessageId));
+  const fresh = rows.filter((r) => !auto.has(r.gmailMessageId) && now.getTime() - r.sentAt.getTime() <= MAIL_AUTOMATION_MAX_AGE_DAYS * 86_400_000);
   const byClient = new Map<string, MailRow[]>();
   for (const r of fresh) byClient.set(r.clientId, [...(byClient.get(r.clientId) ?? []), r]);
 

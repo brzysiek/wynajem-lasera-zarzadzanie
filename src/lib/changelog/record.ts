@@ -23,7 +23,8 @@ export type ChangeOperation =
   | "ARCHIVE"
   | "RESTORE"
   | "DELETE"
-  | "PAYMENT_MATCH";
+  | "PAYMENT_MATCH"
+  | "AUTO_MAIL";
 
 export type ChangeEntry = {
   entity: ChangeEntity;

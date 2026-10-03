@@ -118,6 +118,7 @@ export const OPERATION_LABEL: Record<string, string> = {
   ARCHIVE: "archiwizacja",
   RESTORE: "przywrócenie z archiwum",
   DELETE: "trwałe usunięcie",
+  AUTO_MAIL: "mail automatyczny",
 };
 
 export const FIELD_LABEL: Record<string, string> = {

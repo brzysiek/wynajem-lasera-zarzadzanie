@@ -8,6 +8,10 @@ vi.mock("@/lib/prisma", () => ({
 }));
 vi.mock("@/lib/leads/www-intake", () => ({ intakeWwwForm: (...a: unknown[]) => intake(...a) }));
 vi.mock("@/lib/logger", () => ({ logInfo: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
+const queue = vi.fn();
+const deliver = vi.fn();
+vi.mock("@/lib/leads/auto-mail", () => ({ queueWwwPriceMail: (...a: unknown[]) => queue(...a), deliverAutoMail: (...a: unknown[]) => deliver(...a) }));
+vi.mock("next/server", async (orig) => ({ ...(await orig<typeof import("next/server")>()), after: (fn: () => unknown) => void fn() }));
 
 const { POST } = await import("./route");
 const URL_BASE = "http://localhost/api/webhooks/formularz-www";
@@ -20,6 +24,8 @@ describe("POST /api/webhooks/formularz-www", () => {
   beforeEach(() => {
     logs.length = 0;
     intake.mockReset();
+    queue.mockReset();
+    deliver.mockReset().mockResolvedValue({ ok: true });
     process.env.WWW_WEBHOOK_TOKEN = "sekret-testowy";
   });
 
@@ -61,5 +67,27 @@ describe("POST /api/webhooks/formularz-www", () => {
     const res = await POST(req("?token=sekret-testowy", JSON.stringify({ text: "kontakt", "contact-email": "a@b.pl" }), "application/json"));
     expect(res.status).toBe(500);
     expect(logs[0].result).toBe("ERROR");
+  });
+
+  it("cennik: po zapisie sygnału kolejkuje i wysyła mail; inne typy i duplikaty — nie", async () => {
+    intake.mockResolvedValue({ result: "CREATED", leadId: "L3" });
+    queue.mockResolvedValue("M1");
+    const res = await POST(req("?token=sekret-testowy", JSON.stringify({ text: "cennik", "contact-email": "Klient@X.pl", "contact-name": "Ola" }), "application/json"));
+    expect(res.status).toBe(200);
+    expect(queue).toHaveBeenCalledWith({ leadId: "L3", email: "klient@x.pl", name: "Ola" });
+    expect(deliver).toHaveBeenCalledWith("M1");
+
+    await POST(req("?token=sekret-testowy", JSON.stringify({ text: "kontakt", "contact-email": "a@b.pl" }), "application/json"));
+    intake.mockResolvedValue({ result: "DUPLICATE", leadId: "L3" });
+    await POST(req("?token=sekret-testowy", JSON.stringify({ text: "cennik", "contact-email": "a@b.pl" }), "application/json"));
+    expect(queue).toHaveBeenCalledTimes(1);
+  });
+
+  it("błąd kolejki maila nie psuje zgłoszenia", async () => {
+    intake.mockResolvedValue({ result: "CREATED", leadId: "L4" });
+    queue.mockRejectedValue(new Error("db"));
+    const res = await POST(req("?token=sekret-testowy", JSON.stringify({ text: "cennik", "contact-email": "a@b.pl" }), "application/json"));
+    expect(res.status).toBe(200);
+    expect(deliver).not.toHaveBeenCalled();
   });
 });
