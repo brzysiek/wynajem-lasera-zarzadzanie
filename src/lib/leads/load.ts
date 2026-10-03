@@ -58,6 +58,7 @@ const ROW_SELECT = {
   rentalId: true,
   ownerId: true,
   hubspotDealId: true,
+  origin: true,
   callList: true,
   client: { select: { name: true, shortName: true, city: true, distanceKm: true, contacts: { orderBy: { isPrimary: "desc" as const }, take: 1, select: { phone: true, email: true } } } },
   clientContact: { select: { firstName: true, lastName: true, phone: true, email: true } },
@@ -121,6 +122,8 @@ export type LeadRow = {
   ownerId: string | null;
   ownerName: string | null;
   fromHubspot: boolean;
+  // Formularz strony bezpośrednio do panelu (03.10.2026).
+  fromWww: boolean;
   lastActivity: { type: ActivityTypeKey; at: string; body: string | null } | null;
   noAnswerCount: number;
   // Lista „Do obdzwonienia” (prompt 2 v2): zaległe zapytanie z 2026.
@@ -196,6 +199,7 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     ownerId: l.ownerId,
     ownerName: l.owner?.name ?? null,
     fromHubspot: Boolean(l.hubspotDealId),
+    fromWww: l.origin === "WWW",
     lastActivity: last ? { type: last.type, at: last.createdAt.toISOString(), body: last.body } : null,
     noAnswerCount: l._count.activities,
     callList: l.callList,

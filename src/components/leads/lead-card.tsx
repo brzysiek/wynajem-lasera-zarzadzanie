@@ -541,7 +541,7 @@ export function LeadCard({
                 <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[var(--c-bg)] text-[11px] font-bold">↓</span>
                 <span>
                   Wpłynęło {fmtWhen(d.createdAt)}
-                  {!fmtWhen(d.createdAt).startsWith("dziś") && !fmtWhen(d.createdAt).startsWith("wczoraj") && ` (${fmtAgo(d.createdAt)})`} · {TYPE_LABEL[d.type]} · {d.fromHubspot ? "z HubSpota" : "z panelu"}
+                  {!fmtWhen(d.createdAt).startsWith("dziś") && !fmtWhen(d.createdAt).startsWith("wczoraj") && ` (${fmtAgo(d.createdAt)})`} · {TYPE_LABEL[d.type]} · {d.fromWww ? "ze strony WWW" : d.fromHubspot ? "z HubSpota" : "z panelu"}
                   {d.hubspotUrl && (
                     <>
                       {" · "}

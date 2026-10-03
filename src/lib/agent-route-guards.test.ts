@@ -107,6 +107,8 @@ function deniesAgent(h: Handler): boolean {
   if (h.route.startsWith("auth/")) return true; // logowanie / reset hasła — publiczne
   if (OAUTH_PUBLIC.includes(`${h.method} ${h.route}`)) return true;
   if (/CRON_SECRET|verifyCronSecret|cronAuthorized/.test(b)) return true;
+  // Webhook formularzy WWW — własny token (WWW_WEBHOOK_TOKEN), nie sesja.
+  if (/WWW_WEBHOOK_TOKEN/.test(b)) return true;
   if (/requireStaffSession\(\)|requireAdminSession\(\)|requireDriverFinanceSession\(\)/.test(b)) return true;
   if (/requireSession\(OFFICE_ROLES\)/.test(b)) return true;
   if (/role === "AGENT"\)\s*\{\s*return NextResponse\.json\(\{ message: "Brak uprawnień\." \}, \{ status: 403 \}\)/.test(b)) return true;

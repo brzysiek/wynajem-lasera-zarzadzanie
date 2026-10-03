@@ -1245,6 +1245,11 @@ enum LostReason {
 
 model Lead {
   id              String         @id @default(cuid())
+  // Formularze wynajemlasera.pl bezpośrednio do panelu (03.10.2026): WWW =
+  // z formularza strony (bez n8n / HubSpota); null = HubSpot albo panel.
+  origin          String?        @db.VarChar(12)
+  // UTM, gclid, fbclid, landing_url, referrer, zgody i surowy typ formularza.
+  attribution     Json?
   clientId        String?
   client          Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
   clientContactId String?
@@ -1728,4 +1733,19 @@ model AutoApprovedClass {
   createdAt   DateTime @default(now())
 
   @@map("auto_approved_classes")
+}
+
+// Dziennik żądań webhooka formularzy WWW (03.10.2026) — każde żądanie z
+// payloadem i wynikiem (CREATED | DUPLICATE | EXCLUDED | ERROR | UNAUTHORIZED).
+model WebhookLog {
+  id        String   @id @default(cuid())
+  kind      String   @db.VarChar(32)
+  result    String   @db.VarChar(16)
+  leadId    String?
+  message   String?  @db.Text
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+  @@map("webhook_logs")
 }

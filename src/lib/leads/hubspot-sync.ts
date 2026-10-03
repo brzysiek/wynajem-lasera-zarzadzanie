@@ -42,6 +42,15 @@ import { dealsToImport } from "@/lib/porzadki/import-block-rules";
 // hosting ma limity czasu zapytania.
 
 const CURSOR_KEY = "leads_hubspot_cursor";
+// Przełącznik (03.10.2026): tworzenie sygnałów z NOWYCH transakcji HubSpot.
+// Domyślnie włączony; wyłączamy po przepięciu formularzy WWW bezpośrednio do
+// panelu (/api/webhooks/formularz-www). Notatki i uzupełnianie istniejących
+// sygnałów działają dalej.
+export const HUBSPOT_NEW_DEALS_KEY = "leads_hubspot_new_deals";
+export async function hubspotNewDealsEnabled(): Promise<boolean> {
+  const row = await prisma.setting.findUnique({ where: { key: HUBSPOT_NEW_DEALS_KEY } });
+  return row?.value !== "off";
+}
 // Moment wdrożenia listy „Do obdzwonienia” — zapisywany przy pierwszym
 // przebiegu tej wersji. Na listę trafiają tylko zapytania sprzed niego.
 const CALL_LIST_UNTIL_KEY = "leads_call_list_until";
@@ -314,7 +323,10 @@ export async function syncDeals(opts: { maxNew?: number; reclassify?: boolean } 
   const fresh = dealsToImport(deals, new Set(byDeal.keys()), blocked)
     .filter((d) => exclusions(planLeadFromDeal(d.properties, normalizePolishPhone).email) !== "EXCLUDE")
     .sort((a, b) => (a.properties.createdate ?? "").localeCompare(b.properties.createdate ?? ""));
-  const batch = fresh.slice(0, maxNew);
+  // Przełącznik wyłączony → nowe transakcje pomijamy (liczą się jako obsłużone,
+  // żeby kursor szedł dalej i nie wróciły masowo po ponownym włączeniu).
+  const newDealsOn = await hubspotNewDealsEnabled();
+  const batch = newDealsOn ? fresh.slice(0, maxNew) : [];
   const changed = deals.filter((d) => {
     if (!byDeal.has(d.id)) return false;
     const m = d.properties.hs_lastmodifieddate ? new Date(d.properties.hs_lastmodifieddate) : null;
@@ -371,7 +383,7 @@ export async function syncDeals(opts: { maxNew?: number; reclassify?: boolean } 
     refreshed++;
   }
 
-  const remaining = fresh.length - batch.length;
+  const remaining = newDealsOn ? fresh.length - batch.length : 0;
   const now = new Date();
   if (remaining === 0) {
     // Kursor z 2-minutowym zapasem — zegar HubSpota i nasz nie muszą być zgodne.

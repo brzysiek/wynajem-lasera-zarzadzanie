@@ -3,6 +3,7 @@ import { HubspotPanel } from "@/components/hubspot-panel";
 import { HubspotImportPanel } from "@/components/hubspot-import-panel";
 import { LeadsImportPanel } from "@/components/leads-import-panel";
 import { ClientsQualificationPanel } from "@/components/clients-qualification-panel";
+import { WwwIntakePanel } from "@/components/www-intake-panel";
 
 function Code({ children }: { children: string }) {
   return <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800">{children}</code>;
@@ -19,6 +20,7 @@ export default async function HubspotIntegrationPage() {
     <div>
       <HubspotPanel initiallyConfigured={hubspotConfigured} />
       <HubspotImportPanel configured={hubspotConfigured} />
+      <WwwIntakePanel />
       <LeadsImportPanel configured={hubspotConfigured} />
       <ClientsQualificationPanel configured={hubspotConfigured} />
 
