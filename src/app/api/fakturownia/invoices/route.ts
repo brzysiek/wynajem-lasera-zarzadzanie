@@ -31,10 +31,14 @@ export async function GET(req: NextRequest) {
     const paidRows = ids.length
       ? await prisma.fakturowniaPayment.findMany({ where: { fakturowniaInvoiceId: { in: ids } } })
       : [];
-    const paidById = new Map(paidRows.map((r) => [r.fakturowniaInvoiceId, r.paidAt]));
+    const paidById = new Map(paidRows.map((r) => [r.fakturowniaInvoiceId, r]));
 
     return NextResponse.json({
-      invoices: invoices.map((i) => ({ ...i, paidAt: paidById.get(i.id)?.toISOString() ?? null })),
+      invoices: invoices.map((i) => {
+        const p = paidById.get(i.id);
+        // Sposób zapłaty: TRANSFER (wyciąg), CASH (gotówka), MANUAL (przełącznik).
+        return { ...i, paidAt: p?.paidAt.toISOString() ?? null, paidMethod: p?.method ?? null };
+      }),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

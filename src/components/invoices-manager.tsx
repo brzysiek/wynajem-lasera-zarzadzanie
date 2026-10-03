@@ -15,7 +15,23 @@ type InvoiceRow = {
   govStatus: string | null;
   govId: string | null;
   paidAt: string | null;
+  paidMethod?: string | null;
 };
+
+// Szybki wybór okresu (03.10.2026): domyślnie ostatnie 3 miesiące — żeby
+// niezapłacone faktury z poprzednich miesięcy były od razu widoczne.
+type Preset = "3m" | "month" | "prev" | "year" | "custom";
+type StatusFilter = "all" | "unpaid" | "overdue" | "paid";
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function presetRange(p: Exclude<Preset, "custom">, now = new Date()): { from: string; to: string } {
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  if (p === "month") return { from: iso(new Date(y, m, 1)), to: iso(new Date(y, m + 1, 0)) };
+  if (p === "prev") return { from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) };
+  if (p === "year") return { from: iso(new Date(y, 0, 1)), to: iso(new Date(y, m + 1, 0)) };
+  return { from: iso(new Date(y, m - 2, 1)), to: iso(new Date(y, m + 1, 0)) };
+}
+const PAID_METHOD: Record<string, string> = { TRANSFER: "przelew", CASH: "gotówka", MANUAL: "oznaczona ręcznie" };
 
 type StatementCandidate = { date: string; description: string; amount: number };
 type StatementResultRow = {
@@ -100,6 +116,8 @@ export function InvoicesManager({
 }) {
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
+  const [preset, setPreset] = useState<Preset>("3m");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -267,7 +285,26 @@ export function InvoicesManager({
   }
 
   const totalGross = invoices.reduce((s, r) => s + (Number(r.priceGross) || 0), 0);
-  const unpaidCount = invoices.filter((r) => !r.paidAt).length;
+  const sum = (xs: InvoiceRow[]) => xs.reduce((s, r) => s + (Number(r.priceGross) || 0), 0);
+  const isOverdue = (r: InvoiceRow) => !r.paidAt && !!r.paymentTo && daysPastDue(r.paymentTo) > 0;
+  const unpaid = invoices.filter((r) => !r.paidAt);
+  const overdue = invoices.filter(isOverdue);
+  const paid = invoices.filter((r) => r.paidAt);
+  // Lista: filtr statusu; przy „niezapłacone / po terminie” najpierw najdłużej po terminie.
+  const shown = (statusFilter === "unpaid" ? unpaid : statusFilter === "overdue" ? overdue : statusFilter === "paid" ? paid : invoices)
+    .slice()
+    .sort((a, b) =>
+      statusFilter === "unpaid" || statusFilter === "overdue"
+        ? (b.paymentTo ? daysPastDue(b.paymentTo) : -1) - (a.paymentTo ? daysPastDue(a.paymentTo) : -1)
+        : b.sellDate.localeCompare(a.sellDate) || b.number.localeCompare(a.number),
+    );
+  const choosePreset = (p: Preset) => {
+    setPreset(p);
+    if (p === "custom") return;
+    const r = presetRange(p);
+    setFrom(r.from);
+    setTo(r.to);
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -280,8 +317,8 @@ export function InvoicesManager({
             Faktury VAT
           </h1>
           <p className="mt-1 text-[13px]" style={{ color: C.muted }}>
-            Dane na żywo z Fakturowni. „Zapłacona” to jedyna kolumna z naszej bazy — Fakturownia nie zna statusu
-            płatności bez połączenia z bankiem.
+            Dane na żywo z Fakturowni. Płatność ustalamy sami (wyciąg bankowy, gotówka, przełącznik) — Fakturownia nie
+            zna statusu płatności bez połączenia z bankiem.
           </p>
         </div>
 
@@ -340,33 +377,82 @@ export function InvoicesManager({
           </div>
         )}
 
-        <div className="mt-5 flex flex-wrap items-center gap-3 px-4 sm:px-7" style={{ color: C.muted }}>
-          <label className="flex items-center gap-1.5 text-[13px]">
-            Od
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="rounded-md border border-[#E9EDF1] px-2 py-1 text-[13px] text-[#4A4A4A] transition-colors hover:border-[#D3DAE1] focus:border-[#1B6FA8] focus:outline-none"
-            />
-          </label>
-          <label className="flex items-center gap-1.5 text-[13px]">
-            Do
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="rounded-md border border-[#E9EDF1] px-2 py-1 text-[13px] text-[#4A4A4A] transition-colors hover:border-[#D3DAE1] focus:border-[#1B6FA8] focus:outline-none"
-            />
-          </label>
-          <span className="text-[13px]">
-            {invoices.length} {invoices.length === 1 ? "faktura" : "faktur"} · razem {fmtPln(String(totalGross), "PLN")}
-            {unpaidCount > 0 && (
-              <span className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: C.amberSoft, color: C.amber }}>
-                {unpaidCount} niezapłaconych
-              </span>
+        <div className="mt-5 flex flex-col gap-3 px-4 sm:px-7" style={{ color: C.muted }}>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex overflow-hidden rounded-lg border border-[#E9EDF1]" role="group" aria-label="Okres">
+              {(
+                [
+                  ["3m", "Ostatnie 3 mies."],
+                  ["month", "Ten miesiąc"],
+                  ["prev", "Poprzedni miesiąc"],
+                  ["year", "Od początku roku"],
+                  ["custom", "Zakres…"],
+                ] as [Preset, string][]
+              ).map(([k, l]) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={preset === k}
+                  onClick={() => choosePreset(k)}
+                  className={`px-3 py-1.5 text-[13px] transition-colors ${preset === k ? "bg-[#1B6FA8] text-white" : "bg-white text-[#4A4A4A] hover:bg-[#F6F9FB]"}`}
+                >
+                  {l}
+                </button>
+              ))}
+            </span>
+            {preset === "custom" && (
+              <>
+                <label className="flex items-center gap-1.5 text-[13px]">
+                  Od
+                  <input
+                    type="date"
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                    className="rounded-md border border-[#E9EDF1] px-2 py-1 text-[13px] text-[#4A4A4A] transition-colors hover:border-[#D3DAE1] focus:border-[#1B6FA8] focus:outline-none"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-[13px]">
+                  Do
+                  <input
+                    type="date"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    className="rounded-md border border-[#E9EDF1] px-2 py-1 text-[13px] text-[#4A4A4A] transition-colors hover:border-[#D3DAE1] focus:border-[#1B6FA8] focus:outline-none"
+                  />
+                </label>
+              </>
             )}
-          </span>
+            <span className="text-[12.5px]">
+              {fmtDate(from)} – {fmtDate(to)}
+            </span>
+          </div>
+          {/* Podsumowanie i filtr statusu — klik zawęża listę. */}
+          <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(170px,1fr))]">
+            {(
+              [
+                { key: "all", label: "Wszystkie", n: invoices.length, amount: totalGross, tone: { bg: C.surface, fg: C.text } },
+                { key: "unpaid", label: "Do zapłaty", n: unpaid.length, amount: sum(unpaid), tone: { bg: C.amberSoft, fg: C.amber } },
+                { key: "overdue", label: "Po terminie", n: overdue.length, amount: sum(overdue), tone: { bg: C.redSoft, fg: C.red } },
+                { key: "paid", label: "Zapłacone", n: paid.length, amount: sum(paid), tone: { bg: C.greenSoft, fg: C.green } },
+              ] as { key: StatusFilter; label: string; n: number; amount: number; tone: { bg: string; fg: string } }[]
+            ).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                aria-pressed={statusFilter === t.key}
+                onClick={() => setStatusFilter(t.key)}
+                className={`flex flex-col items-start rounded-[10px] border px-3 py-2 text-left transition-shadow ${statusFilter === t.key ? "ring-2 ring-[#1B6FA8]" : ""}`}
+                style={{ borderColor: C.border, background: t.n ? t.tone.bg : C.surface }}
+              >
+                <span className="text-[12px] font-semibold uppercase tracking-[0.06em]" style={{ color: t.n ? t.tone.fg : C.muted }}>
+                  {t.label}
+                </span>
+                <span className="text-[18px] font-bold tabular-nums" style={{ color: C.text }}>
+                  {t.n} <span className="text-[13px] font-semibold" style={{ color: C.muted }}>· {fmtPln(String(t.amount), "PLN")}</span>
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="overflow-x-auto px-4 py-6 sm:px-7">
@@ -374,9 +460,9 @@ export function InvoicesManager({
             <p className="py-8 text-center text-[13px]" style={{ color: C.faint }}>
               Ładowanie…
             </p>
-          ) : invoices.length === 0 ? (
+          ) : shown.length === 0 ? (
             <p className="py-8 text-center text-[13px]" style={{ color: C.faint }}>
-              Brak faktur w tym okresie.
+              {invoices.length === 0 ? "Brak faktur w tym okresie." : "Brak faktur z tym statusem w tym okresie."}
             </p>
           ) : (
             <table className="w-full min-w-[820px] border-collapse text-[13px]">
@@ -398,13 +484,13 @@ export function InvoicesManager({
                     KSeF
                   </th>
                   <th className="border-b px-2 py-2 text-left font-semibold" style={{ borderColor: C.border }}>
-                    Zapłacona
+                    Płatność
                   </th>
                   <th className="border-b px-2 py-2" style={{ borderColor: C.border }} />
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((r) => {
+                {shown.map((r) => {
                   const sentToKsef = r.govStatus === "ok";
                   const ksefProcessing = r.govStatus != null && r.govStatus.startsWith("processing");
                   const ksefError = r.govStatus != null && r.govStatus !== "ok" && !ksefProcessing;
@@ -459,25 +545,26 @@ export function InvoicesManager({
                           type="button"
                           onClick={() => void togglePaid(r)}
                           disabled={readOnly}
+                          title={readOnly ? undefined : r.paidAt ? "Kliknij, żeby oznaczyć jako niezapłaconą" : "Kliknij, żeby oznaczyć jako zapłaconą"}
                           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:pointer-events-none ${
                             r.paidAt
                               ? "bg-[#E7F6EF] text-[#1E9E6B] hover:bg-[#D2EFE2]"
-                              : "bg-[#E9EDF1] text-[#6F7378] hover:bg-[#D3DAE1]"
+                              : isOverdue(r)
+                                ? "bg-[#FCE8E6] text-[#D93025] hover:bg-[#F9D2CE]"
+                                : "bg-[#FEF7E0] text-[#B06000] hover:bg-[#FCEEC7]"
                           }`}
                         >
-                          {r.paidAt ? "zapłacona" : "niezapłacona"}
+                          {r.paidAt ? "zapłacona" : isOverdue(r) ? "po terminie" : "do zapłaty"}
                         </button>
-                        {!r.paidAt &&
-                          r.paymentTo &&
-                          (() => {
-                            const overdue = daysPastDue(r.paymentTo);
-                            if (overdue <= 0) return null;
-                            return (
-                              <p className="mt-0.5 text-[10px] font-medium" style={{ color: C.red }}>
-                                {overdue === 1 ? "1 dzień" : `${overdue} dni`} po terminie
-                              </p>
-                            );
-                          })()}
+                        <p className="mt-0.5 text-[10.5px]" style={{ color: r.paidAt ? C.muted : isOverdue(r) ? C.red : C.muted }}>
+                          {r.paidAt
+                            ? `${fmtDate(r.paidAt)}${r.paidMethod && PAID_METHOD[r.paidMethod] ? ` · ${PAID_METHOD[r.paidMethod]}` : ""}`
+                            : r.paymentTo
+                              ? isOverdue(r)
+                                ? `${daysPastDue(r.paymentTo) === 1 ? "1 dzień" : `${daysPastDue(r.paymentTo)} dni`} po terminie (${fmtDate(r.paymentTo)})`
+                                : `termin ${fmtDate(r.paymentTo)}`
+                              : ""}
+                        </p>
                       </td>
                       <td className="border-b px-2 py-2" style={{ borderColor: C.border }}>
                         <div className="flex flex-wrap items-center justify-end gap-1">

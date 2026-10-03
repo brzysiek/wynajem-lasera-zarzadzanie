@@ -14,8 +14,10 @@ export default async function InvoicesPage() {
   const isAgent = session?.user.role === "AGENT";
   if (!isAgent) await requireAdmin();
 
+  // Domyślnie ostatnie 3 miesiące (np. 3.10 → od 1.08), żeby niezapłacone
+  // faktury z poprzednich miesięcy były widoczne od razu.
   const now = new Date();
-  const period = monthPeriod(now.getFullYear(), now.getMonth() + 1);
+  const period = { start: monthPeriod(now.getFullYear(), now.getMonth() - 1).start, end: monthPeriod(now.getFullYear(), now.getMonth() + 1).end };
 
   return (
     <div className="flex flex-col gap-4">
