@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { daysPastDue } from "@/lib/invoicing/email-template";
+import { BANK_STATEMENT_SINCE } from "@/lib/invoicing/bank-since";
 
 type InvoiceRow = {
   id: number;
@@ -286,8 +287,12 @@ export function InvoicesManager({
 
   const totalGross = invoices.reduce((s, r) => s + (Number(r.priceGross) || 0), 0);
   const sum = (xs: InvoiceRow[]) => xs.reduce((s, r) => s + (Number(r.priceGross) || 0), 0);
-  const isOverdue = (r: InvoiceRow) => !r.paidAt && !!r.paymentTo && daysPastDue(r.paymentTo) > 0;
-  const unpaid = invoices.filter((r) => !r.paidAt);
+  // Płatności w panelu śledzone od BANK_STATEMENT_SINCE (1.09.2026) — starsze
+  // bez oznaczenia nie są „do zapłaty”, tylko „sprzed września” (sprawdzane
+  // poza panelem, decyzja Tomka 03.10).
+  const untracked = (r: InvoiceRow) => !r.paidAt && r.sellDate.slice(0, 10) < BANK_STATEMENT_SINCE;
+  const isOverdue = (r: InvoiceRow) => !r.paidAt && !untracked(r) && !!r.paymentTo && daysPastDue(r.paymentTo) > 0;
+  const unpaid = invoices.filter((r) => !r.paidAt && !untracked(r));
   const overdue = invoices.filter(isOverdue);
   const paid = invoices.filter((r) => r.paidAt);
   // Lista: filtr statusu; przy „niezapłacone / po terminie” najpierw najdłużej po terminie.
@@ -549,17 +554,21 @@ export function InvoicesManager({
                           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors disabled:pointer-events-none ${
                             r.paidAt
                               ? "bg-[#E7F6EF] text-[#1E9E6B] hover:bg-[#D2EFE2]"
-                              : isOverdue(r)
+                              : untracked(r)
+                                ? "bg-[#E9EDF1] text-[#6F7378] hover:bg-[#D3DAE1]"
+                                : isOverdue(r)
                                 ? "bg-[#FCE8E6] text-[#D93025] hover:bg-[#F9D2CE]"
                                 : "bg-[#FEF7E0] text-[#B06000] hover:bg-[#FCEEC7]"
                           }`}
                         >
-                          {r.paidAt ? "zapłacona" : isOverdue(r) ? "po terminie" : "do zapłaty"}
+                          {r.paidAt ? "zapłacona" : untracked(r) ? "sprzed września" : isOverdue(r) ? "po terminie" : "do zapłaty"}
                         </button>
                         <p className="mt-0.5 text-[10.5px]" style={{ color: r.paidAt ? C.muted : isOverdue(r) ? C.red : C.muted }}>
                           {r.paidAt
                             ? `${fmtDate(r.paidAt)}${r.paidMethod && PAID_METHOD[r.paidMethod] ? ` · ${PAID_METHOD[r.paidMethod]}` : ""}`
-                            : r.paymentTo
+                            : untracked(r)
+                              ? "płatność sprawdzana poza panelem"
+                              : r.paymentTo
                               ? isOverdue(r)
                                 ? `${daysPastDue(r.paymentTo) === 1 ? "1 dzień" : `${daysPastDue(r.paymentTo)} dni`} po terminie (${fmtDate(r.paymentTo)})`
                                 : `termin ${fmtDate(r.paymentTo)}`
