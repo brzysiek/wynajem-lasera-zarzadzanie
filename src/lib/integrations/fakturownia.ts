@@ -108,6 +108,45 @@ export async function findClientByTaxNo(taxNo: string): Promise<FakturowniaClien
   return { id: first.id, name: first.name };
 }
 
+// Nowy kontrahent w Fakturowni (03.10.2026): gdy po NIP-ie nie ma
+// kontrahenta, panel zakłada go z danych karty klienta (nazwa, NIP, adres,
+// e-mail do FV) — zamiast odsyłać biuro do ręcznego wystawienia faktury.
+export async function createClient(input: {
+  name: string;
+  taxNo: string;
+  street?: string | null;
+  postCode?: string | null;
+  city?: string | null;
+  country?: string | null;
+  email?: string | null;
+}): Promise<FakturowniaClient> {
+  const { token, account } = requireCredentials();
+  const country = !input.country || /^pol/i.test(input.country) ? "PL" : input.country;
+  const res = await fetch(`${baseUrl(account)}/clients.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      api_token: token,
+      client: {
+        name: input.name,
+        tax_no: normalizeTaxNo(input.taxNo),
+        ...(input.street ? { street: input.street } : {}),
+        ...(input.postCode ? { post_code: input.postCode } : {}),
+        ...(input.city ? { city: input.city } : {}),
+        country,
+        ...(input.email ? { email: input.email } : {}),
+      },
+    }),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body?.id) {
+    const message = body && typeof body === "object" && "message" in body ? String(body.message) : null;
+    throw new Error(message || `Nie udało się dodać kontrahenta w Fakturowni (HTTP ${res.status}).`);
+  }
+  logDebug("fakturownia_client_created", { clientId: body.id });
+  return { id: body.id, name: body.name ?? input.name };
+}
+
 export type CreatedInvoice = { id: number; number: string };
 
 // Wystawia fakturę VAT z ustalonego działu (department_id) dla znalezionego

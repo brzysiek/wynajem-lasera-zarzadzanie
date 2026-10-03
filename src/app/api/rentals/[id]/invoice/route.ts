@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
-import { findClientByTaxNo, createInvoice } from "@/lib/integrations/fakturownia";
+import { createClient, findClientByTaxNo, createInvoice } from "@/lib/integrations/fakturownia";
 import { buildInvoicePositions } from "@/lib/invoicing/positions";
 import { financeDto } from "@/lib/finance";
 import { logInfo, logWarn, logError } from "@/lib/logger";
@@ -21,7 +21,27 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (!session) return bad("Brak uprawnień.", 403);
 
   const { id } = await params;
-  const rental = await prisma.rental.findUnique({ where: { id }, include: { device: true, finance: true } });
+  const rental = await prisma.rental.findUnique({
+    where: { id },
+    include: {
+      device: true,
+      finance: true,
+      client: {
+        select: {
+          name: true,
+          nip: true,
+          street: true,
+          zip: true,
+          city: true,
+          country: true,
+          invoiceEmail: true,
+          invoiceBuyerName: true,
+          invoiceBuyerNip: true,
+          contacts: { orderBy: { isPrimary: "desc" }, take: 1, select: { email: true } },
+        },
+      },
+    },
+  });
   if (!rental) return bad("Nie znaleziono wynajmu.", 404);
   if (!rental.finance) return bad("Wynajem nie ma jeszcze rozliczenia.");
   // Decyzja biznesowa: brak "doliczyć VAT" = to w ogóle nie jest wynajem,
@@ -38,28 +58,42 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return bad("Ustal kwotę na FV w rozliczeniu (warunki klienta: część) — potem wystaw fakturę.");
   }
 
-  const nip = rental.contactNipCache?.trim();
+  // NIP nabywcy z karty klienta (nabywca inny niż gabinet → „Dane do faktury”),
+  // a dla starych rezerwacji bez klienta — z danych kontaktu na wynajmie.
+  const c = rental.client;
+  const otherBuyer = !!c?.invoiceBuyerNip?.trim() && c.invoiceBuyerNip.replace(/\D/g, "") !== (c.nip ?? "").replace(/\D/g, "");
+  const nip = (c?.invoiceBuyerNip ?? c?.nip ?? rental.contactNipCache)?.trim();
   if (!nip) {
-    await prisma.rentalFinance.update({
-      where: { rentalId: id },
-      data: { invoiceError: "Brak NIP kontrahenta — uzupełnij w HubSpot i odśwież kontakt na wynajmie." },
-    });
+    const msg = c ? "Brak NIP nabywcy — uzupełnij NIP w karcie klienta (Dane firmy albo „Dane do faktury”)." : "Brak NIP kontrahenta — przypisz klienta do rezerwacji i uzupełnij NIP w jego karcie.";
+    await prisma.rentalFinance.update({ where: { rentalId: id }, data: { invoiceError: msg } });
     logWarn("fakturownia_invoice_missing_nip", { userId: session.user.id, rentalId: id });
-    return NextResponse.json({ found: false, message: "Brak NIP kontrahenta — uzupełnij w HubSpot i odśwież kontakt na wynajmie." });
+    return NextResponse.json({ found: false, message: msg });
   }
 
   try {
-    const client = await findClientByTaxNo(nip);
+    let client = await findClientByTaxNo(nip);
     if (!client) {
-      await prisma.rentalFinance.update({
-        where: { rentalId: id },
-        data: { invoiceError: `Nie znaleziono kontrahenta w Fakturowni (NIP: ${nip}) — wystaw fakturę ręcznie.` },
+      // 03.10.2026: kontrahenta nie ma w Fakturowni — zakładamy go z danych
+      // karty klienta (nazwa, NIP, adres, e-mail do FV), a nie odsyłamy do
+      // ręcznego wystawienia. Nabywca inny niż gabinet nie ma w panelu
+      // własnego adresu — wtedy tylko komunikat.
+      const missing = !c ? "brak klienta na rezerwacji" : otherBuyer ? "nabywca inny niż gabinet — brak jego adresu w panelu" : !c.street?.trim() || !c.city?.trim() ? "brak adresu firmy w karcie klienta" : null;
+      if (missing) {
+        const msg = `Nie znaleziono kontrahenta w Fakturowni (NIP: ${nip}) i nie da się go dodać automatycznie: ${missing}. Uzupełnij kartę klienta albo dodaj kontrahenta w Fakturowni.`;
+        await prisma.rentalFinance.update({ where: { rentalId: id }, data: { invoiceError: msg } });
+        logInfo("fakturownia_invoice_client_not_found", { userId: session.user.id, rentalId: id, nip, missing });
+        return NextResponse.json({ found: false, message: msg });
+      }
+      client = await createClient({
+        name: c!.invoiceBuyerName?.trim() || c!.name,
+        taxNo: nip,
+        street: c!.street,
+        postCode: c!.zip,
+        city: c!.city,
+        country: c!.country,
+        email: c!.invoiceEmail?.trim() || c!.contacts[0]?.email || null,
       });
-      logInfo("fakturownia_invoice_client_not_found", { userId: session.user.id, rentalId: id, nip });
-      return NextResponse.json({
-        found: false,
-        message: `Nie znaleziono kontrahenta w Fakturowni (NIP: ${nip}) — wystaw fakturę ręcznie.`,
-      });
+      logInfo("fakturownia_client_created_for_invoice", { userId: session.user.id, rentalId: id, nip, fakturowniaClientId: client.id });
     }
 
     const positions = buildInvoicePositions({
