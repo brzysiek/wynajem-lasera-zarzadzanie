@@ -5,9 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BASE_PATH } from "@/lib/base-path";
 import type { ProposalRow } from "@/lib/porzadki/proposals";
+import type { AreaDef } from "@/lib/porzadki/areas";
 import {
-  AREA_KEYS,
-  AREA_LABEL,
   OPEN_STATUSES,
   PRIORITY_KEYS,
   PRIORITY_LABEL,
@@ -54,11 +53,16 @@ export function ProposalsList({
   rows: initialRows,
   counts: _counts,
   authors,
+  areas,
+  inbox = false,
   isAdmin = false,
 }: {
   rows: ProposalRow[];
   counts: Record<string, number>;
   authors: { id: string; name: string }[];
+  areas: AreaDef[]; // obszary tego widoku (backlog albo skrzynka)
+  // Skrzynka Tomka (obszary niedeweloperskie): bez „wdrożono w …” i zakładki „Wdrożone”.
+  inbox?: boolean;
   isAdmin?: boolean;
 }) {
   void _counts;
@@ -171,6 +175,7 @@ export function ProposalsList({
     ...(blocks ? { blokuje: "1" } : {}),
     ...(author ? { autor: author } : {}),
     ...(q.trim() ? { q: q.trim() } : {}),
+    ...(inbox ? { skrzynka: "1" } : {}),
   }).toString();
   const tabCount = (t: keyof typeof TAB_TEST) => rows.filter(TAB_TEST[t]).length;
   const visibleIds = visible.map((r) => r.id);
@@ -187,8 +192,12 @@ export function ProposalsList({
 
   return (
     <PorzadkiLayout
-      title="Wnioski"
-      description="Zmiany w panelu, integracjach i procesie — od zgłoszenia do realizacji."
+      title={inbox ? "Skrzynka" : "Wnioski"}
+      description={
+        inbox
+          ? "Skrzynka Tomka: pomysły, decyzje i sprawy biznesowe (marketing, strona, oferta, organizacja). Notatki, nie zadania do kodowania — status zmienia tylko Tomek."
+          : "Zmiany w panelu, integracjach i procesie — od zgłoszenia do realizacji."
+      }
       actions={
         <>
           <a href={`${BASE_PATH}/api/porzadki/wnioski/export?format=md&${exportQuery}`} className={`${BTN} flex items-center`}>
@@ -197,8 +206,8 @@ export function ProposalsList({
           <a href={`${BASE_PATH}/api/porzadki/wnioski/export?format=csv&${exportQuery}`} className={`${BTN} flex items-center`}>
             CSV
           </a>
-          <Link href="/wnioski/nowy" className={`${BTN_PRIMARY} flex items-center`}>
-            + Nowy wniosek
+          <Link href={inbox ? "/wnioski/nowy?skrzynka=1" : "/wnioski/nowy"} className={`${BTN_PRIMARY} flex items-center`}>
+            {inbox ? "+ Nowy wpis" : "+ Nowy wniosek"}
           </Link>
         </>
       }
@@ -212,7 +221,9 @@ export function ProposalsList({
             ["deployed", "Wdrożone — do odhaczenia"],
             ["done", "Zrobione"],
           ] as [keyof typeof TAB_TEST, string][]
-        ).map(([k, label]) => (
+        )
+          .filter(([k]) => !inbox || k !== "deployed")
+          .map(([k, label]) => (
           <button key={k} type="button" className={SELECT_PILL(status === k)} onClick={() => setStatus(k)}>
             {label} · {tabCount(k)}
           </button>
@@ -237,9 +248,9 @@ export function ProposalsList({
         <input className={`${INPUT} h-8 max-w-[260px] text-[13px]`} placeholder="Szukaj: tytuł, W-0012…" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className={SELECT_PILL(!!area)} value={area} onChange={(e) => setArea(e.target.value)}>
           <option value="">Obszar: wszystkie</option>
-          {AREA_KEYS.map((k) => (
-            <option key={k} value={k}>
-              {AREA_LABEL[k]}
+          {areas.map((a) => (
+            <option key={a.key} value={a.key}>
+              {a.label}
             </option>
           ))}
         </select>
@@ -267,9 +278,11 @@ export function ProposalsList({
             </option>
           ))}
         </select>
-        <button type="button" className={SELECT_PILL(blocks)} onClick={() => setBlocks((v) => !v)}>
-          blokuje porządki
-        </button>
+        {!inbox && (
+          <button type="button" className={SELECT_PILL(blocks)} onClick={() => setBlocks((v) => !v)}>
+            blokuje porządki
+          </button>
+        )}
         <select className={`${SELECT_PILL(false)} ml-auto`} value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Kolejność">
           <option value="priority">Kolejność: priorytet, potem najnowsze</option>
           <option value="newest">najnowsze</option>
@@ -313,7 +326,7 @@ export function ProposalsList({
 
       {visible.length === 0 ? (
         <div className="rounded-xl border border-[var(--c-border)] bg-white px-6 py-10 text-center text-sm text-[var(--c-muted)]">
-          {rows.length === 0 ? "Nie ma jeszcze wniosków." : "Żaden wniosek nie pasuje do filtrów."}
+          {rows.length === 0 ? (inbox ? "Skrzynka jest pusta." : "Nie ma jeszcze wniosków.") : "Żaden wniosek nie pasuje do filtrów."}
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-[var(--c-border)] bg-white">
@@ -327,7 +340,7 @@ export function ProposalsList({
                   <span className="min-w-0 flex-[1_1_320px]">
                     <span className="block truncate text-[14px] font-semibold text-[var(--c-navy)]">{r.title}</span>
                     <span className="block truncate text-xs text-[var(--c-muted)]">
-                      {AREA_LABEL[r.area]} · {TYPE_LABEL[r.type]}
+                      {r.areaLabel} · {TYPE_LABEL[r.type]}
                       {r.scale ? ` · ${r.scale}` : ""}
                       {r.clientCount ? ` · klientów: ${r.clientCount}` : ""}
                       {r.commentCount ? ` · 💬 ${r.commentCount}` : ""}

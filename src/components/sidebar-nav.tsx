@@ -170,7 +170,7 @@ function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT" | undefined): (
     kind: "link",
     href: "/wnioski",
     label: "Porządki/optymalizacje",
-    matchAny: ["/wnioski", "/uwagi", "/dziennik", "/reguly", "/archiwum", "/propozycje"],
+    matchAny: ["/wnioski", "/skrzynka", "/uwagi", "/dziennik", "/reguly", "/archiwum", "/propozycje"],
     icon: <ChecklistIcon />,
   });
   return items;

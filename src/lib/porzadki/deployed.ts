@@ -22,7 +22,8 @@ export async function syncDeployedProposals(): Promise<void> {
     for (const [number, c] of byNumber) {
       const at = new Date(c.at);
       await prisma.proposal.updateMany({
-        where: { number, OR: [{ deployedAt: null }, { deployedAt: { lt: at } }] },
+        // Skrzynka Tomka (obszar niedeweloperski) nie dostaje „wdrożono w …”.
+        where: { number, areaRef: { dev: true }, OR: [{ deployedAt: null }, { deployedAt: { lt: at } }] },
         data: { deployedCommit: c.hash, deployedAt: at },
       });
     }

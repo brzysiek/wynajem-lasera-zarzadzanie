@@ -1,18 +1,9 @@
 // Moduł „Porządki” — słowniki wniosków i uwag (obszar, typ, przyczyna,
 // status, priorytet) z polskimi etykietami. Czysty moduł (vitest, bez @/).
 
-export const AREA_LABEL = {
-  KLIENCI: "Klienci",
-  SYGNALY: "Sygnały",
-  HISTORIA: "Historia i dopasowania",
-  FINANSE: "Finanse",
-  KALENDARZ: "Kalendarz i rezerwacje",
-  KOMUNIKACJA: "Komunikacja (SMS, maile)",
-  INTEGRACJE: "Integracje (HubSpot, n8n, formularze, Gmail)",
-  PROCES: "Zadania i proces pracy",
-} as const;
-export type AreaKey = keyof typeof AREA_LABEL;
-export const AREA_KEYS = Object.keys(AREA_LABEL) as AreaKey[];
+// Obszary wniosków są w bazie (proposal_areas, z flagą dev) — patrz
+// src/lib/porzadki/areas.ts. Tu tylko typ kodu obszaru.
+export type AreaKey = string;
 
 export const TYPE_LABEL = {
   BLAD: "Błąd",

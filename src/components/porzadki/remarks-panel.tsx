@@ -7,7 +7,9 @@ import { api } from "@/components/clients/client-forms";
 import { ClientPicker } from "@/components/clients/history-review";
 import type { ReviewClient } from "@/lib/history/review-load";
 import type { RemarkRow } from "@/lib/porzadki/remarks";
-import { AREA_KEYS, AREA_LABEL, REMARK_STATUS_LABEL, TYPE_KEYS, TYPE_LABEL, proposalNumber, type AreaKey, type ProposalTypeKey } from "@/lib/porzadki/labels";
+import type { AreaDef } from "@/lib/porzadki/areas";
+import { AreaOptions } from "./area-options";
+import { REMARK_STATUS_LABEL, TYPE_KEYS, TYPE_LABEL, proposalNumber, type AreaKey, type ProposalTypeKey } from "@/lib/porzadki/labels";
 import { BTN, BTN_GHOST, BTN_PRIMARY, ErrorNote, INPUT, SELECT_PILL, TEXTAREA, fmtDateTime } from "./shared";
 
 // Uwagi — lista z filtrami + dodawanie. Na /uwagi (wszystkie) i na karcie
@@ -17,6 +19,8 @@ import { BTN, BTN_GHOST, BTN_PRIMARY, ErrorNote, INPUT, SELECT_PILL, TEXTAREA, f
 export function RemarksPanel({ clientId, clientOptions = [], compact = false }: { clientId?: string; clientOptions?: ReviewClient[]; compact?: boolean }) {
   const router = useRouter();
   const [rows, setRows] = useState<RemarkRow[] | null>(null);
+  const [areas, setAreas] = useState<AreaDef[]>([]);
+  const areaLabel = (k: string) => areas.find((a) => a.key === k)?.label ?? k;
   const [status, setStatus] = useState<"" | "OPEN" | "CLOSED">(compact ? "" : "OPEN");
   const [area, setArea] = useState("");
   const [q, setQ] = useState("");
@@ -30,11 +34,15 @@ export function RemarksPanel({ clientId, clientOptions = [], compact = false }: 
   const query = new URLSearchParams({ ...(clientId ? { klient: clientId } : {}), ...(status ? { status } : {}), ...(area ? { obszar: area } : {}), ...(q.trim() ? { q: q.trim() } : {}) }).toString();
 
   const fetchRows = useCallback(async () => {
-    const { ok, data } = await api<{ remarks: RemarkRow[] }>(`/api/porzadki/uwagi?${query}`, "GET");
-    return ok ? { rows: data.remarks } : { error: data.message ?? "Nie udało się wczytać uwag." };
+    const { ok, data } = await api<{ remarks: RemarkRow[]; areas: AreaDef[] }>(`/api/porzadki/uwagi?${query}`, "GET");
+    return ok ? { rows: data.remarks, areas: data.areas } : { error: data.message ?? "Nie udało się wczytać uwag." };
   }, [query]);
 
-  const apply = (r: { rows: RemarkRow[] } | { error: string }) => ("rows" in r ? setRows(r.rows) : setError(r.error));
+  const apply = (r: { rows: RemarkRow[]; areas: AreaDef[] } | { error: string }) => {
+    if (!("rows" in r)) return setError(r.error);
+    setRows(r.rows);
+    setAreas(r.areas ?? []);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -88,11 +96,7 @@ export function RemarksPanel({ clientId, clientOptions = [], compact = false }: 
         {!compact && (
           <select className={SELECT_PILL(!!area)} value={area} onChange={(e) => setArea(e.target.value)}>
             <option value="">Obszar: wszystkie</option>
-            {AREA_KEYS.map((k) => (
-              <option key={k} value={k}>
-                {AREA_LABEL[k]}
-              </option>
-            ))}
+            <AreaOptions areas={areas} />
           </select>
         )}
         {!adding && (
@@ -108,11 +112,7 @@ export function RemarksPanel({ clientId, clientOptions = [], compact = false }: 
           <div className="grid gap-2 sm:grid-cols-2">
             <select className={INPUT} value={draft.area} onChange={(e) => setDraft({ ...draft, area: e.target.value as AreaKey | "" })}>
               <option value="">Obszar (opcjonalnie)</option>
-              {AREA_KEYS.map((k) => (
-                <option key={k} value={k}>
-                  {AREA_LABEL[k]}
-                </option>
-              ))}
+              <AreaOptions areas={areas} />
             </select>
             <input className={INPUT} placeholder="Dowód / źródło (opcjonalnie)" value={draft.evidence} onChange={(e) => setDraft({ ...draft, evidence: e.target.value })} />
           </div>
@@ -188,7 +188,7 @@ export function RemarksPanel({ clientId, clientOptions = [], compact = false }: 
               </div>
               <p className="mt-1 text-xs text-[var(--c-muted)]">
                 {r.authorName ?? "—"} · {fmtDateTime(r.createdAt)}
-                {r.area && ` · ${AREA_LABEL[r.area]}`}
+                {r.area && ` · ${areaLabel(r.area)}`}
                 {!clientId && r.clientId && (
                   <>
                     {" · "}
@@ -211,11 +211,7 @@ export function RemarksPanel({ clientId, clientOptions = [], compact = false }: 
                 <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--c-bg)] p-2">
                   <select className={`${INPUT} h-8 max-w-[260px] text-[13px]`} value={converting.area} onChange={(e) => setConverting({ ...converting, area: e.target.value as AreaKey | "" })}>
                     <option value="">Obszar wniosku…</option>
-                    {AREA_KEYS.map((k) => (
-                      <option key={k} value={k}>
-                        {AREA_LABEL[k]}
-                      </option>
-                    ))}
+                    <AreaOptions areas={areas} />
                   </select>
                   <select className={`${INPUT} h-8 max-w-[220px] text-[13px]`} value={converting.type} onChange={(e) => setConverting({ ...converting, type: e.target.value as ProposalTypeKey })}>
                     {TYPE_KEYS.map((k) => (

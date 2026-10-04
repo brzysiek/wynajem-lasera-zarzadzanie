@@ -1469,6 +1469,7 @@ model Proposal {
   number         Int      @unique @default(autoincrement()) // W-0001
   title          String
   area           String   @db.VarChar(32)
+  areaRef        ProposalArea @relation(fields: [area], references: [key], onUpdate: Cascade)
   type           String   @db.VarChar(32)
   problem        String?  @db.Text
   evidence       String?  @db.Text
@@ -1499,6 +1500,21 @@ model Proposal {
   @@index([status])
   @@index([area])
   @@map("proposals")
+}
+
+// Słownik obszarów wniosków (04.10.2026). dev=true — backlog panelu (zmiany
+// w kodzie i procesie). dev=false — „Skrzynka Tomka”: tematy biznesowe
+// (marketing, strona, oferta, organizacja), NIE do implementacji; status
+// zmienia tylko Tomek. Nowy obszar = nowy wiersz, bez zmian w kodzie.
+model ProposalArea {
+  key       String     @id @db.VarChar(32)
+  label     String     @db.VarChar(120)
+  hint      String?    @db.VarChar(191)
+  dev       Boolean    @default(true)
+  sortOrder Int        @default(0)
+  proposals Proposal[]
+
+  @@map("proposal_areas")
 }
 
 model ProposalClient {

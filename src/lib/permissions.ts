@@ -33,6 +33,7 @@ const AGENT_PAGE_PREFIXES = [
   "/wysylka-sms",
   // Porządki
   "/wnioski",
+  "/skrzynka",
   "/uwagi",
   "/dziennik",
   "/reguly",

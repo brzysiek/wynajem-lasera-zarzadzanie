@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import type { AreaKey, CauseKey, PriorityKey, ProposalStatusKey, ProposalTypeKey, RelationKey } from "@/lib/porzadki/labels";
 import { OPEN_STATUSES } from "@/lib/porzadki/labels";
 import { syncDeployedProposals } from "@/lib/porzadki/deployed";
+import { areaListText, findArea, loadAreas } from "@/lib/porzadki/areas";
 import {
   canEditProposal,
   canSetStatus,
@@ -32,6 +33,9 @@ export type ProposalRow = {
   number: number;
   title: string;
   area: AreaKey;
+  areaLabel: string;
+  // false = „Skrzynka Tomka” (obszar niedeweloperski) — nie do implementacji.
+  dev: boolean;
   type: ProposalTypeKey;
   status: ProposalStatusKey;
   priority: PriorityKey;
@@ -71,9 +75,13 @@ export type ProposalFilters = {
   authorId?: string | null;
   q?: string | null;
   clientId?: string | null;
+  // Zakres: dev (domyślnie) — backlog panelu; inbox — skrzynka Tomka; all.
+  // Podany obszar wyznacza zakres sam.
+  scope?: "dev" | "inbox" | "all" | null;
 };
 
 const ROW_INCLUDE = {
+  areaRef: { select: { label: true, dev: true } },
   author: { select: { name: true } },
   _count: { select: { comments: true, clients: true } },
 } as const;
@@ -86,6 +94,8 @@ function toRow(p: RowSource): ProposalRow {
     number: p.number,
     title: p.title,
     area: p.area as AreaKey,
+    areaLabel: p.areaRef.label,
+    dev: p.areaRef.dev,
     type: p.type as ProposalTypeKey,
     status: p.status as ProposalStatusKey,
     priority: p.priority as PriorityKey,
@@ -97,7 +107,7 @@ function toRow(p: RowSource): ProposalRow {
     updatedAt: p.updatedAt.toISOString(),
     commentCount: p._count.comments,
     clientCount: p._count.clients,
-    deployed: p.deployedCommit ? { commit: p.deployedCommit, at: (p.deployedAt ?? p.updatedAt).toISOString() } : null,
+    deployed: p.areaRef.dev && p.deployedCommit ? { commit: p.deployedCommit, at: (p.deployedAt ?? p.updatedAt).toISOString() } : null,
   };
 }
 
@@ -106,6 +116,7 @@ function whereFor(f: ProposalFilters): Prisma.ProposalWhereInput {
   if (f.status === "open") where.status = { in: OPEN_STATUSES };
   else if (f.status) where.status = f.status;
   if (f.area) where.area = f.area;
+  else if (f.scope !== "all") where.areaRef = { dev: f.scope !== "inbox" };
   if (f.type) where.type = f.type;
   if (f.priority) where.priority = f.priority;
   if (f.blocks != null) where.blocksCleanup = f.blocks;
@@ -129,7 +140,7 @@ export async function listProposals(f: ProposalFilters = {}): Promise<{ rows: Pr
   await syncDeployedProposals();
   const [rows, grouped] = await Promise.all([
     prisma.proposal.findMany({ where: whereFor(f), include: ROW_INCLUDE, take: 1000 }),
-    prisma.proposal.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.proposal.groupBy({ by: ["status"], where: whereFor({ area: f.area, scope: f.scope }), _count: { _all: true } }),
   ]);
   const counts = Object.fromEntries(grouped.map((g) => [g.status, g._count._all]));
   return { rows: sortProposals(rows.map(toRow)), counts };
@@ -184,7 +195,14 @@ async function existingClientIds(ids: string[]): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+// Obszar ze słownika proposal_areas (walidacja przy zapisie, nie w parserze).
+async function assertArea(key: string) {
+  if (await findArea(key)) return;
+  throw new PorzadkiError(`Obszar: ${areaListText(await loadAreas())}.`);
+}
+
 export async function createProposal(input: ProposalInput, actor: Actor, status: "NOWY" | "DO_DECYZJI" = "NOWY") {
+  await assertArea(input.area);
   const clientIds = await existingClientIds(input.clientIds);
   const { clientIds: _unused, causes, ...data } = input;
   void _unused;
@@ -210,6 +228,7 @@ export async function updateProposal(id: string, input: Partial<ProposalInput>, 
   if (!canEditProposal(actor.role, actor.userId, { authorId: p.authorId, status: p.status as ProposalStatusKey })) {
     throw new PorzadkiError("Ten wniosek może zmienić jego autor (dopóki czeka na decyzję) albo administrator.", 403);
   }
+  if (input.area !== undefined) await assertArea(input.area);
   const { clientIds, causes, ...data } = input;
   const ids = clientIds ? await existingClientIds(clientIds) : null;
   await prisma.$transaction(async (tx) => {
@@ -230,8 +249,11 @@ export async function setProposalStatus(
   actor: Actor,
   opts: { comment?: string | null; duplicateOfId?: string | null },
 ) {
-  const p = await prisma.proposal.findUnique({ where: { id }, select: { status: true } });
+  const p = await prisma.proposal.findUnique({ where: { id }, select: { status: true, areaRef: { select: { dev: true } } } });
   if (!p) throw new PorzadkiError("Wniosek nie istnieje.", 404);
+  if (!p.areaRef.dev && actor.role === "AGENT") {
+    throw new PorzadkiError("To wniosek ze skrzynki Tomka (obszar niedeweloperski) — status zmienia tylko Tomek.", 403);
+  }
   const from = p.status as ProposalStatusKey;
   if (from === to) return;
   if (!canSetStatus(actor.role, from, to)) {
@@ -318,6 +340,7 @@ export async function loadProposalsForExport(f: ProposalFilters): Promise<Propos
     where: whereFor(f),
     include: {
       author: { select: { name: true } },
+      areaRef: { select: { label: true } },
       clients: { include: { client: { select: { name: true } } } },
       relations: { include: { to: { select: { number: true } } } },
       comments: { orderBy: { createdAt: "asc" }, include: { user: { select: { name: true } } } },
@@ -328,6 +351,7 @@ export async function loadProposalsForExport(f: ProposalFilters): Promise<Propos
     number: p.number,
     title: p.title,
     area: p.area as AreaKey,
+    areaLabel: p.areaRef.label,
     type: p.type as ProposalTypeKey,
     status: p.status as ProposalStatusKey,
     priority: p.priority as PriorityKey,

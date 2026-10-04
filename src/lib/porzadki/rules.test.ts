@@ -53,7 +53,10 @@ describe("parseProposalInput", () => {
   });
   it("PATCH — tylko obecne pola", () => {
     expect(parseProposalInput({ priority: "HIGH" }, true)).toEqual({ ok: true, data: { priority: "HIGH" } });
-    expect(parseProposalInput({ area: "XYZ" }, true).ok).toBe(false);
+    expect(parseProposalInput({ area: "nie obszar!" }, true).ok).toBe(false);
+    expect(parseProposalInput({ area: "" }, true).ok).toBe(false);
+    // Kod w poprawnym formacie przechodzi — istnienie w słowniku proposal_areas sprawdza zapis.
+    expect(parseProposalInput({ area: "marketing" }, true)).toEqual({ ok: true, data: { area: "MARKETING" } });
   });
 });
 
@@ -62,6 +65,7 @@ describe("eksport", () => {
     number: 7,
     title: "Scalanie duplikatów",
     area: "KLIENCI",
+    areaLabel: "Klienci",
     type: "UX",
     status: "PRZYJETY",
     priority: "HIGH",

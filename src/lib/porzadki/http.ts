@@ -24,7 +24,15 @@ export function proposalFilters(sp: URLSearchParams): ProposalFilters {
     authorId: sp.get("autor") ?? sp.get("authorId"),
     q: sp.get("q"),
     clientId: sp.get("klient") ?? sp.get("clientId"),
+    scope: scopeParam(sp.get("skrzynka") ?? sp.get("scope")),
   };
+}
+
+// skrzynka=1 → skrzynka Tomka, skrzynka=all → wszystkie, brak → backlog panelu.
+function scopeParam(v: string | null): ProposalFilters["scope"] {
+  if (v === "1" || v === "true" || v === "inbox") return "inbox";
+  if (v === "all" || v === "wszystkie") return "all";
+  return "dev";
 }
 
 function day(v: string | null, end: boolean): Date | null {

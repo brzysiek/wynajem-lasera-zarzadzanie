@@ -6,7 +6,6 @@ import { api } from "@/components/clients/client-forms";
 import type { ReviewClient } from "@/lib/history/review-load";
 import type { ProposalDetail } from "@/lib/porzadki/proposals";
 import {
-  AREA_LABEL,
   CAUSE_LABEL,
   PRIORITY_LABEL,
   RELATION_KEYS,
@@ -20,6 +19,7 @@ import {
 } from "@/lib/porzadki/labels";
 import { canSetStatus } from "@/lib/porzadki/rules";
 import { ProposalForm } from "./proposal-form";
+import type { AreaDef } from "@/lib/porzadki/areas";
 import { BTN, BTN_PRIMARY, Card, ErrorNote, INPUT, PorzadkiLayout, PriorityBadge, StatusBadge, TEXTAREA, fmtDate, fmtDateTime } from "./shared";
 
 // Szczegół wniosku: wszystkie pola, zmiana statusu (decyzyjne — tylko ADMIN),
@@ -39,11 +39,13 @@ export function ProposalDetailView({
   initial,
   role,
   clientOptions,
+  areas,
   others,
 }: {
   initial: ProposalDetail;
   role: string;
   clientOptions: ReviewClient[];
+  areas: AreaDef[];
   others: { id: string; number: number; title: string }[]; // do wyboru „duplikat czego” / powiązań
 }) {
   const [p, setP] = useState(initial);
@@ -96,6 +98,7 @@ export function ProposalDetailView({
     <span className="flex flex-wrap items-center gap-2 text-sm">
       <StatusBadge status={p.status} />
       <PriorityBadge priority={p.priority} />
+      {!p.dev && <span className="rounded-md bg-[var(--c-purple-soft)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-purple-deep)]">skrzynka Tomka — nie do implementacji</span>}
       {p.blocksCleanup && <span className="rounded-md bg-[var(--c-red-soft)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-red)]">blokuje porządki</span>}
       {p.deployed && (
         <span className="rounded-md bg-[var(--c-green-soft)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--c-green-deep)]" title="Tytuł commita wymienia ten wniosek">
@@ -108,10 +111,10 @@ export function ProposalDetailView({
   return (
     <PorzadkiLayout
       title={`${proposalNumber(p.number)} · ${p.title}`}
-      description={`${AREA_LABEL[p.area]} · ${TYPE_LABEL[p.type]} · ${p.authorName ?? "—"}, ${fmtDate(p.createdAt)}`}
+      description={`${p.areaLabel} · ${TYPE_LABEL[p.type]} · ${p.authorName ?? "—"}, ${fmtDate(p.createdAt)}`}
       actions={
         <>
-          <Link href="/wnioski" className={`${BTN} flex items-center`}>
+          <Link href={p.dev ? "/wnioski" : "/skrzynka"} className={`${BTN} flex items-center`}>
             ← Lista
           </Link>
           {p.canEdit && !editing && (
@@ -128,6 +131,7 @@ export function ProposalDetailView({
         <ProposalForm
           proposalId={p.id}
           clientOptions={clientOptions}
+          areas={areas}
           initial={{
             title: p.title,
             area: p.area,

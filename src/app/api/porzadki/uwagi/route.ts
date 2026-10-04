@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth-guards";
 import { OFFICE_AND_AGENT } from "@/lib/permissions";
 import { createRemark, listRemarks, parseRemarkInput, type RemarkInput } from "@/lib/porzadki/remarks";
 import { porzadkiErrorResponse } from "@/lib/porzadki/http";
+import { loadAreas } from "@/lib/porzadki/areas";
 
 // Uwagi (Porządki) — lista (?status=OPEN&obszar=&klient=&q=) i nowa uwaga.
 // ADMIN/STAFF/AGENT.
@@ -10,11 +11,15 @@ export async function GET(req: NextRequest) {
   const session = await requireSession(OFFICE_AND_AGENT);
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const sp = req.nextUrl.searchParams;
-  const remarks = await listRemarks(
-    { status: sp.get("status"), area: sp.get("obszar") ?? sp.get("area"), clientId: sp.get("klient") ?? sp.get("clientId"), q: sp.get("q") },
-    { userId: session.user.id, role: session.user.role },
-  );
-  return NextResponse.json({ remarks });
+  const [remarks, areas] = await Promise.all([
+    listRemarks(
+      { status: sp.get("status"), area: sp.get("obszar") ?? sp.get("area"), clientId: sp.get("klient") ?? sp.get("clientId"), q: sp.get("q") },
+      { userId: session.user.id, role: session.user.role },
+    ),
+    loadAreas(),
+  ]);
+  // areas — słownik obszarów (proposal_areas) do filtrów i przekształcenia we wniosek.
+  return NextResponse.json({ remarks, areas });
 }
 
 export async function POST(req: NextRequest) {

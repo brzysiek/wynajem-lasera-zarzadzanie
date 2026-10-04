@@ -9,7 +9,8 @@ export const INSTRUCTIONS =
   "Panel WynajemLasera.pl (wynajem urządzeń kosmetologicznych). Działasz jako agent AI porządkujący bazę klientów. " +
   "Zanim zaczniesz, przeczytaj reguly_porzadkow. Zmiany danych klientów zawsze z polami zrodlo, pewnosc i paczka — trafiają do dziennika. " +
   "Większe porządki zgłaszaj jako paczkę propozycji (propozycje_dodaj) — administrator akceptuje je hurtem; sprawdzaj propozycje_lista (odrzucone z komentarzem nie proponuj ponownie). " +
-  "Nie usuwasz ani nie archiwizujesz sam: archiwizację zgłaszaj jako propozycję rodzaju „archiwizacja” z powodem i dopiskiem.";
+  "Nie usuwasz ani nie archiwizujesz sam: archiwizację zgłaszaj jako propozycję rodzaju „archiwizacja” z powodem i dopiskiem. " +
+  "Wnioski z obszarów MARKETING, STRONA, OFERTA i ORGANIZACJA (dev=false) to skrzynka Tomka: nie bierz ich do implementacji, nie planuj na ich podstawie zmian w kodzie i nie zamykaj ich — status zmienia tylko Tomek. wnioski_lista domyślnie ich nie zwraca (skrzynka=true).";
 
 export type RpcMessage = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
 export type RpcResponse = { jsonrpc: "2.0"; id: string | number | null; result?: unknown; error?: { code: number; message: string } };

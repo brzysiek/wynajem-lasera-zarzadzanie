@@ -54,6 +54,11 @@ import { loadPulseReport } from "@/lib/leads/pulse";
 
 type Args = Record<string, unknown>;
 type JsonSchema = Record<string, unknown>;
+
+// Skrzynka Tomka (proposal_areas.dev = false) — notatka dla agenta.
+const SKRZYNKA_NOTE =
+  "Skrzynka Tomka: notatki i decyzje biznesowe (marketing, strona, oferta, organizacja). Nie do implementacji — nie planuj na tej podstawie zmian w kodzie, nie zamykaj, statusu nie zmieniaj (robi to tylko Tomek).";
+
 export type McpTool = {
   name: string;
   title: string;
@@ -672,8 +677,18 @@ export const TOOLS: McpTool[] = [
   {
     name: "wnioski_lista",
     title: "Wnioski",
-    description: "Wnioski o zmiany w panelu i procesie. Filtry: status (open = otwarte), obszar, typ, priorytet, blokuje, klient, szukaj. Pole wdrozono_w: commit i data wdrożenia (z tytułu commita) — status ustawia Tomek.",
-    inputSchema: obj({ status: s("open albo kod statusu."), obszar: s("Obszar."), typ: s("Typ."), priorytet: s("HIGH, MEDIUM, LOW."), blokuje: b("Tylko blokujące porządki."), klient_id: s("ID klienta."), q: s("Szukaj.") }),
+    description:
+      "Wnioski o zmiany w panelu i procesie (backlog deweloperski). Domyślnie TYLKO obszary deweloperskie. skrzynka=true zwraca „Skrzynkę Tomka” (obszary MARKETING, STRONA, OFERTA, ORGANIZACJA — pole dev=false): to notatki i decyzje biznesowe Tomka, NIE zadania do implementacji — nie planuj na ich podstawie zmian w kodzie i nie zamykaj ich. Podany obszar zwraca wnioski z tego obszaru. Filtry: status (open = otwarte), obszar, typ, priorytet, blokuje, klient, szukaj. Pole wdrozono_w (tylko backlog): commit i data wdrożenia (z tytułu commita) — status ustawia Tomek.",
+    inputSchema: obj({
+      status: s("open albo kod statusu."),
+      obszar: s("Obszar (kod)."),
+      skrzynka: b("true = skrzynka Tomka (obszary niedeweloperskie) zamiast backlogu panelu."),
+      typ: s("Typ."),
+      priorytet: s("HIGH, MEDIUM, LOW."),
+      blokuje: b("Tylko blokujące porządki."),
+      klient_id: s("ID klienta."),
+      q: s("Szukaj."),
+    }),
     readOnly: true,
     run: async (a) => {
       const res = await listProposals({
@@ -684,19 +699,29 @@ export const TOOLS: McpTool[] = [
         blocks: typeof a.blokuje === "boolean" ? a.blokuje : null,
         clientId: str(a, "klient_id"),
         q: str(a, "q"),
+        scope: a.skrzynka === true ? "inbox" : "dev",
       });
-      return { ...res, rows: res.rows.map(({ deployed, ...r }) => ({ ...r, wdrozono_w: deployed ? `${deployed.commit} · ${deployed.at.slice(0, 10)}` : null })) };
+      return {
+        ...res,
+        rows: res.rows.map(({ deployed, ...r }) => (r.dev ? { ...r, wdrozono_w: deployed ? `${deployed.commit} · ${deployed.at.slice(0, 10)}` : null } : { ...r, skrzynka: true })),
+        ...(a.skrzynka === true ? { uwaga: SKRZYNKA_NOTE } : {}),
+      };
     },
   },
   {
     name: "wniosek",
     title: "Wniosek",
-    description: "Szczegół wniosku: pola, historia statusów, komentarze, powiązania.",
+    description: "Szczegół wniosku: pola, historia statusów, komentarze, powiązania. dev=false — skrzynka Tomka: nie do implementacji.",
     inputSchema: obj({ id: s("ID wniosku.") }, ["id"]),
     readOnly: true,
     run: async (a, agent) => {
       const p = await loadProposal(req(a, "id"), agent);
       if (!p) throw new AgentApiError("Wniosek nie istnieje.", 404);
+      if (!p.dev) {
+        const { deployed: _d, ...rest } = p;
+        void _d;
+        return { ...rest, skrzynka: true, uwaga: SKRZYNKA_NOTE };
+      }
       return p;
     },
   },
@@ -1016,7 +1041,7 @@ export const TOOLS: McpTool[] = [
     name: "wniosek_utworz",
     title: "Nowy wniosek",
     description:
-      "Tworzy wniosek (status NOWY albo DO_DECYZJI). Obszar: KLIENCI, SYGNALY, HISTORIA, FINANSE, KALENDARZ, KOMUNIKACJA, INTEGRACJE, PROCES. Typ: BLAD, REGULA, BRAK_DANYCH, UX, AUTOMATYZACJA, JAKOSC_DANYCH, POMYSL, PYTANIE. Zwraca podobne otwarte wnioski — sprawdź je.",
+      "Tworzy wniosek (status NOWY albo DO_DECYZJI). Obszary backlogu panelu: KLIENCI, SYGNALY, HISTORIA, FINANSE, KALENDARZ, KOMUNIKACJA, INTEGRACJE, PROCES. Obszary skrzynki Tomka (tematy biznesowe, NIE do implementacji): MARKETING (Ads, Meta, kampanie), STRONA (WordPress, SEO, GEO, blog, formularze, analityka), OFERTA (urządzenia, cennik, szkolenia, nowe usługi), ORGANIZACJA (konta, dostępy, ludzie, rozliczenia z dostawcami). Aktualna lista i flaga dev — słownik obszarów w panelu (błędny obszar zwraca listę). Typ: BLAD, REGULA, BRAK_DANYCH, UX, AUTOMATYZACJA, JAKOSC_DANYCH, POMYSL, PYTANIE. Zwraca podobne otwarte wnioski — sprawdź je.",
     inputSchema: obj(
       {
         title: s("Tytuł (jedno zdanie)."),
@@ -1048,7 +1073,8 @@ export const TOOLS: McpTool[] = [
   {
     name: "wniosek_zmien",
     title: "Zmień wniosek",
-    description: "Zmienia własny wniosek (w statusie NOWY / DO_DECYZJI): dowolne pola z tworzenia (podane zastępują stare) i/lub status NOWY ↔ DO_DECYZJI.",
+    description:
+      "Zmienia własny wniosek (w statusie NOWY / DO_DECYZJI): dowolne pola z tworzenia (podane zastępują stare) i/lub status NOWY ↔ DO_DECYZJI. Wnioskom ze skrzynki Tomka (dev=false) statusu nie zmieniasz — robi to tylko Tomek.",
     inputSchema: obj(
       {
         id: s("ID wniosku."),

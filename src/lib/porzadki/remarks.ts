@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { AREA_KEYS, type AreaKey, type RemarkStatusKey } from "@/lib/porzadki/labels";
+import type { AreaKey, RemarkStatusKey } from "@/lib/porzadki/labels";
+import { areaListText, findArea, loadAreas } from "@/lib/porzadki/areas";
 import { PorzadkiError, createProposal, type Actor } from "@/lib/porzadki/proposals";
 import { parseProposalInput, type ProposalInput } from "@/lib/porzadki/rules";
 
@@ -40,7 +41,8 @@ export function parseRemarkInput(body: Record<string, unknown>, partial: boolean
   }
   if (!partial || has("area")) {
     const a = body.area ?? null;
-    if (a !== null && !AREA_KEYS.includes(a as AreaKey)) return { ok: false, message: `Obszar: ${AREA_KEYS.join(", ")}.` };
+    // Kod ze słownika proposal_areas — istnienie sprawdza zapis (checkLinks).
+    if (a !== null && (typeof a !== "string" || !/^[A-Z_]{2,32}$/.test(a))) return { ok: false, message: "Obszar: kod obszaru (np. KLIENCI) albo brak." };
     out.area = a as AreaKey | null;
   }
   if (!partial || has("evidence")) out.evidence = text(body.evidence);
@@ -88,6 +90,7 @@ export async function listRemarks(f: { status?: string | null; area?: string | n
 }
 
 async function checkLinks(input: Partial<RemarkInput>) {
+  if (input.area && !(await findArea(input.area))) throw new PorzadkiError(`Obszar: ${areaListText(await loadAreas())}.`);
   if (input.clientId && !(await prisma.client.findUnique({ where: { id: input.clientId }, select: { id: true } }))) {
     throw new PorzadkiError("Klient nie istnieje.", 404);
   }
@@ -119,7 +122,7 @@ export async function convertRemark(id: string, body: Record<string, unknown>, a
   if (!r) throw new PorzadkiError("Uwaga nie istnieje.", 404);
   if (r.proposalId) throw new PorzadkiError("Ta uwaga ma już wniosek.", 409);
   const area = (typeof body.area === "string" ? body.area : r.area) as AreaKey | null;
-  if (!area || !AREA_KEYS.includes(area)) throw new PorzadkiError("Wybierz obszar wniosku.");
+  if (!area || !(await findArea(area))) throw new PorzadkiError("Wybierz obszar wniosku.");
   const type = typeof body.type === "string" ? body.type : "JAKOSC_DANYCH";
   const firstSentence = r.body.split(/(?<=[.!?])\s|\n/)[0]?.trim() || r.body;
   const title = (typeof body.title === "string" && body.title.trim() ? body.title.trim() : firstSentence).slice(0, 191);

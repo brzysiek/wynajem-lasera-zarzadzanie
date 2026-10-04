@@ -2,8 +2,6 @@
 // wnioski (ochrona przed duplikatami), walidacja i eksport (Markdown / CSV).
 // Czysty moduł (vitest, bez @/).
 import {
-  AREA_KEYS,
-  AREA_LABEL,
   CAUSE_KEYS,
   CAUSE_LABEL,
   OPEN_STATUSES,
@@ -121,8 +119,11 @@ export function parseProposalInput(body: Record<string, unknown>, partial: boole
     out.title = t;
   }
   if (!partial || has("area")) {
-    if (!AREA_KEYS.includes(body.area as AreaKey)) return { ok: false, message: `Obszar: ${AREA_KEYS.join(", ")}.` };
-    out.area = body.area as AreaKey;
+    // Kod obszaru ze słownika proposal_areas — istnienie sprawdza zapis
+    // (createProposal / updateProposal).
+    const a = typeof body.area === "string" ? body.area.trim().toUpperCase() : "";
+    if (!/^[A-Z_]{2,32}$/.test(a)) return { ok: false, message: "Podaj obszar wniosku (kod, np. KLIENCI albo MARKETING)." };
+    out.area = a;
   }
   if (!partial || has("type")) {
     if (!TYPE_KEYS.includes(body.type as ProposalTypeKey)) return { ok: false, message: `Typ: ${TYPE_KEYS.join(", ")}.` };
@@ -164,6 +165,7 @@ export type ProposalExport = {
   number: number;
   title: string;
   area: AreaKey;
+  areaLabel: string;
   type: ProposalTypeKey;
   status: ProposalStatusKey;
   priority: PriorityKey;
@@ -189,7 +191,7 @@ export function proposalsToMarkdown(list: ProposalExport[], title = "Wnioski —
   const out: string[] = [`# ${title}`, "", `Wygenerowano: ${new Date().toISOString().slice(0, 16).replace("T", " ")} · ${list.length} wniosków`, ""];
   for (const p of list) {
     out.push(`## ${proposalNumber(p.number)} — ${p.title}`, "");
-    out.push(`- **Obszar:** ${AREA_LABEL[p.area]}`);
+    out.push(`- **Obszar:** ${p.areaLabel}`);
     out.push(`- **Typ:** ${TYPE_LABEL[p.type]}`);
     out.push(`- **Status:** ${STATUS_LABEL[p.status]}`);
     out.push(`- **Priorytet:** ${PRIORITY_LABEL[p.priority]}${p.priorityReason ? ` — ${p.priorityReason}` : ""}`);
@@ -232,7 +234,7 @@ export function proposalsToCsv(list: ProposalExport[]): string {
     list.map((p) => [
       proposalNumber(p.number),
       p.title,
-      AREA_LABEL[p.area],
+      p.areaLabel,
       TYPE_LABEL[p.type],
       STATUS_LABEL[p.status],
       PRIORITY_LABEL[p.priority],

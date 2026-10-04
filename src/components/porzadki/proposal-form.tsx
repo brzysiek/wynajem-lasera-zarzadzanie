@@ -7,8 +7,6 @@ import { api } from "@/components/clients/client-forms";
 import { ClientPicker } from "@/components/clients/history-review";
 import type { ReviewClient } from "@/lib/history/review-load";
 import {
-  AREA_KEYS,
-  AREA_LABEL,
   CAUSE_KEYS,
   CAUSE_LABEL,
   PRIORITY_KEYS,
@@ -22,7 +20,9 @@ import {
   type PriorityKey,
   type ProposalTypeKey,
 } from "@/lib/porzadki/labels";
+import type { AreaDef } from "@/lib/porzadki/areas";
 import { BTN, BTN_GHOST, BTN_PRIMARY, Card, ErrorNote, INPUT, LABEL, TEXTAREA } from "./shared";
+import { AreaOptions } from "./area-options";
 
 // Formularz wniosku (nowy / edycja). Przy wpisywaniu tytułu podpowiada
 // podobne otwarte wnioski — ochrona przed duplikatami.
@@ -78,12 +78,14 @@ export function ProposalForm({
   initial,
   proposalId,
   clientOptions,
+  areas,
   onSaved,
   onCancel,
 }: {
   initial: ProposalFormValue;
   proposalId?: string; // brak = nowy wniosek
   clientOptions: ReviewClient[];
+  areas: AreaDef[];
   onSaved?: () => void;
   onCancel?: () => void;
 }) {
@@ -94,6 +96,8 @@ export function ProposalForm({
   const [similar, setSimilar] = useState<Similar[]>([]);
   const [picking, setPicking] = useState(false);
   const set = <K extends keyof ProposalFormValue>(k: K, v: ProposalFormValue[K]) => setF((p) => ({ ...p, [k]: v }));
+  // Skrzynka Tomka: bez przyczyny technicznej i „blokuje porządki”.
+  const inbox = areas.find((a) => a.key === f.area)?.dev === false;
 
   // Podobne otwarte wnioski — po chwili bez pisania.
   useEffect(() => {
@@ -163,12 +167,9 @@ export function ProposalForm({
               Obszar
               <select className={INPUT} value={f.area} onChange={(e) => set("area", e.target.value as AreaKey | "")}>
                 <option value="">— wybierz —</option>
-                {AREA_KEYS.map((k) => (
-                  <option key={k} value={k}>
-                    {AREA_LABEL[k]}
-                  </option>
-                ))}
+                <AreaOptions areas={areas} />
               </select>
+              {inbox && <span className="text-xs font-normal text-[var(--c-muted)]">Skrzynka Tomka — notatka biznesowa, nie zadanie do kodowania.</span>}
             </label>
             <label className={LABEL}>
               Typ
@@ -219,6 +220,7 @@ export function ProposalForm({
             Uzasadnienie priorytetu
             <input className={INPUT} value={f.priorityReason} onChange={(e) => set("priorityReason", e.target.value)} />
           </label>
+          {!inbox && (
           <fieldset className={LABEL}>
             <legend className="mb-1">Przyczyna (hipoteza)</legend>
             <div className="flex flex-wrap gap-1.5">
@@ -229,10 +231,13 @@ export function ProposalForm({
               ))}
             </div>
           </fieldset>
+          )}
+          {!inbox && (
           <label className="flex items-center gap-2 text-[13px]">
             <input type="checkbox" checked={f.blocksCleanup} onChange={(e) => set("blocksCleanup", e.target.checked)} />
             Blokuje porządki (bez tej zmiany nie da się dalej porządkować danych)
           </label>
+          )}
           <div className={LABEL}>
             Powiązani klienci
             <div className="relative flex flex-wrap items-center gap-1.5">
