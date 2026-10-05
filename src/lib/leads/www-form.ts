@@ -23,9 +23,12 @@ export type WwwForm = {
   phone: string | null; // surowy — normalizuje wywołujący
   email: string | null;
   company: string | null;
-  message: string | null; // wiadomość + firma + data szkolenia
+  message: string | null; // wiadomość + firma + miejscowość + data szkolenia
   devices: DeviceInterestKey[];
-  devicesText: string | null;
+  devicesText: string | null; // urządzenia tak, jak wybrała klientka
+  city: string | null; // pole „miejscowosc” (rezerwacja)
+  dateFromRaw: string | null; // surowe contact-date-from — do maila potwierdzającego
+  daysRaw: string | null; // surowe contact-days, np. „tydzień (Observ)"
   requestedFrom: string | null; // RRRR-MM-DD
   requestedDays: number | null;
   courseDate: string | null;
@@ -93,14 +96,19 @@ export function parseDate(v: unknown): string | null {
 export function parseWwwForm(body: Body): WwwForm {
   const rawType = (str(body.text) ?? "").toLowerCase();
   const type = WWW_TYPE[rawType] ?? "INNE";
-  const devicesList = list(body["contact-device"]);
+  // Rezerwacja wysyła contact-device; formularz cennika — pole „urzadzenie”.
+  const devicesList = [...list(body["contact-device"]), ...list(body["urzadzenie"])];
   const devicesText = devicesList.length ? devicesList.join(", ") : null;
   const devices = [...new Set(interestsFromText(devicesText).filter((d) => d !== "SZKOLENIE"))] as DeviceInterestKey[];
   const email = str(body["contact-email"])?.toLowerCase() ?? null;
   const company = str(body["contact-company-name"]);
   const courseDate = str(body["contact-course-date"]);
   const msg = str(body["contact-message"]);
-  const message = [msg, company ? `Firma: ${company}` : null, courseDate ? `Termin szkolenia: ${courseDate}` : null, type === "INNE" && rawType ? `Formularz: ${rawType}` : null].filter(Boolean).join("\n") || null;
+  const city = str(body["miejscowosc"]);
+  const message =
+    [msg, company ? `Firma: ${company}` : null, city ? `Miejscowość: ${city}` : null, courseDate ? `Termin szkolenia: ${courseDate}` : null, type === "INNE" && rawType ? `Formularz: ${rawType}` : null]
+      .filter(Boolean)
+      .join("\n") || null;
   const attribution: Record<string, string | string[]> = {};
   for (const k of ATTRIBUTION_KEYS) {
     const v = str(body[k]);
@@ -120,6 +128,9 @@ export function parseWwwForm(body: Body): WwwForm {
     message: message?.slice(0, 5000) ?? null,
     devices,
     devicesText,
+    city,
+    dateFromRaw: str(body["contact-date-from"]),
+    daysRaw: str(body["contact-days"]),
     requestedFrom: parseDate(body["contact-date-from"]),
     requestedDays: parseDays(body["contact-days"]),
     courseDate,

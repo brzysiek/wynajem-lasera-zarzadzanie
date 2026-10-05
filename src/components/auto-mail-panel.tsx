@@ -2,12 +2,29 @@
 
 import { useMemo, useRef, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
-import { AUTO_MAIL_FROM, renderAutoMail } from "@/lib/leads/auto-mail-render";
+import { AUTO_MAIL_FROM, renderAutoMail, type SummaryRow } from "@/lib/leads/auto-mail-render";
 
-// Mail z cennikiem po formularzu WWW (04.10.2026): treść, załączniki,
-// przełącznik, próbna wysyłka i ostatnie wysyłki.
+// Maile automatyczne po formularzu WWW (04–05.10.2026): cennik i
+// potwierdzenie rezerwacji — treść, wspólna stopka, załączniki,
+// przełączniki, próbna wysyłka i ostatnie wysyłki.
 type Attachment = { id: string; filename: string; mime: string; size: number };
-type Config = { enabled: boolean; fromName: string; subject: string; body: string; attachments: Attachment[] };
+type Config = {
+  enabled: boolean;
+  fromName: string;
+  subject: string;
+  body: string;
+  attachments: Attachment[];
+  rez: { enabled: boolean; subject: string; body: string };
+  footer: string;
+};
+
+// Przykładowe zgłoszenie do podglądu i maila próbnego rezerwacji.
+const SAMPLE_SUMMARY: SummaryRow[] = [
+  { label: "Urządzenie", value: "LightSheer Desire" },
+  { label: "Termin od", value: "2026-11-02" },
+  { label: "Liczba dni", value: "2 dni" },
+  { label: "Miejscowość gabinetu", value: "Kraków" },
+];
 type Recent = { id: string; kind: string; leadId: string | null; toAddress: string; status: string; attempts: number; error: string | null; createdAt: string; sentAt: string | null };
 
 const API = `${BASE_PATH}/api/auto-mail/cennik`;
@@ -16,20 +33,39 @@ const INPUT = "w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:
 const BTN = "rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 hover:border-[#1B6FA8] disabled:opacity-50";
 const BTN_PRIMARY = "rounded-md bg-[#1B6FA8] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0C3450] disabled:opacity-50";
 const STATUS: Record<string, string> = { SENT: "wysłany", PENDING: "w kolejce", FAILED: "nie wysłany" };
+const KIND_LABEL: Record<string, string> = { www_cennik: "cennik", www_cennik_test: "cennik", www_rezerwacja: "rezerwacja", www_rezerwacja_test: "rezerwacja" };
 
 const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} kB`);
 const when = (iso: string) => new Date(iso).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initialConfig: Config; initialRecent: Recent[]; myEmail: string }) {
   const [cfg, setCfg] = useState(initialConfig);
-  const [draft, setDraft] = useState({ fromName: initialConfig.fromName, subject: initialConfig.subject, body: initialConfig.body });
+  const [draft, setDraft] = useState({
+    fromName: initialConfig.fromName,
+    subject: initialConfig.subject,
+    body: initialConfig.body,
+    rezSubject: initialConfig.rez.subject,
+    rezBody: initialConfig.rez.body,
+    footer: initialConfig.footer,
+  });
+  const [testKind, setTestKind] = useState<"cennik" | "rezerwacja">("cennik");
   const [recent, setRecent] = useState(initialRecent);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
   const [testTo, setTestTo] = useState(myEmail);
   const fileRef = useRef<HTMLInputElement>(null);
-  const dirty = draft.fromName !== cfg.fromName || draft.subject !== cfg.subject || draft.body !== cfg.body;
-  const preview = useMemo(() => renderAutoMail({ subject: draft.subject, body: draft.body }, { name: "Anna" }), [draft.subject, draft.body]);
+  const dirty =
+    draft.fromName !== cfg.fromName ||
+    draft.subject !== cfg.subject ||
+    draft.body !== cfg.body ||
+    draft.rezSubject !== cfg.rez.subject ||
+    draft.rezBody !== cfg.rez.body ||
+    draft.footer !== cfg.footer;
+  const preview = useMemo(() => renderAutoMail({ subject: draft.subject, body: draft.body }, { name: "Anna", footer: draft.footer }), [draft.subject, draft.body, draft.footer]);
+  const rezPreview = useMemo(
+    () => renderAutoMail({ subject: draft.rezSubject, body: draft.rezBody }, { name: "Anna", summary: SAMPLE_SUMMARY, footer: draft.footer }),
+    [draft.rezSubject, draft.rezBody, draft.footer],
+  );
 
   async function reload() {
     const r = await fetch(API, { cache: "no-store" }).then((x) => (x.ok ? x.json() : null)).catch(() => null);
@@ -39,7 +75,7 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
     }
   }
 
-  async function save(extra: { enabled?: boolean } = {}) {
+  async function save(extra: { enabled?: boolean; rezEnabled?: boolean } = {}) {
     setBusy("save");
     setMsg(null);
     const res = await fetch(API, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...draft, ...extra }) });
@@ -47,15 +83,27 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
     setBusy(null);
     if (!res.ok) return setMsg({ text: data.message ?? "Nie udało się zapisać.", error: true });
     setCfg(data.config);
-    setMsg({ text: extra.enabled === undefined ? "Zapisano." : extra.enabled ? "Wysyłka włączona — od teraz panel wysyła cennik po każdym formularzu." : "Wysyłka wyłączona." });
+    const toggled = extra.enabled !== undefined || extra.rezEnabled !== undefined;
+    const on = extra.enabled ?? extra.rezEnabled;
+    setMsg({ text: !toggled ? "Zapisano." : on ? "Wysyłka włączona." : "Wysyłka wyłączona." });
   }
 
   async function toggle() {
     if (!cfg.enabled) {
-      const ok = window.confirm("Włączyć automatyczną wysyłkę?\n\nZrób to dopiero, gdy autoresponder z cennikiem w WordPressie jest wyłączony — inaczej klient dostanie dwa maile.");
+      const ok = window.confirm("Włączyć automatyczną wysyłkę cennika?\n\nZrób to dopiero, gdy autoresponder z cennikiem w WordPressie jest wyłączony — inaczej klient dostanie dwa maile.");
       if (!ok) return;
     }
     await save({ enabled: !cfg.enabled });
+  }
+
+  async function toggleRez() {
+    if (!cfg.rez.enabled) {
+      const ok = window.confirm(
+        "Włączyć mail potwierdzający rezerwację?\n\nZrób to zaraz PO wyłączeniu Maila 2 w WordPressie (formularze 5795 i 327) — inaczej klientka dostanie dwa maile.",
+      );
+      if (!ok) return;
+    }
+    await save({ rezEnabled: !cfg.rez.enabled });
   }
 
   async function upload(file: File) {
@@ -85,10 +133,10 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
     if (dirty && !window.confirm("Masz niezapisane zmiany — próbny mail pójdzie z ostatnio zapisaną treścią. Wysłać mimo to?")) return;
     setBusy("test");
     setMsg(null);
-    const res = await fetch(`${API}/test`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: testTo, name: "Anna" }) });
+    const res = await fetch(`${API}/test`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: testTo, name: "Anna", kind: testKind }) });
     const data = await res.json().catch(() => ({}));
     setBusy(null);
-    setMsg(res.ok ? { text: `Próbny mail wysłany na ${testTo}.` } : { text: data.message ?? "Nie udało się wysłać.", error: true });
+    setMsg(res.ok ? { text: `Próbny mail (${testKind}) wysłany na ${testTo}.` } : { text: data.message ?? "Nie udało się wysłać.", error: true });
     void reload();
   }
 
@@ -98,22 +146,31 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
 
       <section className={CARD}>
         <div className="flex flex-wrap items-center gap-3">
+          <span className="w-40 text-sm font-semibold text-gray-900">Mail z cennikiem</span>
           <span className={`rounded-full px-3 py-1 text-sm font-semibold ${cfg.enabled ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}`}>
-            Wysyłka {cfg.enabled ? "włączona" : "wyłączona"}
+            {cfg.enabled ? "włączony" : "wyłączony"}
           </span>
           <button type="button" className={cfg.enabled ? BTN : BTN_PRIMARY} disabled={!!busy} onClick={() => void toggle()}>
-            {cfg.enabled ? "Wyłącz" : "Włącz wysyłkę"}
+            {cfg.enabled ? "Wyłącz" : "Włącz"}
+          </button>
+          <span className="text-sm text-gray-500">Po formularzu „cennik” panel wysyła cennik i katalog z kontakt@.</span>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <span className="w-40 text-sm font-semibold text-gray-900">Potwierdzenie rezerwacji</span>
+          <span className={`rounded-full px-3 py-1 text-sm font-semibold ${cfg.rez.enabled ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}`}>
+            {cfg.rez.enabled ? "włączone" : "wyłączone"}
+          </span>
+          <button type="button" className={cfg.rez.enabled ? BTN : BTN_PRIMARY} disabled={!!busy} onClick={() => void toggleRez()}>
+            {cfg.rez.enabled ? "Wyłącz" : "Włącz"}
           </button>
           <span className="text-sm text-gray-500">
-            {cfg.enabled
-              ? "Panel wysyła cennik zaraz po wysłaniu formularza „cennik” na stronie."
-              : "Panel nie wysyła maili — cennik wysyła dziś WordPress. Włącz po wyłączeniu autorespondera w WordPressie."}
+            {cfg.rez.enabled ? "Po formularzu rezerwacji panel wysyła potwierdzenie z podsumowaniem zgłoszenia." : "Potwierdzenie wysyła dziś WordPress (Mail 2). Włącz zaraz po jego wyłączeniu."}
           </span>
         </div>
       </section>
 
       <section className={CARD}>
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Treść maila</h2>
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Mail z cennikiem — treść</h2>
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="flex flex-col gap-3">
             <label className="text-sm text-gray-700">
@@ -137,7 +194,7 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
             </p>
             <div className="flex items-center gap-3">
               <button type="button" className={BTN_PRIMARY} disabled={!dirty || !!busy} onClick={() => void save()}>
-                {busy === "save" ? "Zapisywanie…" : "Zapisz treść"}
+                {busy === "save" ? "Zapisywanie…" : "Zapisz treści (oba maile i stopkę)"}
               </button>
               {dirty && <span className="text-sm text-amber-700">Niezapisane zmiany</span>}
             </div>
@@ -154,6 +211,42 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
             </div>
           </div>
         </div>
+      </section>
+
+      <section className={CARD}>
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Mail potwierdzający rezerwację — treść</h2>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="flex flex-col gap-3">
+            <label className="text-sm text-gray-700">
+              Temat
+              <input className={`${INPUT} mt-1`} value={draft.rezSubject} onChange={(e) => setDraft({ ...draft, rezSubject: e.target.value })} />
+            </label>
+            <label className="text-sm text-gray-700">
+              Treść
+              <textarea className={`${INPUT} mt-1 font-mono text-[13px]`} rows={14} value={draft.rezBody} onChange={(e) => setDraft({ ...draft, rezBody: e.target.value })} />
+            </label>
+            <p className="text-xs text-gray-500">
+              <code className="rounded bg-gray-100 px-1">{"{imie}"}</code> — imię z formularza; <code className="rounded bg-gray-100 px-1">{"{zgloszenie}"}</code> — podsumowanie zgłoszenia
+              (urządzenie, termin, liczba dni, miejscowość, szczegóły — puste pola pomijane, wartości tak, jak wybrała klientka). Bez załączników; odpowiedź wraca na {AUTO_MAIL_FROM}.
+            </p>
+          </div>
+          <div>
+            <div className="mb-1 text-sm text-gray-700">Podgląd (imię „Anna”, przykładowe zgłoszenie)</div>
+            <div className="rounded-md border border-gray-200 bg-gray-50 p-4">
+              <div className="mb-1 text-xs text-gray-500">
+                Od: {draft.fromName} &lt;{AUTO_MAIL_FROM}&gt;
+              </div>
+              <div className="mb-3 text-sm font-semibold text-gray-900">{rezPreview.subject || "(bez tematu)"}</div>
+              <div className="rounded bg-white p-3 text-sm [&_a]:text-[#1B6FA8] [&_a]:underline" dangerouslySetInnerHTML={{ __html: rezPreview.html }} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={CARD}>
+        <h2 className="mb-1 text-lg font-semibold text-gray-900">Stopka (wspólny podpis)</h2>
+        <p className="mb-3 text-sm text-gray-500">Doklejana na końcu obu maili automatycznych. Podpis Ani trzymaj tutaj — zmiana w jednym miejscu zmienia oba maile (w treściach wyżej już go nie powtarzaj).</p>
+        <textarea className={`${INPUT} max-w-2xl font-mono text-[13px]`} rows={5} value={draft.footer} onChange={(e) => setDraft({ ...draft, footer: e.target.value })} />
       </section>
 
       <section className={CARD}>
@@ -194,8 +287,12 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
         <h2 className="mb-1 text-lg font-semibold text-gray-900">Próbna wysyłka</h2>
         <p className="mb-3 text-sm text-gray-500">Wysyła zapisaną treść z załącznikami z kontakt@ na podany adres — działa także przy wyłączonej wysyłce.</p>
         <div className="flex flex-wrap items-center gap-2">
+          <select className={`${INPUT} w-auto`} value={testKind} onChange={(e) => setTestKind(e.target.value as "cennik" | "rezerwacja")} aria-label="Który mail">
+            <option value="cennik">mail z cennikiem</option>
+            <option value="rezerwacja">potwierdzenie rezerwacji</option>
+          </select>
           <input className={`${INPUT} max-w-xs`} type="email" value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="adres e-mail" />
-          <button type="button" className={BTN} disabled={!!busy || !testTo || !cfg.attachments.length} onClick={() => void sendTest()}>
+          <button type="button" className={BTN} disabled={!!busy || !testTo || (testKind === "cennik" && !cfg.attachments.length)} onClick={() => void sendTest()}>
             {busy === "test" ? "Wysyłanie…" : "Wyślij próbny"}
           </button>
         </div>
@@ -221,7 +318,10 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
                   <td className="py-1.5 pr-3 whitespace-nowrap text-gray-600">{when(r.sentAt ?? r.createdAt)}</td>
                   <td className="py-1.5 pr-3 [overflow-wrap:anywhere]">
                     {r.toAddress}
-                    {r.kind.endsWith("_test") && <span className="ml-1 text-xs text-gray-500">(próbny)</span>}
+                    <span className="ml-1 text-xs text-gray-500">
+                      ({KIND_LABEL[r.kind] ?? r.kind}
+                      {r.kind.endsWith("_test") ? ", próbny" : ""})
+                    </span>
                   </td>
                   <td className={`py-1.5 pr-3 whitespace-nowrap ${r.status === "FAILED" ? "text-red-600" : r.status === "PENDING" ? "text-amber-700" : "text-green-700"}`}>
                     {STATUS[r.status] ?? r.status}

@@ -13,6 +13,34 @@ export const DEFAULT_AUTO_MAIL = {
   body: "Dzień dobry {imie},\n\ndziękujemy za zainteresowanie. W załączniku przesyłamy aktualny cennik i katalog urządzeń.\n\nW razie pytań prosimy o kontakt.\n\nPozdrawiamy\nZespół wynajemlasera.pl",
 };
 
+// Mail potwierdzający rezerwację (brief Tomka, 5.10.2026). {zgloszenie} —
+// blok „co od Ciebie otrzymaliśmy” z pominięciem pustych pól.
+export const DEFAULT_RESERVATION_MAIL = {
+  subject: "Otrzymaliśmy Twoją rezerwację — WynajemLasera.pl",
+  body:
+    "Dzień dobry {imie},\n\ndziękujemy za zgłoszenie rezerwacji. Oto, co od Ciebie otrzymaliśmy:\n\n{zgloszenie}\n\n" +
+    "Co dalej? Sprawdzamy dostępność urządzenia w wybranym terminie i zadzwonimy, żeby go potwierdzić. " +
+    "Rezerwacja jest bezpłatna i niezobowiązująca: bez zaliczek, a przesunięcie lub odwołanie terminu nic nie kosztuje.\n\n" +
+    "Masz pytanie? Zadzwoń do Ani: +48 531 574 115 albo odpisz na tę wiadomość.",
+};
+
+export type SummaryRow = { label: string; value: string };
+
+// Blok zgłoszenia do maila potwierdzającego — wartości tak, jak wybrała
+// klientka (surowe pola formularza), puste pomijane.
+export function reservationSummary(f: { devicesText: string | null; dateFromRaw: string | null; daysRaw: string | null; city: string | null; message: string | null }): SummaryRow[] {
+  const msg = (f.message ?? "").split("\n").filter((l) => !/^(Firma|Miejscowość|Termin szkolenia|Formularz):/.test(l)).join("\n").trim();
+  return (
+    [
+      { label: "Urządzenie", value: f.devicesText },
+      { label: "Termin od", value: f.dateFromRaw },
+      { label: "Liczba dni", value: f.daysRaw },
+      { label: "Miejscowość gabinetu", value: f.city },
+      { label: "Szczegóły", value: msg || null },
+    ] as { label: string; value: string | null }[]
+  ).filter((r): r is SummaryRow => !!r.value?.trim());
+}
+
 export function firstName(full: string | null | undefined): string | null {
   const w = (full ?? "").trim().split(/\s+/)[0];
   if (!w || /@|\d/.test(w)) return null;
@@ -45,11 +73,18 @@ export function stripHtml(html: string): string {
 }
 
 // Treść z ekranu ustawień: zwykły tekst (akapity, linki klikalne) albo HTML,
-// gdy zaczyna się od „<”. {imie} = imię z formularza (brak → znika).
-export function renderAutoMail(tpl: { subject: string; body: string }, vars: { name: string | null }): { subject: string; html: string; text: string } {
+// gdy zaczyna się od „<”. {imie} = imię z formularza (brak → znika),
+// {zgloszenie} = blok zgłoszenia (puste wiersze pominięte), footer — wspólna
+// stopka (podpis) doklejana na końcu obu maili automatycznych.
+export function renderAutoMail(
+  tpl: { subject: string; body: string },
+  vars: { name: string | null; summary?: SummaryRow[]; footer?: string | null },
+): { subject: string; html: string; text: string } {
   const name = firstName(vars.name);
   const subject = fill(tpl.subject, name).trim();
-  const body = fill(tpl.body, name).replace(/\r\n/g, "\n").trim();
+  const summaryText = (vars.summary ?? []).map((r) => `${r.label}: ${r.value}`).join("\n");
+  const withFooter = vars.footer?.trim() ? `${tpl.body.trim()}\n\n${vars.footer.trim()}` : tpl.body;
+  const body = fill(withFooter, name).replace(/\{zgloszenie\}/g, summaryText).replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   if (body.startsWith("<")) return { subject, html: body, text: stripHtml(body) };
   const paras = body
     .split(/\n{2,}/)

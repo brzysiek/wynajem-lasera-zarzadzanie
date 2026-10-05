@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMimeMessage, firstName, renderAutoMail } from "./auto-mail-render";
+import { DEFAULT_RESERVATION_MAIL, buildMimeMessage, firstName, renderAutoMail, reservationSummary } from "./auto-mail-render";
 
 describe("firstName", () => {
   it("bierze pierwsze słowo i poprawia wielkość liter", () => {
@@ -67,5 +67,35 @@ describe("buildMimeMessage", () => {
     expect(raw).toContain("filename*=UTF-8''Cennik%202025%20%E2%80%93%20wynajem.pdf");
     expect(raw).toContain(Buffer.from("%PDF-1.4 test").toString("base64"));
     expect(raw.trimEnd().endsWith("--mix_X--")).toBe(true);
+  });
+});
+
+describe("reservationSummary + stopka", () => {
+  it("pomija puste pola i pokazuje wartości jak z formularza", () => {
+    const rows = reservationSummary({ devicesText: "Observ 520x", dateFromRaw: "2026-11-02", daysRaw: "tydzień (Observ)", city: "", message: "Proszę o kontakt po 17\nMiejscowość: Kraków" });
+    expect(rows).toEqual([
+      { label: "Urządzenie", value: "Observ 520x" },
+      { label: "Termin od", value: "2026-11-02" },
+      { label: "Liczba dni", value: "tydzień (Observ)" },
+      { label: "Szczegóły", value: "Proszę o kontakt po 17" },
+    ]);
+    expect(reservationSummary({ devicesText: null, dateFromRaw: null, daysRaw: null, city: null, message: null })).toEqual([]);
+  });
+  it("{zgloszenie} i stopka trafiają do treści", () => {
+    const r = renderAutoMail(DEFAULT_RESERVATION_MAIL, {
+      name: "anna",
+      summary: [{ label: "Urządzenie", value: "LightSheer Desire" }, { label: "Termin od", value: "2026-11-02" }],
+      footer: "Pozdrawiam\nAnna Ślizowska\nwynajemlasera.pl",
+    });
+    expect(r.subject).toBe("Otrzymaliśmy Twoją rezerwację — WynajemLasera.pl");
+    expect(r.text).toContain("Dzień dobry Anna,");
+    expect(r.text).toContain("Urządzenie: LightSheer Desire\nTermin od: 2026-11-02");
+    expect(r.text.trimEnd().endsWith("wynajemlasera.pl")).toBe(true);
+    expect(r.html).toContain("Urządzenie: LightSheer Desire<br>");
+  });
+  it("puste zgłoszenie nie zostawia dziury ani znacznika", () => {
+    const r = renderAutoMail(DEFAULT_RESERVATION_MAIL, { name: null, summary: [] });
+    expect(r.text).not.toContain("{zgloszenie}");
+    expect(r.text).not.toContain("\n\n\n");
   });
 });

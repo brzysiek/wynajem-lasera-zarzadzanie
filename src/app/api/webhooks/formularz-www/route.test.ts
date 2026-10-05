@@ -9,8 +9,13 @@ vi.mock("@/lib/prisma", () => ({
 vi.mock("@/lib/leads/www-intake", () => ({ intakeWwwForm: (...a: unknown[]) => intake(...a) }));
 vi.mock("@/lib/logger", () => ({ logInfo: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
 const queue = vi.fn();
+const queueRez = vi.fn();
 const deliver = vi.fn();
-vi.mock("@/lib/leads/auto-mail", () => ({ queueWwwPriceMail: (...a: unknown[]) => queue(...a), deliverAutoMail: (...a: unknown[]) => deliver(...a) }));
+vi.mock("@/lib/leads/auto-mail", () => ({
+  queueWwwPriceMail: (...a: unknown[]) => queue(...a),
+  queueWwwReservationMail: (...a: unknown[]) => queueRez(...a),
+  deliverAutoMail: (...a: unknown[]) => deliver(...a),
+}));
 vi.mock("next/server", async (orig) => ({ ...(await orig<typeof import("next/server")>()), after: (fn: () => unknown) => void fn() }));
 
 const { POST } = await import("./route");
@@ -25,6 +30,7 @@ describe("POST /api/webhooks/formularz-www", () => {
     logs.length = 0;
     intake.mockReset();
     queue.mockReset();
+    queueRez.mockReset();
     deliver.mockReset().mockResolvedValue({ ok: true });
     process.env.WWW_WEBHOOK_TOKEN = "sekret-testowy";
   });
@@ -81,6 +87,41 @@ describe("POST /api/webhooks/formularz-www", () => {
     intake.mockResolvedValue({ result: "DUPLICATE", leadId: "L3" });
     await POST(req("?token=sekret-testowy", JSON.stringify({ text: "cennik", "contact-email": "a@b.pl" }), "application/json"));
     expect(queue).toHaveBeenCalledTimes(1);
+  });
+
+  it("rezerwacja: kolejkuje mail potwierdzający ze zgłoszeniem (surowe wartości), loguje czas obsługi", async () => {
+    intake.mockResolvedValue({ result: "CREATED", leadId: "L9" });
+    queueRez.mockResolvedValue("M9");
+    const body = JSON.stringify({
+      text: "rezerwacja-wynajmu",
+      "contact-name": "Ola Nowak",
+      "contact-email": "ola@x.pl",
+      "contact-device": ["Observ 520x"],
+      "contact-date-from": "2026-11-02",
+      "contact-days": "tydzień (Observ)",
+      miejscowosc: "Kraków",
+      "contact-message": "Proszę o kontakt po 17",
+    });
+    const res = await POST(req("?token=sekret-testowy", body, "application/json"));
+    expect(res.status).toBe(200);
+    expect(queueRez).toHaveBeenCalledWith({
+      leadId: "L9",
+      email: "ola@x.pl",
+      name: "Ola Nowak",
+      summary: [
+        { label: "Urządzenie", value: "Observ 520x" },
+        { label: "Termin od", value: "2026-11-02" },
+        { label: "Liczba dni", value: "tydzień (Observ)" },
+        { label: "Miejscowość gabinetu", value: "Kraków" },
+        { label: "Szczegóły", value: "Proszę o kontakt po 17" },
+      ],
+    });
+    expect(deliver).toHaveBeenCalledWith("M9");
+    expect(queue).not.toHaveBeenCalled();
+    const entry = logs.at(-1) as { result: string; tookMs?: number | null; receivedAt?: Date | null };
+    expect(entry.result).toBe("CREATED");
+    expect(entry.receivedAt).toBeInstanceOf(Date);
+    expect(typeof entry.tookMs).toBe("number");
   });
 
   it("błąd kolejki maila nie psuje zgłoszenia", async () => {

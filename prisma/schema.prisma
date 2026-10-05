@@ -1754,6 +1754,8 @@ model AutoApprovedClass {
 // Dziennik żądań webhooka formularzy WWW (03.10.2026) — każde żądanie z
 // payloadem i wynikiem (CREATED | DUPLICATE | EXCLUDED | ERROR | UNAUTHORIZED).
 model WebhookLog {
+  // receivedAt / tookMs (5.10.2026): moment przyjęcia żądania i czas obsługi
+  // w ms (do odpowiedzi) — pomiar „myślącego przycisku” formularza.
   id        String   @id @default(cuid())
   kind      String   @db.VarChar(32)
   result    String   @db.VarChar(16)
@@ -1761,6 +1763,9 @@ model WebhookLog {
   message   String?  @db.Text
   payload   Json?
   createdAt DateTime @default(now())
+
+  receivedAt DateTime?
+  tookMs     Int?
 
   @@index([kind, createdAt])
   @@map("webhook_logs")
@@ -1800,6 +1805,8 @@ model AutoMail {
   lockedAt       DateTime?
   error          String?   @db.Text
   gmailMessageId String?   @db.VarChar(64)
+  // Dane do treści (mail potwierdzający rezerwację): { summary: [{label, value}] }.
+  payload        Json?
   createdAt      DateTime  @default(now())
   sentAt         DateTime?
 

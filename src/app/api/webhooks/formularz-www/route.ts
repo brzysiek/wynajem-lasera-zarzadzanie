@@ -3,7 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { parseWebhookBody, parseWwwForm, tokenMatches } from "@/lib/leads/www-form";
 import { intakeWwwForm } from "@/lib/leads/www-intake";
-import { deliverAutoMail, queueWwwPriceMail } from "@/lib/leads/auto-mail";
+import { deliverAutoMail, queueWwwPriceMail, queueWwwReservationMail } from "@/lib/leads/auto-mail";
+import { reservationSummary } from "@/lib/leads/auto-mail-render";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 
 // Formularze Contact Form 7 z wynajemlasera.pl → sygnał w panelu (03.10.2026),
@@ -14,18 +15,24 @@ import { logError, logInfo, logWarn } from "@/lib/logger";
 // (wtyczka wysyła wtedy mail o błędzie).
 const KIND = "formularz-www";
 
-async function log(result: string, data: { payload?: Prisma.InputJsonValue | null; leadId?: string | null; message?: string | null }) {
+// receivedAt / tookMs (5.10.2026): moment przyjęcia i czas obsługi do
+// odpowiedzi — pomiar, czy formularz czeka na panel.
+async function log(result: string, data: { payload?: Prisma.InputJsonValue | null; leadId?: string | null; message?: string | null; receivedAt?: Date; tookMs?: number }) {
   await prisma.webhookLog
-    .create({ data: { kind: KIND, result, leadId: data.leadId ?? null, message: data.message ?? null, payload: data.payload ?? undefined } })
+    .create({
+      data: { kind: KIND, result, leadId: data.leadId ?? null, message: data.message ?? null, payload: data.payload ?? undefined, receivedAt: data.receivedAt ?? null, tookMs: data.tookMs ?? null },
+    })
     .catch((err) => logError("www_webhook_log_failed", err));
 }
 
 export async function POST(req: NextRequest) {
+  const receivedAt = new Date();
+  const took = () => Date.now() - receivedAt.getTime();
   const auth = req.headers.get("authorization");
   const provided = req.nextUrl.searchParams.get("token") ?? req.headers.get("x-webhook-token") ?? (auth?.startsWith("Bearer ") ? auth.slice(7) : null);
   if (!tokenMatches(provided, process.env.WWW_WEBHOOK_TOKEN)) {
     logWarn("www_webhook_unauthorized", { hasToken: Boolean(provided) });
-    await log("UNAUTHORIZED", {});
+    await log("UNAUTHORIZED", { receivedAt, tookMs: took() });
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 401 });
   }
 
@@ -35,12 +42,16 @@ export async function POST(req: NextRequest) {
   try {
     const form = parseWwwForm(body);
     const res = await intakeWwwForm(form);
-    await log(res.result, { payload, leadId: res.leadId ?? null });
+    await log(res.result, { payload, leadId: res.leadId ?? null, receivedAt, tookMs: took() });
     // Cennik do klienta (04.10.2026): po odpowiedzi stronie — formularz nie
     // czeka na Gmaila. Błąd wysyłki nie psuje zgłoszenia (ponowi cron).
-    if (res.result === "CREATED" && form.type === "POBRANIE_CENNIKA") {
+    // Cennik i potwierdzenie rezerwacji: wysyłka po odpowiedzi stronie
+    // (after()); duplikat w 10 min nie dostaje drugiego maila (queue…).
+    if (res.result === "CREATED" && (form.type === "POBRANIE_CENNIKA" || form.type === "REZERWACJA_WWW")) {
       try {
-        const mailId = await queueWwwPriceMail({ leadId: res.leadId ?? null, email: form.email, name: form.name });
+        const base = { leadId: res.leadId ?? null, email: form.email, name: form.name };
+        const mailId =
+          form.type === "POBRANIE_CENNIKA" ? await queueWwwPriceMail(base) : await queueWwwReservationMail({ ...base, summary: reservationSummary(form) });
         if (mailId) after(() => deliverAutoMail(mailId).then(() => undefined));
       } catch (err) {
         logError("auto_mail_queue_failed", err);
@@ -51,7 +62,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logError("www_webhook_failed", err);
-    await log("ERROR", { payload, message });
+    await log("ERROR", { payload, message, receivedAt, tookMs: took() });
     return NextResponse.json({ message: "Nie udało się zapisać zgłoszenia." }, { status: 500 });
   }
 }

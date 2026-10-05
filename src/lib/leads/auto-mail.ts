@@ -8,8 +8,10 @@ import {
   AUTO_MAIL_MAX_ATTEMPTS,
   AUTO_MAIL_TEMPLATE_KEY,
   DEFAULT_AUTO_MAIL,
+  DEFAULT_RESERVATION_MAIL,
   buildMimeMessage,
   renderAutoMail,
+  type SummaryRow,
 } from "@/lib/leads/auto-mail-render";
 
 // Mail automatyczny z cennikiem po formularzu „cennik” na stronie (04.10.2026).
@@ -23,6 +25,13 @@ import {
 
 export const AUTO_MAIL_ENABLED_KEY = "www_autoreply_enabled";
 export const AUTO_MAIL_FROM_NAME_KEY = "www_autoreply_from_name";
+// Mail potwierdzający rezerwację (5.10.2026) — ten sam mechanizm co cennik,
+// bez załączników; przełącznik osobny, domyślnie WYŁĄCZONY (najpierw
+// wyłączamy Mail 2 w WordPressie — formularze 5795 i 327, potem włączamy).
+export const REZ_MAIL_ENABLED_KEY = "www_rez_autoreply_enabled";
+export const REZ_MAIL_TEMPLATE_KEY = "www_rezerwacja_auto";
+// Wspólna stopka (podpis Ani) doklejana do obu maili automatycznych.
+export const FOOTER_TEMPLATE_KEY = "www_stopka_auto";
 const DEFAULT_FROM_NAME = "wynajemlasera.pl";
 const LOCK_MS = 3 * 60_000;
 const RETRY_WINDOW_MS = 24 * 3_600_000;
@@ -34,20 +43,30 @@ export type AutoMailConfig = {
   subject: string;
   body: string;
   attachments: { id: string; filename: string; mime: string; size: number }[];
+  rez: { enabled: boolean; subject: string; body: string };
+  footer: string;
 };
 
-export async function ensureAutoMailTemplate() {
-  const row = await prisma.messageTemplate.findUnique({ where: { key: AUTO_MAIL_TEMPLATE_KEY } });
-  if (row) return row;
-  return prisma.messageTemplate.create({
-    data: { key: AUTO_MAIL_TEMPLATE_KEY, label: "Mail z cennikiem (formularz WWW)", channel: "EMAIL", subject: DEFAULT_AUTO_MAIL.subject, body: DEFAULT_AUTO_MAIL.body },
-  });
+const TEMPLATE_DEFAULTS = [
+  { key: AUTO_MAIL_TEMPLATE_KEY, label: "Mail z cennikiem (formularz WWW)", subject: DEFAULT_AUTO_MAIL.subject, body: DEFAULT_AUTO_MAIL.body },
+  { key: REZ_MAIL_TEMPLATE_KEY, label: "Mail potwierdzający rezerwację (formularz WWW)", subject: DEFAULT_RESERVATION_MAIL.subject, body: DEFAULT_RESERVATION_MAIL.body },
+  { key: FOOTER_TEMPLATE_KEY, label: "Stopka maili automatycznych (podpis)", subject: null, body: "" },
+];
+
+export async function ensureAutoMailTemplates() {
+  const rows = await prisma.messageTemplate.findMany({ where: { key: { in: TEMPLATE_DEFAULTS.map((t) => t.key) } } });
+  for (const t of TEMPLATE_DEFAULTS) {
+    if (!rows.some((r) => r.key === t.key)) {
+      rows.push(await prisma.messageTemplate.create({ data: { key: t.key, label: t.label, channel: "EMAIL", subject: t.subject, body: t.body } }));
+    }
+  }
+  return rows;
 }
 
 export async function loadAutoMailConfig(): Promise<AutoMailConfig> {
-  const [tpl, settings, attachments] = await Promise.all([
-    ensureAutoMailTemplate(),
-    prisma.setting.findMany({ where: { key: { in: [AUTO_MAIL_ENABLED_KEY, AUTO_MAIL_FROM_NAME_KEY] } } }),
+  const [tpls, settings, attachments] = await Promise.all([
+    ensureAutoMailTemplates(),
+    prisma.setting.findMany({ where: { key: { in: [AUTO_MAIL_ENABLED_KEY, AUTO_MAIL_FROM_NAME_KEY, REZ_MAIL_ENABLED_KEY] } } }),
     prisma.emailTemplateAttachment.findMany({
       where: { templateKey: AUTO_MAIL_TEMPLATE_KEY },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -55,33 +74,72 @@ export async function loadAutoMailConfig(): Promise<AutoMailConfig> {
     }),
   ]);
   const get = (k: string) => settings.find((s) => s.key === k)?.value;
+  const tpl = (k: string) => tpls.find((t) => t.key === k);
   return {
     enabled: get(AUTO_MAIL_ENABLED_KEY) === "1",
     fromName: get(AUTO_MAIL_FROM_NAME_KEY) || DEFAULT_FROM_NAME,
-    subject: tpl.subject ?? DEFAULT_AUTO_MAIL.subject,
-    body: tpl.body,
+    subject: tpl(AUTO_MAIL_TEMPLATE_KEY)?.subject ?? DEFAULT_AUTO_MAIL.subject,
+    body: tpl(AUTO_MAIL_TEMPLATE_KEY)?.body ?? DEFAULT_AUTO_MAIL.body,
     attachments,
+    rez: {
+      enabled: get(REZ_MAIL_ENABLED_KEY) === "1",
+      subject: tpl(REZ_MAIL_TEMPLATE_KEY)?.subject ?? DEFAULT_RESERVATION_MAIL.subject,
+      body: tpl(REZ_MAIL_TEMPLATE_KEY)?.body ?? DEFAULT_RESERVATION_MAIL.body,
+    },
+    footer: tpl(FOOTER_TEMPLATE_KEY)?.body ?? "",
   };
 }
 
 // Webhook: kolejkuje mail (szybki zapis), wysyłka osobno — deliverAutoMail.
-export async function queueWwwPriceMail(input: { leadId: string | null; email: string | null; name: string | null }): Promise<string | null> {
+async function queueAutoMail(
+  kind: "www_cennik" | "www_rezerwacja",
+  enabledKey: string,
+  input: { leadId: string | null; email: string | null; name: string | null; summary?: SummaryRow[] },
+): Promise<string | null> {
   if (!input.email || isPlaceholderEmail(input.email)) return null;
-  const on = await prisma.setting.findUnique({ where: { key: AUTO_MAIL_ENABLED_KEY } });
+  const on = await prisma.setting.findUnique({ where: { key: enabledKey } });
   if (on?.value !== "1") return null;
   const since = new Date(Date.now() - REPEAT_GUARD_MS);
-  const recent = await prisma.autoMail.count({ where: { kind: "www_cennik", toAddress: input.email, createdAt: { gte: since } } });
+  const recent = await prisma.autoMail.count({ where: { kind, toAddress: input.email, createdAt: { gte: since } } });
   if (recent) return null;
   const lead = input.leadId ? await prisma.lead.findUnique({ where: { id: input.leadId }, select: { clientId: true } }) : null;
   const row = await prisma.autoMail.create({
-    data: { kind: "www_cennik", leadId: input.leadId, clientId: lead?.clientId ?? null, toAddress: input.email, name: input.name, status: "PENDING" },
+    data: {
+      kind,
+      leadId: input.leadId,
+      clientId: lead?.clientId ?? null,
+      toAddress: input.email,
+      name: input.name,
+      status: "PENDING",
+      ...(input.summary ? { payload: { summary: input.summary } } : {}),
+    },
   });
   return row.id;
 }
 
+export const queueWwwPriceMail = (input: { leadId: string | null; email: string | null; name: string | null }) => queueAutoMail("www_cennik", AUTO_MAIL_ENABLED_KEY, input);
+export const queueWwwReservationMail = (input: { leadId: string | null; email: string | null; name: string | null; summary: SummaryRow[] }) =>
+  queueAutoMail("www_rezerwacja", REZ_MAIL_ENABLED_KEY, input);
+
+const SAMPLE_SUMMARY: SummaryRow[] = [
+  { label: "Urządzenie", value: "LightSheer Desire" },
+  { label: "Termin od", value: "2026-11-02" },
+  { label: "Liczba dni", value: "2 dni" },
+  { label: "Miejscowość gabinetu", value: "Kraków" },
+];
+
 // Próbna wysyłka z ustawień — od razu, bez sygnału; ślad w auto_mails.
-export async function sendTestAutoMail(to: string, name: string | null): Promise<{ ok: boolean; error?: string }> {
-  const row = await prisma.autoMail.create({ data: { kind: "www_cennik_test", toAddress: to, name, status: "PENDING", attempts: AUTO_MAIL_MAX_ATTEMPTS - 1 } });
+export async function sendTestAutoMail(to: string, name: string | null, kind: "cennik" | "rezerwacja" = "cennik"): Promise<{ ok: boolean; error?: string }> {
+  const row = await prisma.autoMail.create({
+    data: {
+      kind: kind === "rezerwacja" ? "www_rezerwacja_test" : "www_cennik_test",
+      toAddress: to,
+      name,
+      status: "PENDING",
+      attempts: AUTO_MAIL_MAX_ATTEMPTS - 1,
+      ...(kind === "rezerwacja" ? { payload: { summary: SAMPLE_SUMMARY } } : {}),
+    },
+  });
   return deliverAutoMail(row.id);
 }
 
@@ -97,13 +155,18 @@ export async function deliverAutoMail(id: string): Promise<{ ok: boolean; error?
 
   try {
     const cfg = await loadAutoMailConfig();
-    const files = await prisma.emailTemplateAttachment.findMany({
-      where: { templateKey: AUTO_MAIL_TEMPLATE_KEY },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      select: { filename: true, mime: true, data: true },
-    });
-    if (!files.length) throw new Error("Brak załączników w szablonie (Ustawienia → Mail z cennikiem).");
-    const mail = renderAutoMail({ subject: cfg.subject, body: cfg.body }, { name: row.name });
+    const rez = row.kind.startsWith("www_rezerwacja");
+    // Potwierdzenie rezerwacji idzie bez załączników; cennik musi je mieć.
+    const files = rez
+      ? []
+      : await prisma.emailTemplateAttachment.findMany({
+          where: { templateKey: AUTO_MAIL_TEMPLATE_KEY },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          select: { filename: true, mime: true, data: true },
+        });
+    if (!rez && !files.length) throw new Error("Brak załączników w szablonie (Ustawienia → Maile automatyczne).");
+    const payload = row.payload as { summary?: SummaryRow[] } | null;
+    const mail = renderAutoMail(rez ? cfg.rez : { subject: cfg.subject, body: cfg.body }, { name: row.name, summary: payload?.summary ?? [], footer: cfg.footer });
     const raw = buildMimeMessage({
       from: AUTO_MAIL_FROM,
       fromName: cfg.fromName,
@@ -119,12 +182,18 @@ export async function deliverAutoMail(id: string): Promise<{ ok: boolean; error?
       data: { status: "SENT", sentAt: new Date(), gmailMessageId: sent.id, subject: mail.subject, error: null, lockedAt: null },
     });
     if (row.leadId) {
+      const what = rez ? "potwierdzeniem rezerwacji" : "cennikiem";
       const names = files.map((f) => f.filename).join(", ");
       await prisma.leadActivity.create({
-        data: { leadId: row.leadId, clientId: row.clientId, type: "SYSTEM", body: `auto · wysłano mail z cennikiem na ${row.toAddress} („${mail.subject}”, załączniki: ${names})` },
+        data: {
+          leadId: row.leadId,
+          clientId: row.clientId,
+          type: "SYSTEM",
+          body: `auto · wysłano mail z ${what} na ${row.toAddress} („${mail.subject}”${names ? `, załączniki: ${names}` : ""})`,
+        },
       });
       await recordChanges(prisma, { userId: "" }, [
-        { entity: "LEAD", entityId: row.leadId, operation: "AUTO_MAIL", clientId: row.clientId, field: "mail", after: `cennik → ${row.toAddress} (${names})` },
+        { entity: "LEAD", entityId: row.leadId, operation: "AUTO_MAIL", clientId: row.clientId, field: "mail", after: `${rez ? "potwierdzenie rezerwacji" : "cennik"} → ${row.toAddress}${names ? ` (${names})` : ""}` },
       ]);
     }
     logInfo("auto_mail_sent", { id, kind: row.kind, leadId: row.leadId });
@@ -134,8 +203,9 @@ export async function deliverAutoMail(id: string): Promise<{ ok: boolean; error?
     const last = row.attempts >= AUTO_MAIL_MAX_ATTEMPTS;
     await prisma.autoMail.update({ where: { id }, data: { status: last ? "FAILED" : "PENDING", error, lockedAt: null } });
     if (last && row.leadId) {
+      const what = row.kind.startsWith("www_rezerwacja") ? "potwierdzeniem rezerwacji" : "cennikiem";
       await prisma.leadActivity.create({
-        data: { leadId: row.leadId, clientId: row.clientId, type: "SYSTEM", body: `auto · NIE wysłano maila z cennikiem na ${row.toAddress} (${error}) — wyślij cennik ręcznie` },
+        data: { leadId: row.leadId, clientId: row.clientId, type: "SYSTEM", body: `auto · NIE wysłano maila z ${what} na ${row.toAddress} (${error}) — odezwij się ręcznie` },
       });
     }
     logError("auto_mail_failed", err, { id, attempt: row.attempts, final: last });
