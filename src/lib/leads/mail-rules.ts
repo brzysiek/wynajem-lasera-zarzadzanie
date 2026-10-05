@@ -5,9 +5,22 @@ import { OFFER_FOLLOW_UP_DAYS } from "./funnel";
 import { addWorkdays } from "./work-time";
 import type { LeadStageKey } from "./parse-deal";
 
-// Automatyczny mail z cennikiem po pobraniu cennika ze strony — nie kontakt.
+// Maile automatyczne po formularzu WWW — nie są kontaktem biura: cennik
+// (wysyła panel) i potwierdzenie rezerwacji (do przepięcia wysyła WordPress;
+// 5.10.2026 temat zmieniony ze „Wstępna rezerwacja…” na „Otrzymaliśmy…”).
+// Dokładny temat = automat; odpowiedź „Re: …” to już kontakt człowieka.
 export const AUTO_PRICE_LIST_SUBJECT = "Cennik oraz aktualna oferta - wynajemlasera.pl";
-const isAutoPriceList = (subject: string | null) => (subject ?? "").trim().toLowerCase() === AUTO_PRICE_LIST_SUBJECT.toLowerCase();
+export const AUTO_WWW_MAIL_SUBJECTS = [
+  AUTO_PRICE_LIST_SUBJECT,
+  "Wstępna rezerwacja sprzętu WynajemLasera.pl",
+  "Otrzymaliśmy Twoją rezerwację — WynajemLasera.pl",
+];
+// Porównanie odporne na wielkość liter, podwójne spacje i rodzaj myślnika.
+const canon = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ").replace(/[—–-]+/g, "-");
+const AUTO_CANON = new Set(AUTO_WWW_MAIL_SUBJECTS.map(canon));
+export function isAutoWwwMail(subject: string | null | undefined): boolean {
+  return AUTO_CANON.has(canon(subject ?? ""));
+}
 
 // Mail z ofertą (decyzja Tomka 28.09): temat z „ofert”, ale nie automatyczny
 // cennik i nie odpowiedź w jego wątku („Re: Cennik oraz aktualna oferta…”).
@@ -39,7 +52,7 @@ const at10 = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 1
 export function planMailForLead(lead: MailLead, mail: MailEvent, now: Date): MailPlan {
   if (mail.sentAt < lead.createdAt) return null;
   if (now.getTime() - mail.sentAt.getTime() > MAIL_AUTOMATION_MAX_AGE_DAYS * 86_400_000) return null;
-  if (mail.direction === "OUT" && isAutoPriceList(mail.subject)) return null;
+  if (mail.direction === "OUT" && isAutoWwwMail(mail.subject)) return null;
   const subject = mail.subject?.trim() || "(bez tematu)";
   const lastContactAt = lead.lastContactAt && lead.lastContactAt > mail.sentAt ? lead.lastContactAt : mail.sentAt;
   const firstContactAt = lead.firstContactAt ? undefined : mail.sentAt;

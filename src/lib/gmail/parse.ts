@@ -133,12 +133,12 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
-// Automatyczny mail z cennikiem wysyłany po pobraniu cennika ze strony
-// (szablon z kontakt@) — to nie jest kontakt z klientką (lejek v2: nie
-// kwalifikuje i nie przesuwa sygnału). Odpowiedź „Re: …” już jest kontaktem.
-import { AUTO_PRICE_LIST_SUBJECT } from "../leads/mail-rules";
-export { AUTO_PRICE_LIST_SUBJECT };
+// Maile automatyczne po formularzu WWW (cennik, potwierdzenie rezerwacji) —
+// to nie jest kontakt z klientką (lejek v2: nie kwalifikuje i nie przesuwa
+// sygnału). Odpowiedź „Re: …” już jest kontaktem. Lista: leads/mail-rules.ts.
+import { AUTO_PRICE_LIST_SUBJECT, isAutoWwwMail } from "../leads/mail-rules";
+export { AUTO_PRICE_LIST_SUBJECT, isAutoWwwMail };
 
 export function isAutoPriceListMail(subject: string | null | undefined): boolean {
-  return (subject ?? "").trim().toLowerCase() === AUTO_PRICE_LIST_SUBJECT.toLowerCase();
+  return isAutoWwwMail(subject);
 }

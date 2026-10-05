@@ -27,6 +27,12 @@ describe("classifyActivity", () => {
 describe("classifyOutMail", () => {
   it("automatyczny cennik to nie kontakt", () => {
     expect(classifyOutMail("Cennik oraz aktualna oferta - wynajemlasera.pl")).toEqual({ contact: false, offer: false, auto: true });
+    expect(classifyOutMail("Wstępna rezerwacja sprzętu WynajemLasera.pl")).toEqual({ contact: false, offer: false, auto: true });
+    expect(classifyOutMail("Otrzymaliśmy Twoją rezerwację — WynajemLasera.pl")).toEqual({ contact: false, offer: false, auto: true });
+    expect(classifyOutMail("Otrzymalismy Twoja rezerwacje - WynajemLasera.pl").auto).toBe(false); // inna treść = nie automat
+    // Odpowiedź Ani w wątku automatu to kontakt człowieka.
+    expect(classifyOutMail("Re: Otrzymaliśmy Twoją rezerwację — WynajemLasera.pl").contact).toBe(true);
+    expect(classifyOutMail("Re: Cennik oraz aktualna oferta - wynajemlasera.pl").contact).toBe(true);
     expect(classifyOutMail("Wynajemlasera – Oferta na sezon 2026/2027")).toEqual({ contact: true, offer: true, auto: false });
     expect(classifyOutMail("Re: Alma harmony").offer).toBe(false);
   });

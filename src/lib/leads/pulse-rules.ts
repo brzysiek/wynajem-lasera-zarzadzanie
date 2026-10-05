@@ -11,9 +11,10 @@ export type ActivityInput = { type: string; body: string | null; userRole: strin
 
 export type Classified = { kind: PulseKind | null; human: boolean; auto: boolean };
 
+import { isAutoWwwMail } from "./mail-rules";
+
 const OFFICE = ["ADMIN", "STAFF"];
 const CONTACT_TYPES = ["CALL", "CALL_NO_ANSWER", "SMS", "NOTE", "EMAIL"];
-export const AUTO_PRICE_MAIL = /cennik oraz aktualna oferta/i;
 
 export function classifyActivity(a: ActivityInput): Classified {
   const body = (a.body ?? "").trim();
@@ -36,11 +37,12 @@ export function classifyActivity(a: ActivityInput): Classified {
 }
 
 // Mail wysłany ze skrzynki biura: kontakt (ręczny), a z „ofertą” w temacie
-// także sygnał oferty. Automatyczny cennik — porządki.
+// także sygnał oferty. Maile automatyczne po formularzu WWW (cennik,
+// potwierdzenie rezerwacji — dokładny temat) — porządki; odpowiedź „Re: …”
+// w ich wątku to już kontakt.
 export function classifyOutMail(subject: string | null): { contact: boolean; offer: boolean; auto: boolean } {
-  const s = subject ?? "";
-  if (AUTO_PRICE_MAIL.test(s)) return { contact: false, offer: false, auto: true };
-  return { contact: true, offer: /ofert/i.test(s), auto: false };
+  if (isAutoWwwMail(subject)) return { contact: false, offer: false, auto: true };
+  return { contact: true, offer: /ofert/i.test(subject ?? ""), auto: false };
 }
 
 // Okres raportu: „ten tydzień” (od poniedziałku) albo N dni wstecz; poprzedni
