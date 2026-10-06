@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
     // (after()); duplikat w 10 min nie dostaje drugiego maila (queue…).
     if (res.result === "CREATED" && (form.type === "POBRANIE_CENNIKA" || form.type === "REZERWACJA_WWW")) {
       try {
-        const base = { leadId: res.leadId ?? null, email: form.email, name: form.name };
+        // Wpis o mailu na żywym sygnale (przy ponownym zapytaniu to ten, do którego dopisano zgłoszenie).
+        const base = { leadId: res.mergedInto ?? res.leadId ?? null, email: form.email, name: form.name };
         const mailId =
           form.type === "POBRANIE_CENNIKA" ? await queueWwwPriceMail(base) : await queueWwwReservationMail({ ...base, summary: reservationSummary(form) });
         if (mailId) after(() => deliverAutoMail(mailId).then(() => undefined));

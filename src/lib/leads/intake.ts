@@ -37,15 +37,38 @@ export async function intakeRules(clientId: string | null, createdAt: Date, devi
 
 // Ponowne zapytanie jako aktywność w istniejącym sygnale; odłożony wraca do
 // „W kontakcie” z krokiem na dziś, pozostałe dostają krok najpóźniej dziś.
-export async function mergeRepeatInquiry(target: { id: string; stage: string }, info: { type: LeadTypeKey; createdAt: Date; message: string | null }, now = new Date()) {
-  const lead = await prisma.lead.findUnique({ where: { id: target.id }, select: { clientId: true, nextActionAt: true, stage: true } });
+// Formularz WWW (wniosek 39) podaje też szczegóły (sprzęt, termin, dni,
+// miejscowość): wpis ma pełną nową treść, a puste pola sygnału się uzupełniają
+// (sprzęt — suma; termin, dni i miejscowość tylko gdy ich brakuje).
+export type RepeatDetails = { devices?: string[]; requestedFrom?: Date | null; requestedDays?: number | null; location?: string | null; lines?: string[] };
+
+export async function mergeRepeatInquiry(
+  target: { id: string; stage: string },
+  info: { type: LeadTypeKey; createdAt: Date; message: string | null; details?: RepeatDetails },
+  now = new Date(),
+) {
+  const lead = await prisma.lead.findUnique({
+    where: { id: target.id },
+    select: { clientId: true, nextActionAt: true, stage: true, deviceInterest: true, requestedFrom: true, requestedDays: true, location: true },
+  });
   if (!lead) return;
   const back = lead.stage === "ODLOZONE";
   const pull = back || !lead.nextActionAt || lead.nextActionAt > now;
+  const d = info.details;
+  const have = Array.isArray(lead.deviceInterest) ? (lead.deviceInterest as unknown[]).filter((x): x is string => typeof x === "string") : [];
+  const devices = d?.devices?.length ? [...new Set([...have, ...d.devices])] : null;
+  const fill = {
+    ...(devices && devices.length !== have.length ? { deviceInterest: devices } : {}),
+    ...(!lead.requestedFrom && d?.requestedFrom ? { requestedFrom: d.requestedFrom } : {}),
+    ...(lead.requestedDays == null && d?.requestedDays != null ? { requestedDays: d.requestedDays } : {}),
+    ...(!lead.location && d?.location ? { location: d.location } : {}),
+  };
+  const lines = d?.lines?.length ? ` — ${d.lines.join(" · ")}` : "";
   await prisma.$transaction([
     prisma.lead.update({
       where: { id: target.id },
       data: {
+        ...fill,
         ...(back ? { stage: "WYWIAD", stageChangedAt: now, returnAt: null } : {}),
         ...(pull ? { nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: "ponowne zapytanie — oddzwonić" } : {}),
       },
@@ -55,7 +78,7 @@ export async function mergeRepeatInquiry(target: { id: string; stage: string }, 
         leadId: target.id,
         clientId: lead.clientId,
         type: back ? "STAGE_CHANGE" : "SYSTEM",
-        body: `Ponowne zapytanie (${TYPE_LABEL[info.type]}, ${info.createdAt.toLocaleDateString("pl-PL")})${info.message ? `: ${info.message.slice(0, 300)}` : ""}${back ? ` · ${STAGE_LABEL.ODLOZONE} → ${STAGE_LABEL.WYWIAD}` : ""}`,
+        body: `Ponowne zapytanie (${TYPE_LABEL[info.type]}, ${info.createdAt.toLocaleDateString("pl-PL")})${lines}${info.message ? `: ${info.message.slice(0, d ? 1500 : 300)}` : ""}${back ? ` · ${STAGE_LABEL.ODLOZONE} → ${STAGE_LABEL.WYWIAD}` : ""}`,
       },
     }),
   ]);

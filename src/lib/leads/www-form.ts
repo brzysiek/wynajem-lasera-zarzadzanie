@@ -104,9 +104,19 @@ export function parseWwwForm(body: Body): WwwForm {
   const company = str(body["contact-company-name"]);
   const courseDate = str(body["contact-course-date"]);
   const msg = str(body["contact-message"]);
-  const city = str(body["miejscowosc"]);
+  // Miejscowość: pole „miejscowosc”, a gdy go brak — linia „Miejscowość: …”
+  // wpisana w wiadomość (formularz v2 składa wiadomość sam). Linii nie
+  // dublujemy w treści sygnału (wniosek 39).
+  const msgCityLine = msg?.match(/^[ \t]*Miejscowo[sś][cć][ \t]*[:\-][ \t]*(.+)$/im)?.[1]?.trim() || null;
+  const city = str(body["miejscowosc"]) ?? msgCityLine;
   const message =
-    [msg, company ? `Firma: ${company}` : null, city ? `Miejscowość: ${city}` : null, courseDate ? `Termin szkolenia: ${courseDate}` : null, type === "INNE" && rawType ? `Formularz: ${rawType}` : null]
+    [
+      msg,
+      company ? `Firma: ${company}` : null,
+      city && !msgCityLine ? `Miejscowość: ${city}` : null,
+      courseDate ? `Termin szkolenia: ${courseDate}` : null,
+      type === "INNE" && rawType ? `Formularz: ${rawType}` : null,
+    ]
       .filter(Boolean)
       .join("\n") || null;
   const attribution: Record<string, string | string[]> = {};
@@ -137,6 +147,16 @@ export function parseWwwForm(body: Body): WwwForm {
     attribution,
     test: !!email && /^test\+www-/.test(email),
   };
+}
+
+// Klucz treści zgłoszenia (wniosek 39): to samo zgłoszenie wysłane drugi raz
+// (podwójne kliknięcie, ponowienie wtyczki) ma ten sam klucz; zmieniony sprzęt,
+// termin, liczba dni albo wiadomość (w niej firma i miejscowość) — inny.
+// Składany z pól już znormalizowanych, więc identyczny dla formularza i dla
+// zapisanego sygnału.
+export function contentKey(c: { devices: string[]; from: string | null; days: number | null; message: string | null }): string {
+  const norm = (s: string | null) => (s ?? "").toLowerCase().replace(/\s+/g, " ").trim().slice(0, 5000);
+  return JSON.stringify([[...new Set(c.devices)].sort(), c.from ?? null, c.days ?? null, norm(c.message)]);
 }
 
 // Token: ?token= (wtyczka CF7 może nie umieć nagłówków) albo nagłówek

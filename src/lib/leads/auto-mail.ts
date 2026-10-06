@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { sendGmailMessage } from "@/lib/integrations/gmail";
 import { recordChanges } from "@/lib/changelog/record";
 import { isPlaceholderEmail } from "@/lib/clients/placeholder";
-import { logError, logInfo } from "@/lib/logger";
+import { logError, logInfo, logWarn } from "@/lib/logger";
 import {
   AUTO_MAIL_FROM,
   AUTO_MAIL_MAX_ATTEMPTS,
@@ -35,7 +35,11 @@ export const FOOTER_TEMPLATE_KEY = "www_stopka_auto";
 const DEFAULT_FROM_NAME = "wynajemlasera.pl";
 const LOCK_MS = 3 * 60_000;
 const RETRY_WINDOW_MS = 24 * 3_600_000;
-const REPEAT_GUARD_MS = 10 * 60_000;
+// Identyczne zgłoszenia w 10 min odrzuca już webhook (www-intake: ta sama
+// treść = duplikat), więc tu zostaje tylko limit przed zasypaniem adresu
+// mailami przy zgłoszeniach z różną treścią (wniosek 39).
+const MAIL_CAP_PER_HOUR = 3;
+const MAIL_CAP_WINDOW_MS = 3_600_000;
 
 export type AutoMailConfig = {
   enabled: boolean;
@@ -99,9 +103,12 @@ async function queueAutoMail(
   if (!input.email || isPlaceholderEmail(input.email)) return null;
   const on = await prisma.setting.findUnique({ where: { key: enabledKey } });
   if (on?.value !== "1") return null;
-  const since = new Date(Date.now() - REPEAT_GUARD_MS);
+  const since = new Date(Date.now() - MAIL_CAP_WINDOW_MS);
   const recent = await prisma.autoMail.count({ where: { kind, toAddress: input.email, createdAt: { gte: since } } });
-  if (recent) return null;
+  if (recent >= MAIL_CAP_PER_HOUR) {
+    logWarn("auto_mail_cap_reached", { kind, toAddress: input.email, recent });
+    return null;
+  }
   const lead = input.leadId ? await prisma.lead.findUnique({ where: { id: input.leadId }, select: { clientId: true } }) : null;
   const row = await prisma.autoMail.create({
     data: {

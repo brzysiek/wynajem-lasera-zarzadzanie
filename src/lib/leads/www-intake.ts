@@ -7,7 +7,9 @@ import { FIRST_CONTACT_SLA_HOURS, addWorkHours } from "@/lib/leads/funnel";
 import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { intakeRules, mergeRepeatInquiry, DUPLICATE_WINDOW_MIN } from "@/lib/leads/intake";
 import { leadTitle } from "@/lib/leads/parse-deal";
-import type { WwwForm } from "@/lib/leads/www-form";
+import { TYPE_LABEL } from "@/lib/leads/labels";
+import { contentKey, type WwwForm } from "@/lib/leads/www-form";
+import { logError } from "@/lib/logger";
 
 // Formularz WWW → sygnał (03.10.2026). Te same zasady co import z HubSpota
 // (hubspot-sync.ts: createLeadFromDeal): klient po e-mailu, potem telefonie;
@@ -16,7 +18,10 @@ import type { WwwForm } from "@/lib/leads/www-form";
 // kontakcie” z krokiem „umówić termin”; ponowne zapytanie → aktywność w
 // otwartym sygnale. Bez HubSpota i n8n.
 
-export type WwwIntakeResult = { result: "CREATED" | "DUPLICATE" | "EXCLUDED"; leadId?: string };
+// mergedInto — otwarty sygnał, do którego dopisano ponowne zapytanie (nowy
+// rekord trafił wtedy do archiwum jako duplikat): tam ma też trafić wpis o
+// wysłanym mailu, żeby Ania widziała go na żywym sygnale.
+export type WwwIntakeResult = { result: "CREATED" | "DUPLICATE" | "EXCLUDED"; leadId?: string; mergedInto?: string };
 
 function splitName(full: string | null): { firstName: string | null; lastName: string | null } {
   const parts = (full ?? "").trim().split(/\s+/).filter(Boolean);
@@ -32,15 +37,36 @@ export async function intakeWwwForm(form: WwwForm, now = new Date()): Promise<Ww
   // Osoby z listy wykluczeń (wniosek 7) nie tworzą sygnałów ani klientów.
   if (email && (await loadExclusionMatcher())(email) === "EXCLUDE") return { result: "EXCLUDED" };
 
-  // Ten sam e-mail (albo telefon) i typ w ciągu 10 min — wtyczka wysłała drugi raz.
+  // Duplikat (wniosek 39): ten sam e-mail (albo telefon), typ i IDENTYCZNA
+  // treść (sprzęt, termin, dni, wiadomość) w ciągu 10 min — wtyczka wysłała
+  // drugi raz. Inna treść to nowe zgłoszenie: dopisze się do otwartego sygnału.
   const since = new Date(now.getTime() - DUPLICATE_WINDOW_MIN * 60_000);
-  const same = email || phone
-    ? await prisma.lead.findFirst({
+  const key = contentKey({ devices: form.devices, from: form.requestedFrom, days: form.requestedDays, message: form.message });
+  const recent = email || phone
+    ? await prisma.lead.findMany({
         where: { origin: "WWW", type: form.type, createdAt: { gte: since }, ...(email ? { contactEmail: email } : { contactPhone: phone }) },
-        select: { id: true },
+        select: { id: true, clientId: true, archivedAt: true, archiveNote: true, deviceInterest: true, requestedFrom: true, requestedDays: true, message: true },
       })
-    : null;
-  if (same) return { result: "DUPLICATE", leadId: same.id };
+    : [];
+  const same = recent.find(
+    (l) =>
+      contentKey({
+        devices: Array.isArray(l.deviceInterest) ? (l.deviceInterest as unknown[]).filter((x): x is string => typeof x === "string") : [],
+        from: l.requestedFrom ? l.requestedFrom.toISOString().slice(0, 10) : null,
+        days: l.requestedDays,
+        message: l.message,
+      }) === key,
+  );
+  if (same) {
+    // Wpis o pominiętym duplikacie na żywym sygnale (zarchiwizowany duplikat
+    // wskazuje sygnał, z którym go scalono) — widać, że formularz zadziałał.
+    const live = same.archivedAt ? same.archiveNote?.match(/sygnałem (\S+)/)?.[1] ?? same.id : same.id;
+    const hhmm = now.toLocaleTimeString("pl-PL", { timeZone: "Europe/Warsaw", hour: "2-digit", minute: "2-digit" });
+    await prisma.leadActivity
+      .create({ data: { leadId: live, clientId: same.clientId, type: "SYSTEM", body: `Pominięto duplikat formularza WWW (${TYPE_LABEL[form.type]}) — identyczna treść, ${hhmm}`, createdAt: now } })
+      .catch((err) => logError("www_duplicate_note_failed", err, { leadId: live }));
+    return { result: "DUPLICATE", leadId: live };
+  }
 
   // Klient: e-mail → telefon → nowy (test+www-… bez klienta, żeby nie śmiecić bazy).
   let ref: { id: string; clientId: string; phone: string | null } | null = null;
@@ -93,6 +119,7 @@ export async function intakeWwwForm(form: WwwForm, now = new Date()): Promise<Ww
         requestedFrom: form.requestedFrom ? new Date(`${form.requestedFrom}T12:00:00.000Z`) : null,
         requestedDays: form.requestedDays,
         message: form.message,
+        location: form.city,
         contactName: form.name,
         contactPhone: phone,
         contactEmail: email,
@@ -109,6 +136,27 @@ export async function intakeWwwForm(form: WwwForm, now = new Date()): Promise<Ww
     });
     return l;
   });
-  if (intake.duplicateOf) await mergeRepeatInquiry(intake.duplicateOf, { type: form.type, createdAt: now, message: form.message });
+  if (intake.duplicateOf) {
+    // Pełna nowa treść w wpisie + uzupełnienie sprzętu, terminu i dni (wniosek 39).
+    const lines = [
+      form.devicesText ? `Urządzenie: ${form.devicesText}` : null,
+      form.dateFromRaw ? `Termin od: ${form.dateFromRaw}` : null,
+      form.daysRaw ? `Liczba dni: ${form.daysRaw}` : null,
+      form.city ? `Miejscowość: ${form.city}` : null,
+    ].filter((x): x is string => !!x);
+    await mergeRepeatInquiry(intake.duplicateOf, {
+      type: form.type,
+      createdAt: now,
+      message: form.message,
+      details: {
+        devices: form.devices,
+        requestedFrom: form.requestedFrom ? new Date(`${form.requestedFrom}T12:00:00.000Z`) : null,
+        requestedDays: form.requestedDays,
+        location: form.city,
+        lines,
+      },
+    });
+    return { result: "CREATED", leadId: lead.id, mergedInto: intake.duplicateOf.id };
+  }
   return { result: "CREATED", leadId: lead.id };
 }

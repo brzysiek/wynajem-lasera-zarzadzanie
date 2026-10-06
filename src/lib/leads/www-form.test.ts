@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDate, parseDays, parseWebhookBody, parseWwwForm, tokenMatches } from "./www-form";
+import { parseDate, parseDays, parseWebhookBody, parseWwwForm, tokenMatches, contentKey } from "./www-form";
 
 describe("parseWebhookBody", () => {
   it("JSON i formularz (checkbox jako tablica)", () => {
@@ -75,5 +75,35 @@ describe("tokenMatches", () => {
     expect(tokenMatches("abd", "abc")).toBe(false);
     expect(tokenMatches("abc", undefined)).toBe(false);
     expect(tokenMatches(null, "abc")).toBe(false);
+  });
+});
+
+describe("miejscowość (wniosek 39)", () => {
+  it("z pola miejscowosc; linia w wiadomości nie jest dublowana", () => {
+    const f = parseWwwForm({ text: "rezerwacja-wynajmu", "contact-email": "a@b.pl", miejscowosc: "Kraków", "contact-message": "Proszę o kontakt" });
+    expect(f.city).toBe("Kraków");
+    expect(f.message).toBe("Proszę o kontakt\nMiejscowość: Kraków");
+    const v2 = parseWwwForm({ text: "rezerwacja-wynajmu", "contact-email": "a@b.pl", miejscowosc: "Kraków", "contact-message": "Miejscowość: Kraków\nProszę o kontakt" });
+    expect(v2.message?.match(/Miejscowo/g)).toHaveLength(1);
+  });
+  it("bez pola — miejscowość z linii w wiadomości", () => {
+    const f = parseWwwForm({ text: "rezerwacja-wynajmu", "contact-email": "a@b.pl", "contact-message": "Miejscowość: Gdańsk\nreszta" });
+    expect(f.city).toBe("Gdańsk");
+    expect(f.message).toBe("Miejscowość: Gdańsk\nreszta");
+  });
+});
+
+describe("contentKey — duplikat to identyczna treść", () => {
+  const base = { devices: ["LIGHTSHEER_DESIRE"], from: "2026-11-02", days: 2, message: "Proszę o kontakt\nMiejscowość: Kraków" };
+  it("to samo zgłoszenie → ten sam klucz (kolejność urządzeń, wielkość liter i spacje bez znaczenia)", () => {
+    expect(contentKey({ ...base, devices: ["ALMA", "LIGHTSHEER_DESIRE"] })).toBe(contentKey({ ...base, devices: ["LIGHTSHEER_DESIRE", "ALMA"] }));
+    expect(contentKey(base)).toBe(contentKey({ ...base, message: "proszę o  kontakt\nmiejscowość: kraków " }));
+  });
+  it("inny termin, dni, sprzęt albo wiadomość → inny klucz", () => {
+    expect(contentKey(base)).not.toBe(contentKey({ ...base, from: "2026-11-09" }));
+    expect(contentKey(base)).not.toBe(contentKey({ ...base, days: 3 }));
+    expect(contentKey(base)).not.toBe(contentKey({ ...base, devices: ["LIGHTSHEER_DESIRE", "ALMA"] }));
+    expect(contentKey(base)).not.toBe(contentKey({ ...base, message: "Inna treść" }));
+    expect(contentKey({ devices: [], from: null, days: null, message: null })).not.toBe(contentKey(base));
   });
 });

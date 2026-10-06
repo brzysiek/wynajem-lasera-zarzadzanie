@@ -124,6 +124,24 @@ describe("POST /api/webhooks/formularz-www", () => {
     expect(typeof entry.tookMs).toBe("number");
   });
 
+  it("ponowne zapytanie z inną treścią: mail dostaje klient, wpis o mailu trafia na otwarty sygnał", async () => {
+    intake.mockResolvedValue({ result: "CREATED", leadId: "ARCHIWUM", mergedInto: "OTWARTY" });
+    queueRez.mockResolvedValue("M7");
+    const body = JSON.stringify({ text: "rezerwacja-wynajmu", "contact-email": "ola@x.pl", "contact-device": "Alma Harmony XL", "contact-date-from": "2026-11-09" });
+    const res = await POST(req("?token=sekret-testowy", body, "application/json"));
+    expect(res.status).toBe(200);
+    expect(queueRez.mock.calls[0][0]).toMatchObject({ leadId: "OTWARTY", email: "ola@x.pl" });
+    expect(deliver).toHaveBeenCalledWith("M7");
+  });
+
+  it("duplikat (identyczna treść) nie wysyła maila", async () => {
+    intake.mockResolvedValue({ result: "DUPLICATE", leadId: "L1" });
+    const res = await POST(req("?token=sekret-testowy", JSON.stringify({ text: "rezerwacja-wynajmu", "contact-email": "ola@x.pl" }), "application/json"));
+    expect(res.status).toBe(200);
+    expect(queueRez).not.toHaveBeenCalled();
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
   it("błąd kolejki maila nie psuje zgłoszenia", async () => {
     intake.mockResolvedValue({ result: "CREATED", leadId: "L4" });
     queue.mockRejectedValue(new Error("db"));
