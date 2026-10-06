@@ -72,10 +72,32 @@ export function stripHtml(html: string): string {
     .trim();
 }
 
+// Wklejony HTML (stopka, treść) trafia do podglądu w panelu i do maila —
+// usuwamy skrypty, ramki, formularze, atrybuty on* i adresy javascript:.
+export function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<(script|iframe|object|embed|form|style|link|meta|base)\b[\s\S]*?(<\/\1\s*>|$)/gi, "")
+    .replace(/<(script|iframe|object|embed|form|link|meta|base)\b[^>]*>/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/(href|src)\s*=\s*("|')\s*(javascript|vbscript):[^"']*\2/gi, '$1="#"');
+}
+
+const isHtml = (s: string) => s.trimStart().startsWith("<");
+const WRAP = (inner: string) => `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#222">\n${inner}\n</div>`;
+
+function textToHtml(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .map((p) => `<p style="margin:0 0 12px">${linkify(esc(p)).replace(/\n/g, "<br>")}</p>`)
+    .join("\n");
+}
+
 // Treść z ekranu ustawień: zwykły tekst (akapity, linki klikalne) albo HTML,
 // gdy zaczyna się od „<”. {imie} = imię z formularza (brak → znika),
-// {zgloszenie} = blok zgłoszenia (puste wiersze pominięte), footer — wspólna
-// stopka (podpis) doklejana na końcu obu maili automatycznych.
+// {zgloszenie} = blok zgłoszenia (puste wiersze pominięte). footer — wspólna
+// stopka (podpis) doklejana na końcu obu maili: też zwykły tekst albo HTML
+// (np. podpis z grafiką), niezależnie od formatu treści.
 export function renderAutoMail(
   tpl: { subject: string; body: string },
   vars: { name: string | null; summary?: SummaryRow[]; footer?: string | null },
@@ -83,14 +105,17 @@ export function renderAutoMail(
   const name = firstName(vars.name);
   const subject = fill(tpl.subject, name).trim();
   const summaryText = (vars.summary ?? []).map((r) => `${r.label}: ${r.value}`).join("\n");
-  const withFooter = vars.footer?.trim() ? `${tpl.body.trim()}\n\n${vars.footer.trim()}` : tpl.body;
-  const body = fill(withFooter, name).replace(/\{zgloszenie\}/g, summaryText).replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  if (body.startsWith("<")) return { subject, html: body, text: stripHtml(body) };
-  const paras = body
-    .split(/\n{2,}/)
-    .map((p) => `<p style="margin:0 0 12px">${linkify(esc(p)).replace(/\n/g, "<br>")}</p>`)
-    .join("\n");
-  return { subject, html: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#222">\n${paras}\n</div>`, text: body };
+  const clean = (v: string) => fill(v, name).replace(/\{zgloszenie\}/g, summaryText).replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  const body = clean(tpl.body);
+  const footer = vars.footer?.trim() ? clean(vars.footer) : "";
+
+  const bodyHtml = isHtml(body) ? sanitizeHtml(body) : textToHtml(body);
+  const bodyText = isHtml(body) ? stripHtml(body) : body;
+  const footerHtml = footer ? (isHtml(footer) ? sanitizeHtml(footer) : textToHtml(footer)) : "";
+  const footerText = footer ? (isHtml(footer) ? stripHtml(footer) : footer) : "";
+
+  const html = isHtml(body) && !footer ? bodyHtml : WRAP([bodyHtml, footerHtml].filter(Boolean).join("\n"));
+  return { subject, html, text: [bodyText, footerText].filter(Boolean).join("\n\n") };
 }
 
 const b64 = (s: string | Buffer) => (typeof s === "string" ? Buffer.from(s, "utf8") : s).toString("base64");

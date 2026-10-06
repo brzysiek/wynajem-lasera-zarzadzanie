@@ -245,7 +245,7 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
 
       <section className={CARD}>
         <h2 className="mb-1 text-lg font-semibold text-gray-900">Stopka (wspólny podpis)</h2>
-        <p className="mb-3 text-sm text-gray-500">Doklejana na końcu obu maili automatycznych. Podpis Ani trzymaj tutaj — zmiana w jednym miejscu zmienia oba maile (w treściach wyżej już go nie powtarzaj).</p>
+        <p className="mb-3 text-sm text-gray-500">Doklejana na końcu obu maili automatycznych. Podpis Ani trzymaj tutaj — zmiana w jednym miejscu zmienia oba maile (w treściach wyżej już go nie powtarzaj). Może to być zwykły tekst albo kod HTML (zaczynający się od <code className="rounded bg-gray-100 px-1">&lt;</code>), np. podpis z logo — grafika musi mieć publiczny adres https (np. plik w bibliotece mediów strony), a nie być wklejona „w środku” maila. Skrypty i ramki są usuwane.</p>
         <textarea className={`${INPUT} max-w-2xl font-mono text-[13px]`} rows={5} value={draft.footer} onChange={(e) => setDraft({ ...draft, footer: e.target.value })} />
       </section>
 

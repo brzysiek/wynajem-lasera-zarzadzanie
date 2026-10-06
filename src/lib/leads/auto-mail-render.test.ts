@@ -99,3 +99,26 @@ describe("reservationSummary + stopka", () => {
     expect(r.text).not.toContain("\n\n\n");
   });
 });
+
+describe("stopka w HTML", () => {
+  const footer = '<table><tr><td><img src="https://wynajemlasera.pl/logo.png" width="120" alt="logo"></td><td><b>Anna</b><br>+48 531 574 115</td></tr></table>';
+  it("HTML w stopce przy zwykłej treści nie jest escapowany", () => {
+    const r = renderAutoMail({ subject: "S", body: "Dzień dobry {imie},\n\nCennik w załączniku." }, { name: "Ola", footer });
+    expect(r.html).toContain('<img src="https://wynajemlasera.pl/logo.png"');
+    expect(r.html).toContain("<p style=\"margin:0 0 12px\">Dzień dobry Ola,</p>");
+    expect(r.html).not.toContain("&lt;table");
+    expect(r.text).toContain("Anna\n+48 531 574 115"); // wersja tekstowa bez znaczników
+    expect(r.text).not.toContain("<");
+  });
+  it("treść HTML + stopka tekstowa też się łączą", () => {
+    const r = renderAutoMail({ subject: "S", body: "<p>Dzień dobry</p>" }, { name: null, footer: "Pozdrawiam\nAnna" });
+    expect(r.html).toContain("<p>Dzień dobry</p>");
+    expect(r.html).toContain("Pozdrawiam<br>Anna");
+  });
+  it("usuwa skrypty, ramki, atrybuty on* i javascript:", () => {
+    const dirty = '<p onclick="x()">a</p><script>alert(1)</script><iframe src="//e"></iframe><a href="javascript:alert(1)">l</a><img src="https://a/b.png" onerror="y()">';
+    const r = renderAutoMail({ subject: "S", body: "Treść" }, { name: null, footer: dirty });
+    expect(r.html).not.toMatch(/script|iframe|onclick|onerror|javascript:/i);
+    expect(r.html).toContain('<img src="https://a/b.png"');
+  });
+});
