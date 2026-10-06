@@ -3,6 +3,8 @@ import { sendGmailMessage } from "@/lib/integrations/gmail";
 import { recordChanges } from "@/lib/changelog/record";
 import { isPlaceholderEmail } from "@/lib/clients/placeholder";
 import { logError, logInfo, logWarn } from "@/lib/logger";
+import { ALERT_EMAIL_KEY, getAlertEmail, sendAlert } from "@/lib/alerts";
+import { isGmailAccessError } from "@/lib/ops/health-rules";
 import {
   AUTO_MAIL_FROM,
   AUTO_MAIL_MAX_ATTEMPTS,
@@ -49,6 +51,8 @@ export type AutoMailConfig = {
   attachments: { id: string; filename: string; mime: string; size: number }[];
   rez: { enabled: boolean; subject: string; body: string };
   footer: string;
+  // Adres alarmów (Setting alert_email) — pusty = alarmy nie są wysyłane.
+  alertEmail: string;
 };
 
 const TEMPLATE_DEFAULTS = [
@@ -91,7 +95,16 @@ export async function loadAutoMailConfig(): Promise<AutoMailConfig> {
       body: tpl(REZ_MAIL_TEMPLATE_KEY)?.body ?? DEFAULT_RESERVATION_MAIL.body,
     },
     footer: tpl(FOOTER_TEMPLATE_KEY)?.body ?? "",
+    alertEmail: (await prisma.setting.findUnique({ where: { key: ALERT_EMAIL_KEY } }))?.value ?? "",
   };
+}
+
+// Próbny alarm z ustawień — od razu, bez limitu; sprawdza adres i SMTP.
+export async function sendTestAlert(): Promise<{ ok: boolean; error?: string }> {
+  const to = await getAlertEmail();
+  if (!to) return { ok: false, error: "Adres alarmów nie jest ustawiony." };
+  const ok = await sendAlert({ key: "test_alarm", throttleMin: 0, subject: "Próbny alarm", text: "To jest próbny alarm z panelu — adres i wysyłka SMTP działają." });
+  return ok ? { ok: true } : { ok: false, error: "Nie udało się wysłać (sprawdź SMTP na serwerze)." };
 }
 
 // Webhook: kolejkuje mail (szybki zapis), wysyłka osobno — deliverAutoMail.
@@ -216,6 +229,24 @@ export async function deliverAutoMail(id: string): Promise<{ ok: boolean; error?
       });
     }
     logError("auto_mail_failed", err, { id, attempt: row.attempts, final: last });
+    // Alarm (06.10.2026): druga nieudana próba z rzędu albo ostateczna porażka.
+    // Mail próbny z ustawień nie alarmuje (wynik widać od razu na ekranie).
+    if (!row.kind.endsWith("_test") && row.attempts >= 2) {
+      const access = isGmailAccessError(error);
+      const what = row.kind.startsWith("www_rezerwacja") ? "potwierdzenie rezerwacji" : "mail z cennikiem";
+      await sendAlert({
+        key: last ? `automail_final:${id}` : access ? "gmail_access" : "automail_fail",
+        throttleMin: last ? 0 : access ? 360 : 60,
+        subject: last ? `Nie wysłano maila do klienta (${what}) — wyślij ręcznie` : access ? "Dostęp do Gmail API przestał działać" : `Mail do klienta (${what}) nie wychodzi`,
+        text:
+          `${last ? "Po 5 próbach" : `Próba ${row.attempts} z 5`} nie udało się wysłać: ${what}${row.leadId ? ` (sygnał ${row.leadId})` : ""}.\nBłąd: ${error.slice(0, 300)}\n` +
+          (access
+            ? "To wygląda na utratę dostępu do Gmail API (klucz konta serwisowego, delegacja w Google Admin, zakres) — ponowienia nie pomogą, dopóki dostęp nie wróci.\n"
+            : "Panel ponawia wysyłkę co 5 minut (do 5 razy w ciągu doby).\n") +
+          (last ? "Klient NIE dostał maila — odezwij się do niego ręcznie (sygnał ma o tym wpis w historii).\n" : "") +
+          "Podgląd: Ustawienia → Maile automatyczne → Ostatnie wysyłki.",
+      });
+    }
     return { ok: false, error };
   }
 }

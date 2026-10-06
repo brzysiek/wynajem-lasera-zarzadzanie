@@ -3,6 +3,8 @@ import { requireAdminSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { AUTO_MAIL_ENABLED_KEY, AUTO_MAIL_FROM_NAME_KEY, FOOTER_TEMPLATE_KEY, REZ_MAIL_ENABLED_KEY, REZ_MAIL_TEMPLATE_KEY, ensureAutoMailTemplates, loadAutoMailConfig, recentAutoMails } from "@/lib/leads/auto-mail";
 import { AUTO_MAIL_TEMPLATE_KEY } from "@/lib/leads/auto-mail-render";
+import { ALERT_EMAIL_KEY } from "@/lib/alerts";
+import { validAlertEmail } from "@/lib/ops/health-rules";
 import { logInfo } from "@/lib/logger";
 
 // Maile automatyczne po formularzu WWW (04–05.10.2026): cennik i
@@ -27,6 +29,7 @@ export async function PUT(req: NextRequest) {
     rezBody?: unknown;
     rezEnabled?: unknown;
     footer?: unknown;
+    alertEmail?: unknown;
   } | null;
   if (!b) return NextResponse.json({ message: "Brak danych." }, { status: 400 });
   const cfg = await loadAutoMailConfig();
@@ -38,6 +41,8 @@ export async function PUT(req: NextRequest) {
   const rezBody = typeof b.rezBody === "string" ? b.rezBody.trim() : cfg.rez.body;
   const rezEnabled = typeof b.rezEnabled === "boolean" ? b.rezEnabled : cfg.rez.enabled;
   const footer = typeof b.footer === "string" ? b.footer.trim() : cfg.footer;
+  const alertEmail = typeof b.alertEmail === "string" ? b.alertEmail.trim().toLowerCase() : cfg.alertEmail;
+  if (alertEmail && !validAlertEmail(alertEmail)) return NextResponse.json({ message: "Adres alarmów jest niepoprawny." }, { status: 400 });
   if (!subject || !body || !rezSubject || !rezBody) return NextResponse.json({ message: "Temat i treść nie mogą być puste." }, { status: 400 });
   if (enabled && !cfg.attachments.length) return NextResponse.json({ message: "Najpierw dodaj załączniki (cennik i katalog)." }, { status: 400 });
 
@@ -50,6 +55,7 @@ export async function PUT(req: NextRequest) {
     prisma.setting.upsert({ where: { key: AUTO_MAIL_FROM_NAME_KEY }, create: { key: AUTO_MAIL_FROM_NAME_KEY, value: fromName }, update: { value: fromName } }),
     flag(AUTO_MAIL_ENABLED_KEY, enabled),
     flag(REZ_MAIL_ENABLED_KEY, rezEnabled),
+    prisma.setting.upsert({ where: { key: ALERT_EMAIL_KEY }, create: { key: ALERT_EMAIL_KEY, value: alertEmail }, update: { value: alertEmail } }),
   ]);
   if (enabled !== cfg.enabled) logInfo("auto_mail_toggled", { userId: session.user.id, enabled });
   if (rezEnabled !== cfg.rez.enabled) logInfo("auto_mail_rez_toggled", { userId: session.user.id, enabled: rezEnabled });

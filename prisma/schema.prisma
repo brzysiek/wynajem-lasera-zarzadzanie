@@ -1767,7 +1767,12 @@ model WebhookLog {
   receivedAt DateTime?
   tookMs     Int?
 
+  // externalId (06.10.2026): identyfikator zgłoszenia nadany przez WordPress
+  // (pole zgloszenie_id) — klucz idempotencji ponawianych webhooków: to samo
+  // zgłoszenie przetworzone raz nie utworzy drugiego sygnału, bez względu na czas.
+  externalId String? @db.VarChar(100)
   @@index([kind, createdAt])
+  @@index([kind, externalId])
   @@map("webhook_logs")
 }
 

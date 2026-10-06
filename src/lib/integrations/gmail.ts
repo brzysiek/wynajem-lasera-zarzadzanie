@@ -9,7 +9,7 @@ import { logInfo } from "@/lib/logger";
 // delegation w Google Admin musi mieć dopisany `gmail.compose` obok
 // `calendar` dla tego samego Client ID (jednorazowy krok administratora
 // Workspace, patrz /ustawienia/integracje/google).
-const GMAIL_COMPOSE_SCOPE = "https://www.googleapis.com/auth/gmail.compose";
+export const GMAIL_COMPOSE_SCOPE = "https://www.googleapis.com/auth/gmail.compose";
 
 function base64url(input: string): string {
   return Buffer.from(input).toString("base64url");

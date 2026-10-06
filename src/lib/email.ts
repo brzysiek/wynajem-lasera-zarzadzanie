@@ -43,6 +43,15 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   }
 }
 
+// Alarmy operacyjne (06.10.2026) — zwykły tekst na adres administratora.
+// Idzie przez SMTP, nie przez Gmail API: gdy padnie Gmail, alarm i tak dojdzie.
+export async function sendOpsMail(to: string, subject: string, text: string): Promise<void> {
+  const from = process.env.EMAIL_FROM;
+  if (!from) throw new Error("EMAIL_FROM is not configured");
+  const info = await getTransport().sendMail({ from, to, subject, text });
+  logInfo("ops_mail_sent", { to, messageId: info.messageId });
+}
+
 export async function sendUserInviteEmail(to: string, name: string, inviteUrl: string): Promise<void> {
   const from = process.env.EMAIL_FROM;
   if (!from) {

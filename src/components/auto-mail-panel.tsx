@@ -16,6 +16,7 @@ type Config = {
   attachments: Attachment[];
   rez: { enabled: boolean; subject: string; body: string };
   footer: string;
+  alertEmail: string;
 };
 
 // Przykładowe zgłoszenie do podglądu i maila próbnego rezerwacji.
@@ -47,6 +48,7 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
     rezSubject: initialConfig.rez.subject,
     rezBody: initialConfig.rez.body,
     footer: initialConfig.footer,
+    alertEmail: initialConfig.alertEmail,
   });
   const [testKind, setTestKind] = useState<"cennik" | "rezerwacja">("cennik");
   const [recent, setRecent] = useState(initialRecent);
@@ -60,7 +62,8 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
     draft.body !== cfg.body ||
     draft.rezSubject !== cfg.rez.subject ||
     draft.rezBody !== cfg.rez.body ||
-    draft.footer !== cfg.footer;
+    draft.footer !== cfg.footer ||
+    draft.alertEmail !== cfg.alertEmail;
   const preview = useMemo(() => renderAutoMail({ subject: draft.subject, body: draft.body }, { name: "Anna", footer: draft.footer }), [draft.subject, draft.body, draft.footer]);
   const rezPreview = useMemo(
     () => renderAutoMail({ subject: draft.rezSubject, body: draft.rezBody }, { name: "Anna", summary: SAMPLE_SUMMARY, footer: draft.footer }),
@@ -129,6 +132,16 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
     setCfg((c) => ({ ...c, attachments: c.attachments.filter((x) => x.id !== a.id) }));
   }
 
+  async function sendTestAlarm() {
+    if (dirty && !window.confirm("Masz niezapisane zmiany — próbny alarm pójdzie na ostatnio zapisany adres. Wysłać mimo to?")) return;
+    setBusy("alarm");
+    setMsg(null);
+    const res = await fetch(`${API}/test`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "alarm" }) });
+    const data = await res.json().catch(() => ({}));
+    setBusy(null);
+    setMsg(res.ok ? { text: `Próbny alarm wysłany na ${cfg.alertEmail}.` } : { text: data.message ?? "Nie udało się wysłać.", error: true });
+  }
+
   async function sendTest() {
     if (dirty && !window.confirm("Masz niezapisane zmiany — próbny mail pójdzie z ostatnio zapisaną treścią. Wysłać mimo to?")) return;
     setBusy("test");
@@ -194,7 +207,7 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
             </p>
             <div className="flex items-center gap-3">
               <button type="button" className={BTN_PRIMARY} disabled={!dirty || !!busy} onClick={() => void save()}>
-                {busy === "save" ? "Zapisywanie…" : "Zapisz treści (oba maile i stopkę)"}
+                {busy === "save" ? "Zapisywanie…" : "Zapisz (treści, stopka, adres alarmów)"}
               </button>
               {dirty && <span className="text-sm text-amber-700">Niezapisane zmiany</span>}
             </div>
@@ -281,6 +294,22 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
           className="text-sm text-gray-600 file:mr-3 file:cursor-pointer file:rounded-md file:border file:border-gray-300 file:bg-white file:px-3 file:py-1.5 file:text-sm file:text-gray-800 hover:file:border-[#1B6FA8]"
         />
         {busy === "upload" && <span className="ml-2 text-sm text-gray-500">Wgrywanie…</span>}
+      </section>
+
+      <section className={CARD}>
+        <h2 className="mb-1 text-lg font-semibold text-gray-900">Alarmy</h2>
+        <p className="mb-3 text-sm text-gray-500">
+          Gdy mail do klienta nie wychodzi (2 nieudane próby z rzędu albo ostatecznie), formularz WWW zwróci błąd, wygaśnie dostęp do Gmail API albo stanie cron — panel wysyła alarm na ten adres
+          (przez SMTP, więc dojdzie także przy awarii Gmaila). W alarmach nie ma danych klientów.
+        </p>
+        {!cfg.alertEmail && <p className="mb-3 text-sm font-semibold text-red-600">Adres alarmów nie jest ustawiony — alarmy nie będą wysyłane.</p>}
+        <div className="flex flex-wrap items-center gap-2">
+          <input className={`${INPUT} max-w-sm`} type="email" value={draft.alertEmail} onChange={(e) => setDraft({ ...draft, alertEmail: e.target.value })} placeholder="adres e-mail do alarmów" />
+          <button type="button" className={BTN} disabled={!!busy || !cfg.alertEmail} onClick={() => void sendTestAlarm()}>
+            {busy === "alarm" ? "Wysyłanie…" : "Wyślij próbny alarm"}
+          </button>
+          <span className="text-xs text-gray-500">Adres zapisujesz przyciskiem „Zapisz treści” wyżej.</span>
+        </div>
       </section>
 
       <section className={CARD}>

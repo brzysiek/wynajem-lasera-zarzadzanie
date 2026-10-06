@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { parseWebhookBody, parseWwwForm, tokenMatches } from "@/lib/leads/www-form";
+import { extractExternalId, parseWebhookBody, parseWwwForm, tokenMatches } from "@/lib/leads/www-form";
+import { sendAlert } from "@/lib/alerts";
 import { intakeWwwForm } from "@/lib/leads/www-intake";
 import { deliverAutoMail, queueWwwPriceMail, queueWwwReservationMail } from "@/lib/leads/auto-mail";
 import { reservationSummary } from "@/lib/leads/auto-mail-render";
@@ -17,10 +18,22 @@ const KIND = "formularz-www";
 
 // receivedAt / tookMs (5.10.2026): moment przyjęcia i czas obsługi do
 // odpowiedzi — pomiar, czy formularz czeka na panel.
-async function log(result: string, data: { payload?: Prisma.InputJsonValue | null; leadId?: string | null; message?: string | null; receivedAt?: Date; tookMs?: number }) {
+async function log(
+  result: string,
+  data: { payload?: Prisma.InputJsonValue | null; leadId?: string | null; message?: string | null; receivedAt?: Date; tookMs?: number; externalId?: string | null },
+) {
   await prisma.webhookLog
     .create({
-      data: { kind: KIND, result, leadId: data.leadId ?? null, message: data.message ?? null, payload: data.payload ?? undefined, receivedAt: data.receivedAt ?? null, tookMs: data.tookMs ?? null },
+      data: {
+        kind: KIND,
+        result,
+        leadId: data.leadId ?? null,
+        message: data.message ?? null,
+        payload: data.payload ?? undefined,
+        receivedAt: data.receivedAt ?? null,
+        tookMs: data.tookMs ?? null,
+        externalId: data.externalId ?? null,
+      },
     })
     .catch((err) => logError("www_webhook_log_failed", err));
 }
@@ -39,10 +52,24 @@ export async function POST(req: NextRequest) {
   const raw = await req.text().catch(() => "");
   const body = parseWebhookBody(req.headers.get("content-type"), raw);
   const payload = body as Prisma.InputJsonValue;
+  const externalId = extractExternalId(body);
   try {
+    // To samo zgłoszenie (ten sam zgloszenie_id) przetworzone już raz — WordPress
+    // ponowił webhook. Nie robimy nic i odpowiadamy 200. Ponowienie po błędzie
+    // (wynik ERROR) przetwarzamy normalnie — po to jest ponawianie.
+    if (externalId) {
+      const prev = await prisma.webhookLog.findFirst({
+        where: { kind: KIND, externalId, result: { in: ["CREATED", "DUPLICATE", "EXCLUDED"] } },
+        select: { leadId: true },
+      });
+      if (prev) {
+        await log("REPLAY", { payload, leadId: prev.leadId, receivedAt, tookMs: took(), externalId });
+        return NextResponse.json({ ok: true, result: "REPLAY", leadId: prev.leadId });
+      }
+    }
     const form = parseWwwForm(body);
     const res = await intakeWwwForm(form);
-    await log(res.result, { payload, leadId: res.leadId ?? null, receivedAt, tookMs: took() });
+    await log(res.result, { payload, leadId: res.leadId ?? null, receivedAt, tookMs: took(), externalId });
     // Cennik do klienta (04.10.2026): po odpowiedzi stronie — formularz nie
     // czeka na Gmaila. Błąd wysyłki nie psuje zgłoszenia (ponowi cron).
     // Cennik i potwierdzenie rezerwacji: wysyłka po odpowiedzi stronie
@@ -63,7 +90,16 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logError("www_webhook_failed", err);
-    await log("ERROR", { payload, message, receivedAt, tookMs: took() });
+    await log("ERROR", { payload, message, receivedAt, tookMs: took(), externalId });
+    // Wtyczka CF7 też wyśle mail o błędzie, ale panel alarmuje niezależnie (limit 30 min).
+    after(() =>
+      sendAlert({
+        key: "webhook_error",
+        throttleMin: 30,
+        subject: "Formularz WWW: błąd zapisu zgłoszenia",
+        text: `Webhook formularzy (formularz-www) zwrócił błąd 500: ${message.slice(0, 300)}\nZgłoszenie jest w tabeli webhook_logs (wynik ERROR, surowe dane) i w powiadomieniu na kontakt@ — nie zginęło, ale nie ma sygnału w panelu.\nJeśli WordPress ponawia zgłoszenia (zgloszenie_id), wejdzie po naprawie.`,
+      }).then(() => undefined),
+    );
     return NextResponse.json({ message: "Nie udało się zapisać zgłoszenia." }, { status: 500 });
   }
 }

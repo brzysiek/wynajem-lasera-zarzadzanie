@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDate, parseDays, parseWebhookBody, parseWwwForm, tokenMatches, contentKey } from "./www-form";
+import { parseDate, parseDays, parseWebhookBody, parseWwwForm, tokenMatches, contentKey, extractExternalId } from "./www-form";
 
 describe("parseWebhookBody", () => {
   it("JSON i formularz (checkbox jako tablica)", () => {
@@ -105,5 +105,19 @@ describe("contentKey — duplikat to identyczna treść", () => {
     expect(contentKey(base)).not.toBe(contentKey({ ...base, devices: ["LIGHTSHEER_DESIRE", "ALMA"] }));
     expect(contentKey(base)).not.toBe(contentKey({ ...base, message: "Inna treść" }));
     expect(contentKey({ devices: [], from: null, days: null, message: null })).not.toBe(contentKey(base));
+  });
+});
+
+describe("extractExternalId (klucz idempotencji)", () => {
+  it("przyjmuje sensowny identyfikator", () => {
+    expect(extractExternalId({ zgloszenie_id: "wp-4711" })).toBe("wp-4711");
+    expect(extractExternalId({ zgloszenie_id: 4711 })).toBe("4711");
+    expect(extractExternalId({ zgloszenie_id: ["flamingo:123"] })).toBe("flamingo:123");
+  });
+  it("brak, puste albo śmieci → null (zgłoszenie obsłużone normalnie)", () => {
+    expect(extractExternalId({})).toBeNull();
+    expect(extractExternalId({ zgloszenie_id: "" })).toBeNull();
+    expect(extractExternalId({ zgloszenie_id: "ab" })).toBeNull();
+    expect(extractExternalId({ zgloszenie_id: "<script>x</script>" })).toBeNull();
   });
 });

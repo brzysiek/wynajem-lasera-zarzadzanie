@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const logs: { result: string }[] = [];
+const logs: { result: string; externalId?: string | null }[] = [];
+const findPrev = vi.fn();
+const alert = vi.fn();
 const intake = vi.fn();
 vi.mock("@/lib/prisma", () => ({
-  prisma: { webhookLog: { create: vi.fn(async ({ data }: { data: { result: string } }) => (logs.push(data), data)) } },
+  prisma: {
+    webhookLog: {
+      create: vi.fn(async ({ data }: { data: { result: string; externalId?: string | null } }) => (logs.push(data), data)),
+      findFirst: (...a: unknown[]) => findPrev(...a),
+    },
+  },
 }));
 vi.mock("@/lib/leads/www-intake", () => ({ intakeWwwForm: (...a: unknown[]) => intake(...a) }));
+vi.mock("@/lib/alerts", () => ({ sendAlert: (...a: unknown[]) => alert(...a) }));
 vi.mock("@/lib/logger", () => ({ logInfo: vi.fn(), logWarn: vi.fn(), logError: vi.fn() }));
 const queue = vi.fn();
 const queueRez = vi.fn();
@@ -29,6 +37,8 @@ describe("POST /api/webhooks/formularz-www", () => {
   beforeEach(() => {
     logs.length = 0;
     intake.mockReset();
+    findPrev.mockReset().mockResolvedValue(null);
+    alert.mockReset().mockResolvedValue(true);
     queue.mockReset();
     queueRez.mockReset();
     deliver.mockReset().mockResolvedValue({ ok: true });
@@ -148,5 +158,33 @@ describe("POST /api/webhooks/formularz-www", () => {
     const res = await POST(req("?token=sekret-testowy", JSON.stringify({ text: "cennik", "contact-email": "a@b.pl" }), "application/json"));
     expect(res.status).toBe(200);
     expect(deliver).not.toHaveBeenCalled();
+  });
+
+  it("ponowione zgłoszenie (ten sam zgloszenie_id, wcześniej przetworzone) → 200 REPLAY, bez nowego sygnału i maila", async () => {
+    findPrev.mockResolvedValue({ leadId: "L-STARY" });
+    const body = JSON.stringify({ text: "rezerwacja-wynajmu", "contact-email": "ola@x.pl", zgloszenie_id: "wp-4711" });
+    const res = await POST(req("?token=sekret-testowy", body, "application/json"));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, result: "REPLAY", leadId: "L-STARY" });
+    expect(intake).not.toHaveBeenCalled();
+    expect(queueRez).not.toHaveBeenCalled();
+    expect(findPrev.mock.calls[0][0].where).toMatchObject({ externalId: "wp-4711", result: { in: ["CREATED", "DUPLICATE", "EXCLUDED"] } });
+    expect(logs.at(-1)).toMatchObject({ result: "REPLAY", externalId: "wp-4711" });
+  });
+
+  it("zgloszenie_id bez wcześniejszego przetworzenia → normalna obsługa, id zapisane w logu", async () => {
+    intake.mockResolvedValue({ result: "CREATED", leadId: "L5" });
+    const res = await POST(req("?token=sekret-testowy", JSON.stringify({ text: "kontakt", "contact-email": "a@b.pl", zgloszenie_id: "wp-5000" }), "application/json"));
+    expect(res.status).toBe(200);
+    expect(intake).toHaveBeenCalledTimes(1);
+    expect(logs.at(-1)).toMatchObject({ result: "CREATED", externalId: "wp-5000" });
+  });
+
+  it("błąd zapisu → 500 i alarm mailowy (z kluczem zgloszenie_id w logu, żeby ponowienie przeszło)", async () => {
+    intake.mockRejectedValue(new Error("db padła"));
+    const res = await POST(req("?token=sekret-testowy", JSON.stringify({ text: "kontakt", "contact-email": "a@b.pl", zgloszenie_id: "wp-6000" }), "application/json"));
+    expect(res.status).toBe(500);
+    expect(alert).toHaveBeenCalledWith(expect.objectContaining({ key: "webhook_error" }));
+    expect(logs.at(-1)).toMatchObject({ result: "ERROR", externalId: "wp-6000" });
   });
 });

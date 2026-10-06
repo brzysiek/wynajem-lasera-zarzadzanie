@@ -159,6 +159,16 @@ export function contentKey(c: { devices: string[]; from: string | null; days: nu
   return JSON.stringify([[...new Set(c.devices)].sort(), c.from ?? null, c.days ?? null, norm(c.message)]);
 }
 
+// Klucz idempotencji (06.10.2026): identyfikator zgłoszenia nadany przez
+// WordPress (nowe pole zgloszenie_id) — przy ponawianiu webhooka to samo
+// zgłoszenie nie utworzy drugiego sygnału, bez względu na upływ czasu.
+export function extractExternalId(body: Record<string, unknown>): string | null {
+  const v = body["zgloszenie_id"];
+  const s = Array.isArray(v) ? String(v[0] ?? "") : typeof v === "string" || typeof v === "number" ? String(v) : "";
+  const t = s.trim().slice(0, 100);
+  return /^[\w.:\-]{3,100}$/.test(t) ? t : null;
+}
+
 // Token: ?token= (wtyczka CF7 może nie umieć nagłówków) albo nagłówek
 // x-webhook-token / Authorization: Bearer. Porównanie stałoczasowe.
 export function tokenMatches(provided: string | null, expected: string | undefined): boolean {
