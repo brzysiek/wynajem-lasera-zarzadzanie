@@ -355,7 +355,8 @@ export const TOOLS: McpTool[] = [
   {
     name: "sygnal",
     title: "Karta sygnału",
-    description: "Szczegół sygnału z osią czasu.",
+    description:
+      "Szczegół sygnału z osią czasu. attribution = skąd przyszło zgłoszenie z formularza WWW (utm_* i gclid/fbclid = pierwsze wejście, last_* = ostatnie wejście, fbp/fbc tylko za zgodą, landing_url, referrer, form, acceptance-*); null poza formularzami WWW.",
     inputSchema: obj({ id: s("ID sygnału.") }, ["id"]),
     readOnly: true,
     run: async (a) => {

@@ -14,7 +14,7 @@ import { loadRentalCandidates, type RentalCandidate } from "@/lib/leads/rental-c
 import { loadOpenTasksFor, type OpenTaskDto } from "@/lib/task-links";
 import { arrivalDates, arrivalGapDays, arrivalRhythmLabel } from "@/lib/clients/status";
 import { loadUnassignedRentals } from "@/lib/clients/rental-match";
-
+import { normalizeAttribution, type Attribution } from "@/lib/leads/attribution-view";
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
 
@@ -411,6 +411,11 @@ export type LeadDetail = LeadRow & {
   lostNote: string | null;
   returnAt: string | null;
   location: string | null;
+  // Atrybucja z formularza WWW (utm_*, gclid, fbclid, last_*, fbp/fbc za zgodą,
+  // landing_url, referrer, form, acceptance-*) — null poza formularzami WWW.
+  // Tylko w szczególe sygnału (karta, GET /api/leads/[id], MCP „sygnal”),
+  // nie w liście (Tablica, Na dziś).
+  attribution: Attribution | null;
   hubspotUrl: string | null;
   activities: LeadActivityDto[];
   otherLeads: { id: string; title: string; stage: LeadStageKey; createdAt: string }[];
@@ -423,7 +428,7 @@ export type LeadDetail = LeadRow & {
 export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
   const lead = await prisma.lead.findUnique({
     where: { id },
-    select: { ...ROW_SELECT, lostNote: true, returnAt: true, location: true, archivedAt: true, archiveReason: true, archiveNote: true },
+    select: { ...ROW_SELECT, lostNote: true, returnAt: true, location: true, attribution: true, archivedAt: true, archiveReason: true, archiveNote: true },
   });
   if (!lead) return null;
   const row = toRow(lead, await loadExtra([lead]));
@@ -471,6 +476,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
     lostNote: lead.lostNote,
     returnAt: lead.returnAt?.toISOString() ?? null,
     location: lead.location,
+    attribution: normalizeAttribution(lead.attribution),
     hubspotUrl: lead.hubspotDealId ? hubspotDealUrl(lead.hubspotDealId) : null,
     activities: [
       ...emails.map((e) => ({

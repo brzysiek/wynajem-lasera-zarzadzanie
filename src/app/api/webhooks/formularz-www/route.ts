@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { extractExternalId, parseWebhookBody, parseWwwForm, tokenMatches } from "@/lib/leads/www-form";
+import { extractExternalId, parseWebhookBody, parseWwwForm, redactForLog, tokenMatches } from "@/lib/leads/www-form";
 import { sendAlert } from "@/lib/alerts";
 import { intakeWwwForm } from "@/lib/leads/www-intake";
 import { deliverAutoMail, queueWwwPriceMail, queueWwwReservationMail } from "@/lib/leads/auto-mail";
@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
 
   const raw = await req.text().catch(() => "");
   const body = parseWebhookBody(req.headers.get("content-type"), raw);
-  const payload = body as Prisma.InputJsonValue;
+  // Surowe dane do logu: bez fbp/fbc, gdy formularz nie przekazał zgody (RODO).
+  const payload = redactForLog(body) as Prisma.InputJsonValue;
   const externalId = extractExternalId(body);
   try {
     // To samo zgłoszenie (ten sam zgloszenie_id) przetworzone już raz — WordPress

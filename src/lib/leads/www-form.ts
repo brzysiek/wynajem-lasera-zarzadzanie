@@ -14,7 +14,45 @@ export const WWW_TYPE: Record<string, LeadTypeKey> = {
   "rezerwacja-szkolenia": "SZKOLENIE_WWW",
 };
 
-export const ATTRIBUTION_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid", "landing_url", "referrer"] as const;
+// Atrybucja z formularza (wniosek 41): utm_*/gclid/fbclid = pierwsze wejście,
+// last_* = ostatnie wejście przed formularzem, fbp/fbc = identyfikatory z
+// cookies Meta (tylko za zgodą, patrz CONSENT_KEYS). Pole puste jest pomijane,
+// wartość do 500 znaków; nieznane pola formularza są ignorowane bez błędu.
+export const ATTRIBUTION_KEYS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "gclid",
+  "fbclid",
+  "last_gclid",
+  "last_fbclid",
+  "last_utm_source",
+  "last_utm_campaign",
+  "fbp",
+  "fbc",
+  "landing_url",
+  "referrer",
+] as const;
+
+// Identyfikatory Meta zapisujemy wyłącznie, gdy formularz przekazał zgodę
+// (pole acceptance-* zaznaczone) — RODO. Bez zgody pomijamy je w sygnale i
+// usuwamy z logu surowych danych (redactForLog).
+export const CONSENT_KEYS = ["fbp", "fbc"] as const;
+
+export function hasConsent(body: Record<string, unknown>): boolean {
+  const on = (v: unknown): boolean => (Array.isArray(v) ? v.some(on) : !["", "0", "false", "off", "nie", "no", "null"].includes(String(v ?? "").trim().toLowerCase()));
+  return Object.entries(body).some(([k, v]) => k.startsWith("acceptance") && on(v));
+}
+
+// Surowe dane do logu webhooka: bez fbp/fbc, gdy nie było zgody.
+export function redactForLog(body: Record<string, unknown>): Record<string, unknown> {
+  if (hasConsent(body)) return body;
+  const copy = { ...body };
+  for (const k of CONSENT_KEYS) delete copy[k];
+  return copy;
+}
 
 export type WwwForm = {
   rawType: string;
@@ -120,7 +158,9 @@ export function parseWwwForm(body: Body): WwwForm {
       .filter(Boolean)
       .join("\n") || null;
   const attribution: Record<string, string | string[]> = {};
+  const consent = hasConsent(body);
   for (const k of ATTRIBUTION_KEYS) {
+    if (!consent && (CONSENT_KEYS as readonly string[]).includes(k)) continue;
     const v = str(body[k]);
     if (v) attribution[k] = v.slice(0, 500);
   }

@@ -20,6 +20,7 @@ import { Dots } from "./funnel-views";
 import { StageTip } from "./stage-tip";
 import { RentalPicker } from "./rental-picker";
 import { OpenTasks } from "@/components/open-tasks";
+import { LeadAttribution } from "@/components/leads/lead-attribution";
 import { CallOutcomeDialog } from "./call-outcome-dialog";
 import type { Playbook } from "@/lib/leads/playbook";
 
@@ -560,6 +561,9 @@ export function LeadCard({
             </button>
           )}
         </Section>
+
+        {/* Skąd przyszło (wniosek 41) — zwijana, tylko dla zgłoszeń z formularza WWW z danymi */}
+        <LeadAttribution attribution={d.attribution} />
 
         {/* 5. Rezerwacja — gdy jest; inaczej „Powiąż z wynajmem” */}
         <div id="lead-rental-section" className="flex scroll-mt-4 flex-col gap-2">

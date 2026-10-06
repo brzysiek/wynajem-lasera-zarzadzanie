@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDate, parseDays, parseWebhookBody, parseWwwForm, tokenMatches, contentKey, extractExternalId } from "./www-form";
+import { parseDate, parseDays, parseWebhookBody, parseWwwForm, tokenMatches, contentKey, extractExternalId, hasConsent, redactForLog } from "./www-form";
 
 describe("parseWebhookBody", () => {
   it("JSON i formularz (checkbox jako tablica)", () => {
@@ -119,5 +119,40 @@ describe("extractExternalId (klucz idempotencji)", () => {
     expect(extractExternalId({ zgloszenie_id: "" })).toBeNull();
     expect(extractExternalId({ zgloszenie_id: "ab" })).toBeNull();
     expect(extractExternalId({ zgloszenie_id: "<script>x</script>" })).toBeNull();
+  });
+});
+
+describe("atrybucja z formularza (wniosek 41)", () => {
+  const base = { text: "kontakt", "contact-email": "a@b.pl" };
+  it("nowe pola last_* trafiają do atrybucji, puste pomijane, limit 500 znaków", () => {
+    const f = parseWwwForm({ ...base, last_gclid: "LG", last_fbclid: "", last_utm_source: "facebook", last_utm_campaign: "x".repeat(900) });
+    expect(f.attribution.last_gclid).toBe("LG");
+    expect("last_fbclid" in f.attribution).toBe(false);
+    expect(f.attribution.last_utm_source).toBe("facebook");
+    expect((f.attribution.last_utm_campaign as string).length).toBe(500);
+  });
+  it("fbp/fbc tylko ze zgodą (acceptance-* zaznaczone)", () => {
+    const withConsent = parseWwwForm({ ...base, "acceptance-752": "1", fbp: "fb.1.123", fbc: "fb.1.456.AbC" });
+    expect(withConsent.attribution.fbp).toBe("fb.1.123");
+    expect(withConsent.attribution.fbc).toBe("fb.1.456.AbC");
+    for (const accept of [{}, { "acceptance-752": "" }, { "acceptance-752": "0" }]) {
+      const f = parseWwwForm({ ...base, ...accept, fbp: "fb.1.123", fbc: "fb.1.456.AbC" });
+      expect("fbp" in f.attribution).toBe(false);
+      expect("fbc" in f.attribution).toBe(false);
+    }
+  });
+  it("nieznane pola formularza nie psują zgłoszenia i nie trafiają do atrybucji", () => {
+    const f = parseWwwForm({ ...base, "acceptance-752": "1", cos_nowego: "x", _wpcf7: "1", "super[]": ["a", "b"] });
+    expect(f.type).toBe("KONTAKT");
+    expect(f.email).toBe("a@b.pl");
+    expect(Object.keys(f.attribution).sort()).toEqual(["acceptance-752", "form"]);
+  });
+  it("hasConsent i redactForLog: bez zgody fbp/fbc znikają z logu surowych danych", () => {
+    expect(hasConsent({ "acceptance-100": ["1"] })).toBe(true);
+    expect(hasConsent({ "acceptance-100": "" })).toBe(false);
+    expect(hasConsent({ fbp: "x" })).toBe(false);
+    expect(redactForLog({ text: "kontakt", fbp: "x", fbc: "y" })).toEqual({ text: "kontakt" });
+    const withConsent = { text: "kontakt", "acceptance-1": "1", fbp: "x" };
+    expect(redactForLog(withConsent)).toEqual(withConsent);
   });
 });
