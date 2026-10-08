@@ -8,6 +8,7 @@ import { DEVICE_INTEREST_LABEL, formatPhone, type DeviceInterestKey } from "@/li
 import { LEAD_DEVICE_LABEL } from "@/lib/leads/parse-deal";
 import { NO_ANSWER_LIMIT, buildToday, type FunnelLead, type TodayGroup, type TodayItem } from "@/lib/leads/funnel";
 import type { SignalTask } from "@/lib/leads/today-extras";
+import type { TodayOwner } from "@/lib/leads/today-scope";
 import { api } from "@/components/clients/client-forms";
 import { openTask } from "@/components/open-tasks";
 import { Dots, Seg, toFunnel, type LinkSuggestion } from "./funnel-views";
@@ -24,7 +25,7 @@ import type { CardIntent } from "./lead-card";
 
 type Row = LeadRow & FunnelLead;
 type Section = { key: string; label: string; items: TodayItem<Row>[] };
-export type TodayOwner = "me" | "all";
+export type { TodayOwner };
 export type TodayGroupKey = TodayGroup | "tasks";
 type Owner = TodayOwner;
 type Source = "all" | "www" | "phone";

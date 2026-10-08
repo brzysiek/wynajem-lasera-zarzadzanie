@@ -7,7 +7,8 @@ import { REWARD_STEP, nextReward, type Playbook } from "@/lib/leads/playbook";
 import type { SeasonGoal } from "@/lib/leads/season-goal";
 import type { SignalTask } from "@/lib/leads/today-extras";
 import { TodayBar } from "@/components/today-bar";
-import { toFunnel } from "./funnel-views";
+import { Seg, toFunnel } from "./funnel-views";
+import { lateNote, scopeHint, scopeRows } from "@/lib/leads/today-scope";
 import { WinToast } from "./plan-day";
 import { names, type TodayGroupKey, type TodayOwner } from "./today-queue";
 
@@ -24,6 +25,7 @@ export function SignalsTodayBar({
   now,
   currentUserId,
   owner,
+  onOwner,
   playbook,
   goal,
   progress,
@@ -35,6 +37,8 @@ export function SignalsTodayBar({
   now: Date;
   currentUserId: string;
   owner: TodayOwner;
+  // Wniosek 35: przełącznik „Moje / Wszyscy” przy pasku (wspólny z Tablicą i „Na dziś”).
+  onOwner: (o: TodayOwner) => void;
   playbook: Playbook;
   goal: SeasonGoal;
   progress: DayProgress;
@@ -43,19 +47,30 @@ export function SignalsTodayBar({
   onToggle: (g: TodayGroupKey | null) => void;
 }) {
   const funnel = useMemo(() => toFunnel(rows) as Row[], [rows]);
-  const mine = owner === "me" ? funnel.filter((r) => r.ownerId === currentUserId) : funnel;
+  const mine = useMemo(() => scopeRows(funnel, owner, currentUserId), [funnel, owner, currentUserId]);
   const today = useMemo(() => buildToday(mine, now), [mine, now]);
   const of = (g: TodayGroup) => today.filter((x) => x.group === g);
   const tasks = signalTasks.filter((t) => (owner === "me" ? t.assigneeId === currentUserId : true));
+  // Podpowiedź: „Moje” puste, a u innych są sprawy (np. Tomek przy sygnałach Ani).
+  const mineCount = useMemo(() => buildToday(scopeRows(funnel, "me", currentUserId), now).length + signalTasks.filter((t) => t.assigneeId === currentUserId).length, [funnel, currentUserId, now, signalTasks]);
+  const allCount = useMemo(() => buildToday(funnel, now).length + signalTasks.length, [funnel, now, signalTasks]);
+  const hint = owner === "me" ? scopeHint(mineCount, allCount) : null;
+  // Zaległe w każdym kaflu — terakota pod podpisem (zgodnie z Tablicą).
+  const lateOf = (g: TodayGroup) => {
+    const items = of(g);
+    return lateNote(items.filter((x) => x.priority === "late").length, items.length);
+  };
   const untouchedTotal = mine.filter((r) => r.stage === "SYGNAL" && !r.firstContactAt && isFreshInquiry(r, now)).length;
   const se = playbook.season;
   const names2 = (xs: TodayItem<Row>[]) => xs.slice(0, 2).map((x) => names(x.lead).title.split(/[@\s·]/)[0]).join(", ") + (xs.length > 2 ? "…" : "");
   const tiles = [
-    { key: "new", label: "Nowe zapytania", n: of("new").length, sub: `z ${untouchedTotal} · kontakt w ${FIRST_CONTACT_SLA_HOURS} h rob.` },
-    { key: "calls", label: "Umówione telefony", n: of("calls").length, sub: names2(of("calls")) || "—" },
-    { key: "followups", label: "Follow-up ofert", n: of("followups").length, sub: names2(of("followups")) || "—" },
-    { key: "spring", label: "Wracają z wiosny", n: of("spring").length, sub: `wracają ${goal.returning} z ${se.returningTarget} · w puli ${goal.pool}` },
-    { key: "back", label: "Wracają odłożone", n: of("back").length, sub: names2(of("back")) || "—" },
+    { key: "new", label: "Nowe zapytania", n: of("new").length, sub: `z ${untouchedTotal} · kontakt w ${FIRST_CONTACT_SLA_HOURS} h rob.`, late: lateOf("new") },
+    { key: "calls", label: "Umówione telefony", n: of("calls").length, sub: names2(of("calls")) || "—", late: lateOf("calls") },
+    { key: "followups", label: "Follow-up ofert", n: of("followups").length, sub: names2(of("followups")) || "—", late: lateOf("followups") },
+    // Wiosna: do „Na dziś” trafia max SPRING_PER_DAY dziennie z puli (rozkład telefonów).
+    { key: "spring", label: "Wracają z wiosny", n: of("spring").length, sub: `${of("spring").length} na dziś z ${goal.pool} w puli`, late: lateOf("spring") },
+    { key: "back", label: "Wracają odłożone", n: of("back").length, sub: names2(of("back")) || "—", late: lateOf("back") },
+    { key: "other", label: "Inne sprawy", n: of("other").length, sub: names2(of("other")) || "—", late: lateOf("other") },
     { key: "tasks", label: "Zadania przy sygnałach", n: tasks.length, sub: tasks.length ? `${tasks.filter((t) => t.dueDate && t.dueDate < iso(now)).length} zaległe` : "—", highlight: true },
   ];
 
@@ -98,6 +113,24 @@ export function SignalsTodayBar({
         right={right}
         allowEmpty
       />
+      <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-[#5C6166]">
+        <Seg<TodayOwner>
+          value={owner}
+          onChange={onOwner}
+          options={[
+            ["me", "Moje"],
+            ["all", "Wszyscy"],
+          ]}
+        />
+        {hint && (
+          <span>
+            {hint} –{" "}
+            <button type="button" className="font-semibold text-[#1B6FA8] underline" onClick={() => onOwner("all")}>
+              pokaż wszystkie
+            </button>
+          </span>
+        )}
+      </div>
       <WinToast goal={goal} now={now} playbook={playbook} userId={currentUserId} />
     </div>
   );

@@ -79,6 +79,45 @@ export function addWorkHours(from: Date, hours: number): Date {
   return t;
 }
 
+// Rezerwacja WWW (wniosek 38): pierwszy telefon w ciągu 4 h roboczych, ale
+// najpóźniej o 9:00 najbliższego dnia roboczego (wpływ po 15:00, wieczorem,
+// w weekend albo przed 9:00 → telefon rano). Termin rezerwacji w ciągu 3 dni =
+// pilne: telefon od razu. Czyste funkcje (vitest).
+export const RESERVATION_CALL_HOUR = 9;
+export const RESERVATION_URGENT_DAYS = 3;
+
+function firstNineAm(now: Date): Date {
+  const day = startOfDay(now);
+  const wd = day.getDay() >= 1 && day.getDay() <= 5;
+  const today9 = atHour(day, RESERVATION_CALL_HOUR);
+  return wd && now < today9 ? today9 : atHour(nextWorkday(day), RESERVATION_CALL_HOUR);
+}
+
+// Dni kalendarzowe od dziś do daty rezerwacji (RRRR-MM-DD); null = brak/zła data.
+export function daysUntilReservation(requestedFrom: string | null, now: Date): number | null {
+  const m = requestedFrom?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const target = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Math.round((target.getTime() - startOfDay(now).getTime()) / 86_400_000);
+}
+
+export function reservationFirstStep(
+  now: Date,
+  info: { requestedFrom: string | null; hasCity: boolean },
+): { nextActionAt: Date; nextStepType: "PIERWSZY_KONTAKT"; nextStepNote: string; urgentInDays: number | null } {
+  const days = daysUntilReservation(info.requestedFrom, now);
+  const urgentInDays = days != null && days >= 0 && days <= RESERVATION_URGENT_DAYS ? days : null;
+  const ask = `${info.hasCity ? "" : "miejscowość (transport), "}gabinet i NIP`;
+  const base = `dopytać o ${ask}, potwierdzić termin`;
+  if (urgentInDays != null) {
+    const when = urgentInDays === 0 ? "dziś" : urgentInDays === 1 ? "jutro" : `za ${urgentInDays} dni`;
+    return { nextActionAt: now, nextStepType: "PIERWSZY_KONTAKT", nextStepNote: `PILNE — termin ${when}: ${base}`, urgentInDays };
+  }
+  const sla = addWorkHours(now, FIRST_CONTACT_SLA_HOURS);
+  const morning = firstNineAm(now);
+  return { nextActionAt: sla < morning ? sla : morning, nextStepType: "PIERWSZY_KONTAKT", nextStepNote: base, urgentInDays: null };
+}
+
 // ------------------------------------------------------------------ wynik kontaktu
 
 export type Outcome = "talked" | "no_answer" | "callback" | "offer_sent" | "email" | "postpone";
@@ -394,6 +433,13 @@ export function inboxKpis<T extends FunnelLead>(leads: T[], now: Date) {
 // Jedna tabela, kolejność: po czasie → nowe → zaplanowane na dziś → wracające
 // odłożone. Grupy = punkty „Planu dnia” (klik filtruje tabelę).
 export type TodayPriority = "late" | "new" | "today" | "back";
+// Pula „wracają z wiosny”: gabinet z listy wiosny bez kontaktu — czeka w kolejce
+// (maks. SPRING_PER_DAY dziennie trafia do „Na dziś”). Na Tablicy to „w kolejce”,
+// a nie zaległe (wniosek 35).
+export function isSpringQueued(l: { sourceRef?: string | null; stage: string; nextStepType: string | null; lastContactAt?: Date | string | null; attempts: number }): boolean {
+  return !!l.sourceRef?.startsWith(SPRING_REF_PREFIX) && l.stage === "WYWIAD" && l.nextStepType === "UMOW_TERMIN" && !l.lastContactAt && l.attempts === 0;
+}
+
 export type TodayGroup = "new" | "calls" | "spring" | "followups" | "back" | "other";
 export type TodayItem<T> = { lead: T; priority: TodayPriority; group: TodayGroup };
 
@@ -417,7 +463,7 @@ export function buildToday<T extends FunnelLead & { nextStepNote?: string | null
   const springPool: T[] = [];
   for (const l of leads) {
     if (!in2026(l)) continue;
-    if (l.sourceRef?.startsWith(SPRING_REF_PREFIX) && l.stage === "WYWIAD" && l.nextStepType === "UMOW_TERMIN" && !l.lastContactAt && l.attempts === 0) {
+    if (isSpringQueued(l)) {
       // „Nie kontaktować” wypada z puli.
       if (l.clientStatus !== "NIE_KONTAKTOWAC" && !l.clientResigned) springPool.push(l);
       continue;

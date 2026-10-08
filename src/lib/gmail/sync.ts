@@ -3,6 +3,7 @@ import { getHideKeywords, loadExclusionMatcher } from "@/lib/porzadki/exclusion-
 import { prisma } from "@/lib/prisma";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { applyMailAutomationSafe } from "@/lib/leads/mail-automation";
+import { autoMailGmailIds } from "@/lib/leads/auto-mail";
 import { bounceRecipients } from "@/lib/leads/mail-rules";
 import { logInfo, logWarn } from "@/lib/logger";
 import { GmailError, getMessageMeta, getProfile, listHistoryAdded, listMessageIds } from "@/lib/integrations/gmail-read";
@@ -85,9 +86,12 @@ const PARALLEL = 10;
 
 // E-mail wychodzący do osoby z zapytania, wysłany po utworzeniu jej sygnału,
 // kwalifikuje klienta (prompt 2 v2, 1.0 pkt 2 — odpowiedź na zapytanie).
-async function qualifyFromOutgoing(all: { clientId: string; sentAt: Date; subject: string | null }[]) {
-  // Automatyczny cennik po pobraniu ze strony to nie kontakt (lejek v2).
-  const out = all.filter((o) => !isAutoPriceListMail(o.subject));
+async function qualifyFromOutgoing(all: { clientId: string; sentAt: Date; subject: string | null; gmailMessageId: string }[]) {
+  // Maile automatyczne po formularzu WWW to nie kontakt (lejek v2): po temacie
+  // i — bo temat jest edytowalny w ustawieniach — po identyfikatorze maila
+  // wysłanego przez panel (auto_mails).
+  const sentByPanel = await autoMailGmailIds(all.map((o) => o.gmailMessageId));
+  const out = all.filter((o) => !isAutoPriceListMail(o.subject) && !sentByPanel.has(o.gmailMessageId));
   // Wystarczy najpóźniejszy e-mail na klienta — jedno zapytanie na klienta.
   const latest = new Map<string, Date>();
   for (const o of out) if (!latest.has(o.clientId) || o.sentAt > latest.get(o.clientId)!) latest.set(o.clientId, o.sentAt);
@@ -165,7 +169,7 @@ async function processIds(
     }
     if (rows.length) {
       stored += (await prisma.emailMessage.createMany({ data: rows, skipDuplicates: true })).count;
-      await qualifyFromOutgoing(rows.filter((r) => r.direction === "OUT").map((r) => ({ clientId: r.clientId, sentAt: r.sentAt, subject: r.subject ?? null })));
+      await qualifyFromOutgoing(rows.filter((r) => r.direction === "OUT").map((r) => ({ clientId: r.clientId, sentAt: r.sentAt, subject: r.subject ?? null, gmailMessageId: r.gmailMessageId })));
     }
     // Lejek v2 (V3): maile przesuwają otwarte sygnały, oferta bez sygnału
     // zakłada sygnał, odbite maile → zadanie „potwierdź adres”.

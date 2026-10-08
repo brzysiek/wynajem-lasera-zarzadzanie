@@ -22,6 +22,7 @@ import { BoardView } from "./board-view";
 import { ReportView } from "./report-view";
 import { SignalsTodayBar } from "./signals-today-bar";
 import { TodayQueue, type TodayGroupKey, type TodayOwner } from "./today-queue";
+import { defaultTodayOwner, scopeRows } from "@/lib/leads/today-scope";
 import { CallOutcomeDialog } from "./call-outcome-dialog";
 import type { SignalTask } from "@/lib/leads/today-extras";
 import type { DeviceInterestKey } from "@/lib/clients/labels";
@@ -230,7 +231,28 @@ export function LeadsManager({
 
   const [sheet, setSheet] = useState(false);
   // Wniosek 33: pasek „Do zrobienia dziś” i kolejka „Na dziś” dzielą filtr osoby i grupę.
-  const [todayOwner, setTodayOwner] = useState<TodayOwner>("me");
+  // Wniosek 35: domyślnie wg roli (Ania „Moje”, Tomek „Wszyscy”), zapamiętane dla
+  // użytkownika; ten sam zakres ma pasek, „Na dziś” i Tablica.
+  const ownerKey = `wl_signals_owner:${currentUserId}`;
+  const [todayOwner, setTodayOwnerState] = useState<TodayOwner>(() => defaultTodayOwner({ isAdmin, readOnly }));
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(ownerKey);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage dostępny dopiero w przeglądarce
+      if (v === "me" || v === "all") setTodayOwnerState(v);
+    } catch {
+      // brak localStorage — zakres domyślny wg roli
+    }
+  }, [ownerKey]);
+  const setTodayOwner = (o: TodayOwner) => {
+    setTodayOwnerState(o);
+    try {
+      localStorage.setItem(ownerKey, o);
+    } catch {
+      // tylko do odświeżenia
+    }
+  };
+  const boardRows = useMemo(() => scopeRows(list, todayOwner, currentUserId), [list, todayOwner, currentUserId]);
   const [todayGroup, setTodayGroup] = useState<TodayGroupKey | null>(null);
   // Wniosek 33: pełny przewodnik (v2), a po nim „Co nowego” (v3, 3 kroki);
   // kto widział v2 — od razu v3, raz przy pierwszym wejściu.
@@ -400,6 +422,7 @@ export function LeadsManager({
               now={now}
               currentUserId={currentUserId}
               owner={todayOwner}
+              onOwner={setTodayOwner}
               playbook={playbook}
               goal={seasonGoal}
               progress={progress}
@@ -502,7 +525,7 @@ export function LeadsManager({
             <>
               {view === "board" && (
                 <BoardView
-                  rows={list}
+                  rows={boardRows}
                   archived={archivedRows}
                   users={users}
                   now={now}

@@ -3,7 +3,7 @@ import { normalizePolishPhone } from "@/lib/reminders";
 import { isLocked, readFieldMeta } from "@/lib/clients/profile-fields";
 import { isPlaceholderEmail } from "@/lib/clients/placeholder";
 import { loadExclusionMatcher } from "@/lib/porzadki/exclusion-load";
-import { FIRST_CONTACT_SLA_HOURS, addWorkHours } from "@/lib/leads/funnel";
+import { FIRST_CONTACT_SLA_HOURS, addWorkHours, reservationFirstStep } from "@/lib/leads/funnel";
 import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { intakeRules, mergeRepeatInquiry, DUPLICATE_WINDOW_MIN } from "@/lib/leads/intake";
 import { leadTitle } from "@/lib/leads/parse-deal";
@@ -97,11 +97,16 @@ export async function intakeWwwForm(form: WwwForm, now = new Date()): Promise<Ww
   const title = `${form.test ? "TEST — " : ""}${leadTitle({ who: client?.name ?? form.name, devices: form.devices, days: form.requestedDays, fallback: email ?? phone ?? "Zapytanie WWW" })}`.slice(0, 191);
   const intake = await intakeRules(ref?.clientId ?? null, now, form.devices);
   const owner = await defaultLeadOwnerId();
+  // Rezerwacja WWW: krok „pierwszy telefon” z notatką (wniosek 38); pilny, gdy
+  // termin rezerwacji wypada w ciągu 3 dni.
+  const resStep = form.type === "REZERWACJA_WWW" ? reservationFirstStep(now, { requestedFrom: form.requestedFrom, hasCity: !!form.city }) : null;
   const funnel = intake.duplicateOf
     ? { archivedAt: now, archiveReason: "DUPLIKAT", archiveNote: `ponowne zapytanie — scalone z otwartym sygnałem ${intake.duplicateOf.id}` }
     : intake.returning
       ? { ownerId: owner, returningClient: true, stage: "WYWIAD" as const, nextActionAt: now, nextStepType: "UMOW_TERMIN", nextStepNote: "stała klientka — umówić termin" }
-      : { ownerId: owner, nextActionAt: addWorkHours(now, FIRST_CONTACT_SLA_HOURS), nextStepType: "PIERWSZY_KONTAKT" };
+      : resStep
+        ? { ownerId: owner, nextActionAt: resStep.nextActionAt, nextStepType: resStep.nextStepType, nextStepNote: resStep.nextStepNote }
+        : { ownerId: owner, nextActionAt: addWorkHours(now, FIRST_CONTACT_SLA_HOURS), nextStepType: "PIERWSZY_KONTAKT" };
 
   const lead = await prisma.$transaction(async (tx) => {
     const l = await tx.lead.create({
@@ -131,6 +136,9 @@ export async function intakeWwwForm(form: WwwForm, now = new Date()): Promise<Ww
     await tx.leadActivity.createMany({
       data: [
         { leadId: l.id, clientId: ref?.clientId ?? null, type: "SYSTEM", body: `Sygnał z formularza WWW (${form.rawType || "inny"}) — bezpośrednio ze strony, bez HubSpota`, createdAt: now },
+        ...(resStep?.urgentInDays != null && !intake.duplicateOf
+          ? [{ leadId: l.id, clientId: ref?.clientId ?? null, type: "SYSTEM" as const, body: `PILNE: termin rezerwacji ${resStep.urgentInDays === 0 ? "dziś" : resStep.urgentInDays === 1 ? "jutro" : `za ${resStep.urgentInDays} dni`} — zadzwonić od razu`, createdAt: now }]
+          : []),
         ...(form.test ? [{ leadId: l.id, clientId: null, type: "SYSTEM" as const, body: "TEST — sprawdzenie formularza po wdrożeniu, do usunięcia (Porządki → Archiwum)", createdAt: now }] : []),
       ],
     });

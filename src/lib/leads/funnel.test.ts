@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { STAGE_HISTORY_LABELS } from "./labels";
-import { stageForStep, addWorkHours, buildInbox, buildToday, buildNaDzis, callQueue, inboxKpis, maxStageReached, medianFirstContactHours, naDzisKpis, nextWorkdayAt10, planOutcome, rotInfo, type FunnelLead } from "./funnel";
+import { stageForStep, addWorkHours, buildInbox, buildToday, buildNaDzis, callQueue, inboxKpis, maxStageReached, medianFirstContactHours, naDzisKpis, nextWorkdayAt10, planOutcome, rotInfo, type FunnelLead, reservationFirstStep, isSpringQueued } from "./funnel";
+import { lateNote, scopeHint, scopeRows } from "./today-scope";
 
 // Wrzesień/październik 2026: 25.09 = piątek, 28.09 = poniedziałek, 02.10 = piątek.
 const at = (day: number, h = 12, m = 0, month = 9) => new Date(2026, month - 1, day, h, m);
@@ -213,5 +214,100 @@ describe("Wracają z wiosny — 3 dziennie wg rytmu (wniosek 21)", () => {
       ["b", "spring"],
       ["d", "spring"],
     ]);
+  });
+});
+
+describe("reservationFirstStep (wniosek 38: rezerwacja WWW — pierwszy telefon)", () => {
+  // 6.10.2026 to wtorek; daty lokalne, jak w kodzie.
+  const at = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m);
+  const far = { requestedFrom: "2026-11-02", hasCity: false };
+
+  it("w ciągu 4 h roboczych, gdy to jeszcze dziś", () => {
+    const r = reservationFirstStep(at(6, 10), far);
+    expect(r.nextActionAt).toEqual(at(6, 14));
+    expect(r.nextStepType).toBe("PIERWSZY_KONTAKT");
+    expect(r.urgentInDays).toBeNull();
+  });
+  it("wpływ po 15:00 → najpóźniej jutro 9:00 (nie 10:30)", () => {
+    expect(reservationFirstStep(at(6, 15, 30), far).nextActionAt).toEqual(at(7, 9));
+    expect(reservationFirstStep(at(6, 14, 30), far).nextActionAt).toEqual(at(7, 9));
+  });
+  it("piątek wieczorem i weekend → poniedziałek 9:00", () => {
+    expect(reservationFirstStep(at(9, 16), far).nextActionAt).toEqual(at(12, 9));
+    expect(reservationFirstStep(at(10, 12), far).nextActionAt).toEqual(at(12, 9));
+  });
+  it("przed 9:00 w dzień roboczy → dziś 9:00", () => {
+    expect(reservationFirstStep(at(6, 7), far).nextActionAt).toEqual(at(6, 9));
+  });
+  it("notatka: miejscowość tylko, gdy jej brak", () => {
+    expect(reservationFirstStep(at(6, 10), far).nextStepNote).toBe("dopytać o miejscowość (transport), gabinet i NIP, potwierdzić termin");
+    expect(reservationFirstStep(at(6, 10), { ...far, hasCity: true }).nextStepNote).toBe("dopytać o gabinet i NIP, potwierdzić termin");
+  });
+  it("termin w ciągu 3 dni → pilne: telefon od razu i znacznik w notatce", () => {
+    const now = at(6, 10);
+    const today = reservationFirstStep(now, { requestedFrom: "2026-10-06", hasCity: true });
+    expect(today.nextActionAt).toEqual(now);
+    expect(today.nextStepNote).toBe("PILNE — termin dziś: dopytać o gabinet i NIP, potwierdzić termin");
+    expect(reservationFirstStep(now, { requestedFrom: "2026-10-07", hasCity: true }).nextStepNote).toContain("PILNE — termin jutro");
+    const in3 = reservationFirstStep(now, { requestedFrom: "2026-10-09", hasCity: false });
+    expect(in3.urgentInDays).toBe(3);
+    expect(in3.nextStepNote).toContain("PILNE — termin za 3 dni");
+  });
+  it("termin za 4+ dni, przeszły albo brak/zła data → bez pilności", () => {
+    const now = at(6, 10);
+    for (const requestedFrom of ["2026-10-10", "2026-10-01", null, "bzdura"]) {
+      expect(reservationFirstStep(now, { requestedFrom, hasCity: false }).urgentInDays).toBeNull();
+    }
+  });
+});
+
+describe("Pasek „Do zrobienia dziś” — scenariusz z wniosku 35 (30.09 rano)", () => {
+  // 22 sprawy, wszystkie prowadzi Ania: 5 telefonów, 7 follow-upów (po terminie), 8 nowych, 1 wiosna, 1 inna.
+  const now = new Date(2026, 8, 30, 7, 58);
+  const mk = (id: string, x: Partial<FunnelLead> = {}) => lead({ id, ownerId: "ania", firstContactAt: at(20), stage: "WYWIAD", ...x });
+  const leads = [
+    ...Array.from({ length: 4 }, (_, i) => mk(`tel${i}`, { nextStepType: "ODDZWONI", nextActionAt: at(30, 9) })),
+    mk("tel-zaleg", { nextStepType: "ODDZWONI", nextActionAt: at(29, 10) }),
+    ...Array.from({ length: 7 }, (_, i) => mk(`fu${i}`, { stage: "OFERTA", nextStepType: "FOLLOW_UP_OFERTY", nextActionAt: at(29, 10) })),
+    // Nowe: 4 po czasie na kontakt (wpłynęły wczoraj rano), 4 świeże (wczoraj po 16:00).
+    ...Array.from({ length: 4 }, (_, i) => lead({ id: `nowy-stary${i}`, ownerId: "ania", createdAt: at(29, 9), nextStepType: "PIERWSZY_KONTAKT", nextActionAt: at(29, 13) })),
+    ...Array.from({ length: 4 }, (_, i) => lead({ id: `nowy${i}`, ownerId: "ania", createdAt: at(29, 16), nextStepType: "PIERWSZY_KONTAKT", nextActionAt: at(30, 9) })),
+    { ...mk("wiosna1", { nextStepType: "UMOW_TERMIN", firstContactAt: null }), sourceRef: "wiosna:1", spring: { dueAt: null } },
+    mk("schulz", { nextStepType: "INNE", nextActionAt: at(30, 9) }),
+  ];
+
+  it("Tomek (Wszyscy) widzi 22 sprawy w grupach, w tym „Inne sprawy”", () => {
+    const t = buildToday(scopeRows(leads, "all", "tomek"), now);
+    expect(t).toHaveLength(22);
+    const by = (g: string) => t.filter((x) => x.group === g);
+    expect([by("calls").length, by("followups").length, by("new").length, by("spring").length, by("other").length]).toEqual([5, 7, 8, 1, 1]);
+  });
+
+  it("zaległe w kaflach: follow-upy wszystkie po terminie, telefony 1, nowe 4", () => {
+    const t = buildToday(leads, now);
+    const late = (g: string) => t.filter((x) => x.group === g && x.priority === "late");
+    const all = (g: string) => t.filter((x) => x.group === g);
+    expect(lateNote(late("followups").length, all("followups").length)).toBe("7 · wszystkie po terminie");
+    expect(lateNote(late("calls").length, all("calls").length)).toBe("1 po terminie");
+    expect(lateNote(late("new").length, all("new").length)).toBe("4 po terminie");
+    expect(lateNote(late("other").length, all("other").length)).toBeNull();
+  });
+
+  it("zakres „Moje” Tomka = 0 i podpowiedź z liczbą wszystkich; Ania widzi swoje 22", () => {
+    expect(buildToday(scopeRows(leads, "me", "tomek"), now)).toHaveLength(0);
+    expect(scopeHint(0, buildToday(leads, now).length)).toBe("Twoje: 0 · wszystkie: 22");
+    expect(buildToday(scopeRows(leads, "me", "ania"), now)).toHaveLength(22);
+  });
+});
+
+describe("isSpringQueued — pula wiosny na Tablicy „w kolejce”", () => {
+  const base = { sourceRef: "wiosna:1", stage: "WYWIAD", nextStepType: "UMOW_TERMIN", lastContactAt: null, attempts: 0 };
+  it("gabinet z puli bez kontaktu czeka w kolejce", () => expect(isSpringQueued(base)).toBe(true));
+  it("po kontakcie, próbie, innym kroku albo bez wiosny — nie", () => {
+    expect(isSpringQueued({ ...base, lastContactAt: new Date() })).toBe(false);
+    expect(isSpringQueued({ ...base, attempts: 1 })).toBe(false);
+    expect(isSpringQueued({ ...base, nextStepType: "ODDZWONI" })).toBe(false);
+    expect(isSpringQueued({ ...base, sourceRef: "www:kontakt:1" })).toBe(false);
+    expect(isSpringQueued({ ...base, stage: "OFERTA" })).toBe(false);
   });
 });

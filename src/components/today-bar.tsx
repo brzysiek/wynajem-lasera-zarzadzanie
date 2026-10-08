@@ -6,7 +6,8 @@ import type { ReactNode } from "react";
 // Klientów, Sygnałów (wniosek 26) i Kalendarza („Do dopięcia”). Jeden rząd
 // kafli; klik rozwija / filtruje, treść pod kaflami podaje wywołujący.
 
-export type TodayBarTile = { key: string; label: string; n: number; sub: string; highlight?: boolean };
+// late — opcjonalna druga linijka (terakota), np. „7 · wszystkie po terminie”.
+export type TodayBarTile = { key: string; label: string; n: number; sub: string; highlight?: boolean; late?: string | null };
 
 const LABEL_WIDE = "text-[10.5px] uppercase tracking-[0.14em]";
 
@@ -55,7 +56,7 @@ export function TodayBar({
                   aria-expanded={on}
                   disabled={t.n === 0 && !allowEmpty}
                   onClick={() => onToggle(on ? null : t.key)}
-                  className={`flex ${compact ? "h-[42px] gap-2 px-2.5" : "h-[52px] gap-3 px-3"} items-center border text-left disabled:cursor-default ${on ? "border-white/70 bg-white/15" : t.highlight ? "border-[#E08A5C] hover:bg-white/10" : "border-white/20 hover:bg-white/10"}`}
+                  className={`flex ${compact ? "h-[42px] gap-2 px-2.5" : "min-h-[52px] gap-3 px-3"} items-center border text-left disabled:cursor-default ${on ? "border-white/70 bg-white/15" : t.highlight ? "border-[#E08A5C] hover:bg-white/10" : "border-white/20 hover:bg-white/10"}`}
                 >
                   {compact ? (
                     <span className="flex min-w-0 flex-col">
@@ -73,6 +74,7 @@ export function TodayBar({
                       <span className="flex min-w-0 flex-col">
                         <span className={`line-clamp-2 leading-tight ${LABEL_WIDE} text-[#BFD6EA]`} title={t.label}>{t.label}</span>
                         <span className="truncate text-[12px] text-[#DCE8F2]">{t.sub}</span>
+                        {t.late && <span className="line-clamp-2 text-[11.5px] font-semibold leading-tight text-[#F4B183]">{t.late}</span>}
                       </span>
                     </>
                   )}

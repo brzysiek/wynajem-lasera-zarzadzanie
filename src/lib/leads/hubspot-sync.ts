@@ -28,6 +28,7 @@ import {
 import { applyImportRules } from "@/lib/leads/call-list";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { AUTO_WWW_MAIL_SUBJECTS } from "@/lib/leads/mail-rules";
+import { autoMailGmailIds } from "@/lib/leads/auto-mail";
 import { intakeRules, mergeRepeatInquiry } from "@/lib/leads/intake";
 import { contactFromNotes } from "@/lib/leads/note-rules";
 import { blockedIds } from "@/lib/porzadki/import-blocks";
@@ -69,8 +70,17 @@ const ADVANCED: LeadStageKey[] = ["WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA"];
 // (Gmail — prompt 3C; e-maile z HubSpota były zsynchronizowane do Gmaila).
 async function repliedByEmail(clientId: string | null, since: Date): Promise<boolean> {
   if (!clientId) return false;
-  // Bez maili automatycznych po formularzu WWW (cennik, potwierdzenie rezerwacji) — lejek v2.
-  return (await prisma.emailMessage.count({ where: { clientId, direction: "OUT", sentAt: { gte: since }, OR: [{ subject: null }, { subject: { notIn: AUTO_WWW_MAIL_SUBJECTS } }] } })) > 0;
+  // Bez maili automatycznych po formularzu WWW (cennik, potwierdzenie rezerwacji)
+  // — lejek v2: po temacie i po identyfikatorze maila wysłanego przez panel
+  // (temat szablonu można zmienić w ustawieniach).
+  const mails = await prisma.emailMessage.findMany({
+    where: { clientId, direction: "OUT", sentAt: { gte: since }, OR: [{ subject: null }, { subject: { notIn: AUTO_WWW_MAIL_SUBJECTS } }] },
+    select: { gmailMessageId: true },
+    take: 20,
+  });
+  if (!mails.length) return false;
+  const sentByPanel = await autoMailGmailIds(mails.map((m) => m.gmailMessageId));
+  return mails.some((m) => !sentByPanel.has(m.gmailMessageId));
 }
 const LAST_SYNC_KEY = "leads_hubspot_last_sync";
 

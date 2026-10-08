@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { LeadRow } from "@/lib/leads/load";
 import { BOARD_STAGES, LOST_REASON_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
-import { FUNNEL_FROM, NEXT_STEP_LABEL, REACH_ORDER, funnelFromRow, rotInfo, type FunnelLead, type NextStepType } from "@/lib/leads/funnel";
+import { FUNNEL_FROM, NEXT_STEP_LABEL, REACH_ORDER, funnelFromRow, isSpringQueued, rotInfo, type FunnelLead, type NextStepType } from "@/lib/leads/funnel";
 import { Avatar, Dots, Seg, periodTouch } from "./funnel-views";
 import { StageChip } from "./lead-ui";
 import { StageLegend } from "./plan-day";
@@ -41,6 +41,8 @@ function due(r: LeadRow, now: Date): { text: string; late: boolean; today: boole
       ? { text: `po wynajmie → Wygrana`, late: false, today: false }
       : { text: "powiąż z wynajmem", late: true, today: false };
   }
+  // Pula „wracają z wiosny” bez kontaktu: czeka w kolejce (do 3 dziennie w „Na dziś”) — neutralnie, nie jako zaległe.
+  if (isSpringQueued(r)) return { text: "w kolejce", late: false, today: false };
   if (!r.nextActionAt) return { text: "brak kroku", late: true, today: false };
   const at = new Date(r.nextActionAt);
   const sameDay = at.toDateString() === now.toDateString();
