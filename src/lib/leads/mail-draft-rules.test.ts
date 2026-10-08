@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findSentDraft, gmailDraftUrl, isDraftStale, replySubject, validateDraft } from "./mail-draft-rules";
+import { findSentDraft, gmailDraftUrl, isDraftStale, replySubject, stripSignOff, validateDraft } from "./mail-draft-rules";
 
 describe("replySubject", () => {
   it("dopisuje Re: tylko raz", () => {
@@ -54,5 +54,16 @@ describe("findSentDraft", () => {
     expect(findSentDraft(drafts, { threadId: "T9", sentAt: new Date("2026-10-08T12:30:00Z") })).toBeUndefined();
     expect(findSentDraft(drafts, { threadId: "T2", sentAt: new Date("2026-10-08T12:30:00Z") })).toBeUndefined();
     expect(findSentDraft(drafts, { threadId: "T1", sentAt: new Date("2026-10-08T11:00:00Z") })).toBeUndefined();
+  });
+});
+
+describe("stripSignOff", () => {
+  it("obcina zakończenie z podpisem szkicu oferty (podpis dochodzi ze stopki)", () => {
+    const offer = "Dzień dobry,\n\nProponuję wynajem Almy (2 dni).\n\nKtóry termin rezerwuję?\n\nPozdrawiam,\nAnia\nWynajemLasera.pl";
+    expect(stripSignOff(offer)).toBe("Dzień dobry,\n\nProponuję wynajem Almy (2 dni).\n\nKtóry termin rezerwuję?");
+  });
+  it("bez zakończenia — bez zmian", () => {
+    expect(stripSignOff("Dzień dobry,\n\nTreść.")).toBe("Dzień dobry,\n\nTreść.");
+    expect(stripSignOff("")).toBe("");
   });
 });

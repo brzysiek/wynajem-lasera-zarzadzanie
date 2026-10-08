@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api } from "@/components/clients/client-forms";
 import type { MailDraftDto } from "@/lib/leads/mail-draft";
-import { DRAFT_STATUS_LABEL, replySubject } from "@/lib/leads/mail-draft-rules";
+import { DRAFT_STATUS_LABEL, replySubject, stripSignOff } from "@/lib/leads/mail-draft-rules";
 
 // Odpowiedź mailowa przy sygnale (wniosek 44): notatka (skąd propozycja) i
 // rozwijane pole z pełnym szkicem do poprawienia. „Zapisz szkic w Gmailu”
@@ -123,7 +123,7 @@ export function LeadMailDraft({
                   className={BTN}
                   disabled={busy !== null}
                   title="Wypełnia temat i treść gotowym tekstem oferty (urządzenie, wolne terminy, cena)"
-                  onClick={() => void create({ to: offer.to ?? defaultTo ?? "", subject: offer.subject, bodyText: offer.body }, "create")}
+                  onClick={() => void create({ to: offer.to ?? defaultTo ?? "", subject: offer.subject, bodyText: stripSignOff(offer.body) }, "create")}
                 >
                   Z szkicu oferty
                 </button>

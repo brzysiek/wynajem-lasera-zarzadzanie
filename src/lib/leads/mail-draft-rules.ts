@@ -38,6 +38,15 @@ export function isDraftStale(contentUpdatedAt: Date | string, gmailSavedAt: Date
   return new Date(contentUpdatedAt).getTime() > new Date(gmailSavedAt).getTime() + 1000;
 }
 
+// Gotowy tekst oferty kończy się własnym podpisem („Pozdrawiam, Ania, …”), a
+// szkic dostaje podpis ze stopki przy zapisie do Gmaila — obcinamy zakończenie,
+// żeby podpis nie był podwójny.
+export function stripSignOff(body: string): string {
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const i = lines.findLastIndex((l) => /^\s*(pozdrawiam|z poważaniem|serdecznie pozdrawiam)\b/i.test(l));
+  return (i >= 0 ? lines.slice(0, i) : lines).join("\n").trimEnd();
+}
+
 // Link do szkicu w skrzynce kontakt@ (działa po zalogowaniu na to konto).
 export function gmailDraftUrl(mailbox: string, messageId: string): string {
   return `https://mail.google.com/mail/u/${encodeURIComponent(mailbox)}/#drafts?compose=${encodeURIComponent(messageId)}`;
