@@ -14,6 +14,7 @@ import { isQualificationActive, qualifyClient } from "@/lib/clients/qualify";
 import { parseContactInput } from "@/lib/clients/validate";
 import { loadLeadDetail, loadLeadRows } from "@/lib/leads/load";
 import { addLeadNote } from "@/lib/leads/actions";
+import { DraftError, upsertMailDraft } from "@/lib/leads/mail-draft";
 import { loadHistoryReview } from "@/lib/history/review-load";
 import { loadFvWithoutInvoice } from "@/lib/invoicing/fv-check-load";
 import { termsWarnings } from "@/lib/clients/terms";
@@ -940,6 +941,43 @@ export const TOOLS: McpTool[] = [
       const note = await addLeadNote(req(a, "sygnal_id"), text, agent.userId);
       await recordChanges(prisma, { userId: agent.userId }, [{ entity: "NOTE", entityId: note.activityId, clientId: note.clientId, operation: "CREATE", before: "null", after: toLogValue(text) }]);
       return { id: note.activityId };
+    },
+  },
+  {
+    name: "szkic_maila_utworz",
+    title: "Szkic maila przy sygnale",
+    description:
+      "Zapisuje PROPOZYCJĘ odpowiedzi mailowej przy sygnale — tylko w panelu: nie tworzy szkicu w Gmailu i niczego nie wysyła. Biuro poprawia treść w karcie sygnału i samo zapisuje szkic w Gmailu (kontakt@), a wysyła człowiek. " +
+      "tresc = zwykły tekst bez podpisu (stopka z grafiką dochodzi automatycznie), pisz wprost do klientki. uzasadnienie = z czego powstała propozycja (notatki, historia) — biuro widzi to nad szkicem. " +
+      "Jeden sygnał = jeden aktywny szkic: ponowne wywołanie aktualizuje go (podane pola zastępują stare); jeśli biuro już poprawiło szkic, dostaniesz błąd, chyba że nadpisz=true. " +
+      "Domyślnie odpowiedź w wątku ostatniej wiadomości klientki z 30 dni (temat „Re: …”); odpowiedz_na_mail_id wskazuje inną wiadomość, „brak” = nowy wątek. Przy nowym szkicu wymagane: tresc i temat (do z sygnału, jeśli pominięte).",
+    inputSchema: obj(
+      {
+        sygnal_id: s("ID sygnału."),
+        tresc: s("Treść maila (zwykły tekst, akapity oddzielone pustą linią), bez podpisu."),
+        temat: s("Temat (przy odpowiedzi w wątku domyślnie „Re: …”)."),
+        do: s("Adres odbiorcy (domyślnie e-mail z sygnału)."),
+        uzasadnienie: s("Skąd propozycja: kontekst, notatki, historia (do 5000 znaków)."),
+        odpowiedz_na_mail_id: s("ID wiadomości (EmailMessage), na którą odpowiadamy; „brak” = nowy wątek."),
+        nadpisz: b("Zastąp szkic, który biuro już poprawiło."),
+      },
+      ["sygnal_id", "tresc"],
+    ),
+    readOnly: false,
+    run: async (a, agent) => {
+      const reply = str(a, "odpowiedz_na_mail_id");
+      try {
+        const draft = await upsertMailDraft(
+          req(a, "sygnal_id"),
+          { kind: "AGENT", userId: agent.userId },
+          { bodyText: req(a, "tresc"), subject: str(a, "temat") ?? undefined, to: str(a, "do") ?? undefined, note: str(a, "uzasadnienie") ?? undefined, replyToEmailId: reply === "brak" ? null : (reply ?? undefined) },
+          { overwrite: a.nadpisz === true, complete: true },
+        );
+        return { id: draft.id, status: draft.status, temat: draft.subject, do: draft.toAddress, odpowiedz_w_watku: Boolean(draft.replyTo) };
+      } catch (err) {
+        if (err instanceof DraftError) throw new AgentApiError(err.message, err.status);
+        throw err;
+      }
     },
   },
   {

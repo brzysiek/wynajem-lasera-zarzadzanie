@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_RESERVATION_MAIL, buildMimeMessage, firstName, renderAutoMail, reservationSummary } from "./auto-mail-render";
+import { DEFAULT_RESERVATION_MAIL, buildMimeMessage, firstName, renderAutoMail, renderDraftMail, reservationSummary } from "./auto-mail-render";
 
 describe("firstName", () => {
   it("bierze pierwsze słowo i poprawia wielkość liter", () => {
@@ -120,5 +120,30 @@ describe("stopka w HTML", () => {
     const r = renderAutoMail({ subject: "S", body: "Treść" }, { name: null, footer: dirty });
     expect(r.html).not.toMatch(/script|iframe|onclick|onerror|javascript:/i);
     expect(r.html).toContain('<img src="https://a/b.png"');
+  });
+});
+
+describe("szkic odpowiedzi (wniosek 44)", () => {
+  it("renderDraftMail: zwykły tekst bez podstawiania znaczników, stopka HTML dołączona", () => {
+    const r = renderDraftMail("Dzień dobry {imie},\n\nProponuję termin <12.11>.", '<table><tr><td><img src="https://wynajemlasera.pl/ania.png"></td><td><b>Ania</b></td></tr></table>');
+    expect(r.html).toContain("Dzień dobry {imie},"); // nie podstawiamy
+    expect(r.html).toContain("&lt;12.11&gt;");
+    expect(r.html).toContain('<img src="https://wynajemlasera.pl/ania.png"');
+    expect(r.text).toContain("Dzień dobry {imie},");
+    expect(r.text.trimEnd().endsWith("Ania")).toBe(true);
+  });
+  it("renderDraftMail bez stopki", () => {
+    const r = renderDraftMail("Sama treść", "");
+    expect(r.text).toBe("Sama treść");
+    expect(r.html).toContain("Sama treść");
+  });
+  it("buildMimeMessage: nagłówki odpowiedzi w wątku", () => {
+    const raw = buildMimeMessage({ from: "kontakt@wynajemlasera.pl", to: "k@example.com", subject: "Re: Wynajem", html: "<p>x</p>", text: "x", attachments: [], inReplyTo: "abc123@mail.gmail.com", boundary: "B" });
+    expect(raw).toContain("In-Reply-To: <abc123@mail.gmail.com>");
+    expect(raw).toContain("References: <abc123@mail.gmail.com>");
+    const already = buildMimeMessage({ from: "a@b.pl", to: "k@example.com", subject: "S", html: "x", text: "x", attachments: [], inReplyTo: "<id@x>\r\nBcc: zly@x.pl", boundary: "B" });
+    expect(already).toContain("In-Reply-To: <id@xBcc:zly@x.pl>"); // brak wstrzyknięcia nagłówka
+    expect(already).not.toMatch(/^Bcc:/m);
+    expect(buildMimeMessage({ from: "a@b.pl", to: "k@example.com", subject: "S", html: "x", text: "x", attachments: [], boundary: "B" })).not.toContain("In-Reply-To");
   });
 });

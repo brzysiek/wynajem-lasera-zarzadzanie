@@ -83,10 +83,10 @@ export function sanitizeHtml(html: string): string {
     .replace(/(href|src)\s*=\s*("|')\s*(javascript|vbscript):[^"']*\2/gi, '$1="#"');
 }
 
-const isHtml = (s: string) => s.trimStart().startsWith("<");
+export const isHtml = (s: string) => s.trimStart().startsWith("<");
 const WRAP = (inner: string) => `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#222">\n${inner}\n</div>`;
 
-function textToHtml(text: string): string {
+export function textToHtml(text: string): string {
   return text
     .split(/\n{2,}/)
     .map((p) => `<p style="margin:0 0 12px">${linkify(esc(p)).replace(/\n/g, "<br>")}</p>`)
@@ -118,7 +118,23 @@ export function renderAutoMail(
   return { subject, html, text: [bodyText, footerText].filter(Boolean).join("\n\n") };
 }
 
+// Szkic odpowiedzi z panelu (wniosek 44): treść to zwykły tekst (znaczniki
+// {imie} itp. NIE są podstawiane — to pisze człowiek), stopka (podpis) jako
+// tekst albo HTML — ta sama co w mailach automatycznych.
+export function renderDraftMail(bodyText: string, footer: string | null | undefined): { html: string; text: string } {
+  const body = bodyText.replace(/\r\n/g, "\n").trim();
+  const foot = (footer ?? "").trim();
+  const footHtml = foot ? (isHtml(foot) ? sanitizeHtml(foot) : textToHtml(foot)) : "";
+  const footText = foot ? (isHtml(foot) ? stripHtml(foot) : foot) : "";
+  return { html: WRAP([textToHtml(body), footHtml].filter(Boolean).join("\n")), text: [body, footText].filter(Boolean).join("\n\n") };
+}
+
 const b64 = (s: string | Buffer) => (typeof s === "string" ? Buffer.from(s, "utf8") : s).toString("base64");
+// Message-ID w nawiasach ostrych, bez znaków nowej linii (nagłówki są jedną linią).
+const angle = (id: string) => {
+  const t = id.replace(/[\r\n<>\s]+/g, "");
+  return `<${t}>`;
+};
 const wrap76 = (s: string) => s.replace(/.{1,76}/g, "$&\r\n").trimEnd();
 // RFC 2047 — nagłówki muszą być ASCII.
 const encWord = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${b64(s)}?=`);
@@ -134,6 +150,8 @@ export function buildMimeMessage(m: {
   text: string;
   attachments: MimeAttachment[];
   boundary?: string;
+  // Odpowiedź w wątku: RFC Message-ID wiadomości, na którą odpowiadamy.
+  inReplyTo?: string | null;
 }): string {
   const bound = m.boundary ?? `wl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
   const mixed = `mix_${bound}`;
@@ -143,6 +161,7 @@ export function buildMimeMessage(m: {
     `From: ${from}`,
     `To: ${m.to}`,
     `Reply-To: ${m.from}`,
+    ...(m.inReplyTo ? [`In-Reply-To: ${angle(m.inReplyTo)}`, `References: ${angle(m.inReplyTo)}`] : []),
     `Subject: ${encWord(m.subject.replace(/[\r\n]+/g, " "))}`,
     "MIME-Version: 1.0",
     "X-Auto-Response-Suppress: All",

@@ -15,6 +15,7 @@ import { loadOpenTasksFor, type OpenTaskDto } from "@/lib/task-links";
 import { arrivalDates, arrivalGapDays, arrivalRhythmLabel } from "@/lib/clients/status";
 import { loadUnassignedRentals } from "@/lib/clients/rental-match";
 import { normalizeAttribution, type Attribution } from "@/lib/leads/attribution-view";
+import { activeDraftStatuses, loadMailDraft, type MailDraftDto } from "@/lib/leads/mail-draft";
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
 
@@ -124,6 +125,8 @@ export type LeadRow = {
   fromHubspot: boolean;
   // Formularz strony bezpośrednio do panelu (03.10.2026).
   fromWww: boolean;
+  // Szkic odpowiedzi przy sygnale (wniosek 44): aktywny szkic → ikona na Tablicy.
+  mailDraft: "PROPOZYCJA" | "SZKIC_GMAIL" | null;
   lastActivity: { type: ActivityTypeKey; at: string; body: string | null } | null;
   noAnswerCount: number;
   // Lista „Do obdzwonienia” (prompt 2 v2): zaległe zapytanie z 2026.
@@ -200,6 +203,7 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     ownerName: l.owner?.name ?? null,
     fromHubspot: Boolean(l.hubspotDealId),
     fromWww: l.origin === "WWW",
+    mailDraft: null,
     lastActivity: last ? { type: last.type, at: last.createdAt.toISOString(), body: last.body } : null,
     noAnswerCount: l._count.activities,
     callList: l.callList,
@@ -290,7 +294,8 @@ export async function loadLeadRows(): Promise<LeadRow[]> {
   // Zarchiwizowane sygnały (Porządki → Archiwum) znikają z list i „Do obdzwonienia”.
   const leads = await queryRows({ archivedAt: null });
   const [extra, spring] = await Promise.all([loadExtra(leads), loadSpringInfo(leads)]);
-  return leads.map((l) => ({ ...toRow(l, extra), spring: spring.get(l.id) ?? null }));
+  const drafts = await activeDraftStatuses(leads.map((l) => l.id));
+  return leads.map((l) => ({ ...toRow(l, extra), spring: spring.get(l.id) ?? null, mailDraft: drafts.get(l.id) ?? null }));
 }
 
 // Wiersz „Wracają z wiosny” (wniosek 21): ostatni odbyty wynajem (panel albo
@@ -416,6 +421,9 @@ export type LeadDetail = LeadRow & {
   // Tylko w szczególe sygnału (karta, GET /api/leads/[id], MCP „sygnal”),
   // nie w liście (Tablica, Na dziś).
   attribution: Attribution | null;
+  // Szkic odpowiedzi (wniosek 44) i ostatnia wiadomość od klientki (do odpowiedzi w wątku).
+  emailDraft: MailDraftDto | null;
+  lastInboundEmail: { id: string; subject: string | null; sentAt: string } | null;
   hubspotUrl: string | null;
   activities: LeadActivityDto[];
   otherLeads: { id: string; title: string; stage: LeadStageKey; createdAt: string }[];
@@ -470,8 +478,13 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
     loadOpenTasksFor("LEAD", id),
   ]);
 
+  const emailDraft = await loadMailDraft(id);
+  const lastIn = emails.find((e) => e.direction === "IN");
   return {
     ...row,
+    mailDraft: emailDraft && (emailDraft.status === "PROPOZYCJA" || emailDraft.status === "SZKIC_GMAIL") ? emailDraft.status : null,
+    emailDraft,
+    lastInboundEmail: lastIn ? { id: lastIn.id, subject: lastIn.subject, sentAt: lastIn.sentAt.toISOString() } : null,
     archive: lead.archivedAt ? { at: lead.archivedAt.toISOString(), reason: lead.archiveReason, note: lead.archiveNote } : null,
     lostNote: lead.lostNote,
     returnAt: lead.returnAt?.toISOString() ?? null,

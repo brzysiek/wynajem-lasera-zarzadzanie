@@ -1318,6 +1318,7 @@ model Lead {
   @@index([nextActionAt])
   @@index([callList])
   @@index([archivedAt])
+  emailDrafts     LeadEmailDraft[]
   @@map("leads")
 }
 
@@ -1819,4 +1820,37 @@ model AutoMail {
   @@index([gmailMessageId])
   @@index([toAddress, createdAt])
   @@map("auto_mails")
+}
+
+// Szkic (propozycja) maila przy sygnale (wniosek 44, 08.10.2026): agent albo
+// biuro przygotowuje odpowiedź w panelu, biuro ją poprawia i jednym kliknięciem
+// zapisuje jako szkic w Gmailu (kontakt@). Panel niczego nie wysyła (na razie).
+// Jeden sygnał = jeden aktywny szkic (PROPOZYCJA / SZKIC_GMAIL). Treść maila
+// jest tylko tutaj i w Gmailu — nie trafia do dziennika zmian.
+model LeadEmailDraft {
+  id               String    @id @default(cuid())
+  leadId           String
+  lead             Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  clientId         String?
+  status           String    @db.VarChar(16) // PROPOZYCJA | SZKIC_GMAIL | WYSLANY | ODRZUCONY
+  authorKind       String    @db.VarChar(8) // AGENT | USER
+  authorId         String?
+  editedByUser     Boolean   @default(false) // biuro poprawiło — agent nie nadpisze bez „nadpisz”
+  toAddress        String    @db.VarChar(191)
+  subject          String    @db.VarChar(255)
+  bodyText         String    @db.Text // zwykły tekst; stopka (podpis) dochodzi przy zapisie do Gmaila
+  note             String?   @db.Text // uzasadnienie / kontekst (z czego powstał szkic)
+  replyToEmailId   String? // EmailMessage, na który odpowiadamy (wątek, In-Reply-To)
+  gmailDraftId     String?   @db.VarChar(64)
+  gmailThreadId    String?   @db.VarChar(64)
+  gmailMessageId   String?   @db.VarChar(64) // wiadomość szkicu; po wysłaniu — wysłana
+  contentUpdatedAt DateTime  @default(now())
+  gmailSavedAt     DateTime?
+  sentAt           DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([leadId, status])
+  @@index([gmailThreadId])
+  @@map("lead_email_drafts")
 }

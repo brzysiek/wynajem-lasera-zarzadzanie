@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { applyMailAutomationSafe } from "@/lib/leads/mail-automation";
 import { autoMailGmailIds } from "@/lib/leads/auto-mail";
+import { markDraftsSent } from "@/lib/leads/mail-draft";
 import { bounceRecipients } from "@/lib/leads/mail-rules";
 import { logInfo, logWarn } from "@/lib/logger";
 import { GmailError, getMessageMeta, getProfile, listHistoryAdded, listMessageIds } from "@/lib/integrations/gmail-read";
@@ -170,6 +171,8 @@ async function processIds(
     if (rows.length) {
       stored += (await prisma.emailMessage.createMany({ data: rows, skipDuplicates: true })).count;
       await qualifyFromOutgoing(rows.filter((r) => r.direction === "OUT").map((r) => ({ clientId: r.clientId, sentAt: r.sentAt, subject: r.subject ?? null, gmailMessageId: r.gmailMessageId })));
+      // Wniosek 44: wysłana wiadomość w wątku szkicu zapisanego w Gmailu → szkic „wysłany”.
+      await markDraftsSent(rows);
     }
     // Lejek v2 (V3): maile przesuwają otwarte sygnały, oferta bez sygnału
     // zakłada sygnał, odbite maile → zadanie „potwierdź adres”.

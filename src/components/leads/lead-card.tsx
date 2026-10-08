@@ -21,6 +21,7 @@ import { StageTip } from "./stage-tip";
 import { RentalPicker } from "./rental-picker";
 import { OpenTasks } from "@/components/open-tasks";
 import { LeadAttribution } from "@/components/leads/lead-attribution";
+import { LeadMailDraft } from "@/components/leads/lead-mail-draft";
 import { CallOutcomeDialog } from "./call-outcome-dialog";
 import type { Playbook } from "@/lib/leads/playbook";
 
@@ -505,6 +506,20 @@ export function LeadCard({
             </div>
           </Section>
         </div>
+
+        {/* Odpowiedź mailowa (wniosek 44): notatka + rozwijany szkic, zapis szkicu w Gmailu */}
+        <LeadMailDraft
+          leadId={leadId}
+          draft={d.emailDraft}
+          defaultTo={d.email}
+          lastInbound={d.lastInboundEmail}
+          offer={draft}
+          readOnly={agent}
+          onDraft={(nd) => {
+            setD((cur) => (cur ? { ...cur, emailDraft: nd, mailDraft: nd && (nd.status === "PROPOZYCJA" || nd.status === "SZKIC_GMAIL") ? nd.status : null } : cur));
+            onChanged();
+          }}
+        />
 
         {/* 4. Oś czasu: 3 ostatnie, reszta pod „rozwiń” */}
         <Section title="Oś czasu">

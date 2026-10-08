@@ -86,3 +86,29 @@ export async function sendGmailMessage(mailbox: string, raw: string): Promise<{ 
   logInfo("gmail_message_sent", { mailbox, id: body.id });
   return { id: body.id, threadId: body.threadId };
 }
+
+// Szkic odpowiedzi z panelu (wniosek 44): zapis jako szkic w skrzynce
+// `mailbox` (kontakt@). draftId podany → aktualizacja istniejącego szkicu,
+// inaczej nowy; threadId → szkic jako odpowiedź w wątku klientki. Zakres
+// gmail.compose (ten sam co szkice faktur). Panel nie wysyła.
+export class GmailDraftGone extends Error {
+  constructor() {
+    super("Szkic nie istnieje już w Gmailu (wysłany albo usunięty).");
+  }
+}
+
+export async function saveGmailDraft(input: { mailbox: string; draftId?: string | null; threadId?: string | null; raw: string }): Promise<{ draftId: string; messageId: string; threadId: string }> {
+  const accessToken = await getAccessToken(GMAIL_COMPOSE_SCOPE, input.mailbox);
+  const message = { raw: base64url(input.raw), ...(input.threadId ? { threadId: input.threadId } : {}) };
+  const url = input.draftId ? `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(input.draftId)}` : "https://gmail.googleapis.com/gmail/v1/users/me/drafts";
+  const res = await fetch(url, {
+    method: input.draftId ? "PUT" : "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(input.draftId ? { id: input.draftId, message } : { message }),
+  });
+  const body = await res.json().catch(() => null);
+  if (res.status === 404 && input.draftId) throw new GmailDraftGone();
+  if (!res.ok || !body?.id) throw new Error(body?.error?.message || `Gmail API zwróciło błąd (HTTP ${res.status}).`);
+  logInfo("gmail_reply_draft_saved", { mailbox: input.mailbox, draftId: body.id, update: Boolean(input.draftId) });
+  return { draftId: body.id, messageId: body.message?.id ?? "", threadId: body.message?.threadId ?? input.threadId ?? "" };
+}

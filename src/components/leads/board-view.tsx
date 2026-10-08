@@ -364,6 +364,11 @@ export function BoardView({
                               <span className="cursor-help">📋{r.tasks.count > 1 ? r.tasks.count : ""}</span>
                             </Tip>
                           )}
+                          {r.mailDraft && (
+                            <Tip label="Odpowiedź mailowa" lines={[r.mailDraft === "SZKIC_GMAIL" ? "Szkic zapisany w Gmailu — czeka na wysłanie" : "Jest propozycja odpowiedzi — sprawdź i zapisz szkic w Gmailu"]}>
+                              <span className={`cursor-help ${r.mailDraft === "SZKIC_GMAIL" ? "text-[#2F7A68]" : "text-[#B8612F]"}`}>✉</span>
+                            </Tip>
+                          )}
                           {r.attempts > 0 && <Dots attempts={r.attempts} />}
                         </span>
                       </div>
