@@ -1318,6 +1318,14 @@ model Lead {
   @@index([nextActionAt])
   @@index([callList])
   @@index([archivedAt])
+  // Kto / co ustawił etap i krok (wniosek 47): USER, OUTCOME, TASK, PROPOSAL albo
+  // AUTO_* (formularz, maile, wynajem, wiosna…) — patrz lib/leads/set-source.ts.
+  stageSource     String?        @db.VarChar(24)
+  stageSourceById String?        @db.VarChar(191)
+  stageSourceAt   DateTime?
+  stepSource      String?        @db.VarChar(24)
+  stepSourceById  String?        @db.VarChar(191)
+  stepSourceAt    DateTime?
   emailDrafts     LeadEmailDraft[]
   @@map("leads")
 }

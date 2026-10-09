@@ -3,25 +3,26 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { LeadDetail } from "@/lib/leads/load";
-import { ACTIVITY_LABEL, LOST_REASON_LABEL, POSTPONE_REASON_LABEL, STAGE_LABEL, TYPE_LABEL, type ActivityTypeKey, type LostReasonKey, type PostponeReasonKey } from "@/lib/leads/labels";
-import { FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, NO_ANSWER_LIMIT, OPEN_STAGES, ROT_DAYS_OFFER, ROT_WORK_DAYS_CONTACT, funnelFromRow, rotInfo, workDurationLabel, type FunnelLead, type NextStepType } from "@/lib/leads/funnel";
-import { workHoursBetween } from "@/lib/leads/work-time";
+import { ACTIVITY_LABEL, STAGE_LABEL, TYPE_LABEL, type ActivityTypeKey, type LostReasonKey } from "@/lib/leads/labels";
+import { FIRST_CONTACT_SLA_HOURS, NO_ANSWER_LIMIT, OPEN_STAGES, ROT_DAYS_OFFER, ROT_WORK_DAYS_CONTACT, funnelFromRow, rotInfo, type FunnelLead } from "@/lib/leads/funnel";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { DEVICE_INTEREST_KEYS, formatPhone, type DeviceInterestKey } from "@/lib/clients/labels";
-import { addWorkdays, nextWorkday } from "@/lib/leads/work-time";
+import { nextWorkday } from "@/lib/leads/work-time";
 import { applySmsPlaceholders } from "@/lib/sms-template";
 import { INPUT, api } from "@/components/clients/client-forms";
 import { CalendarPlusIcon, PencilIcon, PhoneIcon, SmsIcon, StatusChip, fmtAgo, fmtDate } from "@/components/clients/ui";
 import { EmailViewer } from "@/components/clients/email-viewer";
 import { ArchiveDialog } from "@/components/porzadki/archive-dialog";
 import { BTN, BTN_PRIMARY, LostDialog } from "./lead-dialogs";
-import { StageChip, TaskIcon, fmtRange, fmtWhen } from "./lead-ui";
+import { StageChip, fmtRange, fmtWhen } from "./lead-ui";
 import { Dots } from "./funnel-views";
 import { StageTip } from "./stage-tip";
 import { RentalPicker } from "./rental-picker";
 import { OpenTasks } from "@/components/open-tasks";
 import { LeadAttribution } from "@/components/leads/lead-attribution";
 import { LeadMailDraft } from "@/components/leads/lead-mail-draft";
+import { LeadStepBlock } from "@/components/leads/lead-step-block";
+import { stageEffectText } from "@/lib/leads/step-edit";
 import { CallOutcomeDialog } from "./call-outcome-dialog";
 import type { Playbook } from "@/lib/leads/playbook";
 
@@ -29,18 +30,25 @@ import type { Playbook } from "@/lib/leads/playbook";
 // akcje na górze, zawsze widoczne; pod nimi następny krok, rezerwacja, dane
 // z formularza i oś czasu (sygnał + inne aktywności tego klienta).
 
-export type CardIntent = "call" | "sms" | "postpone" | "link" | null;
+export type CardIntent = "call" | "sms" | "postpone" | "link" | "mail" | null;
 type Panel = "sms" | "note" | "task" | null;
 type Template = { id: string; key: string; label: string; body: string };
 
 const LABEL = "flex flex-col gap-1 text-xs font-medium text-[var(--c-muted)]";
-// INPUT bez w-full — do pól daty o stałej szerokości w jednym wierszu z tekstem.
-const DATE_INPUT = `${INPUT.replace("w-full", "")} h-8 w-[150px]`;
 const toDay = (d: Date | string | null) => {
   if (!d) return "";
   const x = new Date(d);
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
 };
+
+function MailIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </svg>
+  );
+}
 
 const ACTIVITY_TONE: Record<ActivityTypeKey, { bg: string; fg: string; mark: string }> = {
   CALL: { bg: "var(--c-green-soft)", fg: "var(--c-green-deep)", mark: "R" },
@@ -104,7 +112,8 @@ export function LeadCard({
   // Wniosek 24/27: okno „Wynik rozmowy” (postpone = „Odłóż do…” z Tablicy),
   // „Zmień termin”, „Powiąż z wynajmem”, podpowiedź zwinięta do żarówki.
   const [outcome, setOutcome] = useState<false | true | "postpone">(!agent && (intent === "call" || intent === "postpone") ? (intent === "postpone" ? "postpone" : true) : false);
-  const [reschedule, setReschedule] = useState(false);
+  // Wniosek 47: „Mail” w nagłówku i „Przygotuj ofertę” w Podpowiedzi otwierają sekcję „Odpowiedź mailowa”.
+  const [mailSignal, setMailSignal] = useState<{ nonce: number; kind: "open" | "offer" } | null>(intent === "mail" ? { nonce: 1, kind: "open" } : null);
   const [linking, setLinking] = useState(intent === "link");
   const [tipOpen, setTipOpen] = useState<boolean | null>(null);
   const [freeDates, setFreeDates] = useState<string[] | null>(null);
@@ -149,7 +158,7 @@ export function LeadCard({
   }, [toast]);
 
   // Każda akcja zwraca świeży stan karty; lista odświeża się w tle.
-  async function run(path: string, method: string, body: unknown, success: string): Promise<boolean> {
+  async function run(path: string, method: string, body: unknown, success: string | ((d: LeadDetail) => string)): Promise<boolean> {
     setBusy(true);
     const { ok, data } = await api<LeadDetail>(path, method, body);
     setBusy(false);
@@ -158,11 +167,11 @@ export function LeadCard({
       return false;
     }
     setD(data);
-    setToast({ text: success });
+    setToast({ text: typeof success === "function" ? success(data) : success });
     onChanged();
     return true;
   }
-  const patch = (body: Record<string, unknown>, success = "Zapisano.") => run(`/api/leads/${leadId}`, "PATCH", body, success);
+  const patch = (body: Record<string, unknown>, success: string | ((d: LeadDetail) => string) = "Zapisano.") => run(`/api/leads/${leadId}`, "PATCH", body, success);
 
   // „Przenieś do klientów” (kwalifikacja kontaktu z zapytania) — potem
   // świeży stan karty sygnału.
@@ -256,7 +265,7 @@ export function LeadCard({
           />
         )}
         <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
-          <span title={stageAgeText(d)}>
+          <span title={[stageAgeText(d), d.stageSetText].filter(Boolean).join(" · ")} tabIndex={0}>
             <StageChip stage={d.stage} />
           </span>
           {d.clientId && !d.clientQualified ? (
@@ -287,11 +296,14 @@ export function LeadCard({
           ) : (
             <span className="text-[var(--c-faint)]">bez telefonu</span>
           )}
-          {d.email && (
-            <a href={`mailto:${d.email}`} className="min-w-0 truncate text-[var(--c-brand)] hover:underline">
-              {d.email}
-            </a>
-          )}
+          {d.email &&
+            (agent ? (
+              <span className="min-w-0 truncate text-[var(--c-brand)]">{d.email}</span>
+            ) : (
+              <button type="button" onClick={() => setMailSignal({ nonce: Date.now(), kind: "open" })} className="min-w-0 truncate text-left text-[var(--c-brand)] hover:underline" title="Otwórz sekcję „Odpowiedź mailowa”">
+                {d.email}
+              </button>
+            ))}
           {(d.city || ci?.distanceKm != null) && <span className="text-[var(--c-muted)]">{[d.city, ci?.distanceKm != null ? `${Math.round(ci.distanceKm)} km` : null].filter(Boolean).join(" · ")}</span>}
           <span className="text-[var(--c-muted)]">prowadzi: {d.ownerName ?? "—"}</span>
         </div>
@@ -300,28 +312,37 @@ export function LeadCard({
             <b className="font-semibold">Nie kontaktować.</b> Klient ma blokadę — sprawdź kartę klienta przed telefonem.
           </p>
         )}
-        {!agent && (
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {phone && (
-              <a href={`tel:${phone}`} className={ACTION_PRIMARY}>
-                <PhoneIcon size={14} /> Zadzwoń
-              </a>
-            )}
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {!agent && phone && (
+            <a href={`tel:${phone}`} className={ACTION_PRIMARY}>
+              <PhoneIcon size={14} /> Zadzwoń
+            </a>
+          )}
+          {!agent && (
             <button type="button" disabled={!phone} className={ACTION} onClick={() => setPanel(panel === "sms" ? null : "sms")}>
               <SmsIcon size={14} /> SMS
             </button>
-<a
-              href={d.email || draft?.to ? `mailto:${draft?.to ?? d.email}?subject=${encodeURIComponent(draft?.subject ?? "Wynajem urządzenia")}&body=${encodeURIComponent(draft?.body ?? "")}` : undefined}
-              aria-disabled={!d.email && !draft?.to}
-              className={`${ACTION} ${d.email || draft?.to ? "" : "pointer-events-none opacity-40"}`}
-              title="Szkic maila z ofertą (wolne terminy, cena)"
-            >
-              ✉ Szkic maila
-            </a>
+          )}
+          {!agent && (
+            <button type="button" className={ACTION} onClick={() => setMailSignal({ nonce: Date.now(), kind: "open" })} title="Odpowiedź mailowa: szkic do poprawienia i zapisu w Gmailu">
+              <MailIcon /> Mail
+            </button>
+          )}
+          <button type="button" className={ACTION} onClick={() => setPanel(panel === "note" ? null : "note")} aria-expanded={panel === "note"}>
+            <PencilIcon /> Notatka
+          </button>
+          {!agent && (
             <Link href={`/kalendarz/wynajem/nowy?${new URLSearchParams({ ...(d.requestedFrom ? { date: toDay(d.requestedFrom) } : {}), sygnal: d.id }).toString()}`} className={ACTION}>
               <CalendarPlusIcon /> Rezerwacja
             </Link>
-          </div>
+          )}
+        </div>
+        {panel === "note" && (
+          <NoteBox
+            busy={busy}
+            onCancel={() => setPanel(null)}
+            onSave={async (body) => (await run(`/api/leads/${leadId}/activity`, "POST", { outcome: "note", body }, "Zapisano notatkę.")) && setPanel(null)}
+          />
         )}
       </div>
 
@@ -352,70 +373,14 @@ export function LeadCard({
           </div>
         )}
 
-        {/* 2. Następny krok (wyróżniony) */}
-        <div className="flex flex-col gap-2 border-l-[3px] border-[#1B6FA8] bg-[#EAF4FB] px-3 py-2.5">
-          <span className="text-[10.5px] uppercase tracking-[0.12em] text-[#5C6166]">Następny krok</span>
-          {d.stage === "WYGRANA" || d.stage === "PRZEGRANA" ? (
-            <span className="text-[13px] text-[var(--c-muted)]">
-              Sygnał zamknięty ({STAGE_LABEL[d.stage].toLowerCase()})
-              {d.stage === "PRZEGRANA" && d.lostReason ? ` · ${LOST_REASON_LABEL[d.lostReason]}${d.lostNote ? ` — ${d.lostNote}` : ""}` : ""}
-            </span>
-          ) : d.stage === "ODLOZONE" ? (
-            <span className="text-[13px] text-[#6B5B3E]">
-              Odłożone do <b className="font-semibold">{d.returnAt ? new Date(d.returnAt).toLocaleDateString("pl-PL") : "—"}</b>
-              {d.postponeReason ? ` · ${POSTPONE_REASON_LABEL[d.postponeReason as PostponeReasonKey] ?? d.postponeReason}` : ""} — w dniu powrotu wraca do „Na dziś”.
-            </span>
-          ) : d.nextActionAt ? (
-            <span className="text-[13.5px] text-[#0C3450]">
-              <b className="font-semibold">{NEXT_STEP_LABEL[(d.nextStepType as NextStepType) ?? "INNE"] ?? d.nextStepType}</b>
-              {" · "}
-              <b className={`font-semibold ${new Date(d.nextActionAt) < new Date() ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>
-                {new Date(d.nextActionAt).toLocaleString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-              </b>
-              {d.nextStepNote && <span className="block text-[13px] text-[#2A3540]">{d.nextStepNote}</span>}
-            </span>
-          ) : (
-            <span className="text-[13px] text-[#B8612F]">brak — ustaw termin</span>
-          )}
-          <div className="flex flex-wrap gap-1.5">
-            {!agent && open && (
-              <button type="button" className={ACTION_PRIMARY} onClick={() => setOutcome(true)}>
-                Wynik rozmowy
-              </button>
-            )}
-            {!agent && d.stage !== "WYGRANA" && d.stage !== "PRZEGRANA" && (
-              <button type="button" className={ACTION} onClick={() => setReschedule((v) => !v)} aria-expanded={reschedule}>
-                Zmień termin
-              </button>
-            )}
-            <button type="button" className={ACTION} onClick={() => setPanel(panel === "note" ? null : "note")}>
-              <PencilIcon /> Notatka
-            </button>
-            <button type="button" className={ACTION} onClick={() => setPanel(panel === "task" ? null : "task")}>
-              <TaskIcon /> Zadanie
-            </button>
-          </div>
-          {reschedule && !agent && (
-            <div className="flex flex-wrap items-center gap-2">
-              <input type="date" className={DATE_INPUT} value={toDay(d.nextActionAt)} disabled={busy} onChange={(e) => void patch({ nextActionAt: e.target.value || null }, "Ustawiono następny krok.")} />
-              <button type="button" className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]" onClick={() => void patch({ nextActionAt: toDay(nextWorkday(new Date())) }, "Następny krok: jutro.")}>
-                jutro
-              </button>
-              <button type="button" className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]" onClick={() => void patch({ nextActionAt: toDay(addWorkdays(new Date(), 3)) }, "Następny krok: za 3 dni robocze.")}>
-                +3 dni rob.
-              </button>
-              {d.nextActionAt && (
-                <button type="button" className="ml-auto text-xs text-[var(--c-muted)] hover:text-[var(--c-red)]" onClick={() => void patch({ nextActionAt: null })}>
-                  wyczyść
-                </button>
-              )}
-              {!d.firstContactAt && (
-                <span className="w-full text-[12px] text-[var(--c-muted)]">
-                  czas na kontakt {FIRST_CONTACT_SLA_HOURS} h rob. (czeka {workDurationLabel(workHoursBetween(new Date(d.createdAt), new Date()))})
-                </span>
-              )}
-            </div>
-          )}
+        {/* 2. Następny krok (wniosek 47: wspólny blok z „Na dziś”) */}
+        <LeadStepBlock lead={d} readOnly={agent} busy={busy} onPatch={(body, success) => patch(body, success ?? "Zapisano.")} onOutcome={() => setOutcome(true)} />
+        {d.openTasks.length > 0 && <OpenTasks tasks={d.openTasks} />}
+        <div className="-mt-1 flex items-center gap-2 text-[12.5px] text-[var(--c-muted)]">
+          {d.openTasks.length === 0 && <span>Zadania: brak</span>}
+          <button type="button" className="font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]" onClick={() => setPanel(panel === "task" ? null : "task")}>
+            + Zadanie
+          </button>
         </div>
         {panel === "sms" && phone && (
           <SmsBox
@@ -428,13 +393,6 @@ export function LeadCard({
             onSend={async (message) => (await run(`/api/leads/${leadId}/sms`, "POST", { phone, message }, "SMS wysłany.")) && setPanel(null)}
           />
         )}
-        {panel === "note" && (
-          <NoteBox
-            busy={busy}
-            onCancel={() => setPanel(null)}
-            onSave={async (body) => (await run(`/api/leads/${leadId}/activity`, "POST", { outcome: "note", body }, "Zapisano notatkę.")) && setPanel(null)}
-          />
-        )}
         {panel === "task" && (
           <TaskBox
             users={users}
@@ -445,67 +403,6 @@ export function LeadCard({
             onSave={async (body) => (await run(`/api/leads/${leadId}/task`, "POST", body, "Dodano zadanie — termin kroku sygnału ten sam.")) && setPanel(null)}
           />
         )}
-        {d.openTasks.length > 0 && <OpenTasks tasks={d.openTasks} />}
-
-        {/* 3. Czego chce · Historia */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Section
-            title="Czego chce"
-            action={
-              !editing &&
-              !agent && (
-                <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
-                  Edytuj
-                </button>
-              )
-            }
-          >
-            {editing ? (
-              <LeadForm d={d} busy={busy} onCancel={() => setEditing(false)} onSave={async (body) => (await patch(body, "Zapisano zgłoszenie.")) && setEditing(false)} />
-            ) : (
-              <div className="flex flex-col gap-1 text-[13px]">
-                <span>
-                  {devices.length ? devices.map((x) => LEAD_DEVICE_LABEL[x]).join(", ") : "urządzenie —"}
-                  {!d.devices.length && devices.length ? <span className="text-[var(--c-muted)]"> (z historii)</span> : null}
-                </span>
-                <span className="text-[var(--c-muted)]">
-                  {d.requestedFrom ? fmtRange(d.requestedFrom, d.requestedDays) : "termin —"}
-                  {d.requestedDays ? ` · ${d.requestedDays} ${d.requestedDays === 1 ? "dzień" : "dni"}` : ""}
-                </span>
-                {freeDates && freeDates.length > 0 && <span className="text-[#2F7A68]">wolne: {freeDates.join(", ")}</span>}
-                {d.person && d.person !== d.clientName && <span className="text-[var(--c-muted)]">osoba: {d.person}</span>}
-                {d.message && <span className="whitespace-pre-line text-[var(--c-muted)]">„{d.message}”</span>}
-              </div>
-            )}
-          </Section>
-          <Section title="Historia">
-            <div className="flex flex-col gap-1 text-[13px]">
-              {ci && ci.arrivals > 0 ? (
-                <>
-                  <span>
-                    {ci.arrivals} {ci.arrivals === 1 ? "przyjazd" : ci.arrivals < 5 ? "przyjazdy" : "przyjazdów"}
-                    {ci.rhythm ? ` · ${ci.rhythm}` : ""}
-                  </span>
-                  {ci.lastRentalAt && (
-                    <span className="text-[var(--c-muted)]">
-                      ostatni {fmtDate(ci.lastRentalAt)}
-                      {ci.lastDevice ? ` · ${ci.lastDevice}` : ""}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span className="text-[var(--c-muted)]">bez wynajmów</span>
-              )}
-              {lastOffer && <span className="text-[var(--c-muted)]">ostatnia oferta {fmtDate(lastOffer.at)}</span>}
-              {d.otherLeads.map((l) => (
-                <Link key={l.id} href={`/sygnaly?id=${l.id}`} className="flex items-center gap-2 text-[12.5px] hover:text-[var(--c-brand-deep)]">
-                  <StageChip stage={l.stage} />
-                  <span className="truncate">{l.title}</span>
-                </Link>
-              ))}
-            </div>
-          </Section>
-        </div>
 
         {/* Odpowiedź mailowa (wniosek 44): notatka + rozwijany szkic, zapis szkicu w Gmailu */}
         <LeadMailDraft
@@ -514,6 +411,7 @@ export function LeadCard({
           defaultTo={d.email}
           lastInbound={d.lastInboundEmail}
           offer={draft}
+          signal={mailSignal}
           readOnly={agent}
           onDraft={(nd) => {
             setD((cur) => (cur ? { ...cur, emailDraft: nd, mailDraft: nd && (nd.status === "PROPOZYCJA" || nd.status === "SZKIC_GMAIL") ? nd.status : null } : cur));
@@ -577,6 +475,66 @@ export function LeadCard({
           )}
         </Section>
 
+        {/* 3. Czego chce · Historia */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Section
+            title="Czego chce"
+            action={
+              !editing &&
+              !agent && (
+                <button type="button" onClick={() => setEditing(true)} className="text-xs font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+                  Edytuj
+                </button>
+              )
+            }
+          >
+            {editing ? (
+              <LeadForm d={d} busy={busy} onCancel={() => setEditing(false)} onSave={async (body) => (await patch(body, "Zapisano zgłoszenie.")) && setEditing(false)} />
+            ) : (
+              <div className="flex flex-col gap-1 text-[13px]">
+                <span>
+                  {devices.length ? devices.map((x) => LEAD_DEVICE_LABEL[x]).join(", ") : "urządzenie —"}
+                  {!d.devices.length && devices.length ? <span className="text-[var(--c-muted)]"> (z historii)</span> : null}
+                </span>
+                <span className="text-[var(--c-muted)]">
+                  {d.requestedFrom ? fmtRange(d.requestedFrom, d.requestedDays) : "termin —"}
+                  {d.requestedDays ? ` · ${d.requestedDays} ${d.requestedDays === 1 ? "dzień" : "dni"}` : ""}
+                </span>
+                {freeDates && freeDates.length > 0 && <span className="text-[#2F7A68]">wolne: {freeDates.join(", ")}</span>}
+                {d.person && d.person !== d.clientName && <span className="text-[var(--c-muted)]">osoba: {d.person}</span>}
+                {d.message && <span className="whitespace-pre-line text-[var(--c-muted)]">„{d.message}”</span>}
+              </div>
+            )}
+          </Section>
+          <Section title="Historia">
+            <div className="flex flex-col gap-1 text-[13px]">
+              {ci && ci.arrivals > 0 ? (
+                <>
+                  <span>
+                    {ci.arrivals} {ci.arrivals === 1 ? "przyjazd" : ci.arrivals < 5 ? "przyjazdy" : "przyjazdów"}
+                    {ci.rhythm ? ` · ${ci.rhythm}` : ""}
+                  </span>
+                  {ci.lastRentalAt && (
+                    <span className="text-[var(--c-muted)]">
+                      ostatni {fmtDate(ci.lastRentalAt)}
+                      {ci.lastDevice ? ` · ${ci.lastDevice}` : ""}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="text-[var(--c-muted)]">bez wynajmów</span>
+              )}
+              {lastOffer && <span className="text-[var(--c-muted)]">ostatnia oferta {fmtDate(lastOffer.at)}</span>}
+              {d.otherLeads.map((l) => (
+                <Link key={l.id} href={`/sygnaly?id=${l.id}`} className="flex items-center gap-2 text-[12.5px] hover:text-[var(--c-brand-deep)]">
+                  <StageChip stage={l.stage} />
+                  <span className="truncate">{l.title}</span>
+                </Link>
+              ))}
+            </div>
+          </Section>
+        </div>
+
         {/* Skąd przyszło (wniosek 41) — zwijana, tylko dla zgłoszeń z formularza WWW z danymi */}
         <LeadAttribution attribution={d.attribution} />
 
@@ -622,6 +580,7 @@ export function LeadCard({
                 playbook={playbook}
                 smsText={phone && noAnswerTpl ? applySmsPlaceholders(noAnswerTpl.body, { clientName: d.clientName ?? d.person }) : null}
                 canAct={!agent}
+                onPrepareOffer={() => setMailSignal({ nonce: Date.now(), kind: "offer" })}
                 onSendSms={(message) => run(`/api/leads/${leadId}/sms`, "POST", { phone, message }, "SMS wysłany.")}
               />
             </div>
@@ -640,9 +599,10 @@ export function LeadCard({
             onPick={(stage) => {
               if (stage === "PRZEGRANA") setLost({});
               else if (stage === "ODLOZONE") setOutcome("postpone");
-              else void patch({ stage }, `Etap: ${STAGE_LABEL[stage]}.`);
+              else void patch({ stage }, (nd) => stageEffectText(STAGE_LABEL[stage], { type: nd.nextStepType, at: nd.nextActionAt }, new Date()));
             }}
           />
+          {d.stageSetText && <p className="m-0 text-[11.5px] text-[var(--c-muted)]">{d.stageSetText}</p>}
           <label className={`${LABEL} flex-row items-center gap-2`}>
             Prowadzi
             <select className={`${INPUT} h-8 w-auto cursor-pointer`} value={d.ownerId ?? ""} disabled={busy || agent} onChange={(e) => void patch({ ownerId: e.target.value || null })}>

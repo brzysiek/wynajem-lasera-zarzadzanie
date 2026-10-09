@@ -1,3 +1,4 @@
+import { stageSet, stepSet } from "@/lib/leads/set-source";
 import { prisma } from "@/lib/prisma";
 import { logError, logInfo } from "@/lib/logger";
 import { normalizePolishPhone } from "@/lib/reminders";
@@ -44,7 +45,7 @@ export async function syncLeadsWithRentals(now = new Date()): Promise<{ linked: 
   });
   for (const l of done) {
     await prisma.$transaction([
-      prisma.lead.update({ where: { id: l.id }, data: { stage: "WYGRANA", stageChangedAt: now, nextActionAt: null, nextStepType: null, nextStepNote: null } }),
+      prisma.lead.update({ where: { id: l.id }, data: { stage: "WYGRANA", stageChangedAt: now, nextActionAt: null, nextStepType: null, nextStepNote: null, ...stageSet("AUTO_RENTAL", null, now), ...stepSet("AUTO_RENTAL", null, now) } }),
       prisma.leadActivity.create({ data: { leadId: l.id, clientId: l.clientId, type: "STAGE_CHANGE", body: `Rezerwacja → Wygrana · wynajem zrealizowany (${l.rental!.device.name} ${fmt(l.rental!.startsAt)})` } }),
     ]);
     won++;
@@ -80,11 +81,12 @@ export async function syncLeadsWithRentals(now = new Date()): Promise<{ linked: 
           where: { id: l.id },
           data: {
             rentalId: r.id,
-            ...(l.stage !== "REZERWACJA" ? { stage: "REZERWACJA", stageChangedAt: now } : {}),
+            ...(l.stage !== "REZERWACJA" ? { stage: "REZERWACJA", stageChangedAt: now, ...stageSet("AUTO_RENTAL", null, now) } : {}),
             ...(l.stage === "ODLOZONE" ? { returnAt: null, postponeReason: null } : {}),
             nextActionAt: null,
             nextStepType: null,
             nextStepNote: "po wynajmie → Wygrana",
+            ...stepSet("AUTO_RENTAL", null, now),
           },
         }),
         prisma.leadActivity.create({
@@ -142,7 +144,7 @@ export async function reviveReturningLeads(now = new Date()): Promise<number> {
     await prisma.$transaction([
       prisma.lead.update({
         where: { id: l.id },
-        data: { stage: "WYWIAD", stageChangedAt: now, returnAt: null, nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: `wraca z odłożonych${why ? ` (${why})` : ""} — zapytać o decyzję` },
+        data: { stage: "WYWIAD", stageChangedAt: now, returnAt: null, nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: `wraca z odłożonych${why ? ` (${why})` : ""} — zapytać o decyzję`, ...stageSet("AUTO_RULE", null, now), ...stepSet("AUTO_RULE", null, now) },
       }),
       prisma.leadActivity.create({ data: { leadId: l.id, clientId: l.clientId, type: "STAGE_CHANGE", body: `Odłożone → W kontakcie · powrót ${fmt(l.returnAt!)}${why ? ` (${why})` : ""}` } }),
     ]);
@@ -154,7 +156,7 @@ async function releaseLead(leadId: string, clientId: string | null, body: string
   await prisma.$transaction([
     prisma.lead.update({
       where: { id: leadId },
-      data: { rentalId: null, stage: "OFERTA", stageChangedAt: now, nextActionAt: nextWorkdayAt10(now), nextStepType: "DOPYTAC", nextStepNote: "wynajem anulowany — dopytać" },
+      data: { rentalId: null, stage: "OFERTA", stageChangedAt: now, nextActionAt: nextWorkdayAt10(now), nextStepType: "DOPYTAC", nextStepNote: "wynajem anulowany — dopytać", ...stageSet("AUTO_RENTAL", null, now), ...stepSet("AUTO_RENTAL", null, now) },
     }),
     prisma.leadActivity.create({ data: { leadId, clientId, type: "STAGE_CHANGE", body } }),
   ]);

@@ -6,12 +6,16 @@ import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { MAIL_AUTOMATION_MAX_AGE_DAYS, isOfferMail, planMailForLead } from "@/lib/leads/mail-rules";
 import { autoMailGmailIds } from "@/lib/leads/auto-mail";
+import { stageSet, stepSet, type SourceCode } from "@/lib/leads/set-source";
 
 // Lejek v2, etap V3 — automaty z Gmaila (wołane po zapisie nowych maili w
 // src/lib/gmail/sync.ts): mail z kontakt@ / od klientki przesuwa jej otwarty
 // sygnał (tylko do przodu), mail z ofertą bez sygnału zakłada sygnał „Oferta
 // wysłana”, odbity mail → zadanie „potwierdź adres”. Treści maili nie
 // zapisujemy — tylko temat.
+
+// Źródło zmiany z treści wpisu planu (planMailForLead): oferta / od klientki / wysłany.
+const mailSource = (activity: string): SourceCode => (activity.startsWith("auto · mail z ofertą") ? "AUTO_MAIL_OFFER" : activity.startsWith("auto · mail od klientki") ? "AUTO_MAIL_IN" : "AUTO_MAIL_OUT");
 
 const LIVE = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "ODLOZONE"] as const;
 
@@ -64,6 +68,8 @@ export async function applyMailToLeads(rows: MailRow[], now = new Date()): Promi
           nextStepNote: "follow-up 1 z 2",
           followUpNo: 1,
           sourceRef,
+          ...stageSet("AUTO_MAIL_OFFER", null, offer.sentAt),
+          ...stepSet("AUTO_MAIL_OFFER", null, offer.sentAt),
           activities: { create: { clientId, type: "SYSTEM", body: `auto · mail z ofertą z kontakt@ („${offer.subject ?? ""}”) bez sygnału → Oferta wysłana` } },
         },
       });
@@ -82,8 +88,8 @@ export async function applyMailToLeads(rows: MailRow[], now = new Date()): Promi
           data: {
             lastContactAt: plan.lastContactAt,
             ...(plan.firstContactAt ? { firstContactAt: plan.firstContactAt } : {}),
-            ...(stageChange ? { stage: stageChange, stageChangedAt: m.sentAt, attempts: 0 } : {}),
-            ...(plan.nextActionAt ? { nextActionAt: plan.nextActionAt, nextStepType: plan.nextStepType, nextStepNote: plan.nextStepNote } : {}),
+            ...(stageChange ? { stage: stageChange, stageChangedAt: m.sentAt, attempts: 0, ...stageSet(mailSource(plan.activity), null, m.sentAt) } : {}),
+            ...(plan.nextActionAt ? { nextActionAt: plan.nextActionAt, nextStepType: plan.nextStepType, nextStepNote: plan.nextStepNote, ...stepSet(mailSource(plan.activity), null, m.sentAt) } : {}),
             ...(plan.followUpNo ? { followUpNo: plan.followUpNo } : {}),
           },
         }),
@@ -117,7 +123,7 @@ export async function handleBounces(addresses: string[], now = new Date()): Prom
     if (await prisma.task.count({ where: { leadId: lead.id, title, status: "OPEN" } })) continue;
     await prisma.$transaction([
       prisma.task.create({ data: { title, notes: `Sygnał: ${lead.title}. Mail na ten adres wrócił jako niedoręczony — zadzwoń i potwierdź adres.`, dueDate: now, assigneeId: lead.ownerId ?? (await defaultLeadOwnerId()), leadId: lead.id, clientId: lead.clientId } }),
-      prisma.lead.update({ where: { id: lead.id }, data: { nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: "mail nie doszedł — potwierdź adres e-mail" } }),
+      prisma.lead.update({ where: { id: lead.id }, data: { nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: "mail nie doszedł — potwierdź adres e-mail", ...stepSet("AUTO_MAIL_BOUNCE", null, now) } }),
       prisma.leadActivity.create({ data: { leadId: lead.id, clientId: lead.clientId, type: "SYSTEM", body: `auto · mail na ${email} nie doszedł — zadanie „potwierdź adres”` } }),
     ]);
     tasks++;

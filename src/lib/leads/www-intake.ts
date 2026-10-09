@@ -10,6 +10,7 @@ import { leadTitle } from "@/lib/leads/parse-deal";
 import { TYPE_LABEL } from "@/lib/leads/labels";
 import { contentKey, type WwwForm } from "@/lib/leads/www-form";
 import { logError } from "@/lib/logger";
+import { stageSet, stepSet } from "@/lib/leads/set-source";
 
 // Formularz WWW → sygnał (03.10.2026). Te same zasady co import z HubSpota
 // (hubspot-sync.ts: createLeadFromDeal): klient po e-mailu, potem telefonie;
@@ -130,6 +131,8 @@ export async function intakeWwwForm(form: WwwForm, now = new Date()): Promise<Ww
         contactEmail: email,
         createdAt: now,
         ...funnel,
+        ...stageSet("AUTO_FORM", null, now),
+        ...stepSet("AUTO_FORM", null, now),
       },
       select: { id: true },
     });

@@ -3,6 +3,7 @@ import { STAGE_LABEL, TYPE_LABEL } from "@/lib/leads/labels";
 import type { LeadStageKey, LeadTypeKey } from "@/lib/leads/parse-deal";
 import { stepForStage } from "@/lib/leads/funnel";
 import { qualifyClient } from "@/lib/clients/qualify";
+import { stageSet, stepSet } from "@/lib/leads/set-source";
 
 // Lejek v2, etap V3 — reguły przy nowym zapytaniu (import z HubSpota i
 // sygnał z panelu), lejek-v2 3.3:
@@ -69,8 +70,8 @@ export async function mergeRepeatInquiry(
       where: { id: target.id },
       data: {
         ...fill,
-        ...(back ? { stage: "WYWIAD", stageChangedAt: now, returnAt: null } : {}),
-        ...(pull ? { nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: "ponowne zapytanie — oddzwonić" } : {}),
+        ...(back ? { stage: "WYWIAD", stageChangedAt: now, returnAt: null, ...stageSet("AUTO_REPEAT", null, now) } : {}),
+        ...(pull ? { nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: "ponowne zapytanie — oddzwonić", ...stepSet("AUTO_REPEAT", null, now) } : {}),
       },
     }),
     prisma.leadActivity.create({
@@ -118,7 +119,7 @@ export async function takeOverFromDuplicates(archivedIds: string[]): Promise<num
         where: { id: s.id },
         data: {
           // Data wejścia w etap (np. data oferty) z duplikatu, nie dzień scalenia.
-          ...(higher ? { stage, stageChangedAt: a.stageChangedAt, ...(a.stage === "ODLOZONE" ? { returnAt: a.returnAt, postponeReason: a.postponeReason } : {}) } : {}),
+          ...(higher ? { stage, stageChangedAt: a.stageChangedAt, ...stageSet("AUTO_TAKEOVER"), ...(a.stage === "ODLOZONE" ? { returnAt: a.returnAt, postponeReason: a.postponeReason } : {}) } : {}),
           firstContactAt: min(s.firstContactAt, a.firstContactAt),
           lastContactAt: max(s.lastContactAt, a.lastContactAt),
           attempts: Math.max(s.attempts, a.attempts),
@@ -126,6 +127,7 @@ export async function takeOverFromDuplicates(archivedIds: string[]): Promise<num
           nextActionAt: step.at,
           nextStepType: stepForStage(stage as LeadStageKey, step.type),
           nextStepNote: step.note,
+          ...(takeStep ? stepSet("AUTO_TAKEOVER") : {}),
           ...(moveRental ? { rentalId: a.rentalId } : {}),
         },
       }),

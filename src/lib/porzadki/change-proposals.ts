@@ -1,3 +1,4 @@
+import { stepSet } from "@/lib/leads/set-source";
 import { prisma } from "@/lib/prisma";
 import { normalizePolishPhone } from "@/lib/reminders";
 import { parseClientPatch, parseContactInput } from "@/lib/clients/validate";
@@ -401,7 +402,7 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
     // Krok niezgodny z etapem (np. „pierwszy kontakt” w „W kontakcie”) — wg etapu.
     const stepType = l ? (stepForStage(moveTo ?? l.stage, v.stepType) ?? v.stepType) : v.stepType;
     await prisma.$transaction([
-      prisma.lead.update({ where: { id: p.leadId! }, data: { nextActionAt: at, nextStepType: stepType, nextStepNote: v.note } }),
+      prisma.lead.update({ where: { id: p.leadId! }, data: { nextActionAt: at, nextStepType: stepType, nextStepNote: v.note, ...stepSet("PROPOSAL") } }),
       prisma.leadActivity.create({
         data: { leadId: p.leadId!, clientId: l?.clientId ?? null, type: "SYSTEM", body: `Następny krok (propozycja agenta): ${NEXT_STEP_LABEL[stepType as NextStepType] ?? stepType}, ${at.toLocaleString("pl-PL")}${v.note ? ` — ${v.note}` : ""}`, userId: actor.userId || null },
       }),

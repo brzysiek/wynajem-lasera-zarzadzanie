@@ -7,6 +7,7 @@ import { stepForStage, FIRST_CONTACT_SLA_HOURS, NEXT_STEP_LABEL, addWorkHours, p
 import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { intakeRules } from "@/lib/leads/intake";
+import { stageSet, stepSet, type SourceCode } from "@/lib/leads/set-source";
 import type { LeadPatch, NewLeadInput } from "@/lib/leads/validate";
 
 // Akcje na sygnałach z panelu (CRM, prompt 2A). Wszystko tylko w bazie
@@ -23,6 +24,8 @@ type Lead = {
   lastContactAt: Date | null;
   rentalId: string | null;
   nextStepType: string | null;
+  nextStepNote: string | null;
+  nextActionAt: Date | null;
   attempts: number;
   followUpNo: number;
 };
@@ -30,7 +33,7 @@ type Lead = {
 async function getLead(id: string): Promise<Lead> {
   const lead = await prisma.lead.findUnique({
     where: { id },
-    select: { id: true, title: true, stage: true, clientId: true, ownerId: true, firstContactAt: true, lastContactAt: true, rentalId: true, nextStepType: true, attempts: true, followUpNo: true },
+    select: { id: true, title: true, stage: true, clientId: true, ownerId: true, firstContactAt: true, lastContactAt: true, rentalId: true, nextStepType: true, nextStepNote: true, nextActionAt: true, attempts: true, followUpNo: true },
   });
   if (!lead) throw new LeadError("Sygnał nie istnieje.", 404);
   return lead;
@@ -48,11 +51,12 @@ export class LeadError extends Error {
 // Kto pierwszy zajmie się sygnałem, zostaje jego prowadzącą osobą.
 const claim = (lead: Lead, userId: string): Prisma.LeadUpdateInput => (lead.ownerId ? {} : { owner: { connect: { id: userId } } });
 
-function stageData(lead: Lead, stage: LeadStageKey): Prisma.LeadUpdateInput {
+function stageData(lead: Lead, stage: LeadStageKey, source: SourceCode = "USER", byId: string | null = null): Prisma.LeadUpdateInput {
   if (stage === lead.stage) return {};
   return {
     stage,
     stageChangedAt: new Date(),
+    ...stageSet(source, byId),
     // Wyjście z przegranej czyści powód — nie zostaje nieaktualny; wyjście z
     // odłożonych — datę i powód powrotu.
     ...(stage !== "PRZEGRANA" ? { lostReason: null, lostNote: null } : {}),
@@ -64,6 +68,8 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
   const lead = await getLead(id);
   const data: Prisma.LeadUpdateInput = {};
   const notes: string[] = [];
+  // Zmiany kroku (rodzaj, opis, termin) — osobne wpisy „Krok: …” / „termin: …” na osi czasu.
+  const stepNotes: string[] = [];
 
   // Wygrana tylko z wynajmem w kalendarzu (lejek, decyzja 5) — także z tablicy.
   if (patch.stage === "WYGRANA" && !lead.rentalId && !patch.rentalId) {
@@ -71,14 +77,15 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
   }
   if (patch.stage === "ODLOZONE" && lead.stage !== "ODLOZONE") throw new LeadError("Odłóż przez „Odłóż do…” — z datą powrotu i powodem.");
   if (patch.stage && patch.stage !== lead.stage) {
-    Object.assign(data, stageData(lead, patch.stage));
-    if (patch.stage === "WYGRANA" || patch.stage === "PRZEGRANA") Object.assign(data, { nextActionAt: null, nextStepType: null, nextStepNote: null });
+    Object.assign(data, stageData(lead, patch.stage, "USER", userId));
+    if (patch.stage === "WYGRANA" || patch.stage === "PRZEGRANA") Object.assign(data, { nextActionAt: null, nextStepType: null, nextStepNote: null, ...stepSet("USER", userId) });
     // Krok „pierwszy kontakt / ponowna próba” nie zostaje po wyjściu z Nowe.
     else if (stepForStage(patch.stage, lead.nextStepType) !== lead.nextStepType) {
       Object.assign(data, {
         nextStepType: stepForStage(patch.stage, lead.nextStepType),
         nextStepNote: patch.stage === "REZERWACJA" && !lead.rentalId && !patch.rentalId ? "połącz z wynajmem w kalendarzu" : null,
         attempts: 0,
+        ...stepSet("USER", userId),
       });
     }
     notes.push(`${STAGE_LABEL[lead.stage]} → ${STAGE_LABEL[patch.stage]}`);
@@ -96,7 +103,7 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
       if (!rental) throw new LeadError("Wynajem nie istnieje.");
       if (rental.lead && rental.lead.id !== id) throw new LeadError("Ten wynajem jest już powiązany z innym sygnałem.");
       data.rental = { connect: { id: rental.id } };
-      if (["SYGNAL", "WYWIAD", "OFERTA"].includes(lead.stage) && !patch.stage) Object.assign(data, stageData(lead, "REZERWACJA"));
+      if (["SYGNAL", "WYWIAD", "OFERTA"].includes(lead.stage) && !patch.stage) Object.assign(data, stageData(lead, "REZERWACJA", "AUTO_RENTAL"));
       notes.push(`Powiązano z rezerwacją: ${rental.device.name}, ${rental.startsAt.toLocaleDateString("pl-PL")}`);
       await qualifyClient(lead.clientId, "RENTAL");
     } else {
@@ -110,8 +117,22 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
   }
   if (patch.ownerId !== undefined) data.owner = patch.ownerId ? { connect: { id: patch.ownerId } } : { disconnect: true };
   // Ręcznie ustawiony termin bez rodzaju kroku = „kolejny krok”.
-  if (patch.nextActionAt !== undefined && patch.nextActionAt && !lead.nextStepType) data.nextStepType = "INNE";
+  if (patch.nextActionAt !== undefined && patch.nextActionAt && !lead.nextStepType && patch.nextStepType === undefined) data.nextStepType = "INNE";
+  // „Edytuj krok” (wniosek 47): rodzaj i opis kroku; zmiana ląduje na osi czasu.
+  const typeChanged = patch.nextStepType !== undefined && patch.nextStepType !== lead.nextStepType;
+  const noteChanged = patch.nextStepNote !== undefined && (patch.nextStepNote ?? null) !== (lead.nextStepNote ?? null);
+  if (typeChanged) data.nextStepType = patch.nextStepType;
   if (patch.nextStepNote !== undefined) data.nextStepNote = patch.nextStepNote;
+  const termChanged = patch.nextActionAt !== undefined && (patch.nextActionAt?.getTime() ?? null) !== (lead.nextActionAt?.getTime() ?? null);
+  // Krok ustawiony ręcznie (osoba) — podpis „ustawił: …”; zmiana etapu już go ustawiła wyżej.
+  if (typeChanged || noteChanged || termChanged) Object.assign(data, stepSet("USER", userId));
+  if (typeChanged || noteChanged) {
+    const type = (patch.nextStepType ?? lead.nextStepType) as NextStepType | null;
+    const note = patch.nextStepNote !== undefined ? patch.nextStepNote : lead.nextStepNote;
+    stepNotes.push(`Krok: ${type ? NEXT_STEP_LABEL[type] : "kolejny krok"}${note ? ` — ${note}` : ""}`);
+  }
+  const dayKey = (d: Date | null | undefined) => (d ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` : "");
+  if (termChanged && !patch.stage && dayKey(patch.nextActionAt) !== dayKey(lead.nextActionAt)) stepNotes.push(`termin: ${lead.nextActionAt ? lead.nextActionAt.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : "brak"} → ${patch.nextActionAt ? patch.nextActionAt.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" }) : "brak"}`);
   for (const key of ["nextActionAt", "requestedFrom", "requestedDays", "location", "message", "title", "contactName", "contactPhone", "contactEmail"] as const) {
     if (patch[key] !== undefined) (data as Record<string, unknown>)[key] = patch[key];
   }
@@ -122,6 +143,8 @@ export async function updateLead(id: string, patch: LeadPatch, userId: string) {
     if (notes.length) {
       await tx.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type: "STAGE_CHANGE", body: notes.join(" · "), userId } });
     }
+    // SYSTEM z autorem (nie NOTE) — edycja kroku nie liczy się jako kontakt ani praca w raporcie.
+    for (const body of stepNotes) await tx.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type: "SYSTEM", body, userId } });
     // „Wróć do kontaktu” przy przegranej = zadanie w istniejącym panelu Zadań.
     if (patch.stage === "PRZEGRANA" && patch.returnAt) {
       await tx.task.create({
@@ -180,7 +203,7 @@ export async function logLeadActivity(
       data.lastContactAt = now;
     }
     const stepType = input.stepType && (input.outcome === "talked" || input.outcome === "callback") ? input.stepType : plan.nextStepType;
-    Object.assign(data, { nextActionAt: plan.nextActionAt, nextStepType: stepType, nextStepNote: plan.nextStepNote ?? (input.stepType && input.body ? input.body.slice(0, 500) : null), attempts: plan.attempts, followUpNo: plan.followUpNo });
+    Object.assign(data, { nextActionAt: plan.nextActionAt, nextStepType: stepType, nextStepNote: plan.nextStepNote ?? (input.stepType && input.body ? input.body.slice(0, 500) : null), attempts: plan.attempts, followUpNo: plan.followUpNo, ...stepSet("OUTCOME", userId) });
     stageTo = stageTo ?? (plan.stage && plan.stage !== lead.stage ? plan.stage : null);
     const next = plan.nextActionAt ? ` Następny krok: ${NEXT_STEP_LABEL[stepType as NextStepType]}, ${whenLabel(plan.nextActionAt)}.` : "";
     if (input.outcome === "postpone") Object.assign(data, { returnAt: plan.nextActionAt, postponeReason: input.postponeReason });
@@ -198,7 +221,7 @@ export async function logLeadActivity(
               : null;
     body = [[head, input.body].filter(Boolean).join(": "), next.trim()].filter(Boolean).join(" · ") || null;
   }
-  if (stageTo) Object.assign(data, stageData(lead, stageTo));
+  if (stageTo) Object.assign(data, stageData(lead, stageTo, "OUTCOME", userId));
 
   await prisma.$transaction([
     prisma.lead.update({ where: { id }, data }),
@@ -292,7 +315,7 @@ export async function syncLeadStepFromTask(leadId: string, due: Date | null, use
   const at = new Date(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate(), prev ? prev.getHours() : 9, prev ? prev.getMinutes() : 0);
   if (prev && prev.getTime() === at.getTime()) return;
   await prisma.$transaction([
-    prisma.lead.update({ where: { id: leadId }, data: { nextActionAt: at, ...(lead.nextStepType ? {} : { nextStepType: "INNE" }) } }),
+    prisma.lead.update({ where: { id: leadId }, data: { nextActionAt: at, ...(lead.nextStepType ? {} : { nextStepType: "INNE" }), ...stepSet("TASK", userId) } }),
     prisma.leadActivity.create({ data: { leadId, clientId: lead.clientId, type: "SYSTEM", body: `Termin kroku z zadania: ${at.toLocaleDateString("pl-PL")}`, userId } }),
   ]);
   await syncLeadTasksFromStep(leadId);
@@ -383,6 +406,8 @@ export async function createLead(input: NewLeadInput, userId: string): Promise<s
         ? { stage: "WYWIAD", firstContactAt: now, lastContactAt: now, nextActionAt: addWorkHours(now, 16), nextStepType: "INNE", nextStepNote: "po rozmowie telefonicznej" }
         : { nextActionAt: addWorkHours(now, FIRST_CONTACT_SLA_HOURS), nextStepType: "PIERWSZY_KONTAKT" }),
       ...(returning ? { stage: "WYWIAD", returningClient: true, nextActionAt: now, nextStepType: "UMOW_TERMIN", nextStepNote: "stała klientka — umówić termin" } : {}),
+      ...stageSet("USER", userId),
+      ...stepSet("USER", userId),
       deviceInterest: input.deviceInterest.length ? input.deviceInterest : undefined,
       requestedFrom: input.requestedFrom,
       requestedDays: input.requestedDays,

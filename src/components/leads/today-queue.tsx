@@ -16,6 +16,7 @@ import { StageChip } from "./lead-ui";
 import { StageLegend, plural } from "./plan-day";
 import { step as stepText, when as whenText } from "./today-table";
 import type { CardIntent } from "./lead-card";
+import { LeadStepBlock } from "./lead-step-block";
 
 // Sygnały → Na dziś (wniosek 27 B, 26): kolejka pracy. Granatowy pasek „Do
 // zrobienia dziś” (klik = filtr sekcji) — od wniosku 33 w SignalsTodayBar nad
@@ -199,6 +200,7 @@ export function TodayQueue({
                   onToggle={() => setExpanded((id) => (id === x.lead.id ? null : x.lead.id))}
                   onOpen={onOpen}
                   onOutcome={onOutcome}
+                  onChanged={onChanged}
                   suggestion={suggestions[x.lead.id] ?? null}
                   onLink={onLink}
                 />
@@ -265,6 +267,7 @@ function QueueCard({
   onToggle,
   onOpen,
   onOutcome,
+  onChanged,
   suggestion,
   onLink,
 }: {
@@ -277,6 +280,7 @@ function QueueCard({
   onToggle: () => void;
   onOpen: (id: string, intent?: CardIntent) => void;
   onOutcome: (id: string) => void;
+  onChanged: () => void;
   suggestion: LinkSuggestion | null;
   onLink: (leadId: string, rentalId: string) => void;
 }) {
@@ -289,15 +293,6 @@ function QueueCard({
   const km = r.clientInfo?.distanceKm;
   const untouched = r.stage === "SYGNAL" && !r.firstContactAt;
   const counter = untouched && r.attempts > 0 ? `${r.attempts + 1}. próba` : r.stage === "OFERTA" && r.followUpNo ? `follow-up ${r.followUpNo} z 2` : null;
-  const [draftBusy, setDraftBusy] = useState(false);
-
-  async function mailDraft() {
-    setDraftBusy(true);
-    const { ok, data } = await api<{ to: string | null; subject: string; body: string }>(`/api/leads/${r.id}/offer-draft`, "GET");
-    setDraftBusy(false);
-    if (ok) window.location.href = `mailto:${data.to ?? r.email ?? ""}?subject=${encodeURIComponent(data.subject)}&body=${encodeURIComponent(data.body)}`;
-  }
-
   return (
     <div className={`border border-l-[3px] bg-white ${w.tone === "late" ? "border-l-[#E08A5C]" : "border-l-[#1B6FA8]"} ${selected ? "border-[#1B6FA8]" : "border-[#E3E6E9]"}`}>
       <div role="button" tabIndex={0} onClick={onToggle} onKeyDown={(e) => e.key === "Enter" && onToggle()} aria-expanded={expanded} className="flex cursor-pointer flex-col gap-1 px-3.5 py-2.5 hover:bg-[#F9FAFB]">
@@ -340,8 +335,8 @@ function QueueCard({
             </button>
           )}
           {!readOnly && (
-            <button type="button" disabled={draftBusy || !(r.email || r.clientId)} className={BTN_SM} onClick={() => void mailDraft()} title="Szkic maila z ofertą (wolne terminy, cena)">
-              Szkic maila
+            <button type="button" disabled={!(r.email || r.clientId)} className={BTN_SM} onClick={() => onOpen(r.id, "mail")} title="Odpowiedź mailowa: szkic do poprawienia i zapisu w Gmailu">
+              Mail
             </button>
           )}
           {!readOnly && noRental && suggestion && (
@@ -359,14 +354,25 @@ function QueueCard({
           </button>
         </div>
       </div>
-      {expanded && <QueueCardDetail row={r} />}
+      {expanded && <QueueCardDetail row={r} readOnly={readOnly} onOutcome={() => onOutcome(r.id)} onChanged={onChanged} />}
     </div>
   );
 }
 
 // Rozwinięcie w miejscu: oś czasu, historia klientki, rezerwacja.
-function QueueCardDetail({ row }: { row: Row }) {
+function QueueCardDetail({ row, readOnly, onOutcome, onChanged }: { row: Row; readOnly: boolean; onOutcome: () => void; onChanged: () => void }) {
   const [d, setD] = useState<LeadDetail | null>(null);
+  const [busy, setBusy] = useState(false);
+  // Ten sam blok kroku co w karcie sygnału (wniosek 47): te same akcje i reguły.
+  async function patch(body: Record<string, unknown>): Promise<boolean> {
+    setBusy(true);
+    const { ok, data } = await api<LeadDetail>(`/api/leads/${row.id}`, "PATCH", body);
+    setBusy(false);
+    if (!ok) return false;
+    setD(data);
+    onChanged();
+    return true;
+  }
   useEffect(() => {
     let alive = true;
     void api<LeadDetail>(`/api/leads/${row.id}`, "GET").then(({ ok, data }) => alive && ok && setD(data));
@@ -378,6 +384,7 @@ function QueueCardDetail({ row }: { row: Row }) {
   return (
     <div className="grid gap-4 border-t border-[#E3E6E9] bg-[#FAFBFC] px-3.5 py-3 text-[12.5px] md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <div className="flex flex-col gap-1.5">
+        {d && <LeadStepBlock lead={d} readOnly={readOnly} busy={busy} onPatch={(body) => patch(body)} onOutcome={onOutcome} />}
         <span className="text-[10.5px] uppercase tracking-[0.12em] text-[#5C6166]">Oś czasu</span>
         {!d ? (
           <span className="text-[#5C6166]">Wczytywanie…</span>

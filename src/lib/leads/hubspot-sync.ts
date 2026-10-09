@@ -29,6 +29,7 @@ import { applyImportRules } from "@/lib/leads/call-list";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { AUTO_WWW_MAIL_SUBJECTS } from "@/lib/leads/mail-rules";
 import { autoMailGmailIds } from "@/lib/leads/auto-mail";
+import { stageSet, stepSet } from "@/lib/leads/set-source";
 import { intakeRules, mergeRepeatInquiry } from "@/lib/leads/intake";
 import { contactFromNotes } from "@/lib/leads/note-rules";
 import { blockedIds } from "@/lib/porzadki/import-blocks";
@@ -284,6 +285,8 @@ async function createLeadFromDeal(deal: HsDeal, notes: HsNote[], ctx: LinkContex
         callList: plan.callList,
         createdAt: plan.createdAt,
         ...funnel,
+        ...stageSet("AUTO_HUBSPOT", null, plan.createdAt),
+        ...stepSet("AUTO_HUBSPOT", null, plan.createdAt),
       },
       select: { id: true },
     });
@@ -456,7 +459,7 @@ export async function reclassifyImportedLeads(until: Date): Promise<number> {
         callList: next.callList,
         lostReason: next.lostReason,
         lostNote: next.lostNote,
-        ...(next.stage !== l.stage ? { stageChangedAt: new Date() } : {}),
+        ...(next.stage !== l.stage ? { stageChangedAt: new Date(), ...stageSet("AUTO_HUBSPOT") } : {}),
       },
     });
     changed++;

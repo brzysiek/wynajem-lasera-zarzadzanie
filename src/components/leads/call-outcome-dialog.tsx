@@ -1,5 +1,7 @@
 "use client";
 
+import { outcomeEffect } from "@/lib/leads/step-edit";
+import type { LeadStageKey } from "@/lib/leads/parse-deal";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LeadDetail } from "@/lib/leads/load";
@@ -110,6 +112,7 @@ export function CallOutcomeDialog({
   const followUp = lead.nextStepType === "FOLLOW_UP_OFERTY" && lead.followUpNo === 1;
   const nextTry = lead.attempts === 0 ? "jutro 16:00" : lead.attempts === 1 ? "jutro 8:30" : "jutro 10:00";
   const text = note.trim();
+  const effect = outcomeEffect(choice, { stage: lead.stage as LeadStageKey, nextStepType: lead.nextStepType, attempts: lead.attempts, followUpNo: lead.followUpNo }, new Date(), { date, kind, postpone });
 
   async function save() {
     if (!choice) return;
@@ -297,6 +300,8 @@ export function CallOutcomeDialog({
           </div>
         )}
 
+        {/* Skutek liczy ta sama funkcja, która go zastosuje (planOutcome) — wniosek 47. */}
+        {effect && <p className="m-0 text-[12.5px] font-semibold text-[#1B6FA8]">{effect}</p>}
         {error && <p className="text-[12.5px] text-[#B8612F]">{error}</p>}
         {choice && choice !== "booked" && (
           <div className="flex justify-end gap-2">

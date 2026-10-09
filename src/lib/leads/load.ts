@@ -16,6 +16,7 @@ import { arrivalDates, arrivalGapDays, arrivalRhythmLabel } from "@/lib/clients/
 import { loadUnassignedRentals } from "@/lib/clients/rental-match";
 import { normalizeAttribution, type Attribution } from "@/lib/leads/attribution-view";
 import { activeDraftStatuses, loadMailDraft, type MailDraftDto } from "@/lib/leads/mail-draft";
+import { deriveStageSource, stageSourceText, stepSourceText } from "@/lib/leads/set-source";
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
 
@@ -423,6 +424,10 @@ export type LeadDetail = LeadRow & {
   attribution: Attribution | null;
   // Szkic odpowiedzi (wniosek 44) i ostatnia wiadomość od klientki (do odpowiedzi w wątku).
   emailDraft: MailDraftDto | null;
+  // Podpisy „kto ustawił” (wniosek 47): linia pod paskiem etapu / w dymku chipa
+  // („Etap ustawił: Ania · 09.10, 11:04”) i przy kroku („ustawił: automat · 29.09”).
+  stageSetText: string | null;
+  stepSetText: string | null;
   lastInboundEmail: { id: string; subject: string | null; sentAt: string } | null;
   hubspotUrl: string | null;
   activities: LeadActivityDto[];
@@ -436,7 +441,7 @@ export type LeadDetail = LeadRow & {
 export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
   const lead = await prisma.lead.findUnique({
     where: { id },
-    select: { ...ROW_SELECT, lostNote: true, returnAt: true, location: true, attribution: true, archivedAt: true, archiveReason: true, archiveNote: true },
+    select: { ...ROW_SELECT, lostNote: true, returnAt: true, location: true, attribution: true, archivedAt: true, archiveReason: true, archiveNote: true, stageSource: true, stageSourceById: true, stageSourceAt: true, stepSource: true, stepSourceById: true, stepSourceAt: true },
   });
   if (!lead) return null;
   const row = toRow(lead, await loadExtra([lead]));
@@ -480,10 +485,24 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
 
   const emailDraft = await loadMailDraft(id);
   const lastIn = emails.find((e) => e.direction === "IN");
+  // Podpisy źródła: zapisane przy zmianie; dla starszych sygnałów etap odtwarzamy
+  // z ostatniego wpisu zmiany etapu na osi czasu (tylko gdy mówi, kto to zrobił).
+  const ids = [lead.stageSourceById, lead.stepSourceById].filter((x): x is string => !!x);
+  const people = new Map((ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : []).map((u) => [u.id, u.name]));
+  let stageSetText: string | null = null;
+  if (lead.stageSource && lead.stageSourceAt) stageSetText = stageSourceText(lead.stageSource, lead.stageSourceById ? (people.get(lead.stageSourceById) ?? null) : null, lead.stageSourceAt);
+  else {
+    const last = activities.find((a) => a.type === "STAGE_CHANGE" && a.leadId === id);
+    const d = last ? deriveStageSource({ body: last.body, userName: last.user?.name ?? null, at: last.createdAt }) : null;
+    if (d) stageSetText = stageSourceText(d.code, d.userName, d.at);
+  }
+  const stepSetText = lead.stepSource && lead.stepSourceAt ? stepSourceText(lead.stepSource, lead.stepSourceById ? (people.get(lead.stepSourceById) ?? null) : null, lead.stepSourceAt) : null;
   return {
     ...row,
     mailDraft: emailDraft && (emailDraft.status === "PROPOZYCJA" || emailDraft.status === "SZKIC_GMAIL") ? emailDraft.status : null,
     emailDraft,
+    stageSetText,
+    stepSetText,
     lastInboundEmail: lastIn ? { id: lastIn.id, subject: lastIn.subject, sentAt: lastIn.sentAt.toISOString() } : null,
     archive: lead.archivedAt ? { at: lead.archivedAt.toISOString(), reason: lead.archiveReason, note: lead.archiveNote } : null,
     lostNote: lead.lostNote,

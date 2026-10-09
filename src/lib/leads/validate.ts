@@ -37,7 +37,13 @@ export type LeadPatch = Partial<{
   rentalId: string | null;
   clientId: string | null;
   nextStepNote: string | null;
+  // „Edytuj krok” (wniosek 47): rodzaj kroku z listy edytowalnych.
+  nextStepType: EditableStepType;
 }>;
+
+// Rodzaje kroku do ręcznej zmiany (POWROT ustawia tylko „Odłóż do…”).
+export const EDITABLE_STEP_TYPES = ["PIERWSZY_KONTAKT", "PONOWNA_PROBA", "UMOW_TERMIN", "ODDZWONI", "DOPYTAC", "FOLLOW_UP_OFERTY", "INNE"] as const;
+export type EditableStepType = (typeof EDITABLE_STEP_TYPES)[number];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -100,6 +106,10 @@ export function parseLeadPatch(body: Record<string, unknown>, deps: { normalizeP
     out.contactEmail = e;
   }
   if ("nextStepNote" in body) out.nextStepNote = text(body.nextStepNote, 500);
+  if ("nextStepType" in body) {
+    if (!(EDITABLE_STEP_TYPES as readonly string[]).includes(body.nextStepType as string)) return { ok: false, message: "Nieznany rodzaj kroku." };
+    out.nextStepType = body.nextStepType as EditableStepType;
+  }
   if ("rentalId" in body) out.rentalId = typeof body.rentalId === "string" && body.rentalId ? body.rentalId : null;
   if ("clientId" in body) out.clientId = typeof body.clientId === "string" && body.clientId ? body.clientId : null;
   return { ok: true, data: out };

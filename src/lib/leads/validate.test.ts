@@ -4,6 +4,15 @@ import { parseDay, parseLeadPatch, parseNewLead } from "./validate";
 const deps = { normalizePhone: (raw: string) => (/^\d{9}$/.test(raw.replace(/\s/g, "")) ? `+48${raw.replace(/\s/g, "")}` : null) };
 
 describe("parseLeadPatch", () => {
+  it("Edytuj krok: rodzaj z listy edytowalnych i opis do 500 znaków", () => {
+    expect(parseLeadPatch({ nextStepType: "UMOW_TERMIN", nextStepNote: " woli telefon po 15:00 " }, deps)).toEqual({ ok: true, data: { nextStepType: "UMOW_TERMIN", nextStepNote: "woli telefon po 15:00" } });
+    expect(parseLeadPatch({ nextStepNote: "x".repeat(900) }, deps)).toMatchObject({ ok: true, data: { nextStepNote: "x".repeat(500) } });
+    expect(parseLeadPatch({ nextStepNote: "  " }, deps)).toEqual({ ok: true, data: { nextStepNote: null } });
+  });
+  it("nieznany rodzaj kroku i POWROT (tylko „Odłóż do…”) odrzucone", () => {
+    expect(parseLeadPatch({ nextStepType: "WYMYSLONY" }, deps)).toEqual({ ok: false, message: "Nieznany rodzaj kroku." });
+    expect(parseLeadPatch({ nextStepType: "POWROT" }, deps)).toEqual({ ok: false, message: "Nieznany rodzaj kroku." });
+  });
   it("przegrana wymaga powodu", () => {
     expect(parseLeadPatch({ stage: "PRZEGRANA" }, deps)).toEqual({ ok: false, message: "Wybierz powód przegranej." });
     const r = parseLeadPatch({ stage: "PRZEGRANA", lostReason: "CENA", lostNote: " za drogo ", returnAt: "2027-02-01" }, deps);

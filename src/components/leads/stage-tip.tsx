@@ -28,6 +28,7 @@ export function StageTip({
   playbook,
   smsText,
   canAct,
+  onPrepareOffer,
   onSendSms,
 }: {
   leadId: string;
@@ -36,6 +37,7 @@ export function StageTip({
   playbook: Playbook;
   smsText: string | null; // szablon „lead_no_answer” z podstawionymi danymi; null = brak telefonu / szablonu
   canAct: boolean;
+  onPrepareOffer: () => void;
   onSendSms: (text: string) => Promise<boolean>;
 }) {
   const [open, setOpen] = useState(true);
@@ -90,13 +92,10 @@ export function StageTip({
       return n;
     });
 
-  async function prepareOffer() {
-    setBusy(true);
-    const { ok, data } = await api<Draft>(`/api/leads/${leadId}/offer-draft`, "GET");
-    setBusy(false);
-    if (!ok) return;
-    setDraft(data);
-    window.location.href = `mailto:${data.to ?? ""}?subject=${encodeURIComponent(data.subject)}&body=${encodeURIComponent(data.body)}`;
+  // Wniosek 47: jedna droga do maila — „Przygotuj ofertę” zakłada szkic z tekstem
+  // oferty w sekcji „Odpowiedź mailowa” (bez mailto:).
+  function prepareOffer() {
+    onPrepareOffer();
   }
 
   // Przegląd 29.09 07:15, pkt 8: 2 najbliższe wolne terminy urządzenia; bez
@@ -116,7 +115,7 @@ export function StageTip({
     </>
   );
   const offerBtn = canAct && (
-    <button type="button" disabled={busy} className={BTN_SM} onClick={() => void prepareOffer()} title="Szkic maila: urządzenie, 2 wolne terminy z kalendarza, cena z transportem">
+    <button type="button" disabled={busy} className={BTN_SM} onClick={prepareOffer} title="Szkic odpowiedzi z ofertą: urządzenie, 2 wolne terminy z kalendarza, cena z transportem">
       {busy ? "Przygotowuję…" : "Przygotuj ofertę (szkic maila z wolnymi terminami)"}
     </button>
   );
