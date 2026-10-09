@@ -15,6 +15,9 @@ import { parseContactInput } from "@/lib/clients/validate";
 import { loadLeadDetail, loadLeadRows } from "@/lib/leads/load";
 import { addLeadNote } from "@/lib/leads/actions";
 import { DraftError, upsertMailDraft } from "@/lib/leads/mail-draft";
+import { SuggestionError, saveSuggestion } from "@/lib/leads/lead-suggestion";
+import { listReplyWork, listSuggestionWork } from "@/lib/leads/agent-work";
+import { buildOfferDraft } from "@/lib/leads/offer-draft";
 import { loadHistoryReview } from "@/lib/history/review-load";
 import { loadFvWithoutInvoice } from "@/lib/invoicing/fv-check-load";
 import { termsWarnings } from "@/lib/clients/terms";
@@ -321,6 +324,9 @@ export const TOOLS: McpTool[] = [
       typ: s("Typ.", { enum: ["POBRANIE_CENNIKA", "KONTAKT", "REZERWACJA_WWW", "SZKOLENIE_WWW", "TELEFON", "EMAIL", "OLX", "POLECENIE", "INNE"] }),
       od: s("Wpłynęło od RRRR-MM-DD."),
       do_obdzwonienia: b("Tylko lista „Do obdzwonienia”."),
+      wymaga_sugestii: b("Praca agenta (sugestia Klaudiusza): LEKKA lista aktywnych sygnałów bez sugestii, z prośbą o aktualizację albo z nowymi wpisami od ostatniej sugestii. Kolejność: krok na dziś lub po terminie → prośby → reszta. Zwraca powody i licznik nowych wpisów (nie pełne wiersze)."),
+      wymaga_odpowiedzi: b("Praca agenta (propozycje maili): LEKKA lista otwartych sygnałów z adresem e-mail i BEZ aktywnego szkicu, gdy krok jest na dziś / po terminie / brak kroku albo klientka napisała, a nikt nie odpowiedział."),
+      limit: n("Dla wymaga_sugestii / wymaga_odpowiedzi: ile sygnałów zwrócić (1–100, domyślnie 30)."),
       duplikaty: b("Tylko otwarte sygnały klientów, którzy mają ich więcej niż jeden (do zgłoszenia archiwizacji duplikatu)."),
       gnija: b("Tylko gnijące (lejek v2): Nowe po czasie na kontakt (4 h rob.), W kontakcie > 3 dni rob., Oferta > 10 dni bez aktywności, bez kroku."),
       brak_kroku: b("Tylko otwarte sygnały bez następnego kroku (do zgłoszenia krok_sygnalu)."),
@@ -330,6 +336,11 @@ export const TOOLS: McpTool[] = [
     }),
     readOnly: true,
     run: async (a) => {
+      if (a.wymaga_sugestii === true && a.wymaga_odpowiedzi === true) throw new AgentApiError("Podaj jeden filtr naraz: wymaga_sugestii albo wymaga_odpowiedzi.");
+      if (a.wymaga_sugestii === true || a.wymaga_odpowiedzi === true) {
+        const limit = Math.min(100, Math.max(1, Math.floor(Number(a.limit) || 30)));
+        return a.wymaga_sugestii === true ? listSuggestionWork(limit) : listReplyWork(limit);
+      }
       const from = day(a, "od");
       const q = str(a, "q")?.toLowerCase() ?? "";
       const all = await loadLeadRows();
@@ -357,13 +368,18 @@ export const TOOLS: McpTool[] = [
     name: "sygnal",
     title: "Karta sygnału",
     description:
-      "Szczegół sygnału z osią czasu. attribution = skąd przyszło zgłoszenie z formularza WWW (utm_* i gclid/fbclid = pierwsze wejście, last_* = ostatnie wejście, fbp/fbc tylko za zgodą, landing_url, referrer, form, acceptance-*); null poza formularzami WWW.",
+      "Szczegół sygnału z osią czasu. sugestia = sugestia Klaudiusza (tekst, godzina, nieaktualna, nowe_wpisy, prosba_o_aktualizacje); stageSetText / stepSetText = kto i kiedy ustawił etap i krok. attribution = skąd przyszło zgłoszenie z formularza WWW (utm_* i gclid/fbclid = pierwsze wejście, last_* = ostatnie wejście, fbp/fbc tylko za zgodą, landing_url, referrer, form, acceptance-*); null poza formularzami WWW.",
     inputSchema: obj({ id: s("ID sygnału.") }, ["id"]),
     readOnly: true,
     run: async (a) => {
       const d = await loadLeadDetail(req(a, "id"));
       if (!d) throw new AgentApiError("Sygnał nie istnieje.", 404);
-      return d;
+      // Sugestia po polsku (wniosek 47): tekst, godzina, czy nieaktualna, prośba o aktualizację.
+      const { suggestion, ...rest } = d;
+      return {
+        ...rest,
+        sugestia: suggestion ? { tekst: suggestion.text, podstawa: suggestion.basis, godzina: suggestion.generatedAt, nieaktualna: suggestion.stale, nowe_wpisy: suggestion.newEntries, prosba_o_aktualizacje: suggestion.requestPending } : null,
+      };
     },
   },
   {
@@ -941,6 +957,47 @@ export const TOOLS: McpTool[] = [
       const note = await addLeadNote(req(a, "sygnal_id"), text, agent.userId);
       await recordChanges(prisma, { userId: agent.userId }, [{ entity: "NOTE", entityId: note.activityId, clientId: note.clientId, operation: "CREATE", before: "null", after: toLogValue(text) }]);
       return { id: note.activityId };
+    },
+  },
+  {
+    name: "sugestia_zapisz",
+    title: "Sugestia przy sygnale",
+    description:
+      "Zapisuje SUGESTIĘ Klaudiusza przy sygnale — 1–2 zdania zwykłego tekstu zaczynające się od „Sugeruję…” (1–400 znaków, bez HTML): co zrobić teraz i dlaczego. Tylko zapis w panelu: niczego nie wysyła ani nie zmienia (etapu, kroku, danych). " +
+      "Nadpisuje poprzednią sugestię sygnału, zapamiętuje godzinę i to, jakie wpisy osi czasu uwzględniono, i czyści „Poproś o aktualizację”. podstawa = krótko, na czym oparta (do 500 znaków). " +
+      "Praca w przebiegu: sygnaly_lista z wymaga_sugestii=true (limit) → sygnal → sugestia_zapisz; do propozycji cen i terminów użyj oferta_dane.",
+    inputSchema: obj({ sygnal_id: s("ID sygnału."), tekst: s("Sugestia (1–400 znaków, zwykły tekst, od „Sugeruję…”)."), podstawa: s("Na czym oparta (do 500 znaków).") }, ["sygnal_id", "tekst"]),
+    readOnly: false,
+    run: async (a, agent) => {
+      try {
+        await saveSuggestion(req(a, "sygnal_id"), agent.userId, req(a, "tekst"), str(a, "podstawa"));
+      } catch (err) {
+        if (err instanceof SuggestionError) throw new AgentApiError(err.message, err.status);
+        throw err;
+      }
+      return { ok: true };
+    },
+  },
+  {
+    name: "oferta_dane",
+    title: "Dane do oferty",
+    description:
+      "Dane do propozycji oferty dla sygnału (tylko odczyt): urządzenie, liczba dni, dwa najbliższe wolne terminy z kalendarza, cena netto (warunki klientki albo cennik) i transport netto, a także gotowy tekst oferty. Użyj przed szkic_maila_utworz, żeby nie zgadywać cen i terminów.",
+    inputSchema: obj({ sygnal_id: s("ID sygnału.") }, ["sygnal_id"]),
+    readOnly: true,
+    run: async (a) => {
+      const o = await buildOfferDraft(req(a, "sygnal_id"));
+      if (!o) throw new AgentApiError("Sygnał nie istnieje.", 404);
+      return {
+        do: o.to,
+        temat: o.subject,
+        urzadzenie: o.device,
+        wolne_terminy: o.freeDates,
+        wolne_wg_urzadzen: o.freeByDevice,
+        cena_netto: o.priceNet,
+        transport_netto: o.transportNet,
+        tekst_oferty: o.body,
+      };
     },
   },
   {

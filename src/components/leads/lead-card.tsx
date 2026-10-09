@@ -22,6 +22,7 @@ import { OpenTasks } from "@/components/open-tasks";
 import { LeadAttribution } from "@/components/leads/lead-attribution";
 import { LeadMailDraft } from "@/components/leads/lead-mail-draft";
 import { LeadStepBlock } from "@/components/leads/lead-step-block";
+import { LeadSuggestionBlock } from "@/components/leads/lead-suggestion-block";
 import { stageEffectText } from "@/lib/leads/step-edit";
 import { CallOutcomeDialog } from "./call-outcome-dialog";
 import type { Playbook } from "@/lib/leads/playbook";
@@ -403,6 +404,14 @@ export function LeadCard({
             onSave={async (body) => (await run(`/api/leads/${leadId}/task`, "POST", body, "Dodano zadanie — termin kroku sygnału ten sam.")) && setPanel(null)}
           />
         )}
+
+        {/* Sugestia Klaudiusza (wniosek 47, część 2) — widoczna dla wszystkich ról */}
+        <LeadSuggestionBlock
+          leadId={leadId}
+          suggestion={d.suggestion}
+          canRequest={!agent}
+          onUpdated={(sg) => setD((cur) => (cur ? { ...cur, suggestion: sg } : cur))}
+        />
 
         {/* Odpowiedź mailowa (wniosek 44): notatka + rozwijany szkic, zapis szkicu w Gmailu */}
         <LeadMailDraft

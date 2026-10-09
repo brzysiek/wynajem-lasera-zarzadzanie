@@ -17,6 +17,7 @@ import { loadUnassignedRentals } from "@/lib/clients/rental-match";
 import { normalizeAttribution, type Attribution } from "@/lib/leads/attribution-view";
 import { activeDraftStatuses, loadMailDraft, type MailDraftDto } from "@/lib/leads/mail-draft";
 import { deriveStageSource, stageSourceText, stepSourceText } from "@/lib/leads/set-source";
+import { loadSuggestion, type SuggestionDto } from "@/lib/leads/lead-suggestion";
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
 
@@ -428,6 +429,8 @@ export type LeadDetail = LeadRow & {
   // („Etap ustawił: Ania · 09.10, 11:04”) i przy kroku („ustawił: automat · 29.09”).
   stageSetText: string | null;
   stepSetText: string | null;
+  // Sugestia Klaudiusza (wniosek 47, część 2) — null, gdy agent jej nie zapisał.
+  suggestion: SuggestionDto | null;
   lastInboundEmail: { id: string; subject: string | null; sentAt: string } | null;
   hubspotUrl: string | null;
   activities: LeadActivityDto[];
@@ -484,6 +487,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
   ]);
 
   const emailDraft = await loadMailDraft(id);
+  const suggestion = await loadSuggestion(id, lead.clientId);
   const lastIn = emails.find((e) => e.direction === "IN");
   // Podpisy źródła: zapisane przy zmianie; dla starszych sygnałów etap odtwarzamy
   // z ostatniego wpisu zmiany etapu na osi czasu (tylko gdy mówi, kto to zrobił).
@@ -503,6 +507,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
     emailDraft,
     stageSetText,
     stepSetText,
+    suggestion,
     lastInboundEmail: lastIn ? { id: lastIn.id, subject: lastIn.subject, sentAt: lastIn.sentAt.toISOString() } : null,
     archive: lead.archivedAt ? { at: lead.archivedAt.toISOString(), reason: lead.archiveReason, note: lead.archiveNote } : null,
     lostNote: lead.lostNote,

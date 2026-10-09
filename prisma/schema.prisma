@@ -1327,6 +1327,7 @@ model Lead {
   stepSourceById  String?        @db.VarChar(191)
   stepSourceAt    DateTime?
   emailDrafts     LeadEmailDraft[]
+  suggestion      LeadSuggestion?
   @@map("leads")
 }
 
@@ -1861,4 +1862,25 @@ model LeadEmailDraft {
   @@index([leadId, status])
   @@index([gmailThreadId])
   @@map("lead_email_drafts")
+}
+
+// Sugestia Klaudiusza przy sygnale (wniosek 47, część 2): 1–2 zdania „Sugeruję…”
+// zapisywane przez agenta (MCP sugestia_zapisz) w zaplanowanych przebiegach.
+// Panel nie woła żadnego API modelu. coveredUntil = znacznik ostatniego wpisu
+// osi czasu, który agent uwzględnił — po nim karta liczy „nowe wpisy” i
+// przygasza sugestię. requestedAt = „Poproś o aktualizację” (czyści zapis).
+model LeadSuggestion {
+  id           String    @id @default(cuid())
+  leadId       String    @unique
+  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  text         String    @db.Text
+  basis        String?   @db.VarChar(500)
+  authorId     String?
+  generatedAt  DateTime  @default(now())
+  coveredUntil DateTime
+  requestedAt  DateTime?
+  updatedAt    DateTime  @updatedAt
+
+  @@index([generatedAt])
+  @@map("lead_suggestions")
 }

@@ -66,7 +66,7 @@ const MCP_TOOLS = [
   "reguly_porzadkow", "klienci_lista", "rezerwacje_bez_klienta", "klient", "raport_tydzien", "sygnaly_lista", "sygnal", "kalendarz_wynajmy", "dopasowania", "faktury", "platnosci", "szansa_dodaj", "wykluczenia",
   "fv_bez_faktury", "archiwum", "dziennik", "wnioski_lista", "wniosek", "uwagi_lista", "zadania_lista", "osoby_biura",
   "klient_zmien", "osoba_zmien", "osoba_dodaj", "klienci_scal", "przenies_do_klientow", "notatka_klient", "notatka_sygnal",
-  "zadanie_utworz", "zadanie_zmien", "zadanie_komentarz", "wniosek_utworz", "wniosek_zmien", "wniosek_komentarz", "szkic_maila_utworz",
+  "zadanie_utworz", "zadanie_zmien", "zadanie_komentarz", "wniosek_utworz", "wniosek_zmien", "wniosek_komentarz", "szkic_maila_utworz", "sugestia_zapisz", "oferta_dane",
   "uwaga_utworz", "uwaga_zmien", "dziennik_wpis", "propozycje_dodaj", "propozycje_lista",
   "podejrzane_zlepki", "dopasowanie_decyzja", "uwagi_kierowcow", "rezerwacje_bez_kwoty",
 ];
@@ -166,6 +166,7 @@ describe("trasy API a rola AGENT", () => {
       ["DELETE", "users/[id]"],
       ["PUT", "leads/[id]/draft"], // szkic maila: edycja i odrzucenie tylko biuro
       ["DELETE", "leads/[id]/draft"],
+      ["POST", "leads/[id]/suggestion"], // „Poproś o aktualizację” sugestii — tylko biuro
       ["POST", "leads/[id]/draft/gmail"], // zapis szkicu w Gmailu tylko biuro (agent: tylko propozycja w panelu)
       ["PATCH", "leads/[id]"], // etap sygnału
       ["POST", "leads"],
