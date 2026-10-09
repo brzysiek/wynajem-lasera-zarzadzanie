@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runGmailSync } from "@/lib/gmail/sync";
 import { retryAutoMails } from "@/lib/leads/auto-mail";
+import { cleanupIntakes } from "@/lib/leads/mail-intake";
 import { logWarn, logError } from "@/lib/logger";
 
 // Historia e-maili co 5 minut (prompt 3, 4.3) — ten sam wzorzec co
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest) {
   });
   try {
     const results = await runGmailSync({ budgetMs: 40_000 });
+    await cleanupIntakes().catch((err) => logError("mail_intake_cleanup_failed", err));
     if (autoMail && (autoMail.sent || autoMail.failed)) logWarn("auto_mail_retried", autoMail);
     return NextResponse.json(results ? { results } : { skipped: "Synchronizacja e-maili wyłączona." });
   } catch (err) {

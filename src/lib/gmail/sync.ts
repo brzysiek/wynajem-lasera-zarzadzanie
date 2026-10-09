@@ -5,6 +5,8 @@ import { qualifyClient } from "@/lib/clients/qualify";
 import { applyMailAutomationSafe } from "@/lib/leads/mail-automation";
 import { autoMailGmailIds } from "@/lib/leads/auto-mail";
 import { markDraftsSent } from "@/lib/leads/mail-draft";
+import { processMailIntake, type IntakeCandidate } from "@/lib/leads/mail-intake";
+import { AUTO_MAIL_FROM } from "@/lib/leads/auto-mail-render";
 import { bounceRecipients } from "@/lib/leads/mail-rules";
 import { logInfo, logWarn } from "@/lib/logger";
 import { GmailError, getMessageMeta, getProfile, listHistoryAdded, listMessageIds } from "@/lib/integrations/gmail-read";
@@ -109,6 +111,8 @@ async function processIds(
   isOwn: (a: string) => boolean,
   deadline: number,
   startOffset = 0,
+  // Bieżące maile (nie import historii): nowe osoby w skrzynce kontakt@ → sygnał / „Do sprawdzenia” (wniosek 43).
+  intake = false,
 ): Promise<{ stored: number; done: boolean; nextOffset: number }> {
   const known = new Set(
     (await prisma.emailMessage.findMany({ where: { mailbox, gmailMessageId: { in: ids } }, select: { gmailMessageId: true } })).map((m) => m.gmailMessageId),
@@ -124,11 +128,18 @@ async function processIds(
     const metas = await Promise.all(todo.map((id) => getMessageMeta(mailbox, id)));
     const rows = [];
     const bounces: string[] = [];
+    const intakeCandidates: IntakeCandidate[] = [];
     for (const m of metas) {
       if (isSkippedByLabels(m.labelIds)) continue;
       const h = headerMap(m.headers);
       // Odbity mail (lejek v2): adres do potwierdzenia — sam mail pomijamy.
       if (Date.now() - Number(m.internalDate) < 7 * 86_400_000) bounces.push(...bounceRecipients(h));
+      if (intake && mailbox.toLowerCase() === AUTO_MAIL_FROM) {
+        const f = parseAddresses(h["from"]);
+        const t = parseAddresses(h["to"]);
+        const c0 = parseAddresses(h["cc"]);
+        intakeCandidates.push({ meta: m, headers: h, from: f, to: t, cc: c0, known: classifyEmail({ from: f, to: t, cc: c0 }, index, isOwn) });
+      }
       if (isAutomated(h)) continue;
       const from = parseAddresses(h["from"]);
       const to = parseAddresses(h["to"]);
@@ -174,6 +185,8 @@ async function processIds(
       // Wniosek 44: wysłana wiadomość w wątku szkicu zapisanego w Gmailu → szkic „wysłany”.
       await markDraftsSent(rows);
     }
+    // Wniosek 43: nowe osoby i prośby klientek z bazy (filtr regułowy, bez zmian w Gmailu).
+    if (intakeCandidates.length) await processMailIntake(mailbox, intakeCandidates, { isOwn, excluded: (a) => exclusions(a) === "EXCLUDE" });
     // Lejek v2 (V3): maile przesuwają otwarte sygnały, oferta bez sygnału
     // zakłada sygnał, odbite maile → zadanie „potwierdź adres”.
     if (rows.length || bounces.length) {
@@ -199,7 +212,7 @@ async function incremental(mailbox: string, state: MailboxState, index: AddressI
     let latest = state.historyId;
     do {
       const r = await listHistoryAdded(mailbox, state.historyId, pageToken);
-      const res = await processIds(mailbox, r.ids, index, isOwn, deadline);
+      const res = await processIds(mailbox, r.ids, index, isOwn, deadline, 0, true);
       stored += res.stored;
       if (!res.done) return stored; // dokończy następny przebieg od tego samego historyId
       if (r.historyId) latest = r.historyId;
@@ -211,7 +224,7 @@ async function incremental(mailbox: string, state: MailboxState, index: AddressI
     // historyId za stary (dłuższa przerwa) — nadrabiamy ostatni tydzień.
     logWarn("gmail_history_expired", { mailbox });
     const { ids } = await listMessageIds(mailbox, "newer_than:8d -in:chats -in:drafts");
-    stored += (await processIds(mailbox, ids, index, isOwn, deadline)).stored;
+    stored += (await processIds(mailbox, ids, index, isOwn, deadline, 0, true)).stored;
     state.historyId = (await getProfile(mailbox)).historyId;
   }
   return stored;

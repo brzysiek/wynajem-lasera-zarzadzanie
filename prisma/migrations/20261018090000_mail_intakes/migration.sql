@@ -1,0 +1,35 @@
+-- CreateTable
+CREATE TABLE `mail_intakes` (
+    `id` VARCHAR(191) NOT NULL,
+    `mailbox` VARCHAR(191) NOT NULL,
+    `gmailMessageId` VARCHAR(64) NOT NULL,
+    `gmailThreadId` VARCHAR(64) NOT NULL,
+    `rfcMessageId` VARCHAR(512) NULL,
+    `fromAddress` VARCHAR(191) NOT NULL,
+    `fromName` VARCHAR(191) NULL,
+    `subject` TEXT NULL,
+    `snippet` TEXT NULL,
+    `receivedAt` DATETIME(3) NOT NULL,
+    `kind` VARCHAR(12) NOT NULL,
+    `status` VARCHAR(20) NOT NULL,
+    `reason` VARCHAR(160) NULL,
+    `score` INTEGER NOT NULL DEFAULT 0,
+    `matched` JSON NULL,
+    `devices` JSON NULL,
+    `phone` VARCHAR(32) NULL,
+    `nip` VARCHAR(16) NULL,
+    `clientId` VARCHAR(191) NULL,
+    `leadId` VARCHAR(191) NULL,
+    `recommendation` VARCHAR(8) NULL,
+    `recommendationNote` TEXT NULL,
+    `recommendedAt` DATETIME(3) NULL,
+    `decidedById` VARCHAR(191) NULL,
+    `decidedAt` DATETIME(3) NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    INDEX `mail_intakes_status_createdAt_idx`(`status`, `createdAt`),
+    INDEX `mail_intakes_fromAddress_idx`(`fromAddress`),
+    UNIQUE INDEX `mail_intakes_mailbox_gmailMessageId_key`(`mailbox`, `gmailMessageId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+

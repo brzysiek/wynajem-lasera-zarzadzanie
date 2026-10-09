@@ -32,6 +32,7 @@ export function SignalsTodayBar({
   signalTasks,
   active,
   onToggle,
+  reviewCount,
 }: {
   rows: LeadRow[];
   now: Date;
@@ -43,8 +44,10 @@ export function SignalsTodayBar({
   goal: SeasonGoal;
   progress: DayProgress;
   signalTasks: SignalTask[];
-  active: TodayGroupKey | null;
-  onToggle: (g: TodayGroupKey | null) => void;
+  active: TodayGroupKey | "review" | null;
+  onToggle: (g: TodayGroupKey | "review" | null) => void;
+  // Wniosek 43: maile czekające w „Do sprawdzenia” (kafel przełącza widok).
+  reviewCount: number;
 }) {
   const funnel = useMemo(() => toFunnel(rows) as Row[], [rows]);
   const mine = useMemo(() => scopeRows(funnel, owner, currentUserId), [funnel, owner, currentUserId]);
@@ -65,6 +68,7 @@ export function SignalsTodayBar({
   const names2 = (xs: TodayItem<Row>[]) => xs.slice(0, 2).map((x) => names(x.lead).title.split(/[@\s·]/)[0]).join(", ") + (xs.length > 2 ? "…" : "");
   const tiles = [
     { key: "new", label: "Nowe zapytania", n: of("new").length, sub: `z ${untouchedTotal} · kontakt w ${FIRST_CONTACT_SLA_HOURS} h rob.`, late: lateOf("new") },
+    { key: "review", label: "Do sprawdzenia", n: reviewCount, sub: reviewCount ? "maile od nowych osób" : "—", highlight: reviewCount > 0 },
     { key: "calls", label: "Umówione telefony", n: of("calls").length, sub: names2(of("calls")) || "—", late: lateOf("calls") },
     { key: "followups", label: "Follow-up ofert", n: of("followups").length, sub: names2(of("followups")) || "—", late: lateOf("followups") },
     // Wiosna: do „Na dziś” trafia max SPRING_PER_DAY dziennie z puli (rozkład telefonów).
@@ -109,7 +113,7 @@ export function SignalsTodayBar({
         dateLabel={`${now.toLocaleDateString("pl-PL", { weekday: "long", day: "2-digit", month: "2-digit" })} · ${owner === "me" ? "moje" : "wszyscy"}`}
         tiles={tiles}
         active={active}
-        onToggle={(k) => onToggle(k as TodayGroupKey | null)}
+        onToggle={(k) => onToggle(k as TodayGroupKey | "review" | null)}
         right={right}
         allowEmpty
       />

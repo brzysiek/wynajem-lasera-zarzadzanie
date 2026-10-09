@@ -352,7 +352,10 @@ function splitName(full: string | null) {
 // Nowy sygnał z panelu (np. telefon od klientki). Bez wybranego klienta —
 // klient tworzony automatycznie z podanych danych, jak przy formularzach
 // (chyba że e-mail / telefon już jest w bazie — wtedy podpinamy istniejącego).
-export async function createLead(input: NewLeadInput, userId: string): Promise<string> {
+// opts (wniosek 43): sygnał z maila — źródło zmiany (AUTO_MAIL_IN w trybie
+// automatycznym), data założenia = data maila (czas na kontakt liczy się od
+// maila), userId = null przy zakładaniu przez system.
+export async function createLead(input: NewLeadInput, userId: string | null, opts: { source?: SourceCode; createdAt?: Date } = {}): Promise<string> {
   // Ten sam mail / numer nie zakłada drugiego sygnału.
   if (input.sourceRef) {
     const dup = await prisma.lead.findFirst({ where: { sourceRef: input.sourceRef, archivedAt: null }, select: { id: true, title: true } });
@@ -389,7 +392,7 @@ export async function createLead(input: NewLeadInput, userId: string): Promise<s
     }
   }
   const client = clientId ? await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } }) : null;
-  const now = new Date();
+  const now = opts.createdAt ?? new Date();
   // Telefon wpisany po rozmowie = kontakt już był; inaczej pierwszy kontakt w SLA 4 h rob.
   const talkedAlready = input.type === "TELEFON";
   // Lejek v2: stała klientka (wynajem w 12 mies.) — od razu „umówić termin”.
@@ -406,8 +409,9 @@ export async function createLead(input: NewLeadInput, userId: string): Promise<s
         ? { stage: "WYWIAD", firstContactAt: now, lastContactAt: now, nextActionAt: addWorkHours(now, 16), nextStepType: "INNE", nextStepNote: "po rozmowie telefonicznej" }
         : { nextActionAt: addWorkHours(now, FIRST_CONTACT_SLA_HOURS), nextStepType: "PIERWSZY_KONTAKT" }),
       ...(returning ? { stage: "WYWIAD", returningClient: true, nextActionAt: now, nextStepType: "UMOW_TERMIN", nextStepNote: "stała klientka — umówić termin" } : {}),
-      ...stageSet("USER", userId),
-      ...stepSet("USER", userId),
+      ...stageSet(opts.source ?? "USER", opts.source ? null : userId),
+      ...stepSet(opts.source ?? "USER", opts.source ? null : userId),
+      ...(opts.createdAt ? { createdAt: opts.createdAt, stageChangedAt: opts.createdAt } : {}),
       deviceInterest: input.deviceInterest.length ? input.deviceInterest : undefined,
       requestedFrom: input.requestedFrom,
       requestedDays: input.requestedDays,

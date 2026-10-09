@@ -26,11 +26,19 @@ function kb(size: number) {
   return size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(size / 1024))} KB`;
 }
 
-export function EmailViewer({ messageIds, onClose }: { messageIds: string[]; onClose: () => void }) {
+export function EmailViewer({ messageIds, onClose, allowSignal = true }: { messageIds: string[]; onClose: () => void; allowSignal?: boolean }) {
   const [index, setIndex] = useState(0);
+  // Wniosek 43: „+ sygnał z tego maila” — ręcznie, gdy filtr czegoś nie złapał.
+  const [signal, setSignal] = useState<{ busy: boolean; leadId?: string; error?: string }>({ busy: false });
   const [cache, setCache] = useState<Record<string, Email | { error: string }>>({});
   const id = messageIds[index];
   const email = cache[id];
+
+  async function createSignal() {
+    setSignal({ busy: true });
+    const { ok, data } = await api<{ leadId: string }>("/api/mail-intake/from-email", "POST", { emailMessageId: id });
+    setSignal(ok ? { busy: false, leadId: data.leadId } : { busy: false, error: data.message ?? "Nie udało się założyć sygnału." });
+  }
 
   useEffect(() => {
     if (cache[id]) return;
@@ -117,8 +125,22 @@ export function EmailViewer({ messageIds, onClose }: { messageIds: string[]; onC
               </button>
             </>
           )}
+          {allowSignal && email && "direction" in email && email.direction === "IN" && (
+            <span className="ml-auto flex items-center gap-2 text-[13px]">
+              {signal.error && <span className="text-[var(--c-red)]">{signal.error}</span>}
+              {signal.leadId ? (
+                <a href={`/sygnaly?id=${signal.leadId}`} className="font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+                  Sygnał założony — otwórz →
+                </a>
+              ) : (
+                <button type="button" disabled={signal.busy} onClick={() => void createSignal()} className="h-8 rounded-lg border border-[var(--c-border)] px-3 hover:border-[var(--c-brand)] disabled:opacity-40">
+                  {signal.busy ? "Zakładam…" : "+ sygnał z tego maila"}
+                </button>
+              )}
+            </span>
+          )}
           {email && "gmailUrl" in email && (
-            <a href={email.gmailUrl} target="_blank" rel="noreferrer" className="ml-auto text-[13px] font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]">
+            <a href={email.gmailUrl} target="_blank" rel="noreferrer" className={`${allowSignal && "direction" in email && email.direction === "IN" ? "" : "ml-auto "}text-[13px] font-semibold text-[var(--c-brand)] hover:text-[var(--c-brand-deep)]`}>
               Otwórz w Gmailu ↗
             </a>
           )}

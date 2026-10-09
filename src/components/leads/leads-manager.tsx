@@ -20,6 +20,7 @@ import type { DayProgress } from "@/lib/leads/load";
 import { applySmsPlaceholders } from "@/lib/sms-template";
 import { BoardView } from "./board-view";
 import { ReportView } from "./report-view";
+import { ReviewView } from "./review-view";
 import { SignalsTodayBar } from "./signals-today-bar";
 import { TodayQueue, type TodayGroupKey, type TodayOwner } from "./today-queue";
 import { defaultTodayOwner, scopeRows } from "@/lib/leads/today-scope";
@@ -38,8 +39,8 @@ import { RefreshIcon, fmtRange } from "./lead-ui";
 // Wnioski 25 i 27: Tablica (domyślna) · Na dziś (kolejka pracy zamiast
 // Listy) · Raport. Panel pamięta ostatni widok (per użytkownik, w
 // przeglądarce). „Dzwoń po kolei” w „Na dziś”.
-type View = "board" | "today" | "report";
-const VIEW_LABEL: Record<View, string> = { board: "Tablica", today: "Na dziś", report: "Raport" };
+type View = "board" | "today" | "report" | "review";
+const VIEW_LABEL: Record<View, string> = { board: "Tablica", today: "Na dziś", report: "Raport", review: "Do sprawdzenia" };
 
 
 function csvCell(v: string | number | null): string {
@@ -105,6 +106,7 @@ export function LeadsManager({
   seasonGoal,
   freeByInterest,
   signalTasks,
+  reviewCount = 0,
   tour,
 }: {
   rows: LeadRow[];
@@ -131,6 +133,8 @@ export function LeadsManager({
   // Na dziś (wniosek 27): wolne terminy urządzeń i zadania przy sygnałach.
   freeByInterest: Partial<Record<DeviceInterestKey, string[]>>;
   signalTasks: SignalTask[];
+  // Wniosek 43: liczba maili w „Do sprawdzenia”.
+  reviewCount?: number;
   // Przewodnik po nowych Sygnałach (wniosek 19): czy pokazać i imię (wołacz).
   tour: { show: boolean; showV3?: boolean; showV4?: boolean; name: string };
 }) {
@@ -141,7 +145,7 @@ export function LeadsManager({
     try {
       const v = localStorage.getItem(viewKey);
       // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage dostępny dopiero w przeglądarce
-      if (v === "board" || v === "today" || v === "report") setViewState(v);
+      if (v === "board" || v === "today" || v === "report" || v === "review") setViewState(v);
     } catch {
       // brak localStorage — Tablica
     }
@@ -427,8 +431,11 @@ export function LeadsManager({
               goal={seasonGoal}
               progress={progress}
               signalTasks={signalTasks}
-              active={view === "today" ? todayGroup : null}
+              active={view === "review" ? "review" : view === "today" ? todayGroup : null}
+              reviewCount={reviewCount}
               onToggle={(g) => {
+                if (g === "review") return setView("review");
+                if (g === null && view === "review") return setView("board");
                 if (view !== "today") {
                   setView("today");
                   setTodayGroup(g);
@@ -453,6 +460,7 @@ export function LeadsManager({
                   }`}
                 >
                   {VIEW_LABEL[v]}
+                  {v === "review" && reviewCount > 0 && <span className="ml-1.5 rounded-full bg-[#E08A5C] px-1.5 py-px text-[11px] font-semibold text-white">{reviewCount}</span>}
                 </button>
               ))}
             </div>
@@ -541,6 +549,8 @@ export function LeadsManager({
                   canArchive2025={isAdmin}
                 />
               )}
+
+              {view === "review" && <ReviewView readOnly={readOnly} onChanged={refresh} onOpenLead={(id) => open(id)} />}
 
               {view === "report" && <ReportView rows={list} now={now} seasonGoal={seasonGoal} playbook={playbook} onOpen={(id: string) => open(id)} users={users} currentUserId={currentUserId} />}
 

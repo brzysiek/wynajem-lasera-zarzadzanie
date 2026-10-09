@@ -5,6 +5,7 @@ import { loadFreeByInterest, loadSignalTasks } from "@/lib/leads/today-extras";
 import { loadArchived2025Rows, loadDayProgress, loadLeadRows, loadLinkSuggestions, loadStaffUsers, todayCallStats } from "@/lib/leads/load";
 import { syncLeadsWithRentalsSafe } from "@/lib/leads/rental-link";
 import { lastDealsSync } from "@/lib/leads/hubspot-sync";
+import { countQueue } from "@/lib/leads/mail-intake";
 import { LeadsManager } from "@/components/leads/leads-manager";
 import { agentAssignees } from "@/lib/agent-api/assignees";
 import { loadPlaybook } from "@/lib/leads/playbook-load";
@@ -38,7 +39,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     // Przewodnik „Tablica – jak pracujemy” (v4) — zastępuje v2 i v3.
     office ? shouldShowTour(session.user.id, "signalsV4") : false,
   ]);
-  const [seasonGoal, freeByInterest, signalTasks] = await Promise.all([loadSeasonGoal(playbook.season), loadFreeByInterest().catch(() => ({})), loadSignalTasks()]);
+  const [seasonGoal, freeByInterest, signalTasks, reviewCount] = await Promise.all([loadSeasonGoal(playbook.season), loadFreeByInterest().catch(() => ({})), loadSignalTasks(), countQueue().catch(() => 0)]);
   return (
     <LeadsManager
       rows={rows}
@@ -62,6 +63,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
       seasonGoal={seasonGoal}
       freeByInterest={freeByInterest}
       signalTasks={signalTasks}
+      reviewCount={reviewCount}
       tour={{ show: false, showV3: false, showV4: showTourV4, name: vocative(session.user.name ?? "") }}
     />
   );

@@ -1884,3 +1884,44 @@ model LeadSuggestion {
   @@index([generatedAt])
   @@map("lead_suggestions")
 }
+
+// Mail przychodzący od nowej osoby → sygnał (wniosek 43, 09.10.2026): panel
+// filtruje skrzynkę kontakt@ regułami (bez API modelu, bez zmian w Gmailu) i
+// zapisuje TYLKO decyzję i powód — treść maila nie jest przechowywana (temat i
+// skrót z Gmaila, jak w historii maili). Statusy: DO_SPRAWDZENIA (kolejka),
+// AUTO_ODRZUCONY (niska punktacja, widoczny 14 dni z „To jednak sygnał”), SMIEC
+// (no-reply, newsletter, domena wykluczona — powód zapisany), SYGNAL (założony),
+// ODRZUCONY_RECZNIE („Nie”). Kolejka jest wspólna z propozycjami połączeń (W-0042).
+model MailIntake {
+  id                 String    @id @default(cuid())
+  mailbox            String    @db.VarChar(191)
+  gmailMessageId     String    @db.VarChar(64)
+  gmailThreadId      String    @db.VarChar(64)
+  rfcMessageId       String?   @db.VarChar(512)
+  fromAddress        String    @db.VarChar(191)
+  fromName           String?   @db.VarChar(191)
+  subject            String?   @db.Text
+  snippet            String?   @db.Text
+  receivedAt         DateTime
+  kind               String    @db.VarChar(12) // NEW_PERSON | KNOWN_CLIENT
+  status             String    @db.VarChar(20)
+  reason             String?   @db.VarChar(160)
+  score              Int       @default(0)
+  matched            Json? // string[] — dopasowane słowa
+  devices            Json? // DeviceInterest[]
+  phone              String?   @db.VarChar(32)
+  nip                String?   @db.VarChar(16)
+  clientId           String?
+  leadId             String?
+  recommendation     String?   @db.VarChar(8) // SYGNAL | NIE (agent)
+  recommendationNote String?   @db.Text
+  recommendedAt      DateTime?
+  decidedById        String?
+  decidedAt          DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@unique([mailbox, gmailMessageId])
+  @@index([status, createdAt])
+  @@index([fromAddress])
+  @@map("mail_intakes")
+}
