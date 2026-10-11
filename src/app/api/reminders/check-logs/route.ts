@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth-guards";
+import { OFFICE_AND_AGENT } from "@/lib/permissions";
 import { getReminderCheckLogs } from "@/lib/reminders";
 
 const PAGE_SIZES = [10, 25, 50, 100, 500];
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  // Wniosek 31: biuro i agent (odczyt) — bez roli KIEROWCA.
+  const session = await requireSession(OFFICE_AND_AGENT);
+  if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 

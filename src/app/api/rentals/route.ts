@@ -21,6 +21,7 @@ import { saveRentalFinance } from "@/lib/finance";
 import { linkUnassignedRentalsSafe } from "@/lib/clients/rental-match";
 import { syncLeadsWithRentalsSafe } from "@/lib/leads/rental-link";
 import { updateLead } from "@/lib/leads/actions";
+import { toDriverRental } from "@/lib/rentals/driver-dto";
 
 const RENTAL_INCLUDE = {
   device: true,
@@ -29,6 +30,15 @@ const RENTAL_INCLUDE = {
   finance: true,
   reminderRules: { orderBy: { daysBefore: "asc" as const } },
   messages: { orderBy: { sentAt: "desc" as const } },
+};
+
+// Wniosek 31: KIEROWCA nie pobiera z bazy historii SMS ani reguł przypomnień —
+// i tak nie trafiłyby do odpowiedzi (toDriverRental).
+const DRIVER_INCLUDE = {
+  device: true,
+  driver: { select: { id: true, name: true, driverColor: true } },
+  vehicle: { select: { id: true, name: true } },
+  finance: true,
 };
 
 function parseReminderDays(body: unknown): ReminderDays[] {
@@ -51,17 +61,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Wymagane parametry from i to." }, { status: 400 });
   }
 
-  const rentals = await prisma.rental.findMany({
-    where: {
-      deletedInGoogle: false,
-      startsAt: { lte: new Date(to) },
-      endsAt: { gte: new Date(from) },
-      // Drivers only ever see the rentals an admin assigned to them.
-      ...(session.user.role === "KIEROWCA" ? { driverId: session.user.id } : {}),
-    },
-    include: RENTAL_INCLUDE,
-    orderBy: { startsAt: "asc" },
-  });
+  const isDriver = session.user.role === "KIEROWCA";
+  const where = {
+    deletedInGoogle: false,
+    startsAt: { lte: new Date(to) },
+    endsAt: { gte: new Date(from) },
+    // Drivers only ever see the rentals an admin assigned to them.
+    ...(isDriver ? { driverId: session.user.id } : {}),
+  };
+  // Wniosek 31: konto KIEROWCA dostaje zawężone pola (bez cen, faktur, SMS, e-maila i NIP).
+  if (isDriver) {
+    const rows = await prisma.rental.findMany({ where, include: DRIVER_INCLUDE, orderBy: { startsAt: "asc" } });
+    return NextResponse.json({ rentals: rows.map(toDriverRental) });
+  }
+  const rentals = await prisma.rental.findMany({ where, include: RENTAL_INCLUDE, orderBy: { startsAt: "asc" } });
 
   // Cena ≠ warunki klienta (> 10%) — ostrzeżenie na kafelku (tylko biuro).
   if (session.user.role === "ADMIN" || session.user.role === "STAFF") {

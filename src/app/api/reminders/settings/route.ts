@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { getRemindersEnabled, setRemindersEnabled, discardStaleReminders } from "@/lib/reminders";
 import { logInfo, logWarn } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
-  }
-  // Rola AGENT: tylko odczyt (src/lib/permissions.ts).
-  if (session.user.role === "AGENT") {
+  // Tylko biuro (ADMIN/STAFF): AGENT i KIEROWCA dostają 403 (wniosek 31).
+  const session = await requireStaffSession();
+  if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 

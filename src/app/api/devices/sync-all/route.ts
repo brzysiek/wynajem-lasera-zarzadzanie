@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { syncAllDevices } from "@/lib/device-sync";
 import { linkUnassignedRentalsSafe } from "@/lib/clients/rental-match";
 import { logInfo, logError } from "@/lib/logger";
 
 export async function POST() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
-  }
-  // Rola AGENT: tylko odczyt (src/lib/permissions.ts).
-  if (session.user.role === "AGENT") {
+  // Tylko biuro (ADMIN/STAFF): AGENT i KIEROWCA dostają 403 (wniosek 31).
+  const session = await requireStaffSession();
+  if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 

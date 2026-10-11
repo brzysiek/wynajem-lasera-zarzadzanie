@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireSession } from "@/lib/auth-guards";
+import { OFFICE_AND_AGENT } from "@/lib/permissions";
 import { searchHubspotContacts } from "@/lib/integrations/hubspot";
 import { logError } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  // Wniosek 31: baza kontaktów HubSpot — biuro i agent, bez roli KIEROWCA.
+  const session = await requireSession(OFFICE_AND_AGENT);
+  if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
 

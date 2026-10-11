@@ -61,6 +61,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return bad("Brak dostępu do tego wynajmu.", 403);
   }
 
+  const isDriver = session.user.role === "KIEROWCA";
+  // Wniosek 31: bez rozliczenia przygotowanego przez biuro kierowca niczego nie
+  // zakłada — dawniej pierwszy zapis uwagi tworzył RentalFinance z ceną z cennika i
+  // gotówką, a kierowca widział potem fałszywe „pobierz gotówkę X zł”. Uwagi
+  // kierowcy żyją na RentalFinance, więc do czasu rozliczenia nie mają gdzie się
+  // zapisać. Biuro (ADMIN/STAFF) działa jak dotąd.
+  if (isDriver && !rental.finance) {
+    return bad("Biuro nie przygotowało jeszcze rozliczenia tego wydarzenia — uwagi zapiszesz, gdy będzie gotowe.", 409);
+  }
+
   // --- walidacja i normalizacja pól z body ---
   let capUsedHS: boolean | null | undefined;
   let capCountHS: number | undefined;
@@ -175,6 +185,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // potwierdzenie (np. pomyłka, biuro chce poprawić dane po kierowcy).
   const effConfirmedAt =
     confirmed === undefined ? existing?.confirmedAt ?? null : confirmed ? existing?.confirmedAt ?? new Date() : null;
+
+  // Wniosek 31: po potwierdzeniu odbioru albo po wystawieniu faktury kierowca nie
+  // zmienia liczników (impulsy, nakładki HS, membrany — wpływają na kwotę) ani nie
+  // cofa potwierdzenia; poprawia biuro. Zapis tych samych wartości (autozapis
+  // panelu wysyła komplet pól) jest dozwolony.
+  const invoiced = existing?.fakturowniaInvoiceId != null || existing?.invoiceIssuedAt != null;
+  if (isDriver && existing && (existing.confirmedAt != null || invoiced)) {
+    const countersChanged =
+      effStart !== existing.pulseCounterStart ||
+      effEnd !== existing.pulseCounterEnd ||
+      effCapUsed !== existing.capUsedHS ||
+      (Boolean(effCapUsed) && effCapCount !== existing.capCountHS) ||
+      effMembraneUsed !== existing.membraneUsed ||
+      (Boolean(effMembraneUsed) && effMembraneCount !== existing.membraneCount);
+    const undoing = confirmed === false && existing.confirmedAt != null;
+    if (countersChanged || undoing) {
+      logWarn("driver_finance_locked", { userId: session.user.id, rentalId: id, countersChanged, undoing });
+      return bad("Rozliczenie jest już potwierdzone lub zafakturowane — zmiany wprowadza biuro.", 409);
+    }
+  }
 
   // Pola transportu ustala biuro w sekcji „Finanse" — kierowca ich nie rusza.
   const transportPriceNet = existing?.transportPriceNet ?? parseTransportPrice(rental.transportPrice);
