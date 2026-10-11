@@ -12,6 +12,7 @@ import { StageChip } from "./lead-ui";
 import { StageLegend } from "./plan-day";
 import type { CardIntent } from "./lead-card";
 import { LEAD_STAGE_COLORS } from "@/components/shell-tokens";
+import { LEAD_CARD_CHANNEL_ACTIONS } from "@/lib/leads/channel-actions";
 
 // Sygnały → Tablica (wzór lejek-v2-wzor.html, s2): jedyny lejek w panelu.
 // Kolumny w kolorach etapów, terakota = gnije / po terminie, kropki prób,
@@ -364,7 +365,7 @@ export function BoardView({
                               <span className="cursor-help">📋{r.tasks.count > 1 ? r.tasks.count : ""}</span>
                             </Tip>
                           )}
-                          {r.mailDraft && (
+                          {LEAD_CARD_CHANNEL_ACTIONS && r.mailDraft && (
                             <Tip label="Odpowiedź mailowa" lines={[r.mailDraft === "SZKIC_GMAIL" ? "Szkic zapisany w Gmailu — czeka na wysłanie" : "Jest propozycja odpowiedzi — sprawdź i zapisz szkic w Gmailu"]}>
                               <span className={`cursor-help ${r.mailDraft === "SZKIC_GMAIL" ? "text-[#2F7A68]" : "text-[#B8612F]"}`}>✉</span>
                             </Tip>

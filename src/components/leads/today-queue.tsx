@@ -17,6 +17,7 @@ import { StageLegend, plural } from "./plan-day";
 import { step as stepText, when as whenText } from "./today-table";
 import type { CardIntent } from "./lead-card";
 import { LeadStepBlock } from "./lead-step-block";
+import { LEAD_CARD_CHANNEL_ACTIONS } from "@/lib/leads/channel-actions";
 
 // Sygnały → Na dziś (wniosek 27 B, 26): kolejka pracy. Granatowy pasek „Do
 // zrobienia dziś” (klik = filtr sekcji) — od wniosku 33 w SignalsTodayBar nad
@@ -324,7 +325,7 @@ function QueueCard({
           {r.spring?.note && <span className="text-[#B8612F]" title={r.spring.note.body}>✎ {d2(r.spring.note.at)} {r.spring.note.by ?? ""}</span>}
         </div>
         <div className="mt-1 flex flex-wrap gap-1.5" data-tour="row-actions" onClick={(e) => e.stopPropagation()}>
-          {!readOnly && r.phone && (
+          {LEAD_CARD_CHANNEL_ACTIONS && !readOnly && r.phone && (
             <a href={`tel:${r.phone}`} className={BTN_SM_PRIMARY} title={formatPhone(r.phone) ?? undefined}>
               Zadzwoń
             </a>
@@ -334,7 +335,7 @@ function QueueCard({
               Wynik rozmowy
             </button>
           )}
-          {!readOnly && (
+          {LEAD_CARD_CHANNEL_ACTIONS && !readOnly && (
             <button type="button" disabled={!(r.email || r.clientId)} className={BTN_SM} onClick={() => onOpen(r.id, "mail")} title="Odpowiedź mailowa: szkic do poprawienia i zapisu w Gmailu">
               Mail
             </button>

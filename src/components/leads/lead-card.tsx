@@ -24,6 +24,7 @@ import { LeadMailDraft } from "@/components/leads/lead-mail-draft";
 import { LeadStepBlock } from "@/components/leads/lead-step-block";
 import { LeadSuggestionBlock } from "@/components/leads/lead-suggestion-block";
 import { stageEffectText } from "@/lib/leads/step-edit";
+import { LEAD_CARD_CHANNEL_ACTIONS } from "@/lib/leads/channel-actions";
 import { CallOutcomeDialog } from "./call-outcome-dialog";
 import type { Playbook } from "@/lib/leads/playbook";
 
@@ -101,7 +102,7 @@ export function LeadCard({
 }) {
   const [d, setD] = useState<LeadDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<Panel>(intent === "sms" && !agent ? "sms" : null);
+  const [panel, setPanel] = useState<Panel>(LEAD_CARD_CHANNEL_ACTIONS && intent === "sms" && !agent ? "sms" : null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [lost, setLost] = useState<false | { preset?: LostReasonKey }>(false);
@@ -114,7 +115,7 @@ export function LeadCard({
   // „Zmień termin”, „Powiąż z wynajmem”, podpowiedź zwinięta do żarówki.
   const [outcome, setOutcome] = useState<false | true | "postpone">(!agent && (intent === "call" || intent === "postpone") ? (intent === "postpone" ? "postpone" : true) : false);
   // Wniosek 47: „Mail” w nagłówku i „Przygotuj ofertę” w Podpowiedzi otwierają sekcję „Odpowiedź mailowa”.
-  const [mailSignal, setMailSignal] = useState<{ nonce: number; kind: "open" | "offer" } | null>(intent === "mail" ? { nonce: 1, kind: "open" } : null);
+  const [mailSignal, setMailSignal] = useState<{ nonce: number; kind: "open" | "offer" } | null>(LEAD_CARD_CHANNEL_ACTIONS && intent === "mail" ? { nonce: 1, kind: "open" } : null);
   const [linking, setLinking] = useState(intent === "link");
   const [tipOpen, setTipOpen] = useState<boolean | null>(null);
   const [freeDates, setFreeDates] = useState<string[] | null>(null);
@@ -291,14 +292,18 @@ export function LeadCard({
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px]">
           {phone ? (
-            <a href={`tel:${phone}`} className="font-semibold text-[var(--c-brand)] hover:underline">
-              ☎ {formatPhone(phone)}
-            </a>
+            LEAD_CARD_CHANNEL_ACTIONS ? (
+              <a href={`tel:${phone}`} className="font-semibold text-[var(--c-brand)] hover:underline">
+                ☎ {formatPhone(phone)}
+              </a>
+            ) : (
+              <span className="font-semibold text-[var(--c-text)] select-all">☎ {formatPhone(phone)}</span>
+            )
           ) : (
             <span className="text-[var(--c-faint)]">bez telefonu</span>
           )}
           {d.email &&
-            (agent ? (
+            (agent || !LEAD_CARD_CHANNEL_ACTIONS ? (
               <span className="min-w-0 truncate text-[var(--c-brand)]">{d.email}</span>
             ) : (
               <button type="button" onClick={() => setMailSignal({ nonce: Date.now(), kind: "open" })} className="min-w-0 truncate text-left text-[var(--c-brand)] hover:underline" title="Otwórz sekcję „Odpowiedź mailowa”">
@@ -314,17 +319,17 @@ export function LeadCard({
           </p>
         )}
         <div className="flex flex-wrap gap-1.5 pt-1">
-          {!agent && phone && (
+          {LEAD_CARD_CHANNEL_ACTIONS && !agent && phone && (
             <a href={`tel:${phone}`} className={ACTION_PRIMARY}>
               <PhoneIcon size={14} /> Zadzwoń
             </a>
           )}
-          {!agent && (
+          {LEAD_CARD_CHANNEL_ACTIONS && !agent && (
             <button type="button" disabled={!phone} className={ACTION} onClick={() => setPanel(panel === "sms" ? null : "sms")}>
               <SmsIcon size={14} /> SMS
             </button>
           )}
-          {!agent && (
+          {LEAD_CARD_CHANNEL_ACTIONS && !agent && (
             <button type="button" className={ACTION} onClick={() => setMailSignal({ nonce: Date.now(), kind: "open" })} title="Odpowiedź mailowa: szkic do poprawienia i zapisu w Gmailu">
               <MailIcon /> Mail
             </button>
@@ -366,7 +371,7 @@ export function LeadCard({
             >
               Tak, przegrana
             </button>
-            {phone && (
+            {LEAD_CARD_CHANNEL_ACTIONS && phone && (
               <button type="button" className={`${BTN} h-8`} onClick={() => setPanel("sms")}>
                 Szkic SMS
               </button>
@@ -383,7 +388,7 @@ export function LeadCard({
             + Zadanie
           </button>
         </div>
-        {panel === "sms" && phone && (
+        {LEAD_CARD_CHANNEL_ACTIONS && panel === "sms" && phone && (
           <SmsBox
             initial={d.attempts >= NO_ANSWER_LIMIT && noAnswerTpl ? applySmsPlaceholders(noAnswerTpl.body, { clientName: d.clientName ?? d.person }) : ""}
             templates={templates}
@@ -414,19 +419,21 @@ export function LeadCard({
         />
 
         {/* Odpowiedź mailowa (wniosek 44): notatka + rozwijany szkic, zapis szkicu w Gmailu */}
-        <LeadMailDraft
-          leadId={leadId}
-          draft={d.emailDraft}
-          defaultTo={d.email}
-          lastInbound={d.lastInboundEmail}
-          offer={draft}
-          signal={mailSignal}
-          readOnly={agent}
-          onDraft={(nd) => {
-            setD((cur) => (cur ? { ...cur, emailDraft: nd, mailDraft: nd && (nd.status === "PROPOZYCJA" || nd.status === "SZKIC_GMAIL") ? nd.status : null } : cur));
-            onChanged();
-          }}
-        />
+        {LEAD_CARD_CHANNEL_ACTIONS && (
+          <LeadMailDraft
+            leadId={leadId}
+            draft={d.emailDraft}
+            defaultTo={d.email}
+            lastInbound={d.lastInboundEmail}
+            offer={draft}
+            signal={mailSignal}
+            readOnly={agent}
+            onDraft={(nd) => {
+              setD((cur) => (cur ? { ...cur, emailDraft: nd, mailDraft: nd && (nd.status === "PROPOZYCJA" || nd.status === "SZKIC_GMAIL") ? nd.status : null } : cur));
+              onChanged();
+            }}
+          />
+        )}
 
         {/* 4. Oś czasu: 3 ostatnie, reszta pod „rozwiń” */}
         <Section title="Oś czasu">
@@ -589,6 +596,19 @@ export function LeadCard({
                 playbook={playbook}
                 smsText={phone && noAnswerTpl ? applySmsPlaceholders(noAnswerTpl.body, { clientName: d.clientName ?? d.person }) : null}
                 canAct={!agent}
+                bureau={{
+                  id: d.id,
+                  name: d.clientName ?? d.person ?? d.title,
+                  city: d.city,
+                  stageLabel: STAGE_LABEL[d.stage],
+                  stepType: d.nextStepType,
+                  stepNote: d.nextStepNote,
+                  stepAt: d.nextActionAt ? new Date(d.nextActionAt) : null,
+                  devices: devices.map((x) => LEAD_DEVICE_LABEL[x]),
+                  dates: d.requestedFrom ? fmtRange(d.requestedFrom, d.requestedDays) : null,
+                  followUpNo: d.followUpNo,
+                  returnAt: d.returnAt ? new Date(d.returnAt) : null,
+                }}
                 onPrepareOffer={() => setMailSignal({ nonce: Date.now(), kind: "offer" })}
                 onSendSms={(message) => run(`/api/leads/${leadId}/sms`, "POST", { phone, message }, "SMS wysłany.")}
               />

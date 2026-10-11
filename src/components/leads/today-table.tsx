@@ -10,6 +10,7 @@ import { Dots, type LinkSuggestion } from "./funnel-views";
 import { StageChip } from "./lead-ui";
 import { PriorityTag } from "./plan-day";
 import type { CardIntent } from "./lead-card";
+import { LEAD_CARD_CHANNEL_ACTIONS } from "@/lib/leads/channel-actions";
 
 // Sygnały → Lista, filtr „Na dziś” (zasady-wzor.html, ekran 1): jedna tabela
 // w kolejności dnia — po czasie → nowe → zaplanowane na dziś → wracające
@@ -136,7 +137,7 @@ export function TodayTable({
             Wpisz do kalendarza
           </Link>
           </>
-        ) : r.phone ? (
+        ) : LEAD_CARD_CHANNEL_ACTIONS && r.phone ? (
           <a href={`tel:${r.phone}`} onClick={() => onOpen(r.id, "call")} className={BTN_SM}>
             Zadzwoń
           </a>

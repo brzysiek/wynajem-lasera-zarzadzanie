@@ -21,6 +21,7 @@ import {
   type NextStepType,
 } from "@/lib/leads/funnel";
 import type { CardIntent } from "./lead-card";
+import { LEAD_CARD_CHANNEL_ACTIONS } from "@/lib/leads/channel-actions";
 
 // Sygnały → Na dziś (wzór lejek-wzor.html, s1) i Do obdzwonienia (s3).
 // Reguły: src/lib/leads/funnel.ts. Skala i tokeny jak na karcie klienta.
@@ -142,12 +143,12 @@ export function Seg<T extends string>({ value, options, onChange }: { value: T; 
 function Actions({ r, readOnly, onOpen }: { r: LeadRow; readOnly: boolean; onOpen: (id: string, intent?: CardIntent) => void }) {
   return (
     <div className="flex flex-wrap justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-      {!readOnly && r.phone && (
+      {LEAD_CARD_CHANNEL_ACTIONS && !readOnly && r.phone && (
         <a href={`tel:${r.phone}`} onClick={() => onOpen(r.id, "call")} className={BTN_SM}>
           Zadzwoń
         </a>
       )}
-      {!readOnly && r.phone && (
+      {LEAD_CARD_CHANNEL_ACTIONS && !readOnly && r.phone && (
         <button type="button" onClick={() => onOpen(r.id, "sms")} className={BTN_SM}>
           SMS
         </button>
@@ -291,7 +292,7 @@ export function NaDzisView({
                     <div className="truncate text-[12px] text-[#5C6166]">{r.city ?? (r.clientQualified ? "w bazie klientów" : "nowa w bazie")}</div>
                     <span className={`text-[12px] font-semibold tabular-nums ${waited > FIRST_CONTACT_SLA_HOURS ? "text-[#B8612F]" : "text-[#1B6FA8]"}`}>{workDurationLabel(waited)}</span>
                     <span onClick={(e) => e.stopPropagation()}>
-                      {!readOnly && r.phone ? (
+                      {LEAD_CARD_CHANNEL_ACTIONS && !readOnly && r.phone ? (
                         <a href={`tel:${r.phone}`} onClick={() => onOpen(r.id, "call")} className={BTN_SM_PRI}>
                           Zadzwoń
                         </a>
@@ -431,7 +432,7 @@ export function CallsView({
                   {overdue ? "zaległe" : "dziś"}
                 </span>
                 <span onClick={(e) => e.stopPropagation()}>
-                  {!readOnly && r.phone ? (
+                  {LEAD_CARD_CHANNEL_ACTIONS && !readOnly && r.phone ? (
                     <a href={`tel:${r.phone}`} onClick={() => onOpen(r.id, "call")} className={BTN_SM_PRI}>
                       Zadzwoń
                     </a>
