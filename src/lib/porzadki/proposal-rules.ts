@@ -213,13 +213,13 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
       if (!CONTACT_CHANNELS.includes(channel)) return { ok: false, message: "kanal: telefon, sms albo mail." };
       const result = (str(item.wynik ?? item.result, 16)?.toLowerCase() ?? "rozmowa") as ContactLogProposal["result"];
       if (!CONTACT_RESULTS.includes(result)) return { ok: false, message: "wynik: rozmowa albo nie_odebrala." };
-      return { ok: true, value: { ...base, kind, leadId, field: `${at}|${channel}`, proposed: { at, channel, result, note: str(item.notatka ?? item.note, 2000) } satisfies ContactLogProposal } };
+      return { ok: true, value: { ...base, kind, leadId, field: `${at}|${channel}`, proposed: { at, channel, result, note: str(item.notatka ?? item.note ?? item.dopisek, 2000) } satisfies ContactLogProposal } };
     }
     const returnAt = str(item.data_powrotu ?? item.returnAt, 10);
     if (!returnAt || !/^\d{4}-\d{2}-\d{2}$/.test(returnAt)) return { ok: false, message: "data_powrotu: RRRR-MM-DD." };
     const reasonRaw = str(item.powod ?? item.reason, 32)?.toUpperCase() ?? "";
     if (!(POSTPONE_REASON_KEYS as readonly string[]).includes(reasonRaw)) return { ok: false, message: `powod: ${POSTPONE_REASON_KEYS.join(", ")}.` };
-    return { ok: true, value: { ...base, kind, leadId, field: "returnAt", proposed: { returnAt, reason: reasonRaw as PostponeReasonKey, note: str(item.notatka ?? item.note, 1000) } satisfies PostponeProposal } };
+    return { ok: true, value: { ...base, kind, leadId, field: "returnAt", proposed: { returnAt, reason: reasonRaw as PostponeReasonKey, note: str(item.notatka ?? item.note ?? item.dopisek, 1000) } satisfies PostponeProposal } };
   }
   if (kind === "RESIGN") {
     if (!clientId) return { ok: false, message: "Podaj klient_id." };
@@ -227,7 +227,7 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
     if (!(RESIGN_REASON_KEYS as readonly string[]).includes(reasonRaw)) return { ok: false, message: `powod: ${RESIGN_REASON_KEYS.join(", ")}.` };
     const recontactAt = str(item.data_ponownego_kontaktu ?? item.recontactAt, 10);
     if (recontactAt && !/^\d{4}-\d{2}-\d{2}$/.test(recontactAt)) return { ok: false, message: "data_ponownego_kontaktu: RRRR-MM-DD." };
-    return { ok: true, value: { ...base, kind, field: "resigned", proposed: { reason: reasonRaw as ResignReasonKey, note: str(item.notatka ?? item.note, 1000), recontactAt } satisfies ResignProposal } };
+    return { ok: true, value: { ...base, kind, field: "resigned", proposed: { reason: reasonRaw as ResignReasonKey, note: str(item.notatka ?? item.note ?? item.dopisek, 1000), recontactAt } satisfies ResignProposal } };
   }
   if (kind === "CLIENT_NEW") {
     const proposed: ClientNewProposal = {
@@ -268,7 +268,7 @@ export function parseProposalItem(item: Record<string, unknown>): { ok: true; va
       if (!at || !/^\d{4}-\d{2}-\d{2}/.test(at)) return { ok: false, message: "termin: RRRR-MM-DD (opcjonalnie z godziną RRRR-MM-DDTHH:MM)." };
       const stepType = str(item.rodzaj_kroku ?? item.stepType, 20)?.toUpperCase() ?? "INNE";
       if (!LEAD_STEP_TYPES.includes(stepType)) return { ok: false, message: `rodzaj_kroku: ${LEAD_STEP_TYPES.join(", ")}.` };
-      return { ok: true, value: { ...base, kind, leadId, field: "nextStep", proposed: { at, stepType, note: str(item.notatka ?? item.note, 500) } satisfies LeadStepProposal } };
+      return { ok: true, value: { ...base, kind, leadId, field: "nextStep", proposed: { at, stepType, note: str(item.notatka ?? item.note ?? item.dopisek, 500) } satisfies LeadStepProposal } };
     }
     const rentalId = str(item.wynajem_id ?? item.rentalId, 64);
     if (!rentalId) return { ok: false, message: "Podaj wynajem_id (z kalendarz_wynajmy)." };

@@ -8,6 +8,7 @@ import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { qualifyClient } from "@/lib/clients/qualify";
 import { intakeRules } from "@/lib/leads/intake";
 import { stageSet, stepSet, type SourceCode } from "@/lib/leads/set-source";
+import { postponeStepNote, previousStepNote } from "@/lib/leads/postpone-note";
 import type { LeadPatch, NewLeadInput } from "@/lib/leads/validate";
 
 // Akcje na sygnałach z panelu (CRM, prompt 2A). Wszystko tylko w bazie
@@ -197,7 +198,11 @@ export async function logLeadActivity(
 
   if (input.outcome !== "note") {
     const reasonLabel = input.postponeReason ? POSTPONE_REASON_LABEL[input.postponeReason] : null;
-    const plan = planOutcome(lead, input.outcome, now, { at: input.nextActionAt ?? null, note: input.outcome === "postpone" ? `wraca: ${reasonLabel}${input.body ? ` — ${input.body}` : ""}` : null });
+    const plan = planOutcome(lead, input.outcome, now, {
+      at: input.nextActionAt ?? null,
+      // Wniosek 49: poprzednia notatka kroku nie znika przy odłożeniu („Wcześniej: …”).
+      note: input.outcome === "postpone" ? postponeStepNote({ reasonLabel: reasonLabel ?? "", note: input.body, previous: previousStepNote(lead.nextStepType, lead.nextStepNote) }) : null,
+    });
     if (plan.contact) {
       if (!lead.firstContactAt) data.firstContactAt = now;
       data.lastContactAt = now;
@@ -231,6 +236,50 @@ export async function logLeadActivity(
   if (input.outcome === "talked" || input.outcome === "callback" || input.outcome === "offer_sent") await qualifyClient(lead.clientId, "CALL");
   if (input.outcome === "email") await qualifyClient(lead.clientId, "EMAIL_REPLY");
   if (input.outcome !== "note") await syncLeadTasksFromStep(id);
+}
+
+// Odłożenie BEZ rozmowy (wniosek 49) — np. zaakceptowana propozycja agenta albo
+// decyzja biura „zadzwonimy później”. W odróżnieniu od „Wyniku rozmowy → Odłóż
+// do…” (logLeadActivity, outcome postpone: prawdziwa rozmowa) nie jest kontaktem
+// z klientką: nie ustawia pierwszego / ostatniego kontaktu, nie tworzy wpisu
+// CALL (więc sygnał nie jest „po rozmowie”), nie zeruje prób i nie oznacza
+// źródła jako „wynik rozmowy”. Etap → Odłożone z datą powrotu (9:00), krok →
+// „powrót z odłożonych”, poprzednia notatka kroku zostaje w jego treści.
+// Na osi czasu: STAGE_CHANGE „Nowe → Odłożone” i wpis SYSTEM z powodem i dopiskiem.
+export async function postponeLead(
+  id: string,
+  input: { returnAt: Date; reason: PostponeReasonKey; note?: string | null },
+  userId: string | null,
+  source: SourceCode = "PROPOSAL",
+) {
+  const lead = await getLead(id);
+  const now = new Date();
+  if (!(POSTPONE_REASON_LABEL as Record<string, string>)[input.reason]) throw new LeadError("Odłóż do: wybierz powód.");
+  const returnAt = new Date(input.returnAt.getFullYear(), input.returnAt.getMonth(), input.returnAt.getDate(), 9);
+  if (returnAt <= now) throw new LeadError("Odłóż do: wybierz datę powrotu (od jutra).");
+  if (!["SYGNAL", "WYWIAD", "OFERTA"].includes(lead.stage)) throw new LeadError("Odłożyć można sygnał na etapie Nowe, W kontakcie albo Oferta.");
+  const reasonLabel = POSTPONE_REASON_LABEL[input.reason];
+  const addendum = input.note?.trim() || null;
+  const stepNote = postponeStepNote({ reasonLabel, note: addendum, previous: previousStepNote(lead.nextStepType, lead.nextStepNote) });
+  const detail = `Odłożone do ${returnAt.toLocaleDateString("pl-PL")} (${reasonLabel})${addendum ? `: ${addendum}` : ""}`;
+  await prisma.$transaction([
+    prisma.lead.update({
+      where: { id },
+      data: {
+        ...stageData(lead, "ODLOZONE", source, userId),
+        returnAt,
+        postponeReason: input.reason,
+        nextActionAt: returnAt,
+        nextStepType: "POWROT",
+        nextStepNote: stepNote,
+        ...stepSet(source, userId),
+      },
+    }),
+    // Etap w osobnym, krótkim wpisie (maxStage czyta z niego nazwy etapów); szczegóły w SYSTEM.
+    prisma.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type: "STAGE_CHANGE", body: `${STAGE_LABEL[lead.stage]} → ${STAGE_LABEL.ODLOZONE}`, ...(userId ? { userId } : {}) } }),
+    prisma.leadActivity.create({ data: { leadId: id, clientId: lead.clientId, type: "SYSTEM", body: detail, ...(userId ? { userId } : {}) } }),
+  ]);
+  await syncLeadTasksFromStep(id);
 }
 
 // SMS z karty sygnału — ta sama bramka co reszta panelu (szybkisms), zapis

@@ -215,7 +215,7 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     callList: l.callList,
     talked: x.talked.has(l.id),
     clientQualified: l.clientId ? (x.qualified.get(l.clientId) ?? false) : false,
-    maxStage: maxStageReached(l.stage, x.stageBodies.get(l.id) ?? [], STAGE_HISTORY_LABELS, Boolean(l.rentalId)),
+    maxStage: maxStageReached(l.stage, x.stageBodies.get(l.id) ?? [], STAGE_HISTORY_LABELS, Boolean(l.rentalId), l.firstContactAt != null || x.talked.has(l.id)),
     search: [l.title, l.client?.name, person, email, phone, l.location ?? l.client?.city, l.message].filter(Boolean).join(" ").toLowerCase(),
   };
 }

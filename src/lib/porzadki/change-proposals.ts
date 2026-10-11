@@ -32,7 +32,7 @@ import {
   type RentalLinkProposal,
   type SignalNewProposal,
 } from "@/lib/porzadki/proposal-rules";
-import { createLead, logLeadActivity, recordPastContact, syncLeadTasksFromStep, updateLead } from "@/lib/leads/actions";
+import { createLead, postponeLead, recordPastContact, syncLeadTasksFromStep, updateLead } from "@/lib/leads/actions";
 import { setResigned } from "@/lib/clients/resign";
 import { LOST_REASON_LABEL } from "@/lib/leads/labels";
 import { stageForStep, stepForStage, NEXT_STEP_LABEL, type NextStepType } from "@/lib/leads/funnel";
@@ -430,7 +430,8 @@ async function execute(id: string, approvedById: string | null): Promise<{ ok: t
   if (p.kind === "POSTPONE") {
     const v = value as PostponeProposal;
     try {
-      await logLeadActivity(p.leadId!, { outcome: "postpone", body: v.note, nextActionAt: new Date(`${v.returnAt}T09:00:00`), postponeReason: v.reason }, actor.userId);
+      // Wniosek 49: odłożenie z propozycji to nie rozmowa — bez kontaktu, CALL i „wyniku rozmowy”.
+      await postponeLead(p.leadId!, { returnAt: new Date(`${v.returnAt}T09:00:00`), reason: v.reason, note: v.note }, actor.userId || null, "PROPOSAL");
       return { ok: true };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) };

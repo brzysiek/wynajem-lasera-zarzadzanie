@@ -1,4 +1,5 @@
 import { stageSet, stepSet } from "@/lib/leads/set-source";
+import { returnStepNote } from "@/lib/leads/postpone-note";
 import { prisma } from "@/lib/prisma";
 import { logError, logInfo } from "@/lib/logger";
 import { normalizePolishPhone } from "@/lib/reminders";
@@ -144,7 +145,7 @@ export async function reviveReturningLeads(now = new Date()): Promise<number> {
     await prisma.$transaction([
       prisma.lead.update({
         where: { id: l.id },
-        data: { stage: "WYWIAD", stageChangedAt: now, returnAt: null, nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: `wraca z odłożonych${why ? ` (${why})` : ""} — zapytać o decyzję`, ...stageSet("AUTO_RULE", null, now), ...stepSet("AUTO_RULE", null, now) },
+        data: { stage: "WYWIAD", stageChangedAt: now, returnAt: null, nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: returnStepNote({ why, postponeNote: l.nextStepNote }), ...stageSet("AUTO_RULE", null, now), ...stepSet("AUTO_RULE", null, now) },
       }),
       prisma.leadActivity.create({ data: { leadId: l.id, clientId: l.clientId, type: "STAGE_CHANGE", body: `Odłożone → W kontakcie · powrót ${fmt(l.returnAt!)}${why ? ` (${why})` : ""}` } }),
     ]);

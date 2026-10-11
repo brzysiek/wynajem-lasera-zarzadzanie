@@ -17,8 +17,13 @@ export const ARCHIVE_2025 = "BEZ_KONTAKTU_2025";
 // Najwyższy etap, jaki sygnał kiedykolwiek osiągnął (raport i konwersja):
 // bieżący etap + zmiany etapów z historii (wpisy „Wywiad → Oferta wysłana”).
 export const REACH_ORDER: LeadStageKey[] = ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "WYGRANA"];
-export function maxStageReached(current: LeadStageKey, stageChangeBodies: (string | null)[], labels: Record<LeadStageKey, string[]>, hasRental: boolean): LeadStageKey {
-  let best = current === "PRZEGRANA" ? 0 : current === "ODLOZONE" ? 1 : REACH_ORDER.indexOf(current);
+// Odłożone liczy się jak „W kontakcie” — chyba że sygnał odłożono prosto z Nowe
+// bez żadnego kontaktu (`contacted` = false, wniosek 49): wtedy nikt z klientką
+// nie rozmawiał i etap się nie podnosi (inne wpisy historii mogą go podnieść).
+export function maxStageReached(current: LeadStageKey, stageChangeBodies: (string | null)[], labels: Record<LeadStageKey, string[]>, hasRental: boolean, contacted = true): LeadStageKey {
+  const fromNew = (b: string | null) => !!b && labels.SYGNAL.some((l) => b.trimStart().startsWith(`${l} → ${labels.ODLOZONE[0]}`));
+  const postponedUntouched = current === "ODLOZONE" && !contacted && stageChangeBodies.some(fromNew);
+  let best = current === "PRZEGRANA" ? 0 : current === "ODLOZONE" ? (postponedUntouched ? 0 : 1) : REACH_ORDER.indexOf(current);
   for (const body of stageChangeBodies) {
     if (!body) continue;
     for (let i = REACH_ORDER.length - 1; i > best; i--) {
