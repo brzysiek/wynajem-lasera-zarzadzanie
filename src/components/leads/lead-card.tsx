@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { LeadDetail } from "@/lib/leads/load";
 import { ACTIVITY_LABEL, STAGE_LABEL, TYPE_LABEL, type ActivityTypeKey, type LostReasonKey } from "@/lib/leads/labels";
-import { FIRST_CONTACT_SLA_HOURS, NO_ANSWER_LIMIT, OPEN_STAGES, ROT_DAYS_OFFER, ROT_WORK_DAYS_CONTACT, funnelFromRow, rotInfo, type FunnelLead } from "@/lib/leads/funnel";
+import { FIRST_CONTACT_SLA_HOURS, NO_ANSWER_LIMIT, OPEN_STAGES, ROT_DAYS_OFFER, ROT_WORK_DAYS_CONTACT, funnelFromRow, rotInfo, stepInDays, type FunnelLead } from "@/lib/leads/funnel";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
 import { DEVICE_INTEREST_KEYS, formatPhone, type DeviceInterestKey } from "@/lib/clients/labels";
 import { nextWorkday } from "@/lib/leads/work-time";
@@ -724,7 +724,10 @@ function stageAgeText(d: LeadDetail): string {
   const rot = rotInfo(funnelFromRow(d) as unknown as FunnelLead, now);
   const days = Math.floor((now.getTime() - new Date(d.stageChangedAt).getTime()) / 86_400_000);
   const limit = d.stage === "SYGNAL" && !d.firstContactAt ? `czas na kontakt ${FIRST_CONTACT_SLA_HOURS} h rob.` : d.stage === "OFERTA" ? `limit gnicia ${ROT_DAYS_OFFER} dni` : d.stage === "REZERWACJA" ? "do dnia wynajmu" : `limit gnicia ${ROT_WORK_DAYS_CONTACT} dni rob.`;
-  return `W etapie ${days} ${days === 1 ? "dzień" : "dni"} · ${limit}${rot.rotting ? ` · gnije (${rot.label})` : ""}`;
+  // Wniosek 48: W kontakcie z krokiem w przyszłości nie gnije — mówi, kiedy wracamy.
+  const ahead = d.stage === "WYWIAD" && !rot.rotting && d.nextActionAt ? stepInDays(new Date(d.nextActionAt), now) : null;
+  const aheadText = ahead == null ? "" : ahead === 0 ? " · krok dziś" : ` · krok za ${ahead} ${ahead === 1 ? "dzień" : "dni"}`;
+  return `W etapie ${days} ${days === 1 ? "dzień" : "dni"} · ${limit}${rot.rotting ? ` · gnije (${rot.label})` : aheadText}`;
 }
 
 function SmsBox({

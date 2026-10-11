@@ -76,6 +76,7 @@ export function FunnelBar({ d, isAgent }: { d: ClientDetail; isAgent: boolean })
             createdAt: new Date(lead.createdAt),
             firstContactAt: lead.firstContactAt ? new Date(lead.firstContactAt) : null,
             lastContactAt: lead.lastContactAt ? new Date(lead.lastContactAt) : null,
+            lastWorkAt: lead.lastWorkAt ? new Date(lead.lastWorkAt) : null,
             stageChangedAt: new Date(lead.stageChangedAt),
             nextActionAt: lead.nextActionAt ? new Date(lead.nextActionAt) : null,
             nextStepType: lead.nextStepType,

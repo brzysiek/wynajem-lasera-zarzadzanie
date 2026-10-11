@@ -18,6 +18,8 @@ import { computeRhythm, headsFromText, monthsLabel, type ClientRhythm, type Rhyt
 import { loadPaymentCoverage } from "@/lib/invoicing/bank-transfers";
 import { gmailSummary } from "@/lib/gmail/sync";
 import { isQualified } from "@/lib/clients/qualification";
+import { combineLastWork } from "@/lib/leads/set-source";
+import { loadLastWorkActivity } from "@/lib/leads/last-work";
 import { isQualificationActive } from "@/lib/clients/qualify";
 import type { ClientStatus } from "@/lib/clients/status";
 import {
@@ -249,6 +251,8 @@ export type ClientDetail = {
     devices: string[];
     firstContactAt: string | null;
     lastContactAt: string | null;
+    // Ostatnia praca przy sygnale (wniosek 48) — ta sama reguła gnicia co w Sygnałach.
+    lastWorkAt: string | null;
     attempts: number;
     requestedFrom: string | null;
   }[];
@@ -335,6 +339,8 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
           deviceInterest: true,
           firstContactAt: true,
           lastContactAt: true,
+          stepSource: true,
+          stepSourceAt: true,
           attempts: true,
           requestedFrom: true,
         },
@@ -343,6 +349,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     },
   });
   if (!c) return null;
+  const leadWork = await loadLastWorkActivity(c.leads.map((l) => l.id));
 
   const summary = summarizeClient({
     statusOverride: c.statusOverride,
@@ -870,6 +877,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
       devices: Array.isArray(l.deviceInterest) ? (l.deviceInterest as unknown[]).filter((x): x is string => typeof x === "string") : [],
       firstContactAt: l.firstContactAt?.toISOString() ?? null,
       lastContactAt: l.lastContactAt?.toISOString() ?? null,
+      lastWorkAt: combineLastWork(leadWork.get(l.id), l.stepSource, l.stepSourceAt)?.toISOString() ?? null,
       attempts: l.attempts,
       requestedFrom: l.requestedFrom?.toISOString() ?? null,
     })),

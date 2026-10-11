@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveStageSource, stageSet, stageSourceText, stepSet, stepSourceText, whoText } from "./set-source";
+import { combineLastWork, deriveStageSource, stageSet, stageSourceText, stepSet, stepSourceText, whoText } from "./set-source";
 
 const at = new Date(2026, 9, 9, 11, 4);
 
@@ -41,5 +41,25 @@ describe("deriveStageSource — odtwarzanie ze starej osi czasu", () => {
   it("wpis bez autora i bez znanego wzorca → null (nie zgadujemy)", () => {
     expect(deriveStageSource({ body: "Nowe → W kontakcie", userName: null, at })).toBeNull();
     expect(deriveStageSource({ body: null, userName: null, at })).toBeNull();
+  });
+});
+
+describe("combineLastWork (wniosek 48, B)", () => {
+  const act = new Date(2026, 9, 1, 12);
+  const step = new Date(2026, 9, 8, 9);
+  it("zmiana kroku przez człowieka lub wynik rozmowy odświeża ostatnią pracę", () => {
+    expect(combineLastWork(act, "USER", step)).toEqual(step);
+    expect(combineLastWork(null, "OUTCOME", step)).toEqual(step);
+    expect(combineLastWork(step, "USER", act)).toEqual(step); // późniejsza z dwóch
+  });
+  it("automaty, zaakceptowana propozycja i termin z zadania nie odświeżają", () => {
+    for (const code of ["AUTO_MAIL_IN", "AUTO_FORM", "AUTO_RULE", "AUTO_SPRING", "AUTO_HUBSPOT", "PROPOSAL", "TASK"]) {
+      expect(combineLastWork(act, code, step)).toEqual(act);
+      expect(combineLastWork(null, code, step)).toBeNull();
+    }
+  });
+  it("brak źródła kroku = tylko aktywność z osi czasu", () => {
+    expect(combineLastWork(act, null, null)).toEqual(act);
+    expect(combineLastWork(null, null, null)).toBeNull();
   });
 });

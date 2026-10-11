@@ -355,8 +355,14 @@ export function workDurationLabel(hours: number | null): string {
 
 // Limity gnicia (lejek-v2, 3.2): Nowe — SLA 4 h rob. od wpłynięcia; W
 // kontakcie — 3 dni rob. bez aktywności; Oferta — 10 dni. Licznik zeruje
-// prawdziwa aktywność (rozmowa, mail, SMS, notatka), nie zaplanowany termin.
+// prawdziwa aktywność (rozmowa, mail, SMS, notatka) albo zmiana kroku przez
+// człowieka (lastWorkAt, wniosek 48 B), nie zaplanowany termin.
 // Otwarty sygnał bez następnego kroku gnije zawsze. Rezerwacja nie gnije.
+// Wniosek 48 (A): W kontakcie z krokiem na dziś lub w przyszłości NIE gnije —
+// ktoś już ustalił, kiedy wracamy do sprawy (np. klientka sama odezwie się
+// 16.10). Gnicie liczy się dopiero, gdy termin kroku minie (albo go nie ma).
+// To JEDNA funkcja gnicia: tablica, karta, „Gniją” w raporcie i Skrzynce,
+// pasek lejka na karcie klienta i filtr gnija w MCP używają tylko jej.
 export const ROT_WORK_DAYS_CONTACT = 3;
 export const ROT_DAYS_OFFER = 10;
 const WORK_DAY_HOURS = WORK_END_HOUR - WORK_START_HOUR;
@@ -367,6 +373,12 @@ const untouched = (l: FunnelLead) => l.stage === "SYGNAL" && !l.firstContactAt;
 
 export function lastWorkOf(l: FunnelLead): Date {
   return new Date(Math.max(l.stageChangedAt.getTime(), l.lastContactAt?.getTime() ?? 0, l.lastWorkAt?.getTime() ?? 0));
+}
+
+// Za ile dni kalendarzowych przypada krok (0 = dziś); null = brak kroku albo po terminie.
+export function stepInDays(nextActionAt: Date | null, now: Date): number | null {
+  if (!nextActionAt || nextActionAt < startOfDay(now)) return null;
+  return Math.round((startOfDay(nextActionAt).getTime() - startOfDay(now).getTime()) / 86_400_000);
 }
 
 export function rotInfo(l: FunnelLead, now: Date): Rot {
@@ -380,6 +392,7 @@ export function rotInfo(l: FunnelLead, now: Date): Rot {
   }
   if (!l.nextActionAt) return { rotting: true, label: "brak kroku", days: 0 };
   const last = lastWorkOf(l);
+  if (l.stage === "WYWIAD" && l.nextActionAt >= startOfDay(now)) return { ...none, days: Math.floor(workHoursBetween(last, now) / WORK_DAY_HOURS) };
   if (l.stage === "OFERTA") {
     const d = Math.floor((now.getTime() - last.getTime()) / 86_400_000);
     return d > ROT_DAYS_OFFER ? { rotting: true, label: `stoi ${d} dni`, days: d } : { ...none, days: d };

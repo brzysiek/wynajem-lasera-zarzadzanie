@@ -329,7 +329,7 @@ export const TOOLS: McpTool[] = [
       wymaga_odpowiedzi: b("Praca agenta (propozycje maili): LEKKA lista otwartych sygnałów z adresem e-mail i BEZ aktywnego szkicu, gdy krok jest na dziś / po terminie / brak kroku albo klientka napisała, a nikt nie odpowiedział."),
       limit: n("Dla wymaga_sugestii / wymaga_odpowiedzi: ile sygnałów zwrócić (1–100, domyślnie 30)."),
       duplikaty: b("Tylko otwarte sygnały klientów, którzy mają ich więcej niż jeden (do zgłoszenia archiwizacji duplikatu)."),
-      gnija: b("Tylko gnijące (lejek v2): Nowe po czasie na kontakt (4 h rob.), W kontakcie > 3 dni rob., Oferta > 10 dni bez aktywności, bez kroku."),
+      gnija: b("Tylko gnijące (lejek v2, ta sama reguła co karta, Tablica i raport): Nowe po czasie na kontakt (4 h rob.), W kontakcie > 3 dni rob. bez pracy — ale tylko gdy krok jest zaległy albo go brak (krok na dziś lub w przyszłości = nie gnije), Oferta > 10 dni bez aktywności, bez kroku."),
       brak_kroku: b("Tylko otwarte sygnały bez następnego kroku (do zgłoszenia krok_sygnalu)."),
       klient_id: s("ID klienta."),
       q: s("Szukaj."),

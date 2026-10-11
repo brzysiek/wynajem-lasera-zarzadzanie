@@ -16,7 +16,8 @@ import { arrivalDates, arrivalGapDays, arrivalRhythmLabel } from "@/lib/clients/
 import { loadUnassignedRentals } from "@/lib/clients/rental-match";
 import { normalizeAttribution, type Attribution } from "@/lib/leads/attribution-view";
 import { activeDraftStatuses, loadMailDraft, type MailDraftDto } from "@/lib/leads/mail-draft";
-import { deriveStageSource, stageSourceText, stepSourceText } from "@/lib/leads/set-source";
+import { combineLastWork, deriveStageSource, stageSourceText, stepSourceText } from "@/lib/leads/set-source";
+import { loadLastWorkActivity } from "@/lib/leads/last-work";
 import { loadSuggestion, type SuggestionDto } from "@/lib/leads/lead-suggestion";
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
@@ -53,6 +54,9 @@ const ROW_SELECT = {
   attempts: true,
   followUpNo: true,
   lastContactAt: true,
+  // Zmiana kroku przez człowieka odświeża „ostatnią pracę” (wniosek 48, B).
+  stepSource: true,
+  stepSourceAt: true,
   sourceRef: true,
   lostReason: true,
   returnAt: true,
@@ -191,7 +195,7 @@ function toRow(l: RowSource, x: Extra): LeadRow {
     lostReason: l.lostReason,
     returnAt: l.returnAt?.toISOString() ?? null,
     postponeReason: l.postponeReason,
-    lastWorkAt: x.lastWork.get(l.id)?.toISOString() ?? null,
+    lastWorkAt: combineLastWork(x.lastWork.get(l.id), l.stepSource, l.stepSourceAt)?.toISOString() ?? null,
     returningClient: l.returningClient,
     spring: null,
     clientResigned: l.clientId ? x.resigned.has(l.clientId) : false,
@@ -223,11 +227,7 @@ async function loadExtra(leads: { id: string; clientId: string | null }[]): Prom
     loadQualifiedMap(clientIds),
     prisma.leadActivity.groupBy({ by: ["leadId"], where: { leadId: { in: leads.map((l) => l.id) }, type: { in: ["CALL", "EMAIL"] } } }),
     prisma.leadActivity.findMany({ where: { leadId: { in: leads.map((l) => l.id) }, type: "STAGE_CHANGE" }, select: { leadId: true, body: true } }),
-    prisma.leadActivity.groupBy({
-      by: ["leadId"],
-      where: { leadId: { in: leads.map((l) => l.id) }, type: { in: ["CALL", "CALL_NO_ANSWER", "SMS", "EMAIL", "NOTE", "STAGE_CHANGE"] } },
-      _max: { createdAt: true },
-    }),
+    loadLastWorkActivity(leads.map((l) => l.id)),
     prisma.client.findMany({ where: { id: { in: clientIds }, resignedAt: { not: null } }, select: { id: true } }),
   ]);
   const leadIds = leads.map((l) => l.id);
@@ -285,7 +285,7 @@ async function loadExtra(leads: { id: string; clientId: string | null }[]): Prom
       tasks.set(lid, { count: cur.count + 1, first: cur.first ?? { id: t.id, title: t.title, dueDate: t.dueDate ? t.dueDate.toISOString().slice(0, 10) : null } });
     }
   }
-  const lastWork = new Map(workRows.filter((r) => r._max.createdAt).map((r) => [r.leadId as string, r._max.createdAt as Date]));
+  const lastWork = workRows;
   const stageBodies = new Map<string, (string | null)[]>();
   for (const a of stageRows) stageBodies.set(a.leadId!, [...(stageBodies.get(a.leadId!) ?? []), a.body]);
   const statuses = new Map([...info].map(([id, x]) => [id, x.status]));

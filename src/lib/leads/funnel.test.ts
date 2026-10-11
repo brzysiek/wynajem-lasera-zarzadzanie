@@ -122,12 +122,73 @@ describe("lejek v2: Odłożone, gnicie, Skrzynka", () => {
   it("gnicie: Nowe po SLA, W kontakcie > 3 dni rob., Oferta > 10 dni, brak kroku; aktywność zeruje", () => {
     expect(rotInfo(lead({ id: "n", createdAt: at(25, 9) }), now)).toMatchObject({ rotting: true, label: "po czasie · 1 dzień rob." });
     expect(rotInfo(lead({ id: "n2", createdAt: at(28, 9) }), now).rotting).toBe(false);
-    const talked = { firstContactAt: at(21), stage: "WYWIAD" as const, stageChangedAt: at(21), nextActionAt: at(30) };
+    // Wniosek 48: krok zaległy (termin przed dzisiejszym dniem) gnije jak dotąd.
+    const talked = { firstContactAt: at(21), stage: "WYWIAD" as const, stageChangedAt: at(21), nextActionAt: at(25) };
     expect(rotInfo(lead({ id: "k", ...talked }), now)).toMatchObject({ rotting: true, label: "stoi 5 dni rob." });
     expect(rotInfo(lead({ id: "k2", ...talked, lastWorkAt: at(25, 16) }), now).rotting).toBe(false);
     expect(rotInfo(lead({ id: "o", firstContactAt: at(10), stage: "OFERTA", stageChangedAt: at(15), nextActionAt: at(30) }), now)).toMatchObject({ rotting: true, label: "stoi 13 dni" });
     expect(rotInfo(lead({ id: "b", firstContactAt: at(27), stage: "WYWIAD", stageChangedAt: at(27) }), now)).toMatchObject({ rotting: true, label: "brak kroku" });
     expect(rotInfo(lead({ id: "r", firstContactAt: at(1), stage: "REZERWACJA", stageChangedAt: at(1) }), now).rotting).toBe(false);
+  });
+
+  it("wniosek 48 (A): W kontakcie z krokiem na dziś lub w przyszłości nie gnije, zaległy lub brak kroku — gnije", () => {
+    const stale = { firstContactAt: at(14), stage: "WYWIAD" as const, stageChangedAt: at(14) };
+    // krok za 2 tygodnie (np. „klientka sama się odezwie 16.10”) — spokojna karta
+    expect(rotInfo(lead({ id: "f", ...stale, nextActionAt: at(12, 9, 0, 10) }), now).rotting).toBe(false);
+    // krok jutro i krok dziś (także o wcześniejszej godzinie niż „teraz”)
+    expect(rotInfo(lead({ id: "f1", ...stale, nextActionAt: at(29, 10) }), now).rotting).toBe(false);
+    expect(rotInfo(lead({ id: "f2", ...stale, nextActionAt: at(28, 9) }), now).rotting).toBe(false);
+    // krok zaległy (wczoraj i wcześniej) — jak dotąd
+    expect(rotInfo(lead({ id: "p", ...stale, nextActionAt: at(27, 10) }), now)).toMatchObject({ rotting: true });
+    // brak kroku — jak dotąd
+    expect(rotInfo(lead({ id: "b0", ...stale }), now)).toMatchObject({ rotting: true, label: "brak kroku" });
+    // po minięciu terminu kroku sygnał zaczyna gnić (ten sam sygnał, 14 dni później)
+    const later = at(12, 12, 0, 10);
+    expect(rotInfo(lead({ id: "f", ...stale, nextActionAt: at(12, 9, 0, 10) }), later).rotting).toBe(false);
+    expect(rotInfo(lead({ id: "f", ...stale, nextActionAt: at(12, 9, 0, 10) }), at(13, 12, 0, 10)).rotting).toBe(true);
+  });
+
+  it("wniosek 48: trzy sygnały z wniosku (stan z 09.10 i 11.10) — przed zmianą gniły, teraz nie", () => {
+    // Klaudia Sobota: krok 16.10, ostatnia praca dopiero 09.10 17:32 (wcześniej brak aktywności roboczej).
+    const klaudiaBefore = lead({ id: "klaudia", createdAt: at(29), firstContactAt: at(9, 17, 32, 10), stage: "WYWIAD", stageChangedAt: at(29, 9), nextActionAt: at(16, 9, 0, 10) });
+    // Loovbe: krok 18.10, ostatnia praca (Ania) 03.10.
+    const loovbe = lead({ id: "loovbe", createdAt: at(17), firstContactAt: at(21), stage: "WYWIAD", stageChangedAt: at(29, 5), lastWorkAt: at(3, 8, 58, 10), nextActionAt: at(18, 9, 0, 10) });
+    // Iwona LOTOS: krok 12.10, ostatnia praca 30.09.
+    const iwona = lead({ id: "iwona", createdAt: at(29), firstContactAt: at(30), stage: "WYWIAD", stageChangedAt: at(29, 9), lastWorkAt: at(30, 10), nextActionAt: at(12, 9, 0, 10) });
+    const nineth = at(9, 12, 0, 10);
+    expect(rotInfo(klaudiaBefore, nineth).rotting).toBe(false);
+    expect(rotInfo(loovbe, nineth).rotting).toBe(false);
+    expect(rotInfo(iwona, at(11, 12, 0, 10)).rotting).toBe(false);
+    // po minięciu terminu kroku (i limitu 3 dni rob.) — gnicie jak dziś
+    expect(rotInfo(iwona, at(13, 12, 0, 10)).rotting).toBe(true);
+    expect(rotInfo(loovbe, at(19, 12, 0, 10)).rotting).toBe(true);
+    // a stara reguła (tylko ostatnia praca, bez terminu kroku) uznałaby je za gnijące:
+    const old = (l: ReturnType<typeof lead>, now: Date) => Math.floor(((): number => {
+      const last = Math.max(l.stageChangedAt.getTime(), l.lastContactAt?.getTime() ?? 0, l.lastWorkAt?.getTime() ?? 0);
+      return (now.getTime() - last) / 86_400_000;
+    })()) >= 4;
+    expect(old(loovbe, nineth)).toBe(true);
+    expect(old(iwona, at(11, 12, 0, 10))).toBe(true);
+  });
+
+  it("wniosek 48 (A): inne etapy bez zmian — Oferta z follow-upem w przyszłości dalej gnije po 10 dniach, Nowe wg SLA", () => {
+    expect(rotInfo(lead({ id: "o2", firstContactAt: at(10), stage: "OFERTA", stageChangedAt: at(15), nextActionAt: at(30) }), now)).toMatchObject({ rotting: true });
+    expect(rotInfo(lead({ id: "n3", createdAt: at(25, 9), nextActionAt: at(30) }), now)).toMatchObject({ rotting: true });
+  });
+
+  it("wniosek 48: Skrzynka „Gniją” i KPI używają tej samej reguły co rotInfo", () => {
+    const stale = { firstContactAt: at(14), stage: "WYWIAD" as const, stageChangedAt: at(14) };
+    const leads = [
+      lead({ id: "przyszly", ...stale, nextActionAt: at(12, 9, 0, 10) }),
+      lead({ id: "zalegly", ...stale, nextActionAt: at(25, 10) }),
+      lead({ id: "bez", ...stale }),
+    ];
+    const inbox = buildInbox(leads, now);
+    // zaległy krok trafia do „Na dziś”, brak kroku — do „Gniją”, krok w przyszłości — nigdzie
+    expect(inbox.today.map((l) => l.id)).toContain("zalegly");
+    expect(inbox.rotting.map((l) => l.id)).toEqual(["bez"]);
+    expect([...inbox.today, ...inbox.rotting].map((l) => l.id)).not.toContain("przyszly");
+    expect(inboxKpis(leads, now).rotting).toBe(leads.filter((l) => rotInfo(l, now).rotting).length);
   });
 
   it("Skrzynka: nowe, na dziś, gniją, wracają", () => {

@@ -39,6 +39,21 @@ export const SOURCE_CODES = ["USER", "OUTCOME", "TASK", "PROPOSAL", ...Object.ke
 export const stageSet = (code: SourceCode, byId?: string | null, at: Date = new Date()) => ({ stageSource: code, stageSourceById: byId ?? null, stageSourceAt: at });
 export const stepSet = (code: SourceCode, byId?: string | null, at: Date = new Date()) => ({ stepSource: code, stepSourceById: byId ?? null, stepSourceAt: at });
 
+// Wniosek 48 (B): zmiana kroku wykonana przez człowieka (Edytuj krok, Zmień
+// termin, Wynik rozmowy) to praca przy sygnale — odświeża „ostatnią pracę”
+// (lastWorkAt, licznik gnicia), ale NIE ostatni kontakt z klientką. Automaty
+// (formularz, maile, reguły planu dnia, import) i zaakceptowane propozycje agenta
+// jej nie odświeżają. TASK (termin z zadania) pomijamy: zadanie może założyć agent.
+export const WORK_STEP_SOURCES: readonly string[] = ["USER", "OUTCOME"];
+
+// Ostatnia praca = późniejsza z: ostatniej aktywności roboczej na osi czasu i
+// ostatniej zmiany kroku przez człowieka.
+export function combineLastWork(activityAt: Date | null | undefined, stepSource: string | null | undefined, stepSourceAt: Date | null | undefined): Date | null {
+  const stepAt = stepSource && stepSourceAt && WORK_STEP_SOURCES.includes(stepSource) ? stepSourceAt : null;
+  if (activityAt && stepAt) return activityAt > stepAt ? activityAt : stepAt;
+  return activityAt ?? stepAt ?? null;
+}
+
 const d2 = (d: Date) => d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" });
 const hm = (d: Date) => d.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
 

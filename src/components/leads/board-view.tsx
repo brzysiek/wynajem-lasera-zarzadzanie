@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { LeadRow } from "@/lib/leads/load";
 import { BOARD_STAGES, LOST_REASON_LABEL, TYPE_LABEL, type LostReasonKey } from "@/lib/leads/labels";
 import { LEAD_DEVICE_LABEL, type LeadStageKey } from "@/lib/leads/parse-deal";
-import { FUNNEL_FROM, NEXT_STEP_LABEL, REACH_ORDER, funnelFromRow, isSpringQueued, rotInfo, type FunnelLead, type NextStepType } from "@/lib/leads/funnel";
+import { FUNNEL_FROM, NEXT_STEP_LABEL, REACH_ORDER, funnelFromRow, isSpringQueued, rotInfo, stepInDays, type FunnelLead, type NextStepType } from "@/lib/leads/funnel";
 import { Avatar, Dots, Seg, periodTouch } from "./funnel-views";
 import { StageChip } from "./lead-ui";
 import { StageLegend } from "./plan-day";
@@ -68,7 +68,8 @@ function stepTip(r: LeadRow, d: { late: boolean; today: boolean }): string[] {
   const lines: string[] = [];
   const label = NEXT_STEP_LABEL[(r.nextStepType ?? "INNE") as NextStepType] ?? "kolejny krok";
   const kind = label.charAt(0).toUpperCase() + label.slice(1);
-  if (r.nextActionAt) lines.push(`${kind} · ${new Date(r.nextActionAt).toLocaleString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${d.late ? " · zaległy" : d.today ? " · dziś" : ""}`);
+  const ahead = r.nextActionAt ? stepInDays(new Date(r.nextActionAt), new Date()) : null;
+  if (r.nextActionAt) lines.push(`${kind} · ${new Date(r.nextActionAt).toLocaleString("pl-PL", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${d.late ? " · zaległy" : d.today ? " · dziś" : ahead != null && ahead > 0 ? ` · za ${ahead} ${ahead === 1 ? "dzień" : "dni"}` : ""}`);
   else lines.push("Brak kroku — ustaw termin");
   if (r.nextStepNote) lines.push(r.nextStepNote);
   else if (r.lastNote) lines.push(`Notatka ${d2(r.lastNote.at)}${r.lastNote.by ? ` (${r.lastNote.by})` : ""}: ${r.lastNote.body.length > 140 ? `${r.lastNote.body.slice(0, 140)}…` : r.lastNote.body}`);
