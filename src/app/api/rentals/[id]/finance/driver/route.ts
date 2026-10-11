@@ -186,12 +186,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const effConfirmedAt =
     confirmed === undefined ? existing?.confirmedAt ?? null : confirmed ? existing?.confirmedAt ?? new Date() : null;
 
-  // Wniosek 31: po potwierdzeniu odbioru albo po wystawieniu faktury kierowca nie
-  // zmienia liczników (impulsy, nakładki HS, membrany — wpływają na kwotę) ani nie
-  // cofa potwierdzenia; poprawia biuro. Zapis tych samych wartości (autozapis
-  // panelu wysyła komplet pól) jest dozwolony.
+  // Wniosek 31: po wystawieniu faktury kierowca nie zmienia liczników (impulsy,
+  // nakładki HS, membrany — wpływają na kwotę) ani nie cofa potwierdzenia;
+  // poprawia biuro. Samo potwierdzenie odbioru (bez faktury) kierowca może
+  // jeszcze cofnąć i poprawić — przycisk „Cofnij” w panelu działa bez błędu.
+  // Zapis tych samych wartości (autozapis panelu wysyła komplet pól) jest dozwolony.
   const invoiced = existing?.fakturowniaInvoiceId != null || existing?.invoiceIssuedAt != null;
-  if (isDriver && existing && (existing.confirmedAt != null || invoiced)) {
+  if (isDriver && existing && invoiced) {
     const countersChanged =
       effStart !== existing.pulseCounterStart ||
       effEnd !== existing.pulseCounterEnd ||
@@ -202,7 +203,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const undoing = confirmed === false && existing.confirmedAt != null;
     if (countersChanged || undoing) {
       logWarn("driver_finance_locked", { userId: session.user.id, rentalId: id, countersChanged, undoing });
-      return bad("Rozliczenie jest już potwierdzone lub zafakturowane — zmiany wprowadza biuro.", 409);
+      return bad("Faktura jest już wystawiona — zmiany wprowadza biuro.", 409);
     }
   }
 

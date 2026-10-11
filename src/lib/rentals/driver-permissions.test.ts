@@ -319,37 +319,24 @@ describe("rozliczenie kierowcy: blokada po potwierdzeniu / fakturze", () => {
     expect(fx.upsert).not.toHaveBeenCalled();
   });
 
-  it("KIEROWCA po potwierdzeniu: zmiana licznika → 409", async () => {
+  it("KIEROWCA po potwierdzeniu, ale BEZ faktury: może poprawić liczniki i cofnąć potwierdzenie", async () => {
     fx.rental = rentalRow({ finance: finance({ confirmedAt: new Date() }) });
-    const res = await patchDriver({ pulseCounterEnd: 250 });
-    expect(res.status).toBe(409);
-    expect(fx.upsert).not.toHaveBeenCalled();
+    expect((await patchDriver({ pulseCounterEnd: 250 })).status).toBe(200);
+    expect((await patchDriver({ confirmed: false })).status).toBe(200);
+    expect(fx.upsert).toHaveBeenCalledTimes(2);
   });
 
-  it("KIEROWCA po potwierdzeniu: confirmed:false → 409", async () => {
-    fx.rental = rentalRow({ finance: finance({ confirmedAt: new Date() }) });
-    const res = await patchDriver({ confirmed: false });
-    expect(res.status).toBe(409);
-    expect(fx.upsert).not.toHaveBeenCalled();
-  });
-
-  it("KIEROWCA po potwierdzeniu: zmiana nakładek / membran → 409", async () => {
-    fx.rental = rentalRow({ finance: finance({ confirmedAt: new Date(), capUsedHS: true, capCountHS: 1 }) });
+  it("KIEROWCA po fakturze: zmiana licznika, nakładek, membran i cofnięcie potwierdzenia → 409", async () => {
+    fx.rental = rentalRow({ finance: finance({ confirmedAt: new Date(), capUsedHS: true, capCountHS: 1, fakturowniaInvoiceId: 123, invoiceIssuedAt: new Date() }) });
+    expect((await patchDriver({ pulseCounterEnd: 250 })).status).toBe(409);
     expect((await patchDriver({ capUsedHS: true, capCountHS: 2 })).status).toBe(409);
     expect((await patchDriver({ membraneUsed: true, membraneCount: 1 })).status).toBe(409);
+    expect((await patchDriver({ confirmed: false })).status).toBe(409);
     expect(fx.upsert).not.toHaveBeenCalled();
   });
 
-  it("KIEROWCA po fakturze (bez potwierdzenia): licznik → 409, ale potwierdzenie i uwagi działają", async () => {
-    fx.rental = rentalRow({ finance: finance({ fakturowniaInvoiceId: 123, invoiceIssuedAt: new Date() }) });
-    expect((await patchDriver({ pulseCounterEnd: 250 })).status).toBe(409);
-    expect(fx.upsert).not.toHaveBeenCalled();
-    expect((await patchDriver({ confirmed: true, pickupNotes: "ok" })).status).toBe(200);
-    expect(fx.upsert).toHaveBeenCalledTimes(1);
-  });
-
-  it("KIEROWCA po potwierdzeniu: autozapis tych samych liczników i nowa uwaga przechodzą", async () => {
-    fx.rental = rentalRow({ finance: finance({ confirmedAt: new Date() }) });
+  it("KIEROWCA po fakturze: autozapis tych samych liczników, uwagi i potwierdzenie przechodzą", async () => {
+    fx.rental = rentalRow({ finance: finance({ confirmedAt: new Date(), fakturowniaInvoiceId: 123 }) });
     const res = await patchDriver({ pulseCounterStart: 100, pulseCounterEnd: 200, deliveryNotes: "nowa uwaga", confirmed: true });
     expect(res.status).toBe(200);
     expect(fx.upsert).toHaveBeenCalledTimes(1);
