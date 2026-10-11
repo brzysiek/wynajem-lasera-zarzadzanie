@@ -363,9 +363,11 @@ export function workDurationLabel(hours: number | null): string {
 // prawdziwa aktywność (rozmowa, mail, SMS, notatka) albo zmiana kroku przez
 // człowieka (lastWorkAt, wniosek 48 B), nie zaplanowany termin.
 // Otwarty sygnał bez następnego kroku gnije zawsze. Rezerwacja nie gnije.
-// Wniosek 48 (A): W kontakcie z krokiem na dziś lub w przyszłości NIE gnije —
-// ktoś już ustalił, kiedy wracamy do sprawy (np. klientka sama odezwie się
-// 16.10). Gnicie liczy się dopiero, gdy termin kroku minie (albo go nie ma).
+// Wniosek 48 (A) i 50: W kontakcie i Oferta z krokiem na dziś lub w przyszłości
+// NIE gniją — ktoś już ustalił, kiedy wracamy do sprawy (np. klientka sama
+// odezwie się 16.10, follow-up oferty 22.10). Gnicie liczy się dopiero, gdy
+// termin kroku minie (albo go nie ma) ORAZ minął limit etapu (W kontakcie 3 dni
+// rob., Oferta 10 dni bez pracy). Nowe: czas na pierwszy kontakt, bez zmian.
 // To JEDNA funkcja gnicia: tablica, karta, „Gniją” w raporcie i Skrzynce,
 // pasek lejka na karcie klienta i filtr gnija w MCP używają tylko jej.
 export const ROT_WORK_DAYS_CONTACT = 3;
@@ -397,11 +399,12 @@ export function rotInfo(l: FunnelLead, now: Date): Rot {
   }
   if (!l.nextActionAt) return { rotting: true, label: "brak kroku", days: 0 };
   const last = lastWorkOf(l);
-  if (l.stage === "WYWIAD" && l.nextActionAt >= startOfDay(now)) return { ...none, days: Math.floor(workHoursBetween(last, now) / WORK_DAY_HOURS) };
+  const stepAhead = l.nextActionAt >= startOfDay(now); // krok na dziś lub w przyszłości
   if (l.stage === "OFERTA") {
     const d = Math.floor((now.getTime() - last.getTime()) / 86_400_000);
-    return d > ROT_DAYS_OFFER ? { rotting: true, label: `stoi ${d} dni`, days: d } : { ...none, days: d };
+    return d > ROT_DAYS_OFFER && !stepAhead ? { rotting: true, label: `stoi ${d} dni`, days: d } : { ...none, days: d };
   }
+  if (stepAhead) return { ...none, days: Math.floor(workHoursBetween(last, now) / WORK_DAY_HOURS) };
   const wd = Math.floor(workHoursBetween(last, now) / WORK_DAY_HOURS);
   return wd > ROT_WORK_DAYS_CONTACT ? { rotting: true, label: `stoi ${wd} dni rob.`, days: wd } : { ...none, days: wd };
 }

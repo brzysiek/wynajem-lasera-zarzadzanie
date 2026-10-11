@@ -126,7 +126,7 @@ describe("lejek v2: Odłożone, gnicie, Skrzynka", () => {
     const talked = { firstContactAt: at(21), stage: "WYWIAD" as const, stageChangedAt: at(21), nextActionAt: at(25) };
     expect(rotInfo(lead({ id: "k", ...talked }), now)).toMatchObject({ rotting: true, label: "stoi 5 dni rob." });
     expect(rotInfo(lead({ id: "k2", ...talked, lastWorkAt: at(25, 16) }), now).rotting).toBe(false);
-    expect(rotInfo(lead({ id: "o", firstContactAt: at(10), stage: "OFERTA", stageChangedAt: at(15), nextActionAt: at(30) }), now)).toMatchObject({ rotting: true, label: "stoi 13 dni" });
+    expect(rotInfo(lead({ id: "o", firstContactAt: at(10), stage: "OFERTA", stageChangedAt: at(15), nextActionAt: at(25) }), now)).toMatchObject({ rotting: true, label: "stoi 13 dni" });
     expect(rotInfo(lead({ id: "b", firstContactAt: at(27), stage: "WYWIAD", stageChangedAt: at(27) }), now)).toMatchObject({ rotting: true, label: "brak kroku" });
     expect(rotInfo(lead({ id: "r", firstContactAt: at(1), stage: "REZERWACJA", stageChangedAt: at(1) }), now).rotting).toBe(false);
   });
@@ -171,8 +171,33 @@ describe("lejek v2: Odłożone, gnicie, Skrzynka", () => {
     expect(old(iwona, at(11, 12, 0, 10))).toBe(true);
   });
 
-  it("wniosek 48 (A): inne etapy bez zmian — Oferta z follow-upem w przyszłości dalej gnije po 10 dniach, Nowe wg SLA", () => {
-    expect(rotInfo(lead({ id: "o2", firstContactAt: at(10), stage: "OFERTA", stageChangedAt: at(15), nextActionAt: at(30) }), now)).toMatchObject({ rotting: true });
+  it("wniosek 50: Oferta z krokiem na dziś lub w przyszłości nie gnije, po terminie kroku — gnije jak dotąd", () => {
+    const ola = { firstContactAt: at(1, 12, 0, 9), stage: "OFERTA" as const, stageChangedAt: at(2, 12, 0, 9), lastWorkAt: at(30, 12, 0, 9), nextStepType: "DOPYTAC" };
+    const nowO = at(11, 12, 0, 10);
+    // krok „dopytać” 9.11 ustawiony przez Anię, ostatnia praca 30.09 (>10 dni)
+    expect(rotInfo(lead({ id: "ola", ...ola, nextActionAt: at(9, 9, 0, 11) }), nowO).rotting).toBe(false);
+    expect(rotInfo(lead({ id: "sanok", ...ola, nextActionAt: at(22, 9, 0, 10) }), nowO).rotting).toBe(false);
+    // krok na dziś (także o godzinie sprzed „teraz”) — nie gnije
+    expect(rotInfo(lead({ id: "dzis", ...ola, nextActionAt: at(11, 8, 0, 10) }), nowO).rotting).toBe(false);
+    // dzień po terminie kroku, bez aktywności > 10 dni — gnije
+    expect(rotInfo(lead({ id: "ola", ...ola, nextActionAt: at(22, 9, 0, 10) }), at(23, 12, 0, 10))).toMatchObject({ rotting: true });
+    expect(rotInfo(lead({ id: "zal", ...ola, nextActionAt: at(10, 9, 0, 10) }), nowO)).toMatchObject({ rotting: true });
+    // bez kroku i bez aktywności > 10 dni — nadal gnije
+    expect(rotInfo(lead({ id: "bez", firstContactAt: ola.firstContactAt, stage: "OFERTA", stageChangedAt: at(2, 12, 0, 9), lastWorkAt: at(30, 12, 0, 9) }), nowO)).toMatchObject({ rotting: true, label: "brak kroku" });
+    // zaległy krok, ale świeża praca (<10 dni) — nie gnije (limit etapu)
+    expect(rotInfo(lead({ id: "swiezy", ...ola, lastWorkAt: at(8, 12, 0, 10), nextActionAt: at(10, 9, 0, 10) }), nowO).rotting).toBe(false);
+  });
+
+  it("wniosek 50: filtr gnija, Skrzynka i KPI mają ten sam zestaw (jedna funkcja)", () => {
+    const base = { firstContactAt: at(1, 12, 0, 9), stage: "OFERTA" as const, stageChangedAt: at(2, 12, 0, 9), lastWorkAt: at(30, 12, 0, 9) };
+    const nowO = at(11, 12, 0, 10);
+    const leads = [lead({ id: "przyszly", ...base, nextActionAt: at(9, 9, 0, 11) }), lead({ id: "bez", ...base })];
+    const inbox = buildInbox(leads, nowO);
+    expect(inbox.rotting.map((l) => l.id)).toEqual(["bez"]);
+    expect(inboxKpis(leads, nowO).rotting).toBe(leads.filter((l) => rotInfo(l, nowO).rotting).length);
+  });
+
+  it("wniosek 48 (A): Nowe bez zmian — gnije wg czasu na pierwszy kontakt mimo kroku w przyszłości", () => {
     expect(rotInfo(lead({ id: "n3", createdAt: at(25, 9), nextActionAt: at(30) }), now)).toMatchObject({ rotting: true });
   });
 
@@ -195,7 +220,7 @@ describe("lejek v2: Odłożone, gnicie, Skrzynka", () => {
     const leads = [
       lead({ id: "nowy", createdAt: at(27), nextActionAt: at(28, 12) }),
       lead({ id: "dzis", firstContactAt: at(21), stage: "WYWIAD", stageChangedAt: at(25), nextActionAt: at(28, 15) }),
-      lead({ id: "gnije", firstContactAt: at(10), stage: "OFERTA", stageChangedAt: at(12), nextActionAt: at(30) }),
+      lead({ id: "gnije", firstContactAt: at(10), stage: "OFERTA", stageChangedAt: at(12) }), // bez kroku (wniosek 50: krok w przyszłości już nie gnije)
       lead({ id: "rez", firstContactAt: at(20), stage: "REZERWACJA", stageChangedAt: at(20) }),
       lead({ id: "odl", firstContactAt: at(20), stage: "ODLOZONE", returnAt: new Date(2026, 9, 1, 9), nextActionAt: new Date(2026, 9, 1, 9) }),
     ];

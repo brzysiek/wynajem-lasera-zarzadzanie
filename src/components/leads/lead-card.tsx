@@ -725,7 +725,7 @@ function stageAgeText(d: LeadDetail): string {
   const days = Math.floor((now.getTime() - new Date(d.stageChangedAt).getTime()) / 86_400_000);
   const limit = d.stage === "SYGNAL" && !d.firstContactAt ? `czas na kontakt ${FIRST_CONTACT_SLA_HOURS} h rob.` : d.stage === "OFERTA" ? `limit gnicia ${ROT_DAYS_OFFER} dni` : d.stage === "REZERWACJA" ? "do dnia wynajmu" : `limit gnicia ${ROT_WORK_DAYS_CONTACT} dni rob.`;
   // Wniosek 48: W kontakcie z krokiem w przyszłości nie gnije — mówi, kiedy wracamy.
-  const ahead = d.stage === "WYWIAD" && !rot.rotting && d.nextActionAt ? stepInDays(new Date(d.nextActionAt), now) : null;
+  const ahead = (d.stage === "WYWIAD" || d.stage === "OFERTA") && !rot.rotting && d.nextActionAt ? stepInDays(new Date(d.nextActionAt), now) : null;
   const aheadText = ahead == null ? "" : ahead === 0 ? " · krok dziś" : ` · krok za ${ahead} ${ahead === 1 ? "dzień" : "dni"}`;
   return `W etapie ${days} ${days === 1 ? "dzień" : "dni"} · ${limit}${rot.rotting ? ` · gnije (${rot.label})` : aheadText}`;
 }
