@@ -47,6 +47,8 @@ export function DriverFinancePanel({
   vehicles,
   tripInfoSlot,
   feedbackSlot,
+  pendingDeliveryNotes = null,
+  pendingPickupNotes = null,
 }: {
   rentalId: string;
   eventType: RentalEventType;
@@ -71,6 +73,9 @@ export function DriverFinancePanel({
   tripInfoSlot?: React.ReactNode;
   // Uwaga kierowcy o adresie (paszport dostawy) — przy uwagach do dostawy / odbioru.
   feedbackSlot?: React.ReactNode;
+  // Uwagi zapisane przed założeniem rozliczenia (Rental.driverDeliveryNotes / driverPickupNotes).
+  pendingDeliveryNotes?: string | null;
+  pendingPickupNotes?: string | null;
 }) {
   const router = useRouter();
   const isSzkolenie = eventType === "SZKOLENIE";
@@ -92,8 +97,8 @@ export function DriverFinancePanel({
   const initialPickupVehicleId = finance?.pickupVehicleId ?? null;
   const [pickupSameVehicle, setPickupSameVehicle] = useState(initialPickupVehicleId == null);
   const [pickupVehicleSel, setPickupVehicleSel] = useState(initialPickupVehicleId ?? "");
-  const initialDeliveryNotes = finance?.deliveryNotes ?? "";
-  const initialPickupNotes = finance?.pickupNotes ?? "";
+  const initialDeliveryNotes = finance?.deliveryNotes ?? pendingDeliveryNotes ?? "";
+  const initialPickupNotes = finance?.pickupNotes ?? pendingPickupNotes ?? "";
   const [deliveryNotes, setDeliveryNotes] = useState(initialDeliveryNotes);
   const [deliveryNotesOpen, setDeliveryNotesOpen] = useState(initialDeliveryNotes.trim() !== "");
   const [pickupNotes, setPickupNotes] = useState(initialPickupNotes);

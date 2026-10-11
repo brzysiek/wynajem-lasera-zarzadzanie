@@ -138,6 +138,8 @@ export default async function RentalDetailPage({
               </>
             }
             feedbackSlot={passport && <DriverFeedbackForm rentalId={rental.id} label={passport.label} />}
+            pendingDeliveryNotes={rental.driverDeliveryNotes}
+            pendingPickupNotes={rental.driverPickupNotes}
           />
         }
       />

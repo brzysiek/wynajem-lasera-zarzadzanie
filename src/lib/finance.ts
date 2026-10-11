@@ -485,15 +485,22 @@ export async function saveRentalFinance(
   // Wniosek 28: podgląd przeliczenia („Zmienia N przyszłych rezerwacji”) — bez zapisu.
   if (opts.dryRun) return { ok: true, data };
 
+  // Uwagi kierowcy zapisane przed rozliczeniem (wniosek 31) przechodzą do nowego rekordu.
+  const pending = existing ? null : await prisma.rental.findUnique({ where: { id: rental.id }, select: { driverDeliveryNotes: true, driverPickupNotes: true } });
   await prisma.rentalFinance.upsert({
     where: { rentalId: rental.id },
     create: {
       rentalId: rental.id,
       ...data,
       transportCashCollected: existing?.transportCashCollected ?? null,
+      deliveryNotes: pending?.driverDeliveryNotes ?? null,
+      pickupNotes: pending?.driverPickupNotes ?? null,
     },
     update: data,
   });
+  if (pending?.driverDeliveryNotes || pending?.driverPickupNotes) {
+    await prisma.rental.update({ where: { id: rental.id }, data: { driverDeliveryNotes: null, driverPickupNotes: null } });
+  }
 
   return { ok: true, data };
 }

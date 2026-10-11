@@ -16,6 +16,7 @@ const fx = {
   rentals: [] as unknown[],
   rental: null as unknown,
   upsert: vi.fn(async () => ({})),
+  rentalUpdate: vi.fn(async () => ({})),
 };
 vi.mock("@/auth", () => ({ auth: vi.fn(async () => session()) }));
 vi.mock("@/lib/logger", () => ({ logError: vi.fn(), logInfo: vi.fn(), logWarn: vi.fn() }));
@@ -28,6 +29,7 @@ vi.mock("@/lib/prisma", () => {
         findMany: vi.fn(async () => fx.rentals),
         findUnique: vi.fn(async () => fx.rental),
         findUniqueOrThrow: vi.fn(async () => fx.rental),
+        update: (...a: unknown[]) => (fx.rentalUpdate as (...x: unknown[]) => unknown)(...a),
       }),
       rentalFinance: model({ upsert: (...a: unknown[]) => (fx.upsert as (...x: unknown[]) => unknown)(...a) }),
     } as Record<string, unknown>,
@@ -91,6 +93,7 @@ beforeEach(() => {
   fx.rentals = [];
   fx.rental = null;
   fx.upsert.mockClear();
+  fx.rentalUpdate.mockClear();
 });
 
 describe("endpointy biura: KIEROWCA dostaje 403", () => {
@@ -312,11 +315,21 @@ describe("driver-dto", () => {
 const patchDriver = (body: unknown) => driverFinance.PATCH(req("PATCH", body), ctx);
 
 describe("rozliczenie kierowcy: blokada po potwierdzeniu / fakturze", () => {
-  it("KIEROWCA bez rozliczenia: 409 i nie powstaje RentalFinance (ani gotówka)", async () => {
+  it("KIEROWCA bez rozliczenia: uwagi zapisują się w wynajmie (200), bez RentalFinance i gotówki", async () => {
     fx.rental = rentalRow({ finance: null });
-    const res = await patchDriver({ deliveryNotes: "tylko uwaga" });
-    expect(res.status).toBe(409);
+    // tak wysyła autozapis panelu: uwagi + puste czasy
+    const res = await patchDriver({ deliveryNotes: "  dzwonić do bramy ", pickupNotes: null, deliveryDurationMinutes: null, pickupDurationMinutes: null });
+    expect(res.status).toBe(200);
     expect(fx.upsert).not.toHaveBeenCalled();
+    expect(fx.rentalUpdate).toHaveBeenCalledWith({ where: { id: "r1" }, data: { driverDeliveryNotes: "dzwonić do bramy", driverPickupNotes: null } });
+  });
+
+  it("KIEROWCA bez rozliczenia: coś poza uwagami (licznik, gotówka) → 409 i nic się nie zapisuje", async () => {
+    fx.rental = rentalRow({ finance: null });
+    expect((await patchDriver({ pulseCounterEnd: 5 })).status).toBe(409);
+    expect((await patchDriver({ transportCashCollected: true })).status).toBe(409);
+    expect(fx.upsert).not.toHaveBeenCalled();
+    expect(fx.rentalUpdate).not.toHaveBeenCalled();
   });
 
   it("KIEROWCA po potwierdzeniu, ale BEZ faktury: może poprawić liczniki i cofnąć potwierdzenie", async () => {

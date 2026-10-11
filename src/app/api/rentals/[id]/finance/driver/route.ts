@@ -67,8 +67,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // gotówką, a kierowca widział potem fałszywe „pobierz gotówkę X zł”. Uwagi
   // kierowcy żyją na RentalFinance, więc do czasu rozliczenia nie mają gdzie się
   // zapisać. Biuro (ADMIN/STAFF) działa jak dotąd.
+  // Uwagi kierowcy bez rozliczenia zapisujemy w osobnych polach wynajmu (bez ceny i gotówki);
+  // trafiają do rozliczenia, gdy biuro je założy (saveRentalFinance).
   if (isDriver && !rental.finance) {
-    return bad("Biuro nie przygotowało jeszcze rozliczenia tego wydarzenia — uwagi zapiszesz, gdy będzie gotowe.", 409);
+    const others = Object.entries(body).filter(([k, v]) => k !== "deliveryNotes" && k !== "pickupNotes" && v !== null && v !== "");
+    if (others.length) return bad("Biuro nie przygotowało jeszcze rozliczenia tego wydarzenia — poza uwagami niczego nie zapiszesz.", 409);
+    const data: { driverDeliveryNotes?: string | null; driverPickupNotes?: string | null } = {};
+    for (const [field, column] of [["deliveryNotes", "driverDeliveryNotes"], ["pickupNotes", "driverPickupNotes"]] as const) {
+      if (!(field in body)) continue;
+      const raw = (body as Record<string, unknown>)[field];
+      if (raw !== null && typeof raw !== "string") return bad("Nieprawidłowa uwaga kierowcy.");
+      data[column] = raw === null ? null : raw.trim().slice(0, 5000) || null;
+    }
+    if (Object.keys(data).length) await prisma.rental.update({ where: { id }, data });
+    logInfo("driver_pending_notes_saved", { userId: session.user.id, rentalId: id });
+    return NextResponse.json({ ok: true, pendingNotes: true });
   }
 
   // --- walidacja i normalizacja pól z body ---
