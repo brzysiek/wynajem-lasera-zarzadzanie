@@ -17,7 +17,6 @@ import { SignalsTour } from "./signals-tour";
 import type { SeasonGoal } from "@/lib/leads/season-goal";
 import type { Playbook } from "@/lib/leads/playbook";
 import type { DayProgress } from "@/lib/leads/load";
-import { applySmsPlaceholders } from "@/lib/sms-template";
 import { BoardView } from "./board-view";
 import { ReportView } from "./report-view";
 import { ReviewView } from "./review-view";
@@ -323,33 +322,15 @@ export function LeadsManager({
     const r = byId.get(id);
     const { ok, data } = await api(`/api/leads/${id}/activity`, "POST", { outcome });
     if (!ok) return setToast({ text: data.message ?? "Nie udało się zapisać.", error: true });
-    // Złote zasady, pkt 2: nie odebrała → SMS z szablonu od razu.
-    let smsNote = "";
-    if (outcome === "no_answer" && r?.phone) {
-      const tpl = await noAnswerTemplate();
-      if (tpl) {
-        const sms = await api(`/api/leads/${id}/sms`, "POST", { phone: r.phone, message: applySmsPlaceholders(tpl, { clientName: r.clientName ?? r.person }) });
-        smsNote = sms.ok ? " SMS z szablonu wysłany." : ` SMS nie poszedł: ${sms.data.message ?? "błąd bramki"}.`;
-      }
-    }
+    // Wniosek 47 (3/3): panel nie wysyła SMS-ów — tekst proponuje okno „Wynik rozmowy”.
     const msg =
       outcome === "talked"
         ? "rozmowa zapisana → W kontakcie, krok za 2 dni rob. (zmienisz w karcie)"
         : outcome === "offer_sent"
           ? "oferta wysłana → follow-up za 3 dni rob."
           : "nie odebrała → kolejna próba jutro";
-    setToast({ text: `${r ? r.title : "Sygnał"}: ${msg}.${smsNote}` });
+    setToast({ text: `${r ? r.title : "Sygnał"}: ${msg}.` });
     refresh();
-  }
-
-  // Szablon „lead_no_answer” (Ustawienia → Szablony SMS) — pobrany raz.
-  const [tplCache, setTplCache] = useState<string | null | undefined>(undefined);
-  async function noAnswerTemplate(): Promise<string | null> {
-    if (tplCache !== undefined) return tplCache;
-    const { ok, data } = await api<{ templates: { key: string; body: string }[] }>("/api/message-templates", "GET");
-    const body = ok ? (data.templates.find((t) => t.key === "lead_no_answer")?.body ?? null) : null;
-    setTplCache(body);
-    return body;
   }
 
   function startSerial() {

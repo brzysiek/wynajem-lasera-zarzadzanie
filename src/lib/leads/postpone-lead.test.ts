@@ -76,6 +76,13 @@ describe("postponeLead — odłożenie bez rozmowy", () => {
     expect(db.updates[0].nextStepNote).toBe(`wraca: inny powód — woli popołudnie. Wcześniej: ${PHONE_NOTE}`);
   });
 
+  it("z karty (bez rozmowy): źródło USER z autorem, nadal bez kontaktu i bez CALL", async () => {
+    await postponeLead("L1", { returnAt: new Date(2026, 9, 20), reason: "URLOP" }, "ania", "USER");
+    expect(db.updates[0]).toMatchObject({ stage: "ODLOZONE", stageSource: "USER", stageSourceById: "ania", stepSource: "USER" });
+    expect(db.updates[0]).not.toHaveProperty("firstContactAt");
+    expect(db.activities.some((a) => a.type === "CALL")).toBe(false);
+  });
+
   it("maxStage nie rośnie dla odłożenia z Nowe bez kontaktu; rośnie, gdy był kontakt", () => {
     const L = STAGE_HISTORY_LABELS;
     expect(maxStageReached("ODLOZONE", ["Nowe → Odłożone"], L, false, false)).toBe("SYGNAL");
@@ -98,9 +105,19 @@ describe("postponeLead — odłożenie bez rozmowy", () => {
     db.updates = [];
     await reviveReturningLeads(new Date(2026, 9, 13, 10));
     const u = db.updates[0];
-    expect(u).toMatchObject({ stage: "WYWIAD", nextStepType: "DOPYTAC" });
+    // z klientką nikt nie rozmawiał → wraca do „Nowe” (pierwszy kontakt), nie do „W kontakcie”
+    expect(u).toMatchObject({ stage: "SYGNAL", nextStepType: "PIERWSZY_KONTAKT" });
     expect(u.nextStepNote).toBe(`wraca z odłożonych (inny powód) — zapytać o decyzję · woli popołudnie. Wcześniej: ${PHONE_NOTE}`);
     expect(String(u.nextStepNote).startsWith("wraca z odłożonych")).toBe(true);
+    expect(db.activities.at(-1)?.body).toContain("Odłożone → Nowe");
+    expect(u).not.toHaveProperty("firstContactAt");
+  });
+
+  it("po rozmowie powrót jak dotąd: W kontakcie, krok „dopytać”", async () => {
+    db.due = [{ id: "L2", clientId: "C1", returnAt: new Date(2026, 9, 13, 9), postponeReason: "URLOP", nextStepNote: "wraca: urlop", firstContactAt: new Date(2026, 9, 1) }];
+    await reviveReturningLeads(new Date(2026, 9, 13, 10));
+    expect(db.updates[0]).toMatchObject({ stage: "WYWIAD", nextStepType: "DOPYTAC" });
+    expect(db.activities.at(-1)?.body).toContain("Odłożone → W kontakcie");
   });
 });
 

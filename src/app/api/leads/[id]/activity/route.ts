@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { toLogValue } from "@/lib/changelog/diff";
 import { recordChanges } from "@/lib/changelog/record";
 import { loadLeadDetail } from "@/lib/leads/load";
-import { LeadError, addLeadNote, logLeadActivity, type CallOutcome } from "@/lib/leads/actions";
+import { LeadError, addLeadNote, logLeadActivity, postponeLead, type CallOutcome } from "@/lib/leads/actions";
 import { parseDay } from "@/lib/leads/validate";
 import { POSTPONE_REASON_KEYS, STAGE_KEYS, type PostponeReasonKey } from "@/lib/leads/labels";
 import type { LeadStageKey } from "@/lib/leads/parse-deal";
@@ -48,7 +48,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const postponeReason = POSTPONE_REASON_KEYS.includes(body?.postponeReason) ? (body.postponeReason as PostponeReasonKey) : null;
     const channel = body?.channel === "sms" || body?.channel === "mail" || body?.channel === "telefon" ? (body.channel as "telefon" | "sms" | "mail") : undefined;
     const stepType = ["ODDZWONI", "DOPYTAC", "UMOW_TERMIN", "INNE"].includes(body?.stepType) ? (body.stepType as "ODDZWONI" | "DOPYTAC" | "UMOW_TERMIN" | "INNE") : undefined;
-    await logLeadActivity(id, { outcome, body: text, nextActionAt: next, stage, postponeReason, channel, stepType }, session.user.id);
+    // Wniosek 49: „Odłóż do…” bez rozmowy (conversation: false) — samo odłożenie, bez kontaktu i wpisu CALL.
+    if (outcome === "postpone" && body?.conversation === false) {
+      if (!next || !postponeReason) throw new LeadError("Odłóż do: wybierz datę powrotu i powód.");
+      await postponeLead(id, { returnAt: next, reason: postponeReason, note: text }, session.user.id, "USER");
+    } else {
+      await logLeadActivity(id, { outcome, body: text, nextActionAt: next, stage, postponeReason, channel, stepType }, session.user.id);
+    }
     logInfo("lead_activity_logged", { userId: session.user.id, leadId: id, outcome });
     return NextResponse.json(await loadLeadDetail(id));
   } catch (err) {

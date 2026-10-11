@@ -206,7 +206,7 @@ export function LeadCard({
   const lastOffer = d.activities.find((a) => /ofert/i.test(a.body ?? "") && (a.type === "EMAIL" || a.type === "CALL" || a.type === "STAGE_CHANGE"));
   const ACTION = "inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-[#C9D3DC] bg-white px-2.5 text-[12.5px] text-[#0C3450] hover:border-[#1B6FA8] disabled:opacity-40";
   const ACTION_PRIMARY = "inline-flex h-8 items-center gap-1.5 rounded-[6px] bg-[#1B6FA8] px-3 text-[12.5px] font-semibold text-white hover:bg-[#0C3450]";
-  const outcomeLead = { id: d.id, stage: d.stage, attempts: d.attempts, followUpNo: d.followUpNo, nextStepType: d.nextStepType, phone, clientId: d.clientId, clientName: d.clientName ?? d.person, requestedFrom: d.requestedFrom };
+  const outcomeLead = { id: d.id, stage: d.stage, attempts: d.attempts, followUpNo: d.followUpNo, nextStepType: d.nextStepType, phone, clientId: d.clientId, clientName: d.clientName ?? d.person, requestedFrom: d.requestedFrom, firstContactAt: d.firstContactAt };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white">

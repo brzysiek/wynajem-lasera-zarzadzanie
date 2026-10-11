@@ -138,16 +138,20 @@ export async function syncLeadsWithRentals(now = new Date()): Promise<{ linked: 
 export async function reviveReturningLeads(now = new Date()): Promise<number> {
   const due = await prisma.lead.findMany({
     where: { archivedAt: null, stage: "ODLOZONE", returnAt: { lte: now } },
-    select: { id: true, clientId: true, returnAt: true, postponeReason: true, nextStepNote: true },
+    select: { id: true, clientId: true, returnAt: true, postponeReason: true, nextStepNote: true, firstContactAt: true },
   });
   for (const l of due) {
     const why = l.postponeReason ? (POSTPONE_REASON_LABEL[l.postponeReason as PostponeReasonKey] ?? l.postponeReason) : null;
+    // Wniosek 49: sygnał, z którym nikt jeszcze nie rozmawiał, wraca do „Nowe”
+    // (pierwszy kontakt), a nie do „W kontakcie”; po rozmowie — jak dotąd.
+    const untouched = l.firstContactAt == null;
+    const target = untouched ? "SYGNAL" : "WYWIAD";
     await prisma.$transaction([
       prisma.lead.update({
         where: { id: l.id },
-        data: { stage: "WYWIAD", stageChangedAt: now, returnAt: null, nextActionAt: now, nextStepType: "DOPYTAC", nextStepNote: returnStepNote({ why, postponeNote: l.nextStepNote }), ...stageSet("AUTO_RULE", null, now), ...stepSet("AUTO_RULE", null, now) },
+        data: { stage: target, stageChangedAt: now, returnAt: null, nextActionAt: now, nextStepType: untouched ? "PIERWSZY_KONTAKT" : "DOPYTAC", nextStepNote: returnStepNote({ why, postponeNote: l.nextStepNote }), ...stageSet("AUTO_RULE", null, now), ...stepSet("AUTO_RULE", null, now) },
       }),
-      prisma.leadActivity.create({ data: { leadId: l.id, clientId: l.clientId, type: "STAGE_CHANGE", body: `Odłożone → W kontakcie · powrót ${fmt(l.returnAt!)}${why ? ` (${why})` : ""}` } }),
+      prisma.leadActivity.create({ data: { leadId: l.id, clientId: l.clientId, type: "STAGE_CHANGE", body: `Odłożone → ${untouched ? "Nowe" : "W kontakcie"} · powrót ${fmt(l.returnAt!)}${why ? ` (${why})` : ""}` } }),
     ]);
   }
   return due.length;

@@ -28,6 +28,8 @@ export type OutcomeLead = {
   clientId: string | null;
   clientName: string | null;
   requestedFrom: string | null;
+  // null = z klientką jeszcze nikt nie rozmawiał (wniosek 49: odłożenie bez rozmowy).
+  firstContactAt?: string | null;
 };
 
 type Choice = "booked" | "no_answer" | "callback" | "later" | "offer" | "resign";
@@ -82,6 +84,11 @@ export function CallOutcomeDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tpl, setTpl] = useState<string | null>(null);
+  // Wniosek 49: odłożenie bez rozmowy (domyślnie, gdy nikt jeszcze nie rozmawiał z klientką).
+  const [noTalk, setNoTalk] = useState(lead.firstContactAt === null);
+  // Po „Nie odebrała” panel niczego nie wysyła — proponuje tekst SMS-a do wysłania z telefonu służbowego.
+  const [smsProposal, setSmsProposal] = useState<{ detail: LeadDetail; text: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -120,7 +127,10 @@ export function CallOutcomeDialog({
     setError(null);
     if (choice === "no_answer") {
       const d = await post({ outcome: "no_answer", body: text || null });
-      if (d && !followUp && lead.phone && tpl) await api(`/api/leads/${lead.id}/sms`, "POST", { phone: lead.phone, message: applySmsPlaceholders(tpl, { clientName: lead.clientName }) });
+      if (d && !followUp && lead.phone && tpl) {
+        setBusy(false);
+        return setSmsProposal({ detail: d, text: applySmsPlaceholders(tpl, { clientName: lead.clientName }) });
+      }
       return finish(d);
     }
     if (choice === "callback") {
@@ -131,7 +141,7 @@ export function CallOutcomeDialog({
       if (!date) return (setBusy(false), setError("Wybierz datę kontaktu."));
       if (postpone) {
         if (!postponeReason) return (setBusy(false), setError("Wybierz powód odłożenia."));
-        return finish(await post({ outcome: "postpone", body: text || null, nextActionAt: date, postponeReason }));
+        return finish(await post({ outcome: "postpone", body: text || null, nextActionAt: date, postponeReason, ...(noTalk ? { conversation: false } : {}) }));
       }
       const step = lead.nextStepType === "UMOW_TERMIN" ? "UMOW_TERMIN" : "DOPYTAC";
       return finish(await post({ outcome: "talked", body: text || "później — kontakt w wybranym terminie", nextActionAt: date, stepType: step }));
@@ -168,6 +178,32 @@ export function CallOutcomeDialog({
     return finish(linked.data);
   }
 
+  if (smsProposal) {
+    return (
+      <div data-lead-modal className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/30 p-4 pt-[8vh]">
+        <div role="dialog" aria-modal="true" aria-label="Tekst SMS" className="flex w-full max-w-[520px] flex-col gap-3 rounded-[12px] bg-white p-5 shadow-xl">
+          <h3 className="m-0 text-[16px] font-semibold text-[#0C3450]">Zapisano. Proponowany SMS</h3>
+          <p className="m-0 text-[12.5px] text-[#5C6166]">Panel niczego nie wysyła — skopiuj tekst i wyślij z telefonu służbowego{lead.phone ? ` na ${lead.phone}` : ""}.</p>
+          <textarea readOnly rows={4} className={`${INPUT} h-auto py-2`} value={smsProposal.text} onFocus={(e) => e.currentTarget.select()} />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className={BTN}
+              onClick={() => {
+                void navigator.clipboard?.writeText(smsProposal.text).then(() => setCopied(true), () => setCopied(false));
+              }}
+            >
+              {copied ? "Skopiowano ✓" : "Kopiuj tekst"}
+            </button>
+            <button type="button" className={BTN_PRIMARY} onClick={() => onDone(smsProposal.detail)}>
+              Gotowe
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div data-lead-modal className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/30 p-4 pt-[8vh]" onClick={onClose}>
       <div role="dialog" aria-modal="true" aria-label="Wynik rozmowy" className="flex w-full max-w-[520px] flex-col gap-3 rounded-[12px] bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -200,7 +236,7 @@ export function CallOutcomeDialog({
               className={`flex flex-col rounded-[8px] border px-3 py-2 text-left ${choice === c.key ? "border-[#1B6FA8] bg-[#EAF4FB]" : "border-[#E3E6E9] hover:border-[#1B6FA8]"} ${c.key === "resign" ? "text-[#B8612F]" : "text-[#0C3450]"}`}
             >
               <b className="text-[13.5px] font-semibold">{c.label}</b>
-              <span className="text-[11.5px] text-[#5C6166]">{c.key === "no_answer" && !followUp ? `próba ${lead.attempts + 1}, ponowienie ${nextTry}${lead.phone && tpl ? " + SMS" : ""}` : c.hint}</span>
+              <span className="text-[11.5px] text-[#5C6166]">{c.key === "no_answer" && !followUp ? `próba ${lead.attempts + 1}, ponowienie ${nextTry}${lead.phone && tpl ? " + tekst SMS do skopiowania" : ""}` : c.hint}</span>
             </button>
           ))}
         </div>
@@ -254,6 +290,12 @@ export function CallOutcomeDialog({
               <input type="checkbox" checked={postpone} onChange={(e) => setPostpone(e.target.checked)} />
               Dłuższa przerwa — „Odłóż do…” (etap Odłożone)
             </label>
+            {postpone && (
+              <label className="flex items-center gap-2 text-[12.5px] text-[#5C6166]">
+                <input type="checkbox" checked={noTalk} onChange={(e) => setNoTalk(e.target.checked)} />
+                Bez rozmowy — tylko odłożenie (nie zapisuje kontaktu ani rozmowy)
+              </label>
+            )}
             {postpone && (
               <select className={`${INPUT} h-8 w-auto`} value={postponeReason} onChange={(e) => setPostponeReason(e.target.value as PostponeReasonKey | "")} aria-label="Powód odłożenia">
                 <option value="">— powód —</option>

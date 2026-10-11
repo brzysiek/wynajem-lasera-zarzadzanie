@@ -116,7 +116,7 @@ export function SignalsTour({
             <b className="text-[#0C3450]">Wynik rozmowy</b> – wybierasz, jak poszło (umówiła termin, nie odebrała, oddzwoni, później, oferta, rezygnuje), a panel sam ustawia etap i następny krok.
           </p>
           <p>
-            <b className="text-[#0C3450]">Nie odebrała</b> – SMS z szablonu i kolejna próba jutro same się ustawią. Oferta wysłana z kontakt@ też przesunie się sama.
+            <b className="text-[#0C3450]">Nie odebrała</b> – kolejna próba jutro sama się ustawi, a tekst SMS-a dostaniesz do skopiowania (wyślij go z telefonu służbowego). Oferta wysłana z kontakt@ też przesunie się sama.
           </p>
         </>
       ),
