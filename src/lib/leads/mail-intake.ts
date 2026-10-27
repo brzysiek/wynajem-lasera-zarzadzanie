@@ -7,6 +7,7 @@ import { createLead, LeadError } from "@/lib/leads/actions";
 import { freeDatesFor } from "@/lib/leads/offer-draft";
 import { FUNNEL_FROM } from "@/lib/leads/funnel";
 import { recordChanges } from "@/lib/changelog/record";
+import { suggestMergesForLead } from "@/lib/chat/merge";
 import { logError, logInfo } from "@/lib/logger";
 import {
   DEFAULT_CONFIG,
@@ -239,6 +240,8 @@ export async function createLeadFromIntake(id: string, actor: { userId: string |
     data: { leadId, clientId: lead?.clientId ?? null, type: "SYSTEM", body: `${actor.auto ? "auto · " : ""}Sygnał z maila${it.subject ? `: „${it.subject.slice(0, 120)}”` : ""} (od ${it.fromAddress})`, userId: actor.userId },
   });
   await prisma.mailIntake.update({ where: { id }, data: { status: "SYGNAL", leadId, decidedById: actor.userId, decidedAt: new Date() } });
+  // Wniosek 42: mail ↔ otwarty sygnał z Messengera / Instagrama o tym samym imieniu i nazwisku → propozycja połączenia.
+  await suggestMergesForLead(leadId).catch((err) => logError("mail_intake_merge_suggest_failed", err, { leadId }));
   await recordChanges(prisma, { userId: actor.userId ?? "" }, [{ entity: "LEAD", entityId: leadId, clientId: lead?.clientId ?? null, operation: "CREATE", field: "z_maila", after: (it.subject ?? "(bez tematu)").slice(0, 120) }]);
   return { leadId };
 }

@@ -4,6 +4,7 @@ import { useContext, useEffect, useMemo, useState } from "react";
 import type { ClientDetail, ClientHistoryItem } from "@/lib/clients/load";
 import { AgentModeContext, INPUT, api } from "../client-forms";
 import { gmailThreadUrl, isCommunication, itemText, itemTone, syncAgo } from "./shared";
+import { LeadChat } from "@/components/leads/lead-chat";
 
 // Zakładka „Komunikacja” (prompt 3B-karta, 2.3): e-maile z Gmaila (wątki),
 // SMS-y, rozmowy i notatki — z filtrami, pogrupowane po miesiącach, z
@@ -202,6 +203,9 @@ export function TabCommunication({
     }`;
 
   return (
+    <div className="flex flex-col gap-5">
+    {/* Czat z Messengera / Instagrama (wniosek 42) */}
+    <LeadChat threads={d.chat ?? []} />
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_460px]">
       <section className="overflow-hidden rounded-xl border border-[var(--c-border)] bg-white">
         <div className="border-b border-[var(--c-border)] px-4 pb-3 pt-4">
@@ -299,6 +303,7 @@ export function TabCommunication({
       <section className="h-fit rounded-xl border border-[var(--c-border)] bg-white p-5 lg:sticky lg:top-4">
         <Preview item={selected} clientId={d.id} onChanged={onChanged} />
       </section>
+    </div>
     </div>
   );
 }

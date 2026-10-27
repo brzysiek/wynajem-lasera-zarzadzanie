@@ -13,6 +13,7 @@ import { StageLegend } from "./plan-day";
 import type { CardIntent } from "./lead-card";
 import { LEAD_STAGE_COLORS } from "@/components/shell-tokens";
 import { LEAD_CARD_CHANNEL_ACTIONS } from "@/lib/leads/channel-actions";
+import { MergeBadge } from "./merge-badge";
 
 // Sygnały → Tablica (wzór lejek-v2-wzor.html, s2): jedyny lejek w panelu.
 // Kolumny w kolorach etapów, terakota = gnije / po terminie, kropki prób,
@@ -358,6 +359,7 @@ export function BoardView({
                         onChanged={onChanged}
                         tourTarget={r.id === firstChipId}
                       />
+                      {r.mergeSuggestion && <MergeBadge badge={r.mergeSuggestion} readOnly={readOnly} onChanged={onChanged} />}
                       <div className="mt-1.5 flex items-center justify-between gap-2 text-[11.5px]">
                         <Avatar name={r.ownerName} />
                         <span className="flex items-center gap-1.5">

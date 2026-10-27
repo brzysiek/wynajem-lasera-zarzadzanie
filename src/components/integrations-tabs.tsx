@@ -8,6 +8,7 @@ const TABS = [
   { href: "/ustawienia/integracje/hubspot", label: "HubSpot" },
   { href: "/ustawienia/integracje/szybkisms", label: "SzybkiSMS" },
   { href: "/ustawienia/integracje/fakturownia", label: "Fakturownia" },
+  { href: "/ustawienia/integracje/meta", label: "Meta (Messenger, Instagram)" },
 ];
 
 export function IntegrationsTabs() {

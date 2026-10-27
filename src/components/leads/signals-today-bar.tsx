@@ -69,6 +69,7 @@ export function SignalsTodayBar({
   const tiles = [
     { key: "new", label: "Nowe zapytania", n: of("new").length, sub: `z ${untouchedTotal} · kontakt w ${FIRST_CONTACT_SLA_HOURS} h rob.`, late: lateOf("new") },
     { key: "review", label: "Do sprawdzenia", n: reviewCount, sub: reviewCount ? "maile od nowych osób" : "—", highlight: reviewCount > 0 },
+    { key: "merge", label: "Do połączenia", n: mine.filter((r) => r.mergeSuggestion).length, sub: "to samo imię i nazwisko", highlight: mine.some((r) => r.mergeSuggestion) },
     { key: "calls", label: "Umówione telefony", n: of("calls").length, sub: names2(of("calls")) || "—", late: lateOf("calls") },
     { key: "followups", label: "Follow-up ofert", n: of("followups").length, sub: names2(of("followups")) || "—", late: lateOf("followups") },
     // Wiosna: do „Na dziś” trafia max SPRING_PER_DAY dziennie z puli (rozkład telefonów).

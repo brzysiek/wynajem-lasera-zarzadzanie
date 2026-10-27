@@ -18,6 +18,8 @@ import { normalizeAttribution, type Attribution } from "@/lib/leads/attribution-
 import { activeDraftStatuses, loadMailDraft, type MailDraftDto } from "@/lib/leads/mail-draft";
 import { combineLastWork, deriveStageSource, stageSourceText, stepSourceText } from "@/lib/leads/set-source";
 import { loadLastWorkActivity } from "@/lib/leads/last-work";
+import { loadChatThreads, type ChatThreadDto } from "@/lib/chat/load";
+import { loadMergeBadges, type MergeBadge } from "@/lib/chat/merge";
 import { loadSuggestion, type SuggestionDto } from "@/lib/leads/lead-suggestion";
 // Odczyt modułu Sygnały (serwer). Tylko ADMIN/STAFF — strony i API
 // sprawdzają rolę; KIEROWCA nie dostaje ani wiersza (prompt 2, sekcja 4).
@@ -133,6 +135,8 @@ export type LeadRow = {
   fromWww: boolean;
   // Szkic odpowiedzi przy sygnale (wniosek 44): aktywny szkic → ikona na Tablicy.
   mailDraft: "PROPOZYCJA" | "SZKIC_GMAIL" | null;
+  // Propozycja połączenia (wniosek 42): plakietka na kafelku Tablicy i „Na dziś”.
+  mergeSuggestion?: MergeBadge | null;
   lastActivity: { type: ActivityTypeKey; at: string; body: string | null } | null;
   noAnswerCount: number;
   // Lista „Do obdzwonienia” (prompt 2 v2): zaległe zapytanie z 2026.
@@ -297,7 +301,8 @@ export async function loadLeadRows(): Promise<LeadRow[]> {
   const leads = await queryRows({ archivedAt: null });
   const [extra, spring] = await Promise.all([loadExtra(leads), loadSpringInfo(leads)]);
   const drafts = await activeDraftStatuses(leads.map((l) => l.id));
-  return leads.map((l) => ({ ...toRow(l, extra), spring: spring.get(l.id) ?? null, mailDraft: drafts.get(l.id) ?? null }));
+  const badges = await loadMergeBadges(leads.map((l) => l.id)).catch(() => new Map<string, MergeBadge>());
+  return leads.map((l) => ({ ...toRow(l, extra), spring: spring.get(l.id) ?? null, mailDraft: drafts.get(l.id) ?? null, mergeSuggestion: badges.get(l.id) ?? null }));
 }
 
 // Wiersz „Wracają z wiosny” (wniosek 21): ostatni odbyty wynajem (panel albo
@@ -439,6 +444,8 @@ export type LeadDetail = LeadRow & {
   rentalOptions: RentalCandidate[];
   // Wniosek 22: otwarte zadania powiązane z sygnałem.
   openTasks: OpenTaskDto[];
+  // Czat z Messengera / Instagrama (wniosek 42): wątki tego sygnału i klientki.
+  chat: ChatThreadDto[];
 };
 
 export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
@@ -542,6 +549,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
     clientRentals: clientRentals.map((r) => ({ id: r.id, startsAt: r.startsAt.toISOString(), deviceName: r.device.name })),
     rentalOptions,
     openTasks,
+    chat: await loadChatThreads({ leadId: id, clientId: lead.clientId }).catch(() => []),
   };
 }
 

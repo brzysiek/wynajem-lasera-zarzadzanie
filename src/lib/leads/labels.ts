@@ -48,6 +48,8 @@ export const TYPE_LABEL: Record<LeadTypeKey, string> = {
   OLX: "OLX",
   POLECENIE: "Polecenie",
   INNE: "Inne",
+  MESSENGER: "Messenger",
+  INSTAGRAM: "Instagram",
 };
 export const TYPE_KEYS = Object.keys(TYPE_LABEL) as LeadTypeKey[];
 

@@ -108,7 +108,7 @@ function deniesAgent(h: Handler): boolean {
   if (OAUTH_PUBLIC.includes(`${h.method} ${h.route}`)) return true;
   if (/CRON_SECRET|verifyCronSecret|cronAuthorized/.test(b)) return true;
   // Webhook formularzy WWW — własny token (WWW_WEBHOOK_TOKEN), nie sesja.
-  if (/WWW_WEBHOOK_TOKEN/.test(b)) return true;
+  if (/WWW_WEBHOOK_TOKEN|META_APP_SECRET/.test(b)) return true;
   if (/requireStaffSession\(\)|requireAdminSession\(\)|requireDriverFinanceSession\(\)/.test(b)) return true;
   if (/requireSession\(OFFICE_ROLES\)/.test(b)) return true;
   if (/role === "AGENT"\)\s*\{\s*return NextResponse\.json\(\{ message: "Brak uprawnień\." \}, \{ status: 403 \}\)/.test(b)) return true;
@@ -166,6 +166,7 @@ describe("trasy API a rola AGENT", () => {
       ["DELETE", "users/[id]"],
       ["PUT", "leads/[id]/draft"], // szkic maila: edycja i odrzucenie tylko biuro
       ["DELETE", "leads/[id]/draft"],
+      ["POST", "lead-merge/[id]"], // „Połącz” / „To ktoś inny” tylko biuro (wniosek 42)
       ["POST", "mail-intake/[id]"], // decyzja „Sygnał” / „Nie” tylko biuro (agent: rekomendacja przez MCP)
       ["POST", "mail-intake/from-email"],
       ["PUT", "mail-intake/config"],

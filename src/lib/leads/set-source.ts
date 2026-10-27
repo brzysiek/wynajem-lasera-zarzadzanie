@@ -17,7 +17,8 @@ export type SourceCode =
   | "AUTO_REPEAT"
   | "AUTO_TAKEOVER"
   | "AUTO_HUBSPOT"
-  | "AUTO_RULE";
+  | "AUTO_RULE"
+  | "AUTO_CHAT"; // wiadomość z Messengera / Instagrama (wniosek 42)
 
 export const AUTO_LABEL: Record<Exclude<SourceCode, "USER" | "OUTCOME" | "TASK" | "PROPOSAL">, string> = {
   AUTO_FORM: "formularz WWW",
@@ -31,6 +32,7 @@ export const AUTO_LABEL: Record<Exclude<SourceCode, "USER" | "OUTCOME" | "TASK" 
   AUTO_TAKEOVER: "scalenie duplikatów",
   AUTO_HUBSPOT: "import z HubSpota",
   AUTO_RULE: "reguła planu dnia",
+  AUTO_CHAT: "Messenger / Instagram",
 };
 
 export const SOURCE_CODES = ["USER", "OUTCOME", "TASK", "PROPOSAL", ...Object.keys(AUTO_LABEL)] as SourceCode[];

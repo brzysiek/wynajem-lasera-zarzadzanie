@@ -17,6 +17,7 @@ import { StageLegend, plural } from "./plan-day";
 import { step as stepText, when as whenText } from "./today-table";
 import type { CardIntent } from "./lead-card";
 import { LeadStepBlock } from "./lead-step-block";
+import { MergeBadge } from "./merge-badge";
 import { LEAD_CARD_CHANNEL_ACTIONS } from "@/lib/leads/channel-actions";
 
 // Sygnały → Na dziś (wniosek 27 B, 26): kolejka pracy. Granatowy pasek „Do
@@ -28,7 +29,7 @@ import { LEAD_CARD_CHANNEL_ACTIONS } from "@/lib/leads/channel-actions";
 type Row = LeadRow & FunnelLead;
 type Section = { key: string; label: string; items: TodayItem<Row>[] };
 export type { TodayOwner };
-export type TodayGroupKey = TodayGroup | "tasks";
+export type TodayGroupKey = TodayGroup | "tasks" | "merge"; // merge: „Do połączenia” (wniosek 42)
 type Owner = TodayOwner;
 type Source = "all" | "www" | "phone";
 
@@ -118,7 +119,10 @@ export function TodayQueue({
     { key: "back", label: "Wracają odłożone", items: of("back").filter((x) => x.priority !== "late") },
     { key: "other", label: "Inne sprawy", items: of("other").filter((x) => x.priority !== "late") },
   ];
-  const shownSections = group === "tasks" ? [] : group ? [{ key: group, label: sections.find((s) => s.key === group)?.label ?? "", items: of(group) }] : sections;
+  // „Do połączenia: N” (wniosek 42): wszystkie sygnały z oczekującą propozycją połączenia, także te bez kroku na dziś.
+  const mergeItems: TodayItem<Row>[] = mine.filter((r) => r.mergeSuggestion).map((lead) => ({ lead, priority: "today" as const, group: "other" as const }));
+  const shownSections: Section[] =
+    group === "tasks" ? [] : group === "merge" ? [{ key: "merge", label: "Do połączenia", items: mergeItems }] : group ? [{ key: group, label: sections.find((s) => s.key === group)?.label ?? "", items: of(group) }] : sections;
 
   return (
     <div className="flex flex-col gap-3">
@@ -324,6 +328,7 @@ function QueueCard({
           {r.tasks.count > 0 && <span className="text-[#B8612F]">📋 {r.tasks.count} {r.tasks.count === 1 ? "zadanie" : "zadania"}</span>}
           {r.spring?.note && <span className="text-[#B8612F]" title={r.spring.note.body}>✎ {d2(r.spring.note.at)} {r.spring.note.by ?? ""}</span>}
         </div>
+        {r.mergeSuggestion && <MergeBadge badge={r.mergeSuggestion} readOnly={readOnly} onChanged={onChanged} />}
         <div className="mt-1 flex flex-wrap gap-1.5" data-tour="row-actions" onClick={(e) => e.stopPropagation()}>
           {LEAD_CARD_CHANNEL_ACTIONS && !readOnly && r.phone && (
             <a href={`tel:${r.phone}`} className={BTN_SM_PRIMARY} title={formatPhone(r.phone) ?? undefined}>

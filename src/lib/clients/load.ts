@@ -19,6 +19,7 @@ import { loadPaymentCoverage } from "@/lib/invoicing/bank-transfers";
 import { gmailSummary } from "@/lib/gmail/sync";
 import { isQualified } from "@/lib/clients/qualification";
 import { combineLastWork } from "@/lib/leads/set-source";
+import { loadChatThreads, type ChatThreadDto } from "@/lib/chat/load";
 import { loadLastWorkActivity } from "@/lib/leads/last-work";
 import { isQualificationActive } from "@/lib/clients/qualify";
 import type { ClientStatus } from "@/lib/clients/status";
@@ -234,6 +235,8 @@ export type ClientDetail = {
   gmail: { enabled: boolean; mailboxes: string[]; lastSyncAt: string | null };
   // Klient vs „kontakt z zapytania” (prompt 2 v2, 1.0).
   qualification: { active: boolean; qualified: boolean; at: string | null; reason: string | null; derived: boolean };
+  // Czat z Messengera / Instagrama (wniosek 42) — wątki przypięte do klienta.
+  chat: ChatThreadDto[];
   // Sygnały klienta (CRM, prompt 2) — otwarte i zamknięte.
   leads: {
     id: string;
@@ -862,6 +865,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     })(),
     suggestedEmails,
     hiddenThreads,
+    chat: await loadChatThreads({ clientId: id }).catch(() => []),
     leads: c.leads.map((l) => ({
       id: l.id,
       title: l.title,

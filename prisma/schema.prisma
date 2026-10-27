@@ -907,6 +907,8 @@ model Client {
   aliases  ClientAlias[]
   invoices ClientInvoice[]
   leads    Lead[]
+  chatThreads ChatThread[]
+  mergeSuggestionsOther LeadMergeSuggestion[] @relation("MergeOtherClient")
   leadActivities LeadActivity[]
   tasks    Task[]
   messages Message[]
@@ -1232,6 +1234,8 @@ enum LeadType {
   OLX
   POLECENIE
   INNE
+  MESSENGER // wniosek 42: rozmowa z Messengera (Meta)
+  INSTAGRAM // wniosek 42: Instagram Direct (Meta)
 }
 
 enum LostReason {
@@ -1316,6 +1320,9 @@ model Lead {
   activities LeadActivity[]
   tasks      Task[]
   remarks    Remark[]
+  chatThreads ChatThread[]
+  mergeSuggestions      LeadMergeSuggestion[] @relation("MergeLead")
+  mergeSuggestionsOther LeadMergeSuggestion[] @relation("MergeOther")
 
   @@index([stage])
   @@index([clientId])
@@ -1928,4 +1935,80 @@ model MailIntake {
   @@index([status, createdAt])
   @@index([fromAddress])
   @@map("mail_intakes")
+}
+
+// ---------------------------------------------------------------------------
+// Messenger i Instagram Direct (wniosek 42): rozmowy z Meta Messenger Platform.
+// W odróżnieniu od Gmaila treść wiadomości jest przechowywana w panelu — cały
+// wątek (także nasze odpowiedzi) ma być widoczny w karcie sygnału.
+
+enum ChatChannel {
+  MESSENGER
+  INSTAGRAM
+}
+
+enum ChatDirection {
+  IN // od klientki
+  OUT // nasza odpowiedź (echo ze strony)
+}
+
+model ChatThread {
+  id             String        @id @default(cuid())
+  channel        ChatChannel
+  externalUserId String        @db.VarChar(64) // PSID (Messenger) albo IGSID (Instagram)
+  pageId         String?       @db.VarChar(64)
+  displayName    String?
+  clientId       String?
+  client         Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  leadId         String?
+  lead           Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  lastInboundAt  DateTime?
+  lastOutboundAt DateTime?
+  createdAt      DateTime      @default(now())
+  messages       ChatMessage[]
+
+  @@unique([channel, externalUserId])
+  @@index([leadId])
+  @@index([clientId])
+  @@map("chat_threads")
+}
+
+model ChatMessage {
+  id          String        @id @default(cuid())
+  threadId    String
+  thread      ChatThread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  mid         String        @unique @db.VarChar(191)
+  direction   ChatDirection
+  text        String?       @db.Text
+  attachments Json?
+  sentAt      DateTime
+  createdAt   DateTime      @default(now())
+
+  @@index([threadId, sentAt])
+  @@map("chat_messages")
+}
+
+// Propozycja połączenia (wniosek 42): samo imię i nazwisko nigdy nie łączy
+// automatycznie. Widoczna na kafelkach OBU sygnałów (Tablica, „Na dziś”);
+// „Połącz” scala, „To ktoś inny” chowa. Cel: inny otwarty sygnał albo klientka
+// bez otwartego sygnału.
+model LeadMergeSuggestion {
+  id            String   @id @default(cuid())
+  leadId        String
+  lead          Lead     @relation("MergeLead", fields: [leadId], references: [id], onDelete: Cascade)
+  otherLeadId   String?
+  otherLead     Lead?    @relation("MergeOther", fields: [otherLeadId], references: [id], onDelete: Cascade)
+  otherClientId String?
+  otherClient   Client?  @relation("MergeOtherClient", fields: [otherClientId], references: [id], onDelete: Cascade)
+  label         String   @db.VarChar(191) // nazwa w plakietce: „Anna Klęczar”
+  reason        String   @db.VarChar(191)
+  status        String   @default("PENDING") @db.VarChar(16) // PENDING | MERGED | DISMISSED
+  decidedById   String?  @db.VarChar(191)
+  decidedAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([status])
+  @@index([leadId])
+  @@index([otherLeadId])
+  @@map("lead_merge_suggestions")
 }

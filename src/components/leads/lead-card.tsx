@@ -21,6 +21,7 @@ import { RentalPicker } from "./rental-picker";
 import { OpenTasks } from "@/components/open-tasks";
 import { LeadAttribution } from "@/components/leads/lead-attribution";
 import { LeadMailDraft } from "@/components/leads/lead-mail-draft";
+import { LeadChat } from "@/components/leads/lead-chat";
 import { LeadStepBlock } from "@/components/leads/lead-step-block";
 import { LeadSuggestionBlock } from "@/components/leads/lead-suggestion-block";
 import { stageEffectText } from "@/lib/leads/step-edit";
@@ -417,6 +418,9 @@ export function LeadCard({
           canRequest={!agent}
           onUpdated={(sg) => setD((cur) => (cur ? { ...cur, suggestion: sg } : cur))}
         />
+
+        {/* Czat z Messengera / Instagrama (wniosek 42) */}
+        <LeadChat threads={d.chat ?? []} />
 
         {/* Odpowiedź mailowa (wniosek 44): notatka + rozwijany szkic, zapis szkicu w Gmailu */}
         {LEAD_CARD_CHANNEL_ACTIONS && (
