@@ -112,6 +112,35 @@ ani dwóch sygnałów. Subskrybujemy pole `standby`. **Bez Handover Protocol**: 
    (UNAUTHORIZED = zły `META_APP_SECRET`; brak wpisów = Meta nic nie wysyła). Zgłoś Tomkowi/Klaudiuszowi z
    odpowiedzią Meta i treścią tego logu — wtedy decydujemy: App Review albo pośrednik.
 
+## „Verify and Save” nie przechodzi
+
+Każda próba weryfikacji (GET z `hub.mode`) zostawia wpis w Ustawienia → Integracje → Meta → „Ostatnie zdarzenia”
+— z powodem i User-Agentem Meta (bez tokenów):
+
+- **brak wpisu po kliknięciu w Meta** → żądanie nie dotarło do aplikacji. Serwer odpowiada wtedy na poziomie hostingu
+  (ochrona przed botami / firewall / ModSecurity). Poproś hosting (cyber_Folks) o wyjątek dla ścieżki
+  `/api/webhooks/meta` i dla User-Agentów `facebookexternalua` / `facebookplatform` (adresy Meta: AS32934).
+  Serwer to LiteSpeed bez Cloudflare — w repo nie ma żadnej reguły blokującej boty;
+- `VERIFY_FAIL · brak META_VERIFY_TOKEN na serwerze` → zmienna nie jest ustawiona albo aplikacja nie została
+  zrestartowana po jej zapisaniu;
+- `VERIFY_FAIL · token niezgodny` → w Meta wpisano inny ciąg niż w `META_VERIFY_TOKEN` (biały znak na końcu
+  jest ignorowany);
+- `VERIFY_OK` w panelu, a Meta nadal zgłasza błąd → odśwież stronę konfiguracji Webhooks i powtórz.
+
+Test z Maca (nie wymaga poprawnego tokenu — pokazuje, czy serwer odpowiada naszym handlerem):
+
+```bash
+curl -s -i -A "facebookexternalua" "https://panel.wynajemlasera.pl/api/webhooks/meta?hub.mode=subscribe&hub.verify_token=ZLY&hub.challenge=12345"
+# oczekiwane: HTTP/2 403 i {"message":"Brak uprawnień."} (to odpowiedź aplikacji)
+```
+
+Pełny test z prawdziwym tokenem (wartość wpisz sam, nie wklejaj jej nigdzie indziej):
+
+```bash
+read -rs T; curl -s -i -A "facebookexternalua" "https://panel.wynajemlasera.pl/api/webhooks/meta?hub.mode=subscribe&hub.verify_token=$T&hub.challenge=12345"; unset T
+# oczekiwane: HTTP/2 200, content-type: text/plain i samo 12345
+```
+
 ## Plan B: App Review
 
 Gdyby test z pkt „Sprawdzenie odbioru” pokazał, że Meta nie wysyła zdarzeń od osób bez roli w aplikacji:

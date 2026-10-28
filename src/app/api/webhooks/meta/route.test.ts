@@ -35,6 +35,35 @@ describe("GET (weryfikacja subskrypcji Meta)", () => {
     delete process.env.META_VERIFY_TOKEN;
     expect((await get("hub.mode=subscribe&hub.verify_token=undefined&hub.challenge=1")).status).toBe(403);
   });
+  it("challenge wraca jako czysty text/plain, bez JSON-a", async () => {
+    const res = await get("hub.mode=subscribe&hub.verify_token=weryfikacja&hub.challenge=1158201444");
+    expect(res.headers.get("content-type")).toMatch(/^text\/plain/);
+    expect(await res.text()).toBe("1158201444");
+  });
+  it("biały znak w konfiguracji albo w adresie nie psuje weryfikacji (trim)", async () => {
+    process.env.META_VERIFY_TOKEN = "weryfikacja \n";
+    expect((await get("hub.mode=subscribe&hub.verify_token=weryfikacja&hub.challenge=7")).status).toBe(200);
+    process.env.META_VERIFY_TOKEN = "weryfikacja";
+    expect((await get("hub.mode=subscribe&hub.verify_token=%20weryfikacja%20&hub.challenge=7")).status).toBe(200);
+  });
+  it("każda próba weryfikacji trafia do logu z powodem i User-Agentem (bez tokenów)", async () => {
+    process.env.META_VERIFY_TOKEN = "tajny123";
+    const withUa = (q: string, ua: string) => GET(new NextRequest(`http://localhost/api/webhooks/meta?${q}`, { headers: { "user-agent": ua } }));
+    await withUa("hub.mode=subscribe&hub.verify_token=tajny123&hub.challenge=1", "facebookexternalua");
+    await withUa("hub.mode=subscribe&hub.verify_token=inny456&hub.challenge=1", "facebookexternalua");
+    delete process.env.META_VERIFY_TOKEN;
+    await withUa("hub.mode=subscribe&hub.verify_token=tajny123&hub.challenge=1", "facebookexternalua");
+    expect(logs).toMatchObject([
+      { result: "VERIFY_OK", message: expect.stringContaining("facebookexternalua") },
+      { result: "VERIFY_FAIL", message: expect.stringContaining("token niezgodny") },
+      { result: "VERIFY_FAIL", message: expect.stringContaining("brak META_VERIFY_TOKEN") },
+    ]);
+    expect(JSON.stringify(logs)).not.toMatch(/tajny123|inny456/);
+  });
+  it("zwykłe wejście bez hub.mode (bot) nie zaśmieca logu", async () => {
+    await GET(new NextRequest("http://localhost/api/webhooks/meta"));
+    expect(logs).toHaveLength(0);
+  });
 });
 
 describe("POST", () => {

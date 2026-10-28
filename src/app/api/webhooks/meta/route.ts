@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseMetaPayload, verifyMetaSignature } from "@/lib/chat/meta-rules";
+import { tokenMatches } from "@/lib/leads/www-form";
 import { ingestMetaEvents } from "@/lib/chat/ingest";
 import { sendAlert } from "@/lib/alerts";
 import { logError, logInfo, logWarn } from "@/lib/logger";
@@ -11,13 +12,25 @@ import { logError, logInfo, logWarn } from "@/lib/logger";
 // zapisu → 500, żeby Meta ponowiła dostarczenie (zapis jest idempotentny po mid).
 const KIND = "meta-chat";
 
+// GET: weryfikacja subskrypcji („Verify and Save”). Zwracamy SAM hub.challenge jako
+// text/plain. Token porównujemy po trim() (biały znak z konfiguracji serwera nie
+// może psuć weryfikacji). Każda próba weryfikacji trafia do webhook_logs z powodem
+// odmowy i User-Agentem — brak wpisu po kliknięciu w Meta = żądanie nie dotarło do
+// aplikacji (blokada po stronie hostingu / WAF).
 export async function GET(req: NextRequest) {
+  const receivedAt = new Date();
   const p = req.nextUrl.searchParams;
-  const token = process.env.META_VERIFY_TOKEN;
-  if (p.get("hub.mode") === "subscribe" && token && p.get("hub.verify_token") === token && p.get("hub.challenge")) {
-    return new NextResponse(p.get("hub.challenge"), { status: 200, headers: { "Content-Type": "text/plain" } });
+  const mode = p.get("hub.mode");
+  const expected = process.env.META_VERIFY_TOKEN?.trim();
+  const given = p.get("hub.verify_token")?.trim();
+  const challenge = p.get("hub.challenge");
+  const reason = !expected ? "brak META_VERIFY_TOKEN na serwerze" : mode !== "subscribe" ? `hub.mode=${mode ?? "brak"}` : !given ? "brak hub.verify_token" : !challenge ? "brak hub.challenge" : !tokenMatches(given, expected) ? "token niezgodny" : null;
+  if (mode) {
+    const ua = (req.headers.get("user-agent") ?? "").slice(0, 80);
+    await log(reason ? "VERIFY_FAIL" : "VERIFY_OK", { receivedAt, tookMs: Date.now() - receivedAt.getTime(), message: `${reason ?? "weryfikacja przyjęta"} · UA: ${ua || "brak"}` });
   }
-  return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
+  if (reason || !challenge) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
+  return new NextResponse(challenge, { status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } });
 }
 
 async function log(result: string, data: { message?: string | null; leadId?: string | null; receivedAt: Date; tookMs: number; externalId?: string | null }) {

@@ -57,7 +57,7 @@ export default async function MetaIntegrationPage() {
             {logs.map((l, i) => (
               <li key={i} className="flex flex-wrap gap-2">
                 <span className="tabular-nums text-gray-500">{l.createdAt.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" })}</span>
-                <b className={l.result === "OK" ? "text-green-700" : l.result === "IGNORED" ? "text-gray-600" : "text-red-700"}>{l.result}</b>
+                <b className={l.result === "OK" || l.result === "VERIFY_OK" ? "text-green-700" : l.result === "IGNORED" ? "text-gray-600" : "text-red-700"}>{l.result}</b>
                 <span className="text-gray-700">{l.message ?? ""}</span>
                 {l.tookMs != null && <span className="text-gray-400">{l.tookMs} ms</span>}
               </li>
