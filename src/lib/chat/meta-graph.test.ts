@@ -18,5 +18,10 @@ describe("meta-graph", () => {
     expect(info).toMatchObject({ pageName: "WynajemLasera", instagram: { id: "IG1", username: "wynajemlasera" }, missing: ["standby"] });
     expect(info.apps.find((a) => a.ours)?.name).toBe("Panel");
     expect(summarizeSubscription(page, subs, undefined).missing).toEqual([]);
+    expect(info.pageInfoError).toBeNull();
+  });
+  it("brak odczytu strony (np. pages_read_engagement) to ostrzeżenie, a lista subskrypcji nadal działa", () => {
+    const info = summarizeSubscription({}, { data: [{ id: "222", name: "Panel", subscribed_fields: ["messages"] }] }, "222", "brak uprawnienia");
+    expect(info).toMatchObject({ pageName: null, instagram: null, pageInfoError: "brak uprawnienia", missing: ["message_echoes", "standby"] });
   });
 });

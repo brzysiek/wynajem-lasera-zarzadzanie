@@ -19,6 +19,9 @@ export type SubscriptionInfo = {
   apps: { id: string | null; name: string | null; fields: string[]; ours: boolean }[];
   missing: string[]; // pola z SUBSCRIBED_FIELDS, których nasza aplikacja nie ma (gdy znamy META_APP_ID)
   expected: readonly string[];
+  // Nazwa strony i konto IG wymagają uprawnienia pages_read_engagement — jego brak
+  // nie przeszkadza w subskrypcji, więc jest tylko ostrzeżeniem.
+  pageInfoError: string | null;
 };
 
 export function sanitizeGraphError(message: string): string {
@@ -38,7 +41,7 @@ async function graph(path: string, init: RequestInit = {}): Promise<Rec> {
   return json;
 }
 
-export function summarizeSubscription(page: Rec, subs: Rec, ourAppId: string | undefined): SubscriptionInfo {
+export function summarizeSubscription(page: Rec, subs: Rec, ourAppId: string | undefined, pageInfoError: string | null = null): SubscriptionInfo {
   const ig = (page.instagram_business_account ?? null) as Rec | null;
   const apps = (Array.isArray(subs.data) ? (subs.data as Rec[]) : []).map((a) => ({
     id: typeof a.id === "string" ? a.id : null,
@@ -53,6 +56,7 @@ export function summarizeSubscription(page: Rec, subs: Rec, ourAppId: string | u
     apps,
     missing: ourAppId ? SUBSCRIBED_FIELDS.filter((f) => !(ours?.fields ?? []).includes(f)) : [],
     expected: SUBSCRIBED_FIELDS,
+    pageInfoError,
   };
 }
 
@@ -64,8 +68,12 @@ function pageId(): string {
 
 export async function checkSubscription(): Promise<SubscriptionInfo> {
   const id = pageId();
-  const [page, subs] = await Promise.all([graph(`/${encodeURIComponent(id)}?fields=name,instagram_business_account%7Bid,username%7D`), graph(`/${encodeURIComponent(id)}/subscribed_apps`)]);
-  return summarizeSubscription(page, subs, process.env.META_APP_ID);
+  // Subskrypcje są istotne (błąd = błąd); nazwa strony i konto IG to dodatek.
+  const [pageRes, subsRes] = await Promise.allSettled([graph(`/${encodeURIComponent(id)}?fields=name,instagram_business_account%7Bid,username%7D`), graph(`/${encodeURIComponent(id)}/subscribed_apps`)]);
+  if (subsRes.status === "rejected") throw subsRes.reason;
+  const page = pageRes.status === "fulfilled" ? pageRes.value : {};
+  const pageInfoError = pageRes.status === "rejected" ? sanitizeGraphError(pageRes.reason instanceof Error ? pageRes.reason.message : String(pageRes.reason)) : null;
+  return summarizeSubscription(page, subsRes.value, process.env.META_APP_ID, pageInfoError);
 }
 
 export async function renewSubscription(): Promise<SubscriptionInfo> {

@@ -36,7 +36,12 @@ export function MetaPanel({ canCall }: { canCall: boolean }) {
       {res?.ok && res.info && (
         <div className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-900">
           <p className="m-0 font-semibold">Strona: {res.info.pageName ?? "—"}</p>
-          <p className="m-0">Instagram: {res.info.instagram ? `@${res.info.instagram.username ?? res.info.instagram.id}` : "brak powiązanego konta profesjonalnego"}</p>
+          <p className="m-0">Instagram: {res.info.instagram ? `@${res.info.instagram.username ?? res.info.instagram.id}` : res.info.pageInfoError ? "nieznane (patrz uwaga niżej)" : "brak powiązanego konta profesjonalnego"}</p>
+          {res.info.pageInfoError && (
+            <p className="m-0 mt-1 rounded bg-yellow-50 px-2 py-1 text-yellow-900">
+              Nazwy strony i konta Instagram nie udało się odczytać — token nie ma uprawnienia „pages_read_engagement”. To tylko podgląd; subskrypcja działa bez niego.
+            </p>
+          )}
           <p className="m-0 mt-1">Oczekiwane pola: {res.info.expected.join(", ")}</p>
           {res.info.apps.length === 0 && <p className="m-0 text-red-700">Strona nie jest zasubskrybowana przez żadną aplikację.</p>}
           {res.info.apps.map((a, i) => (
