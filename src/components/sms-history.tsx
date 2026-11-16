@@ -183,7 +183,14 @@ export function SmsHistory({ queued, initial, canCancel }: { queued: QueuedSms[]
         <p className="m-0 p-10 text-center text-sm text-gray-400">{filtering ? "Nic nie pasuje do wyszukiwania." : "Brak SMS-ów."}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[860px] table-fixed text-left text-sm">
+            <colgroup>
+              <col className="w-[110px]" />
+              <col className="w-[190px]" />
+              <col className="w-[200px]" />
+              <col />
+              <col className="w-[130px]" />
+            </colgroup>
             <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase text-gray-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Data</th>
@@ -196,13 +203,17 @@ export function SmsHistory({ queued, initial, canCancel }: { queued: QueuedSms[]
             <tbody className="divide-y divide-gray-100">
               {queuedShown.map((row) => (
                 <tr key={`q-${row.id}`}>
-                  <td className="whitespace-nowrap px-4 py-2 text-gray-500">{fmt(row.at)}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-gray-900">{row.recipient}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-gray-500">{row.rentalLabel}</td>
-                  <td className="max-w-xs truncate px-4 py-2 text-gray-600" title={row.body}>
+                  <td className="px-4 py-2 align-top text-gray-500">{fmt(row.at)}</td>
+                  <td className="break-words px-4 py-2 align-top text-gray-900">
+                    {row.recipient}
+                  </td>
+                  <td className="truncate px-4 py-2 align-top text-gray-500" title={row.rentalLabel}>
+                    {row.rentalLabel}
+                  </td>
+                  <td className="truncate px-4 py-2 align-top text-gray-600" title={row.body}>
                     {row.body}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2">{canCancel ? <QueueCancelBadge ruleId={row.id} daysBefore={row.daysBefore} initialMessageBody={row.body} /> : <span className="text-xs text-gray-500">zaplanowany</span>}</td>
+                  <td className="px-4 py-2 align-top">{canCancel ? <QueueCancelBadge ruleId={row.id} daysBefore={row.daysBefore} initialMessageBody={row.body} /> : <span className="text-xs text-gray-500">zaplanowany</span>}</td>
                 </tr>
               ))}
               {data.items.map((m) => {
@@ -217,18 +228,20 @@ export function SmsHistory({ queued, initial, canCancel }: { queued: QueuedSms[]
                       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setExpanded(open ? null : m.id))}
                       className={`cursor-pointer hover:bg-gray-50 ${open ? "bg-gray-50" : ""}`}
                     >
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-500">{fmt(m.at)}</td>
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-900">
-                        {m.clientName ? <span className="mr-1.5 font-medium">{m.clientName}</span> : null}
-                        <span className={m.clientName ? "text-gray-500" : ""}>{m.recipient}</span>
+                      <td className="px-4 py-2 align-top text-gray-500">{fmt(m.at)}</td>
+                      <td className="px-4 py-2 align-top text-gray-900" title={m.clientName ? `${m.clientName} · ${m.recipient}` : m.recipient}>
+                        {m.clientName ? <span className="block break-words font-medium">{m.clientName}</span> : null}
+                        <span className={`block ${m.clientName ? "text-xs text-gray-500" : ""}`}>{m.recipient}</span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2 text-gray-500">{m.rentalLabel ?? "—"}</td>
-                      <td className="max-w-xs px-4 py-2 text-gray-600" title={m.body}>
+                      <td className="px-4 py-2 align-top text-gray-500" title={m.rentalLabel ?? undefined}>
+                        <span className="block truncate">{m.rentalLabel ?? "—"}</span>
+                      </td>
+                      <td className="px-4 py-2 align-top text-gray-600" title={m.body}>
                         <span className="block truncate">
                           <Highlighted text={m.body} query={q} />
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-2">
+                      <td className="px-4 py-2 align-top">
                         <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${m.status === "SENT" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`} title={m.errorMessage || undefined}>
                           {m.status === "SENT" ? "wysłano" : "błąd"}
                         </span>
