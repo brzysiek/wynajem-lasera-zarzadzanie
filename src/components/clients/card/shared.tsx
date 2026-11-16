@@ -153,7 +153,11 @@ export function EventRow({ item, onOpen, compact = false }: { item: ClientHistor
             <span className="ml-1 rounded bg-[var(--c-accent-soft)] px-1 text-[10px] font-semibold text-[var(--c-accent-deep)]">HubSpot</span>
           )}
         </span>
-        {!compact && sub && <span className="block truncate text-xs text-[var(--c-muted)]">{sub}</span>}
+        {!compact && sub && (
+          <span className="block truncate text-xs text-[var(--c-muted)]" title={item.kind === "message" ? sub : undefined}>
+            {sub}
+          </span>
+        )}
         <span className="block text-[11px] text-[var(--c-muted)]">
           {fmtDate(item.at)}
           {author && ` · ${author}`}
