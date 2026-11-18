@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { groupAttribution, shortenId, type Attribution } from "@/lib/leads/attribution-view";
+import { googleStatusRows, groupAttribution, shortenId, type Attribution } from "@/lib/leads/attribution-view";
 
 // „Skąd przyszło” (wniosek 41): zwijana sekcja karty sygnału z atrybucją z
 // formularza WWW. Puste pola ukryte, długie ID skrócone, klik = kopiowanie
@@ -34,9 +34,10 @@ function Row({ label, value, shorten }: { label: string; value: string; shorten:
   );
 }
 
-export function LeadAttribution({ attribution }: { attribution: Attribution | null }) {
+export function LeadAttribution({ attribution, googleExports = [] }: { attribution: Attribution | null; googleExports?: { name: string; at: string }[] }) {
   const groups = groupAttribution(attribution);
   if (!groups.length) return null;
+  const google = googleStatusRows(attribution, googleExports);
   return (
     <details className="group rounded-lg border border-[var(--c-border)] px-3 py-2">
       <summary className="cursor-pointer select-none text-sm font-semibold text-[var(--c-navy)]">Skąd przyszło</summary>
@@ -49,6 +50,12 @@ export function LeadAttribution({ attribution }: { attribution: Attribution | nu
             ))}
           </div>
         ))}
+        <div className="flex flex-col gap-1">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--c-faint)]">Pomiar Google Ads</div>
+          {google.map((r) => (
+            <Row key={r.key} label={r.label} value={r.value} shorten={false} />
+          ))}
+        </div>
       </div>
     </details>
   );

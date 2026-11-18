@@ -556,7 +556,7 @@ export function LeadCard({
         </div>
 
         {/* Skąd przyszło (wniosek 41) — zwijana, tylko dla zgłoszeń z formularza WWW z danymi */}
-        <LeadAttribution attribution={d.attribution} />
+        <LeadAttribution attribution={d.attribution} googleExports={d.googleExports} />
 
         {/* 5. Rezerwacja — gdy jest; inaczej „Powiąż z wynajmem” */}
         <div id="lead-rental-section" className="flex scroll-mt-4 flex-col gap-2">

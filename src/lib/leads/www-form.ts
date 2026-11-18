@@ -27,6 +27,10 @@ export const ATTRIBUTION_KEYS = [
   "gclid",
   "fbclid",
   "last_gclid",
+  "gbraid",
+  "wbraid",
+  "last_gbraid",
+  "last_wbraid",
   "last_fbclid",
   "last_utm_source",
   "last_utm_campaign",
@@ -35,6 +39,20 @@ export const ATTRIBUTION_KEYS = [
   "landing_url",
   "referrer",
 ] as const;
+
+// Stan zgód z banera cookies w chwili wysłania formularza (wniosek 54, etap 1):
+// ukryte pola wl_consent_marketing / wl_consent_statistics ("1" / "0"). Brak pola
+// albo inna wartość = brak danych (nie zapisujemy nic). Do Google Ads trafiają
+// wyłącznie konwersje osób ze zgodą marketingową.
+export const CONSENT_FLAG_KEYS = ["wl_consent_marketing", "wl_consent_statistics"] as const;
+
+export function parseConsentFlag(v: unknown): "1" | "0" | null {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (["1", "true", "yes", "tak", "on"].includes(s)) return "1";
+  if (["0", "false", "no", "nie", "off"].includes(s)) return "0";
+  return null;
+}
 
 // Identyfikatory Meta zapisujemy wyłącznie, gdy formularz przekazał zgodę
 // (pole acceptance-* zaznaczone) — RODO. Bez zgody pomijamy je w sygnale i
@@ -163,6 +181,10 @@ export function parseWwwForm(body: Body): WwwForm {
     if (!consent && (CONSENT_KEYS as readonly string[]).includes(k)) continue;
     const v = str(body[k]);
     if (v) attribution[k] = v.slice(0, 500);
+  }
+  for (const k of CONSENT_FLAG_KEYS) {
+    const flag = parseConsentFlag(body[k]);
+    if (flag) attribution[k] = flag;
   }
   for (const [k, v] of Object.entries(body)) {
     if (k.startsWith("acceptance")) attribution[k] = Array.isArray(v) ? v.map(String) : String(v ?? "");

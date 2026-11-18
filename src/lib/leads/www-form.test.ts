@@ -131,6 +131,19 @@ describe("atrybucja z formularza (wniosek 41)", () => {
     expect(f.attribution.last_utm_source).toBe("facebook");
     expect((f.attribution.last_utm_campaign as string).length).toBe(500);
   });
+  it("gbraid/wbraid (iPhone/Safari) i ich last_* zapisują się jak gclid; puste pomijane (wniosek 54)", () => {
+    const f = parseWwwForm({ ...base, gbraid: "0AAAAA", last_gbraid: "0BBBB", wbraid: "", last_wbraid: "CCC", gclid: "G1" });
+    expect(f.attribution).toMatchObject({ gbraid: "0AAAAA", last_gbraid: "0BBBB", last_wbraid: "CCC", gclid: "G1" });
+    expect("wbraid" in f.attribution).toBe(false);
+  });
+  it("stan zgód z banera: 1/0 zapisane, brak pola albo śmieć = brak danych (wniosek 54)", () => {
+    const f = parseWwwForm({ ...base, wl_consent_marketing: "1", wl_consent_statistics: "0" });
+    expect(f.attribution).toMatchObject({ wl_consent_marketing: "1", wl_consent_statistics: "0" });
+    const g = parseWwwForm({ ...base, wl_consent_marketing: "", wl_consent_statistics: "cokolwiek" });
+    expect("wl_consent_marketing" in g.attribution).toBe(false);
+    expect("wl_consent_statistics" in g.attribution).toBe(false);
+    expect(parseWwwForm(base).attribution).toEqual({ form: "kontakt" });
+  });
   it("fbp/fbc tylko ze zgodą (acceptance-* zaznaczone)", () => {
     const withConsent = parseWwwForm({ ...base, "acceptance-752": "1", fbp: "fb.1.123", fbc: "fb.1.456.AbC" });
     expect(withConsent.attribution.fbp).toBe("fb.1.123");

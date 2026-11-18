@@ -1,6 +1,8 @@
 // Karta sygnału → „Skąd przyszło” (wniosek 41): grupowanie pól atrybucji
 // z formularza WWW do wyświetlenia. Czysty moduł (vitest bez "@/").
 
+import { pickClickId } from "./google-conversions";
+
 export type Attribution = Record<string, string | string[]>;
 export type AttrRow = { key: string; label: string; value: string };
 export type AttrGroup = { title: string; rows: AttrRow[] };
@@ -26,6 +28,8 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
       ["utm_term", "fraza (utm_term)"],
       ["utm_content", "treść (utm_content)"],
       ["gclid", "gclid (Google Ads)"],
+      ["gbraid", "gbraid (Google Ads, iPhone)"],
+      ["wbraid", "wbraid (Google Ads, web→app)"],
       ["fbclid", "fbclid (Meta)"],
     ],
   },
@@ -35,6 +39,8 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
       ["last_utm_source", "źródło (last_utm_source)"],
       ["last_utm_campaign", "kampania (last_utm_campaign)"],
       ["last_gclid", "last_gclid"],
+      ["last_gbraid", "last_gbraid"],
+      ["last_wbraid", "last_wbraid"],
       ["last_fbclid", "last_fbclid"],
     ],
   },
@@ -72,6 +78,23 @@ export function groupAttribution(attr: Attribution | null): AttrGroup[] {
   ].filter((r) => r.value);
   if (page.length) groups.push({ title: "Strona i zgody", rows: page });
   return groups;
+}
+
+// „Pomiar Google Ads” (wniosek 54): identyfikator do importu konwersji, stan
+// zgód z banera cookies i to, co już poszło do Google. Brak danych o zgodzie
+// = sygnał sprzed wdrożenia pól (Google i tak nie liczy konwersji bez zgody).
+export function googleStatusRows(attr: Attribution | null, exports: { name: string; at: string }[]): AttrRow[] {
+  if (!attr) return [];
+  const t = (k: string) => text(attr[k]);
+  const id = pickClickId(attr)?.kind ?? "";
+  const consent = (k: string) => (t(k) === "1" ? "tak" : t(k) === "0" ? "nie" : "brak danych");
+  const fmt = (iso: string) => new Date(iso).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return [
+    { key: "g_id", label: "identyfikator kliknięcia", value: id || "brak" },
+    { key: "g_marketing", label: "zgoda marketing", value: consent("wl_consent_marketing") },
+    { key: "g_stats", label: "zgoda statystyka", value: consent("wl_consent_statistics") },
+    { key: "g_sent", label: "wysłane do Google", value: exports.length ? exports.map((e) => `${e.name.replace(/^Panel – /, "")} (${fmt(e.at)})`).join(", ") : "nie" },
+  ];
 }
 
 // Długie identyfikatory skracamy (początek…koniec); pełna wartość do kopiowania.

@@ -369,7 +369,7 @@ export const TOOLS: McpTool[] = [
     name: "sygnal",
     title: "Karta sygnału",
     description:
-      "Szczegół sygnału z osią czasu. sugestia = sugestia Klaudiusza (tekst, godzina, nieaktualna, nowe_wpisy, prosba_o_aktualizacje); stageSetText / stepSetText = kto i kiedy ustawił etap i krok. attribution = skąd przyszło zgłoszenie z formularza WWW (utm_* i gclid/fbclid = pierwsze wejście, last_* = ostatnie wejście, fbp/fbc tylko za zgodą, landing_url, referrer, form, acceptance-*); null poza formularzami WWW.",
+      "Szczegół sygnału z osią czasu. sugestia = sugestia Klaudiusza (tekst, godzina, nieaktualna, nowe_wpisy, prosba_o_aktualizacje); stageSetText / stepSetText = kto i kiedy ustawił etap i krok. attribution = skąd przyszło zgłoszenie z formularza WWW (utm_* i gclid/gbraid/wbraid/fbclid = pierwsze wejście, last_* = ostatnie wejście, fbp/fbc tylko za zgodą, landing_url, referrer, form, acceptance-*; wl_consent_marketing / wl_consent_statistics: „1” tak, „0” nie, brak = brak danych o zgodzie z banera); null poza formularzami WWW.",
     inputSchema: obj({ id: s("ID sygnału.") }, ["id"]),
     readOnly: true,
     run: async (a) => {

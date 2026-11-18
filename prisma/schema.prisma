@@ -1321,6 +1321,7 @@ model Lead {
   tasks      Task[]
   remarks    Remark[]
   chatThreads ChatThread[]
+  googleExports         GoogleConversionExport[]
   mergeSuggestions      LeadMergeSuggestion[] @relation("MergeLead")
   mergeSuggestionsOther LeadMergeSuggestion[] @relation("MergeOther")
 
@@ -1340,6 +1341,25 @@ model Lead {
   emailDrafts     LeadEmailDraft[]
   suggestion      LeadSuggestion?
   @@map("leads")
+}
+
+// Wniosek 54, etap 1: konwersje offline wyeksportowane do Google Ads (CSV do
+// ręcznego wgrania). orderId = „<id sygnału>-<etap>” — każdy etap najwyżej raz.
+model GoogleConversionExport {
+  id             String   @id @default(cuid())
+  leadId         String
+  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  orderId        String   @unique @db.VarChar(191)
+  conversionName String   @db.VarChar(80)
+  value          Decimal? @db.Decimal(10, 2)
+  clickIdKind    String   @db.VarChar(8) // gclid | gbraid | wbraid
+  conversionAt   DateTime
+  exportedAt     DateTime @default(now())
+  batch          String   @db.VarChar(40)
+
+  @@index([leadId])
+  @@index([batch])
+  @@map("google_conversion_exports")
 }
 
 enum ActivityType {

@@ -15,6 +15,7 @@ import { loadOpenTasksFor, type OpenTaskDto } from "@/lib/task-links";
 import { arrivalDates, arrivalGapDays, arrivalRhythmLabel } from "@/lib/clients/status";
 import { loadUnassignedRentals } from "@/lib/clients/rental-match";
 import { normalizeAttribution, type Attribution } from "@/lib/leads/attribution-view";
+import { leadGoogleExports } from "@/lib/leads/google-conversions-load";
 import { activeDraftStatuses, loadMailDraft, type MailDraftDto } from "@/lib/leads/mail-draft";
 import { combineLastWork, deriveStageSource, stageSourceText, stepSourceText } from "@/lib/leads/set-source";
 import { loadLastWorkActivity } from "@/lib/leads/last-work";
@@ -428,6 +429,8 @@ export type LeadDetail = LeadRow & {
   // Tylko w szczególe sygnału (karta, GET /api/leads/[id], MCP „sygnal”),
   // nie w liście (Tablica, Na dziś).
   attribution: Attribution | null;
+  // Konwersje już wyeksportowane do Google Ads (wniosek 54): nazwa i data.
+  googleExports: { name: string; at: string }[];
   // Szkic odpowiedzi (wniosek 44) i ostatnia wiadomość od klientki (do odpowiedzi w wątku).
   emailDraft: MailDraftDto | null;
   // Podpisy „kto ustawił” (wniosek 47): linia pod paskiem etapu / w dymku chipa
@@ -521,6 +524,7 @@ export async function loadLeadDetail(id: string): Promise<LeadDetail | null> {
     returnAt: lead.returnAt?.toISOString() ?? null,
     location: lead.location,
     attribution: normalizeAttribution(lead.attribution),
+    googleExports: await leadGoogleExports(id),
     hubspotUrl: lead.hubspotDealId ? hubspotDealUrl(lead.hubspotDealId) : null,
     activities: [
       ...emails.map((e) => ({
