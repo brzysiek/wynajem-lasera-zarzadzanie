@@ -7,11 +7,13 @@ import { gmailSummary } from "@/lib/gmail/sync";
 import { AUTO_MAIL_FROM } from "@/lib/leads/auto-mail-render";
 import { evaluateHealth } from "@/lib/ops/health-rules";
 import { sendAlert } from "@/lib/alerts";
+import { TOOLS } from "@/lib/mcp/tools";
 
 // Punkt kontrolny dla monitora z zewnątrz (06.10.2026): baza, dostęp do
 // Gmail API (wysyłka i odczyt z kontakt@) i żywotność crona (ostatnia
 // synchronizacja Gmaila). 200 + "ok":true albo 503. Publiczny, ale bez
-// szczegółów — tylko znaczniki ok / nie ok. Dostęp do Gmaila sprawdzany co
+// szczegółów — tylko znaczniki ok / nie ok oraz liczba narzędzi MCP (mcpTools:
+// ile narzędzi zgłasza ten serwer — do sprawdzenia, czy konektor Claude’a widzi aktualną listę). Dostęp do Gmaila sprawdzany co
 // najwyżej raz na 10 min (pamięć procesu), żeby nie męczyć Google.
 const GMAIL_TTL_MS = 10 * 60_000;
 let gmailCache: { at: number; send: boolean; read: boolean } | null = null;
@@ -69,5 +71,5 @@ export async function GET() {
       }).then(() => undefined),
     );
   }
-  return NextResponse.json(r, { status: r.ok ? 200 : 503, headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ...r, mcpTools: TOOLS.length }, { status: r.ok ? 200 : 503, headers: { "Cache-Control": "no-store" } });
 }
