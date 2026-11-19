@@ -37,7 +37,10 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
     title: "Ostatnie wejście",
     keys: [
       ["last_utm_source", "źródło (last_utm_source)"],
+      ["last_utm_medium", "medium (last_utm_medium)"],
       ["last_utm_campaign", "kampania (last_utm_campaign)"],
+      ["last_utm_term", "fraza (last_utm_term)"],
+      ["last_utm_content", "treść (last_utm_content)"],
       ["last_gclid", "last_gclid"],
       ["last_gbraid", "last_gbraid"],
       ["last_wbraid", "last_wbraid"],

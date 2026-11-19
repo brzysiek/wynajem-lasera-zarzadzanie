@@ -34,7 +34,26 @@ describe("przypisanie źródła — kolejność z decyzji Tomka", () => {
   });
   it("ostatnie wejście tej samej kampanii dostaje grupę i słowo z pierwszego", () => {
     const r = www({ utm_source: "google", utm_campaign: "alma", utm_content: "1234567", utm_term: "wynajem lasera alma", last_utm_source: "google", last_utm_campaign: "alma" });
-    expect(r).toMatchObject({ channel: CH.GOOGLE_ADS, adGroup: "1234567", keyword: "wynajem lasera alma", step: "last" });
+    expect(r).toMatchObject({ channel: CH.GOOGLE_ADS, adGroup: "1234567", keyword: "wynajem lasera alma", step: "last", fromFirst: true });
+  });
+  it("last_utm_term / last_utm_content / last_utm_medium mają pierwszeństwo przed pierwszym wejściem", () => {
+    const r = www({ utm_source: "google", utm_campaign: "alma", utm_content: "111", utm_term: "stare słowo", last_utm_source: "google", last_utm_medium: "cpc", last_utm_campaign: "alma", last_utm_content: "222", last_utm_term: "[nowe słowo]" });
+    expect(r).toMatchObject({ adGroup: "222", keyword: "nowe słowo", step: "last", fromFirst: false });
+  });
+  it("last ma tylko słowo — grupa z pierwszego wejścia i odwrotnie (oznaczone)", () => {
+    const r = www({ utm_source: "google", utm_campaign: "alma", utm_content: "111", utm_term: "stare", last_utm_source: "google", last_utm_campaign: "alma", last_utm_term: "nowe" });
+    expect(r).toMatchObject({ adGroup: "111", keyword: "nowe", fromFirst: true });
+  });
+  it("ta sama kampania rozpoznana po gclid albo po gad_campaignid w adresie", () => {
+    const byClick = www({ utm_source: "google", utm_content: "111", utm_term: "t", gclid: "G1", last_utm_source: "google", last_utm_campaign: "alma", last_gclid: "G1" });
+    expect(byClick).toMatchObject({ adGroup: "111", keyword: "t", fromFirst: true });
+    expect(byClick.campaign?.key).toBe("alma");
+    const byUrl = www({ landing_url: "https://x.pl/?gad_campaignid=24313522296", utm_content: "111", utm_term: "t", last_utm_source: "google", last_utm_campaign: "alma" });
+    expect(byUrl).toMatchObject({ adGroup: "111", keyword: "t", fromFirst: true });
+  });
+  it("inna kampania w pierwszym wejściu — grupy i słowa nie przenosimy", () => {
+    const r = www({ utm_source: "google", utm_campaign: "lightsheer", utm_content: "999", utm_term: "x", gclid: "G0", last_utm_source: "google", last_utm_campaign: "alma", last_gclid: "G1" });
+    expect(r).toMatchObject({ adGroup: null, keyword: null, fromFirst: false });
   });
   it("2. pierwsze wejście: utm Google → kampania, grupa, słowo", () => {
     const r = www({ utm_source: "google", utm_medium: "cpc", utm_campaign: "lightsheer", utm_content: "999", utm_term: "[wynajem lightsheer]" });

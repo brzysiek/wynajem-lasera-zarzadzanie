@@ -83,6 +83,8 @@ export type SourceInfo = {
   adGroup: string | null; // utm_content: Google = ID grupy, Meta = reklama
   keyword: string | null; // znormalizowane utm_term
   step: SourceStep;
+  // Grupa i / lub słowo wzięte z pierwszego wejścia (ostatnie ma tę samą kampanię, ale bez utm_content / utm_term).
+  fromFirst: boolean;
 };
 
 type Parts = { source: string; medium: string; campaign: string; content: string; term: string; gclid: string; gbraid: string; wbraid: string; fbclid: string };
@@ -169,39 +171,56 @@ export function attributeSource(input: SourceInput): SourceInfo {
   const last = parts(attr, "last_");
   const urlCampaign = campaignFrom(url.gad_campaignid) ?? campaignFrom(url.utm_id);
 
-  const build = (channel: Channel, step: SourceStep, p: Parts, detail: Parts): SourceInfo => {
+  const clean = (v: string) => (v && !/^\{.*\}$/.test(v) ? v : "");
+  const sameClick = (x: Parts, y: Parts) => (["gclid", "gbraid", "wbraid"] as const).some((k) => x[k] && x[k] === y[k]);
+  const build = (channel: Channel, step: SourceStep, p: Parts): SourceInfo => {
     let campaign: CampaignRef | null = null;
     let adGroup: string | null = null;
     let keyword: string | null = null;
+    let fromFirst = false;
     if (channel === CH.GOOGLE_ADS || channel === CH.META) {
       campaign = campaignFrom(p.campaign);
-      // Grupa i słowo pochodzą z pierwszego wejścia — tylko gdy to ta sama kampania
-      // (ostatnie wejście ma tylko utm_source i utm_campaign).
-      const dc = campaignFrom(detail.campaign);
-      if (p === detail || (campaign && dc && campaign.key === dc.key)) {
-        adGroup = detail.content && !/^\{.*\}$/.test(detail.content) ? detail.content : null;
-        keyword = normalizeKeyword(detail.term) || null;
+      adGroup = clean(p.content) || null;
+      keyword = normalizeKeyword(p.term) || null;
+      if (step === "last") {
+        // Ostatnie wejście bez utm_content / utm_term, a pierwsze to ta sama kampania
+        // (ten sam utm_campaign, gad_campaignid z adresu albo ten sam gclid / gbraid / wbraid)
+        // — grupa i słowo z pierwszego wejścia.
+        const fc = campaignFrom(first.campaign);
+        const click = sameClick(p, first);
+        const same = click || Boolean(campaign && ((fc && campaign.key === fc.key) || (urlCampaign && campaign.key === urlCampaign.key)));
+        if (same) {
+          if (!campaign && click && fc) campaign = fc;
+          if (!adGroup && clean(first.content)) {
+            adGroup = clean(first.content);
+            fromFirst = true;
+          }
+          if (!keyword && normalizeKeyword(first.term)) {
+            keyword = normalizeKeyword(first.term);
+            fromFirst = true;
+          }
+        }
       }
       if (!campaign && channel === CH.GOOGLE_ADS) campaign = urlCampaign;
     }
-    return { channel, campaign, adGroup, keyword, step };
+    return { channel, campaign, adGroup, keyword, step, fromFirst };
   };
 
   // 1. ostatnie wejście, 2. pierwsze wejście
   const lastCh = channelFromUtm(last);
-  if (lastCh) return build(lastCh, "last", last, first);
+  if (lastCh) return build(lastCh, "last", last);
   const firstCh = channelFromUtm(first);
-  if (firstCh) return build(firstCh, "first", first, first);
+  if (firstCh) return build(firstCh, "first", first);
   // 3. gad_campaignid / utm_id z adresu wejścia
-  if (urlCampaign || url.gclid || url.gbraid || url.wbraid) return { channel: CH.GOOGLE_ADS, campaign: urlCampaign, adGroup: null, keyword: null, step: "landing_url" };
+  if (urlCampaign || url.gclid || url.gbraid || url.wbraid) return { channel: CH.GOOGLE_ADS, campaign: urlCampaign, adGroup: null, keyword: null, step: "landing_url", fromFirst: false };
   // 4. referrer
   const ref = channelFromReferrer(one(attr.referrer));
-  if (ref) return { channel: ref, campaign: null, adGroup: null, keyword: null, step: "referrer" };
-  if (first.fbclid || last.fbclid || url.fbclid) return { channel: CH.FACEBOOK, campaign: null, adGroup: null, keyword: null, step: "referrer" };
+  if (ref) return { channel: ref, campaign: null, adGroup: null, keyword: null, step: "referrer", fromFirst: false };
+  if (first.fbclid || last.fbclid || url.fbclid) return { channel: CH.FACEBOOK, campaign: null, adGroup: null, keyword: null, step: "referrer", fromFirst: false };
   // Bez formularza WWW: źródło klienta albo rodzaj kontaktu.
   const fromClient = channelFromClientSource(input.clientSource);
-  if (fromClient) return { channel: fromClient, campaign: null, adGroup: null, keyword: null, step: "klient" };
+  if (fromClient) return { channel: fromClient, campaign: null, adGroup: null, keyword: null, step: "klient", fromFirst: false };
   const byType: Record<string, Channel> = { TELEFON: CH.PHONE_EMAIL, EMAIL: CH.PHONE_EMAIL, OLX: CH.OLX, POLECENIE: CH.REFERRAL, MESSENGER: CH.MESSENGER, INSTAGRAM: CH.INSTAGRAM_DM };
-  if (!input.attribution && byType[input.type]) return { channel: byType[input.type], campaign: null, adGroup: null, keyword: null, step: "typ" };
-  return { channel: CH.NONE, campaign: null, adGroup: null, keyword: null, step: "brak" };
+  if (!input.attribution && byType[input.type]) return { channel: byType[input.type], campaign: null, adGroup: null, keyword: null, step: "typ", fromFirst: false };
+  return { channel: CH.NONE, campaign: null, adGroup: null, keyword: null, step: "brak", fromFirst: false };
 }

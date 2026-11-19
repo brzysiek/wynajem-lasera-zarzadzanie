@@ -170,7 +170,7 @@ export type Report = {
   keywordsWithoutLeads: { campaign: string; group: string; keyword: string; cost: number; clicks: number; impressions: number }[];
   trend: { week: string; channel: string; leads: number; talked: number; bookings: number; cost: number; ids: { leads: string[]; talked: string[]; bookings: string[] } }[];
   unsourced: { id: string; channel: string }[];
-  leads: Record<string, { id: string; title: string; type: string; stage: string; createdAt: string; channel: string }>;
+  leads: Record<string, { id: string; title: string; type: string; stage: string; createdAt: string; channel: string; termFromFirst: boolean }>;
   notes: string[];
 };
 
@@ -212,9 +212,10 @@ export function buildReport(input: ReportInput): Report {
   const unsourced: Report["unsourced"] = [];
   for (const l of input.leads) {
     const src = l.source;
-    leadInfo[l.id] = { id: l.id, title: l.title, type: l.type, stage: l.stage, createdAt: l.createdAt.toISOString(), channel: src.channel };
+    leadInfo[l.id] = { id: l.id, title: l.title, type: l.type, stage: l.stage, createdAt: l.createdAt.toISOString(), channel: src.channel, termFromFirst: src.fromFirst };
     if (src.channel === CH.NONE || src.channel === CH.PHONE_EMAIL) unsourced.push({ id: l.id, channel: src.channel });
     const metrics = metricsOfLead(l);
+    if (src.fromFirst && !l.returning) metrics.push("term_from_first"); // tylko lista id, nie liczba
     const chain: Acc[] = [root];
     const ch = channelOf(src.channel);
     chain.push(ch);
@@ -348,6 +349,7 @@ const IDS_PL: Record<string, string> = {
   bookings: "rezerwacje",
   wins: "wygrane",
   lost: "przegrane",
+  term_from_first: "haslo_z_pierwszego_wejscia",
 };
 
 // Wiersz raportu po polsku: liczby + id sygnałów za każdą liczbą.

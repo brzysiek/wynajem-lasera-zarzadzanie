@@ -136,6 +136,10 @@ describe("atrybucja z formularza (wniosek 41)", () => {
     expect(f.attribution).toMatchObject({ gbraid: "0AAAAA", last_gbraid: "0BBBB", last_wbraid: "CCC", gclid: "G1" });
     expect("wbraid" in f.attribution).toBe(false);
   });
+  it("last_utm_medium / last_utm_term / last_utm_content zapisują się (wniosek 54, 1b)", () => {
+    const f = parseWwwForm({ ...base, last_utm_medium: "cpc", last_utm_term: "wynajem lasera", last_utm_content: "123", last_utm_campaign: "alma" });
+    expect(f.attribution).toMatchObject({ last_utm_medium: "cpc", last_utm_term: "wynajem lasera", last_utm_content: "123", last_utm_campaign: "alma" });
+  });
   it("stan zgód z banera: 1/0 zapisane, brak pola albo śmieć = brak danych (wniosek 54)", () => {
     const f = parseWwwForm({ ...base, wl_consent_marketing: "1", wl_consent_statistics: "0" });
     expect(f.attribution).toMatchObject({ wl_consent_marketing: "1", wl_consent_statistics: "0" });

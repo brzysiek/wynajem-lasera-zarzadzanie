@@ -287,6 +287,11 @@ function SignalList({ pick, report, onClose }: { pick: Pick; report: Report; onC
                   {TYPE_LABEL[l.type as LeadTypeKey] ?? l.type} · {STAGE_LABEL[l.stage as LeadStageKey] ?? l.stage} · {fmtDay(l.createdAt)}
                 </span>
               )}
+              {l?.termFromFirst && (
+                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800" title="Ostatnie wejście miało tę samą kampanię, ale bez utm_term / utm_content — grupa i słowo z pierwszego wejścia">
+                  hasło z pierwszego wejścia
+                </span>
+              )}
               {l && <span className="ml-auto text-xs text-gray-400">{l.channel}</span>}
             </li>
           );
