@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma, type CostScope } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { logInfo, logWarn } from "@/lib/logger";
 
 const SCOPES: CostScope[] = ["GENERAL", "VEHICLE", "DEVICE"];
@@ -10,7 +10,7 @@ const SCOPES: CostScope[] = ["GENERAL", "VEHICLE", "DEVICE"];
 // wszystkie zakresy razem, jak w formularzu „Dodaj koszt" (sekcja 5.2) i
 // stronie zarządzania (sekcja 6).
 export async function GET(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }

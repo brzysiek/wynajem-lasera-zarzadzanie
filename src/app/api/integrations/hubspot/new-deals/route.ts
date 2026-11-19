@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { HUBSPOT_NEW_DEALS_KEY, hubspotNewDealsEnabled } from "@/lib/leads/hubspot-sync";
 import { logInfo } from "@/lib/logger";
@@ -7,7 +7,7 @@ import { logInfo } from "@/lib/logger";
 // Przełącznik importu nowych transakcji HubSpot → Sygnały (03.10.2026) i
 // ostatnie żądania webhooka formularzy WWW. Tylko ADMIN.
 export async function GET() {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const [enabled, logs] = await Promise.all([
     hubspotNewDealsEnabled(),
@@ -17,7 +17,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const body = (await req.json().catch(() => null)) as { enabled?: unknown } | null;
   if (typeof body?.enabled !== "boolean") return NextResponse.json({ message: "Podaj enabled: true / false." }, { status: 400 });

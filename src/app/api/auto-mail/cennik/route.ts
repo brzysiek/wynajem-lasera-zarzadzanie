@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { AUTO_MAIL_ENABLED_KEY, AUTO_MAIL_FROM_NAME_KEY, FOOTER_TEMPLATE_KEY, REZ_MAIL_ENABLED_KEY, REZ_MAIL_TEMPLATE_KEY, ensureAutoMailTemplates, loadAutoMailConfig, recentAutoMails } from "@/lib/leads/auto-mail";
 import { AUTO_MAIL_TEMPLATE_KEY } from "@/lib/leads/auto-mail-render";
@@ -11,14 +11,14 @@ import { logInfo } from "@/lib/logger";
 // potwierdzenie rezerwacji — treść, nadawca, wspólna stopka, przełączniki
 // i ostatnie wysyłki. Tylko ADMIN.
 export async function GET() {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const [config, recent] = await Promise.all([loadAutoMailConfig(), recentAutoMails()]);
   return NextResponse.json({ config, recent });
 }
 
 export async function PUT(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const b = (await req.json().catch(() => null)) as {
     subject?: unknown;

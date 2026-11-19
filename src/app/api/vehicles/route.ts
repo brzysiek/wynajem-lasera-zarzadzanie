@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { logInfo, logWarn } from "@/lib/logger";
 
 // Moduł kosztów — wyłącznie ADMIN (docs/prompt-claude-code-dashboard-kosztow.md, sekcja 0).
 export async function GET() {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
@@ -15,7 +15,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }

@@ -21,7 +21,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/wysylka-sms", label: "Wysyłka SMS" },
   // Wrażliwe dane finansowe firmy — tylko ADMIN (filtr niżej).
   { href: "/finanse/przychody", label: "Finanse", match: "/finanse", adminOnly: true },
-  { href: "/ustawienia/przypomnienia-sms", label: "Ustawienia", match: "/ustawienia" },
+  { href: "/ustawienia", label: "Ustawienia", match: "/ustawienia" },
   { href: "/wnioski", label: "Porządki/optymalizacje" },
 ];
 

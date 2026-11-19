@@ -180,7 +180,7 @@ function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT" | undefined): (
     kind: "link",
     href: "/wnioski",
     label: "Porządki/optymalizacje",
-    matchAny: ["/wnioski", "/skrzynka", "/uwagi", "/dziennik", "/reguly", "/archiwum", "/propozycje"],
+    matchAny: ["/wnioski", "/skrzynka", "/uwagi", "/dziennik", "/reguly", "/archiwum", "/propozycje", "/kwalifikacja"],
     icon: <ChecklistIcon />,
   });
   return items;
@@ -464,7 +464,7 @@ export function SidebarNav({
         <>
           <div className="my-2.5 mx-1.5 h-px" style={{ background: SHELL.border }} />
           <NavRow
-            href="/ustawienia/przypomnienia-sms"
+            href="/ustawienia"
             label="Ustawienia"
             icon={<GearIcon />}
             collapsed={collapsed}

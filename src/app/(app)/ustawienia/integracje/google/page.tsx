@@ -1,6 +1,6 @@
+import Link from "next/link";
 import { getGoogleCalendarConfigStatus } from "@/lib/integrations/google-calendar";
 import { GoogleCalendarPanel } from "@/components/google-calendar-panel";
-import { CalendarHistoryImportPanel } from "@/components/calendar-history-import-panel";
 import { GmailSyncPanel } from "@/components/gmail-sync-panel";
 
 function Code({ children }: { children: string }) {
@@ -31,7 +31,6 @@ export default async function GoogleCalendarIntegrationPage() {
         panel wyżej tylko testuje, czy działają.
       </div>
 
-      <CalendarHistoryImportPanel />
       <GmailSyncPanel />
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">
@@ -99,21 +98,9 @@ GOOGLE_IMPERSONATED_USER=biuro@twojadomena.pl`}</Pre>
         </Steps>
       </section>
 
-      <section className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-1 text-lg font-semibold text-gray-900">Szkice maili z fakturami (Gmail)</h2>
-        <p className="mb-3 text-sm text-gray-500">
-          To samo konto serwisowe co Kalendarz — tylko z dodatkowym zakresem{" "}
-          <Code>gmail.compose</Code> (krok wyżej). W module Faktury przycisk „Utwórz szkic maila” tworzy szkic w
-          Gmailu konta <Code>GOOGLE_IMPERSONATED_USER</Code>. Wysyłka NIE dzieje się automatycznie — biuro
-          przegląda szkic i wysyła go ręcznie z Gmaila.
-        </p>
-        <p className="text-sm text-gray-500">
-          Nadawcą szkicu jest <Code>rozliczenia@wynajemlasera.pl</Code> — to musi być skonfigurowany alias „wysyłaj
-          jako” w ustawieniach Gmaila konta <Code>GOOGLE_IMPERSONATED_USER</Code> (
-          <Code>Ustawienia → Konta i importowanie → Wysyłaj pocztę jako</Code>), inaczej Gmail odrzuci szkic z
-          nieautoryzowanym nadawcą.
-        </p>
-      </section>
+      <p className="mt-6 rounded-lg border border-[#CFE0F0] bg-[#EAF4FB] p-4 text-sm text-[#14567F]">
+        Szkice maili z fakturami (Gmail) opisane są teraz w <Link className="font-semibold underline" href="/finanse/faktury">Finanse → Faktury VAT</Link>; import historii kalendarzy w <Link className="font-semibold underline" href="/ustawienia/importy">Importy historii</Link>.
+      </p>
     </div>
   );
 }

@@ -21,6 +21,14 @@ export default async function InvoicesPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {!isAgent && (
+        <section className="rounded-lg border border-gray-200 bg-white px-5 py-4">
+          <h2 className="m-0 mb-1 text-base font-semibold text-gray-900">Szkice maili z fakturami (Gmail)</h2>
+          <p className="m-0 text-sm text-gray-600">
+            Przycisk „Utwórz szkic maila” tworzy szkic w Gmailu konta z konfiguracji Google (to samo konto serwisowe co Kalendarz, zakres <code className="rounded bg-gray-100 px-1 font-mono text-xs">gmail.compose</code>). Wysyłka NIE dzieje się automatycznie — biuro przegląda szkic i wysyła go ręcznie z Gmaila. Nadawcą szkicu jest <code className="rounded bg-gray-100 px-1 font-mono text-xs">rozliczenia@wynajemlasera.pl</code> — musi to być skonfigurowany alias „wysyłaj jako” w Gmailu (Ustawienia → Konta i importowanie → Wysyłaj pocztę jako), inaczej Gmail odrzuci szkic.
+          </p>
+        </section>
+      )}
       <FvWithoutInvoicePanel canLink={!isAgent} />
       <InvoicesManager initialFrom={isoDate(period.start)} initialTo={isoDate(period.end)} readOnly={isAgent} />
     </div>

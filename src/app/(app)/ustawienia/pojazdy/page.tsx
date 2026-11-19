@@ -1,10 +1,10 @@
-import { requireAdmin } from "@/lib/auth-guards";
+import { requireOffice } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
 import { VehiclesPanel } from "@/components/vehicles-panel";
 
 export default async function VehiclesSettingsPage() {
-  await requireAdmin();
+  await requireOffice();
 
   const [vehicles, fuelPriceSetting] = await Promise.all([
     prisma.vehicle.findMany({ orderBy: { name: "asc" } }),

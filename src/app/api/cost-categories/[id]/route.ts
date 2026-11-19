@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { logInfo, logWarn } from "@/lib/logger";
 
 // Zmiana nazwy (inline, sekcja 6) i/lub przełącznik aktywna/nieaktywna.
 // Zakres (scope) się nie zmienia po utworzeniu — kategoria "GENERAL" nie
 // staje się "VEHICLE" (to by rozjechało istniejące powiązane Cost).
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }
@@ -44,7 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 // jeden powiązany Cost"). W praktyce ADMIN powinien dezaktywować (PATCH
 // active:false), to jest furtka na wypadek pomyłkowo utworzonej kategorii.
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) {
     return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   }

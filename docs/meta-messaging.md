@@ -58,7 +58,7 @@ punktu „Sprawdzenie odbioru”** (wiadomość z konta bez żadnej roli). Jeśl
      zwykle w tym samym polu `messages` z `is_echo: true` — panel obsługuje oba przypadki. Jeśli w panelu
      webhooków IG widzisz osobne pole echa (`message_echoes`), zaznacz je też.
 5. **Subskrypcja strony do aplikacji**: w Messenger → Ustawienia → „Add or remove Pages” podłącz stronę, a
-   potem w panelu: **Ustawienia → Integracje → Meta → „Odnów subskrypcję”** (robi
+   potem w panelu: **Ustawienia → Zapytania i skrzynka → Messenger / Instagram → „Odnów subskrypcję”** (robi
    `POST /{page-id}/subscribed_apps` z `subscribed_fields=messages,message_echoes,standby`).
    „Sprawdź subskrypcję” pokazuje, jakie pola ma dziś każda aplikacja podpięta do strony.
 
@@ -102,19 +102,19 @@ ani dwóch sygnałów. Subskrybujemy pole `standby`. **Bez Handover Protocol**: 
 
 ## Sprawdzenie odbioru (kryterium nr 9)
 
-1. Upewnij się, że w Ustawienia → Integracje → Meta wszystkie zmienne są „ustawione” i „Sprawdź subskrypcję”
+1. Upewnij się, że w Ustawienia → Zapytania i skrzynka → Messenger / Instagram wszystkie zmienne są „ustawione” i „Sprawdź subskrypcję”
    pokazuje `messages`, `message_echoes`, `standby`.
 2. Z konta Facebook, które **nie ma żadnej roli** w aplikacji ani na stronie, napisz do strony. Sygnał typu
    Messenger powinien pojawić się w panelu **w ciągu minuty** (Sygnały → Nowe, karta → sekcja „Czat”).
 3. To samo z konta Instagram bez roli napisz do konta firmowego IG.
 4. Odpowiedz z aplikacji Meta (Business Suite / Messenger) — echo przesuwa sygnał do „W kontakcie”.
-5. Jeśli wiadomość nie przychodzi: w Ustawienia → Integracje → Meta sprawdź „Ostatnie zdarzenia”
+5. Jeśli wiadomość nie przychodzi: w Ustawienia → Zapytania i skrzynka → Messenger / Instagram sprawdź „Ostatnie zdarzenia”
    (UNAUTHORIZED = zły `META_APP_SECRET`; brak wpisów = Meta nic nie wysyła). Zgłoś Tomkowi/Klaudiuszowi z
    odpowiedzią Meta i treścią tego logu — wtedy decydujemy: App Review albo pośrednik.
 
 ## „Verify and Save” nie przechodzi
 
-Każda próba weryfikacji (GET z `hub.mode`) zostawia wpis w Ustawienia → Integracje → Meta → „Ostatnie zdarzenia”
+Każda próba weryfikacji (GET z `hub.mode`) zostawia wpis w Ustawienia → Zapytania i skrzynka → Messenger / Instagram → „Ostatnie zdarzenia”
 — z powodem i User-Agentem Meta (bez tokenów):
 
 - **brak wpisu po kliknięciu w Meta** → żądanie nie dotarło do aplikacji. Serwer odpowiada wtedy na poziomie hostingu

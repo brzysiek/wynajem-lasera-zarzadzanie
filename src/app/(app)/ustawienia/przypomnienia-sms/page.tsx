@@ -1,10 +1,7 @@
-import { auth } from "@/auth";
+import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { ReminderSettingsPanel } from "@/components/reminder-settings-panel";
-import { ReminderManualRunPanel } from "@/components/reminder-manual-run-panel";
-import { ReminderCheckLogTable } from "@/components/reminder-check-log-table";
-import { UpcomingQueuePanel } from "@/components/upcoming-queue-panel";
-import { getRemindersEnabled, getReminderCheckLogs, getUpcomingQueue, QUEUE_LOOKAHEAD_DAYS } from "@/lib/reminders";
+import { getRemindersEnabled, QUEUE_LOOKAHEAD_DAYS } from "@/lib/reminders";
 import { BASE_PATH } from "@/lib/base-path";
 
 function Code({ children }: { children: string }) {
@@ -16,13 +13,7 @@ function Steps({ children }: { children: React.ReactNode }) {
 }
 
 export default async function ReminderSettingsPage() {
-  const [session, remindersEnabled, checkLogPage, upcomingQueue] = await Promise.all([
-    auth(),
-    getRemindersEnabled(),
-    getReminderCheckLogs({ page: 1, pageSize: 25 }),
-    getUpcomingQueue(),
-  ]);
-  const isAdmin = session?.user.role === "ADMIN";
+  const remindersEnabled = await getRemindersEnabled();
 
   return (
     <div className="flex flex-col gap-6">
@@ -35,7 +26,7 @@ export default async function ReminderSettingsPage() {
         <ul className="my-2 list-disc space-y-1 pl-5">
           <li>
             <strong>sprawdzenie, co jest do wysyłki</strong> — zbiera <strong>kolejkę</strong> przypomnień, które
-            zbliżają się do terminu wysyłki (widoczna poniżej, do {QUEUE_LOOKAHEAD_DAYS} dni naprzód; możesz w niej
+            zbliżają się do terminu wysyłki (widoczna w Wysyłce SMS, do {QUEUE_LOOKAHEAD_DAYS} dni naprzód; możesz w niej
             anulować pojedyncze przypomnienie, zanim pójdzie do klienta) — domyślnie działa całą dobę, co 5 minut,
           </li>
           <li>
@@ -51,9 +42,9 @@ export default async function ReminderSettingsPage() {
 
       <ReminderSettingsPanel initialEnabled={remindersEnabled} />
 
-      {isAdmin && <ReminderManualRunPanel />}
-
-      <UpcomingQueuePanel initialItems={upcomingQueue} />
+      <p className="m-0 rounded-lg border border-[#CFE0F0] bg-[#EAF4FB] p-4 text-sm text-[#14567F]">
+        Kolejka przypomnień, log sprawdzeń i ręczne uruchomienie są teraz w <Link className="font-semibold underline" href="/wysylka-sms">Wysyłka SMS</Link> — to praca bieżąca, a tu zostają tylko reguły i harmonogram.
+      </p>
 
       <div className="rounded-lg border border-[#CFE0F0] bg-[#EAF4FB] p-4 text-sm text-[#14567F]">
         <p className="mb-2">
@@ -64,12 +55,12 @@ export default async function ReminderSettingsPage() {
         </p>
         <p className="mb-2">
           Pierwszy Cron Job wywołuje adres <Code>/api/cron/reminders</Code> często (domyślnie co 5 minut, całą dobę) i
-          buduje kolejkę widoczną powyżej. Drugi Cron Job wywołuje adres <Code>/api/cron/reminders/send</Code>{" "}
+          buduje kolejkę widoczną w Wysyłce SMS. Drugi Cron Job wywołuje adres <Code>/api/cron/reminders/send</Code>{" "}
           domyślnie co godzinę między 9:00 a 17:00 — to on faktycznie wysyła to, co z kolejki jest już aktualne.
           Dokładny harmonogram obu zadań jest ustalony wyłącznie w samym cPanelu (aplikacja go nie zna ani nie
-          pokazuje). Wynik każdego wywołania (ile sprawdzono, ile wysłano, ile błędów) trafia do historii poniżej —
+          pokazuje). Wynik każdego wywołania (ile sprawdzono, ile wysłano, ile błędów) trafia do logu w Wysyłce SMS —
           oba kroki można też odpalić od razu, bez czekania na cron, przyciskami „Sprawdź teraz” / „Wyślij teraz”
-          powyżej.
+          w Wysyłce SMS.
         </p>
       </div>
 
@@ -101,8 +92,6 @@ export default async function ReminderSettingsPage() {
           </li>
         </Steps>
       </section>
-
-      <ReminderCheckLogTable initialLogs={checkLogPage.logs} initialTotal={checkLogPage.total} />
     </div>
   );
 }

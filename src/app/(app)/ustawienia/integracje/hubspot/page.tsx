@@ -1,9 +1,6 @@
+import Link from "next/link";
 import { getHubspotConfigStatus } from "@/lib/integrations/hubspot";
 import { HubspotPanel } from "@/components/hubspot-panel";
-import { HubspotImportPanel } from "@/components/hubspot-import-panel";
-import { LeadsImportPanel } from "@/components/leads-import-panel";
-import { ClientsQualificationPanel } from "@/components/clients-qualification-panel";
-import { WwwIntakePanel } from "@/components/www-intake-panel";
 
 function Code({ children }: { children: string }) {
   return <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800">{children}</code>;
@@ -19,10 +16,9 @@ export default async function HubspotIntegrationPage() {
   return (
     <div>
       <HubspotPanel initiallyConfigured={hubspotConfigured} />
-      <HubspotImportPanel configured={hubspotConfigured} />
-      <WwwIntakePanel />
-      <LeadsImportPanel configured={hubspotConfigured} />
-      <ClientsQualificationPanel configured={hubspotConfigured} />
+      <p className="mb-6 rounded-lg border border-[#CFE0F0] bg-[#EAF4FB] p-4 text-sm text-[#14567F]">
+        Importy z HubSpota są w <Link className="font-semibold underline" href="/ustawienia/importy">Ustawienia → Importy historii</Link>, formularze WWW w <Link className="font-semibold underline" href="/ustawienia/formularze-www">Zapytania i skrzynka</Link>, a kwalifikacja kontaktów z zapytań w <Link className="font-semibold underline" href="/kwalifikacja">Porządkach</Link>.
+      </p>
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">
         <h2 className="mb-1 text-lg font-semibold text-gray-900">HubSpot — jak przygotować dane dostępowe</h2>

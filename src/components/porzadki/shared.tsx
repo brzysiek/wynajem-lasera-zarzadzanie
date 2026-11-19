@@ -15,6 +15,7 @@ const TABS = [
   { href: "/propozycje", label: "Propozycje" },
   { href: "/dziennik", label: "Dziennik" },
   { href: "/reguly", label: "Reguły" },
+  { href: "/kwalifikacja", label: "Kwalifikacja" },
   { href: "/archiwum", label: "Archiwum" },
 ];
 

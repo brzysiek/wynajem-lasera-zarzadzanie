@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { sendTestAlert, sendTestAutoMail } from "@/lib/leads/auto-mail";
 
 // Próbna wysyłka maila automatycznego (kind: cennik | rezerwacja) — zapisana
 // treść (dla rezerwacji z przykładowym zgłoszeniem) na podany adres.
 export async function POST(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const b = (await req.json().catch(() => null)) as { to?: unknown; name?: unknown; kind?: unknown } | null;
   // kind: "alarm" — próbny alarm na zapisany adres alarmów (bez pola "to").

@@ -8,7 +8,20 @@ export async function requireAdmin() {
 
   if (session?.user.role !== "ADMIN") {
     logWarn("admin_page_access_denied", { userId: session?.user.id ?? null });
-    redirect("/ustawienia/przypomnienia-sms");
+    redirect("/ustawienia");
+  }
+
+  return session;
+}
+
+// Wniosek 55: strony dostępne dla biura (ADMIN i STAFF) — np. Ustawienia, w których STAFF
+// edytuje większość pozycji. Pozostałe role wracają na stronę startową.
+export async function requireOffice() {
+  const session = await auth();
+
+  if (session?.user.role !== "ADMIN" && session?.user.role !== "STAFF") {
+    logWarn("office_page_access_denied", { userId: session?.user.id ?? null });
+    redirect("/");
   }
 
   return session;

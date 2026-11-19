@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth-guards";
+import { requireOffice } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
 import { PricingPanel } from "@/components/pricing-panel";
@@ -6,7 +6,7 @@ import { DeliverySettingsPanel } from "@/components/delivery-settings-panel";
 import { loadDeliverySettings } from "@/lib/clients/delivery";
 
 export default async function PricingSettingsPage() {
-  await requireAdmin();
+  await requireOffice();
 
   const [priceRules, pulseTiers, settings, delivery] = await Promise.all([
     prisma.priceRule.findMany({

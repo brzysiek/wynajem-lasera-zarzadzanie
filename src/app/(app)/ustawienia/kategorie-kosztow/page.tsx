@@ -1,10 +1,10 @@
-import { requireAdmin } from "@/lib/auth-guards";
+import { requireOffice } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
 import { CostCategoriesPanel } from "@/components/cost-categories-panel";
 
 export default async function CostCategoriesSettingsPage() {
-  await requireAdmin();
+  await requireOffice();
 
   const categories = await prisma.costCategory.findMany({
     orderBy: [{ scope: "asc" }, { name: "asc" }],

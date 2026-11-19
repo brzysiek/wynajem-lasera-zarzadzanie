@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession, requireSession } from "@/lib/auth-guards";
+import { requireStaffSession, requireSession } from "@/lib/auth-guards";
 import { OFFICE_AND_AGENT } from "@/lib/permissions";
 import { loadPlaybook, savePlaybook } from "@/lib/leads/playbook-load";
 import { logInfo } from "@/lib/logger";
@@ -13,7 +13,7 @@ export async function GET() {
 }
 
 export async function PUT(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const body = (await req.json().catch(() => null)) as { playbook?: unknown } | null;
   const playbook = await savePlaybook(body?.playbook);

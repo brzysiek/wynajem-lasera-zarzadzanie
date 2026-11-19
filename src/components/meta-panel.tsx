@@ -6,7 +6,7 @@ import type { SubscriptionInfo } from "@/lib/chat/meta-graph";
 
 type Result = { ok: boolean; message?: string; info?: SubscriptionInfo };
 
-// Ustawienia → Integracje → Meta (wniosek 42): sprawdzenie i odnowienie subskrypcji strony.
+// Ustawienia → Zapytania i skrzynka → Messenger / Instagram (wniosek 42, przeniesione we wniosku 55): sprawdzenie i odnowienie subskrypcji strony.
 export function MetaPanel({ canCall }: { canCall: boolean }) {
   const [busy, setBusy] = useState<"check" | "renew" | null>(null);
   const [res, setRes] = useState<Result | null>(null);

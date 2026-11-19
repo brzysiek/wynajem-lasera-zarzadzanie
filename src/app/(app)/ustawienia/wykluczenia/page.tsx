@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth-guards";
+import { requireOffice } from "@/lib/auth-guards";
 import { PageHeader } from "@/components/page-header";
 import { ExclusionsPanel } from "@/components/porzadki/exclusions-panel";
 import { listExclusions } from "@/lib/porzadki/exclusions";
@@ -6,7 +6,7 @@ import { getHideKeywords } from "@/lib/porzadki/exclusion-load";
 
 // Lista wykluczeń domen i adresów (wniosek 7) — ADMIN.
 export default async function ExclusionsPage() {
-  await requireAdmin();
+  await requireOffice();
   const [rows, keywords] = await Promise.all([listExclusions(), getHideKeywords()]);
   return (
     <div>

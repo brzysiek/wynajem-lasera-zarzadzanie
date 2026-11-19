@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { AUTO_MAIL_MAX_FILE_BYTES, AUTO_MAIL_MAX_TOTAL_BYTES, AUTO_MAIL_TEMPLATE_KEY } from "@/lib/leads/auto-mail-render";
 import { logInfo } from "@/lib/logger";
@@ -8,7 +8,7 @@ const ALLOWED = new Set(["application/pdf", "image/jpeg", "image/png"]);
 
 // Załącznik maila z cennikiem (PDF, ewentualnie JPG/PNG) — trzymany w bazie.
 export async function POST(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");

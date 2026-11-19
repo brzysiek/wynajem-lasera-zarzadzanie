@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { loadDeliverySettings, saveDeliverySettings } from "@/lib/clients/delivery";
 import { logInfo } from "@/lib/logger";
 
 // Ustawienia → Cennik: baza (skąd liczymy trasy) i stawki stref transportu.
 export async function GET() {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   return NextResponse.json(await loadDeliverySettings());
 }
 
 export async function PUT(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const body = (await req.json().catch(() => null)) as { baseAddress?: unknown; zonePrices?: unknown } | null;
   if (!body) return NextResponse.json({ message: "Nieprawidłowe dane." }, { status: 400 });

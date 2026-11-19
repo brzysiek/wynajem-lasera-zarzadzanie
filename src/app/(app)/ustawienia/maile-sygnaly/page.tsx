@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth-guards";
+import { requireOffice } from "@/lib/auth-guards";
 import { PageHeader } from "@/components/page-header";
 import { MailIntakeSettings } from "@/components/settings/mail-intake-settings";
 import { loadIntakeConfig } from "@/lib/leads/mail-intake";
@@ -6,7 +6,7 @@ import { DEFAULT_CONFIG } from "@/lib/leads/mail-intake-rules";
 
 // Filtr maili od nowych osób (wniosek 43) — słowa, domeny, progi i tryb. ADMIN.
 export default async function MailIntakeSettingsPage() {
-  await requireAdmin();
+  await requireOffice();
   const config = await loadIntakeConfig();
   return (
     <div>

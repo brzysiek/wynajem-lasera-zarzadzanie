@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma, type DevicePricingCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { logInfo } from "@/lib/logger";
 import { PRICING_CATEGORY_VALUES, categoryHasVariants, isAllowedVariant } from "@/lib/pricing/variants";
 
@@ -35,7 +35,7 @@ function intOrNull(raw: unknown): number | null | "invalid" {
 }
 
 export async function GET() {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const [priceRules, pulseTiers, settings] = await Promise.all([
@@ -57,7 +57,7 @@ export async function GET() {
 
 // Batch: panel wysyła cały diff na „Zapisz". Wszystko w jednej transakcji.
 export async function PATCH(req: NextRequest) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
 
   const body = await req.json().catch(() => null);

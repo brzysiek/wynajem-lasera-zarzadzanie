@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth-guards";
+import { requireOffice } from "@/lib/auth-guards";
 import { PageHeader } from "@/components/page-header";
 import { AutoMailPanel } from "@/components/auto-mail-panel";
 import { loadAutoMailConfig, recentAutoMails } from "@/lib/leads/auto-mail";
@@ -6,7 +6,7 @@ import { loadAutoMailConfig, recentAutoMails } from "@/lib/leads/auto-mail";
 // Maile automatyczne po formularzach WWW: cennik (04.10.2026) i
 // potwierdzenie rezerwacji (05.10.2026) — ADMIN.
 export default async function AutoMailPage() {
-  const session = await requireAdmin();
+  const session = await requireOffice();
   const [config, recent] = await Promise.all([loadAutoMailConfig(), recentAutoMails()]);
   return (
     <div>

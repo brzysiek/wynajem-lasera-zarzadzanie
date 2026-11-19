@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/auth-guards";
+import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { AUTO_MAIL_ENABLED_KEY } from "@/lib/leads/auto-mail";
 import { AUTO_MAIL_TEMPLATE_KEY } from "@/lib/leads/auto-mail-render";
@@ -7,7 +7,7 @@ import { logInfo } from "@/lib/logger";
 
 // Podgląd (pobranie) i usunięcie załącznika maila z cennikiem.
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const { id } = await params;
   const row = await prisma.emailTemplateAttachment.findUnique({ where: { id } });
@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireAdminSession();
+  const session = await requireStaffSession();
   if (!session) return NextResponse.json({ message: "Brak uprawnień." }, { status: 403 });
   const { id } = await params;
   const [enabled, count] = await Promise.all([
