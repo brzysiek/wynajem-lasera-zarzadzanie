@@ -7,6 +7,7 @@ import { TYPE_LABEL } from "@/lib/leads/labels";
 import type { LeadTypeKey } from "@/lib/leads/parse-deal";
 import type { Node, Report } from "@/lib/marketing/report";
 import { CH } from "@/lib/marketing/source";
+import type { TrafficJoinDto } from "@/lib/traffic/load";
 import { Num, SignalList, type Pick } from "./signal-list";
 
 // Marketing → Kampanie (wniosek 54, etap 1c): tabela kanałów (domyślnie 6 kolumn,
@@ -46,7 +47,7 @@ function costPerBooking(n: Node, hasCosts: boolean): string {
   return "—";
 }
 
-export function ChannelsView({ report, query, csvQuery, hasCosts }: { report: Report; query: string; csvQuery: string; hasCosts: boolean }) {
+export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { report: Report; query: string; csvQuery: string; hasCosts: boolean; traffic?: TrafficJoinDto }) {
   const more = useSyncExternalStore(subscribe, readMore, () => false);
   const [picked, setPicked] = useState<Pick | null>(null);
   const [open, setOpen] = useState<string | null>(CH.GOOGLE_ADS);
@@ -68,6 +69,9 @@ export function ChannelsView({ report, query, csvQuery, hasCosts }: { report: Re
   const num = "px-2 py-2 text-right tabular-nums";
   const openNode = open ? channels.find((c) => c.label === open) : null;
   const returningCount = total.metrics.returning;
+  // Wniosek 54, etap 2: wejścia i starty formularza z licznika ruchu (pod „+ Więcej kolumn”).
+  const tv = (v: { visits: number; formStarts: number } | undefined, k: "visits" | "formStarts") => (traffic?.hasData ? INT(v?.[k] ?? 0) : "—");
+  const tTotal = traffic ? Object.values(traffic.byChannel).reduce((a, c) => ({ visits: a.visits + c.visits, formStarts: a.formStarts + c.formStarts }), { visits: 0, formStarts: 0 }) : undefined;
 
   const row = (n: Node, opts: { isTotal?: boolean } = {}) => {
     const m = n.metrics;
@@ -100,6 +104,8 @@ export function ChannelsView({ report, query, csvQuery, hasCosts }: { report: Re
             <td className={num}>{m.impressions ? INT(m.impressions) : "—"}</td>
             <td className={`${num} whitespace-nowrap`}>{m.cost ? PLN(m.cost) : "—"}</td>
             <td className={`${num} whitespace-nowrap`}>{m.cost > 0 && m.leads.razem > 0 ? PLN(m.cost / m.leads.razem) : "—"}</td>
+            <td className={num} title="Wejścia z licznika ruchu (początki wizyt)">{tv(opts.isTotal ? tTotal : traffic?.byChannel[n.label], "visits")}</td>
+            <td className={num} title="Start formularza — tylko gdy formularz jest na stronie wejścia">{tv(opts.isTotal ? tTotal : traffic?.byChannel[n.label], "formStarts")}</td>
           </>
         )}
         <td className={`${num} whitespace-nowrap text-gray-600`}>{opts.isTotal ? "—" : costPerBooking(n, hasCosts)}</td>
@@ -139,6 +145,8 @@ export function ChannelsView({ report, query, csvQuery, hasCosts }: { report: Re
                     <th className={th}>Wyświetlenia</th>
                     <th className={th}>Koszt</th>
                     <th className={th}>Koszt / zapytanie</th>
+                    <th className={th} title="Z licznika ruchu">Wejścia</th>
+                    <th className={th} title="Tylko gdy formularz jest na stronie wejścia">Start formularza</th>
                   </>
                 )}
                 <th className={th}>Koszt / rezerwację</th>
@@ -147,7 +155,7 @@ export function ChannelsView({ report, query, csvQuery, hasCosts }: { report: Re
             <tbody>
               {channels.length === 0 && (
                 <tr>
-                  <td colSpan={more ? 12 : 6} className="px-3 py-8 text-center text-gray-400">
+                  <td colSpan={more ? 14 : 6} className="px-3 py-8 text-center text-gray-400">
                     Brak zapytań w tym okresie.
                   </td>
                 </tr>
@@ -181,6 +189,8 @@ export function ChannelsView({ report, query, csvQuery, hasCosts }: { report: Re
                   <th className={th}>Rezerwacje</th>
                   <th className={th}>Przychód</th>
                   <th className={th} title="Przychód ÷ koszt kampanii">Zwrot</th>
+                  {more && <th className={th} title="Z licznika ruchu">Wejścia</th>}
+                  {more && <th className={th} title="Tylko gdy formularz jest na stronie wejścia">Start formularza</th>}
                 </tr>
               </thead>
               <tbody>
@@ -200,6 +210,8 @@ export function ChannelsView({ report, query, csvQuery, hasCosts }: { report: Re
                     <td className={num}><Num value={c.metrics.bookings} ids={c.ids.bookings} title={`${c.label} — rezerwacje`} onPick={setPicked} /></td>
                     <td className={`${num} whitespace-nowrap`}>{PLN(c.metrics.revenue)}</td>
                     <td className={num}>{c.metrics.revenueToCost != null ? `${c.metrics.revenueToCost.toLocaleString("pl-PL", { maximumFractionDigits: 1 })}×` : "[—]"}</td>
+                    {more && <td className={num}>{tv(openNode.label === CH.GOOGLE_ADS ? traffic?.byCampaign[c.key] : undefined, "visits")}</td>}
+                    {more && <td className={num}>{tv(openNode.label === CH.GOOGLE_ADS ? traffic?.byCampaign[c.key] : undefined, "formStarts")}</td>}
                   </tr>
                 ))}
               </tbody>

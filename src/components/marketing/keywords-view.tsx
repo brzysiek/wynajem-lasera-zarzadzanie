@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { RATING_LABEL, RATINGS, type Rating } from "@/lib/marketing/analysis-rules";
 import type { RatingDto } from "@/lib/marketing/analysis";
 import type { KeywordRow, Report } from "@/lib/marketing/report";
+import type { TrafficJoinDto } from "@/lib/traffic/load";
 import { Num, SignalList, type Pick } from "./signal-list";
 
 // Marketing → Słowa kluczowe (wniosek 54, etap 1c): frazy, które wpisywali ludzie.
@@ -23,6 +24,24 @@ const BADGE: Record<Rating, string> = { dziala: "bg-green-100 text-green-800", o
 
 export type KeywordRowView = KeywordRow & { rating: RatingDto | null };
 
+// „+ Więcej kolumn” (wejścia i start formularza z licznika ruchu) — wybór w localStorage.
+const STORE_KEY = "marketing.slowa.wiecej-kolumn";
+const subscribe = (cb: () => void) => {
+  window.addEventListener("storage", cb);
+  window.addEventListener("marketing-cols-slowa", cb);
+  return () => {
+    window.removeEventListener("storage", cb);
+    window.removeEventListener("marketing-cols-slowa", cb);
+  };
+};
+const readMore = (): boolean => {
+  try {
+    return window.localStorage.getItem(STORE_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
 export function KeywordsView({
   rows,
   campaigns,
@@ -31,6 +50,7 @@ export function KeywordsView({
   leads,
   withoutKeyword,
   hasCosts,
+  traffic,
 }: {
   rows: KeywordRowView[];
   campaigns: { key: string; label: string }[];
@@ -39,8 +59,19 @@ export function KeywordsView({
   leads: Report["leads"];
   withoutKeyword: number;
   hasCosts: boolean;
+  traffic?: TrafficJoinDto;
 }) {
   const [picked, setPicked] = useState<Pick | null>(null);
+  const more = useSyncExternalStore(subscribe, readMore, () => false);
+  const setMore = (v: boolean) => {
+    try {
+      window.localStorage.setItem(STORE_KEY, v ? "1" : "0");
+    } catch {
+      /* bez localStorage wybór nie zostanie zapamiętany */
+    }
+    window.dispatchEvent(new Event("marketing-cols-slowa"));
+  };
+  const tv = (r: KeywordRowView, k: "visits" | "formStarts") => (traffic?.hasData ? (traffic.byKeyword[`${r.campaignKey}\u0001${r.keyword}`]?.[k] ?? 0).toLocaleString("pl-PL") : "—");
   const counts = Object.fromEntries(RATINGS.map((r) => [r, rows.filter((x) => x.rating?.rating === r).length])) as Record<Rating, number>;
   const shown = selected ? rows.filter((r) => r.campaignKey === selected) : rows;
   const pill = (on: boolean) => `rounded-full border px-3 py-1 text-sm ${on ? "border-[#1B4FD8] bg-[#E8EEFD] font-medium text-[#1B4FD8]" : "border-gray-300 bg-white text-gray-800 hover:border-[#1B4FD8]"}`;
@@ -59,6 +90,9 @@ export function KeywordsView({
       <section className="rounded-xl border border-gray-200 bg-white px-5 py-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <h2 className="m-0 mr-auto text-base font-semibold text-gray-900">Frazy, które wpisywali ludzie</h2>
+          <button type="button" onClick={() => setMore(!more)} aria-pressed={more} className="h-8 rounded-full border border-gray-300 bg-white px-3 text-sm text-gray-800 hover:border-[#1B4FD8]">
+            {more ? "− Mniej kolumn" : "+ Więcej kolumn"}
+          </button>
           <Link href={`/marketing/slowa?${query}`} className={pill(!selected)}>
             Wszystkie
           </Link>
@@ -78,13 +112,15 @@ export function KeywordsView({
                 <th className="px-2 py-2 text-right font-medium">Kliknięcia</th>
                 <th className="px-2 py-2 text-right font-medium">Zapytania</th>
                 <th className="px-2 py-2 text-right font-medium">Rezerwacje</th>
+                {more && <th className="px-2 py-2 text-right font-medium" title="Z licznika ruchu (fraza z utm_term)">Wejścia</th>}
+                {more && <th className="px-2 py-2 text-right font-medium" title="Tylko gdy formularz jest na stronie wejścia">Start formularza</th>}
                 <th className="px-2 py-2 text-left font-medium">Ocena</th>
               </tr>
             </thead>
             <tbody>
               {shown.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-gray-400">
+                  <td colSpan={more ? 9 : 7} className="px-3 py-8 text-center text-gray-400">
                     {hasCosts ? "Brak fraz w tym okresie." : "Brak fraz — zaimportuj koszty (Ustawienia pomiaru) albo poczekaj na zapytania z reklam ze znacznikiem utm_term."}
                   </td>
                 </tr>
@@ -97,6 +133,8 @@ export function KeywordsView({
                   <td className="px-2 py-2 text-right tabular-nums">{r.clicks > 0 ? r.clicks.toLocaleString("pl-PL") : "[—]"}</td>
                   <td className="px-2 py-2 text-right tabular-nums"><Num value={r.leads} ids={r.leadIds} title={`${r.label} — zapytania`} onPick={setPicked} /></td>
                   <td className="px-2 py-2 text-right tabular-nums"><Num value={r.bookings} ids={r.bookingIds} title={`${r.label} — rezerwacje`} onPick={setPicked} /></td>
+                  {more && <td className="px-2 py-2 text-right tabular-nums">{tv(r, "visits")}</td>}
+                  {more && <td className="px-2 py-2 text-right tabular-nums">{tv(r, "formStarts")}</td>}
                   <td className="px-2 py-2">
                     {r.rating ? (
                       <span

@@ -5,6 +5,7 @@ import { getFakturowniaConfigStatus } from "@/lib/integrations/fakturownia";
 import { logWarn, logError, logInfo } from "@/lib/logger";
 import { enrichStaleClients } from "@/lib/clients/enrich";
 import { recordStatusChanges } from "@/lib/clients/status-log";
+import { purgeOldTraffic } from "@/lib/traffic/store";
 
 // Codzienny cron historii klienta (prompt 3, 2.1 i 3): dopisuje wydarzenia,
 // które wypadły z 30-dniowego okna synchronizacji kalendarzy (jeśli nie ma
@@ -51,6 +52,13 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     logError("history_cron_status_failed", err);
     out.statuses = { error: err instanceof Error ? err.message : String(err) };
+  }
+  // Wniosek 54, etap 2: surowe zdarzenia licznika ruchu starsze niż 13 miesięcy (sumy dzienne zostają).
+  try {
+    out.trafficPurged = await purgeOldTraffic();
+  } catch (err) {
+    logError("history_cron_traffic_purge_failed", err);
+    out.trafficPurged = { error: err instanceof Error ? err.message : String(err) };
   }
   if (!failed) logInfo("history_cron_ok", out);
   return NextResponse.json(out, { status: failed ? 500 : 200 });

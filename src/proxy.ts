@@ -20,6 +20,8 @@ const PUBLIC_ASSETS = [
   `${BASE_PATH}/favicon.ico`,
   // Metadane OAuth dla konektora MCP (claude.ai) — publiczne z definicji.
   `${BASE_PATH}/.well-known/`,
+  // Anonimowy licznik ruchu ze strony wynajemlasera.pl (sendBeacon, bez sesji panelu; wniosek 54, etap 2).
+  `${BASE_PATH}/api/ruch`,
 ];
 
 // The KIEROWCA (driver) role only gets the read-only calendar and the

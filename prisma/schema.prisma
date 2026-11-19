@@ -1451,6 +1451,38 @@ model MarketingProposal {
   @@map("marketing_proposals")
 }
 
+// Wniosek 54, etap 2: anonimowy licznik ruchu na wynajemlasera.pl (bez ciasteczek, bez IP,
+// bez user-agenta, bez fingerprintingu). Surowe zdarzenia 13 miesięcy (cron czyszczący),
+// sumy dzienne bez limitu czasu. pv = losowy numer wyświetlenia strony (nigdzie niezapisany
+// na urządzeniu) — grupuje zdarzenia jednej strony; nie identyfikuje osoby.
+model TrafficEvent {
+  id      BigInt   @id @default(autoincrement())
+  at      DateTime @default(now()) @db.DateTime(3)
+  pv      String   @db.VarChar(40)
+  path    String   @db.VarChar(200)
+  dev     String   @db.VarChar(12) // telefon | tablet | komputer | nieznane
+  type    String   @db.VarChar(20)
+  channel String   @db.VarChar(40) // kanał wejścia tego wyświetlenia (z zdarzenia „wejscie”)
+  data    Json?
+
+  @@index([at])
+  @@index([pv])
+  @@index([type, at])
+  @@map("traffic_events")
+}
+
+model TrafficDaily {
+  day     DateTime @db.Date
+  path    String   @db.VarChar(200)
+  channel String   @db.VarChar(40)
+  dev     String   @db.VarChar(12)
+  type    String   @db.VarChar(20)
+  count   Int      @default(0)
+
+  @@id([day, path, channel, dev, type])
+  @@map("traffic_daily")
+}
+
 enum ActivityType {
   CALL
   CALL_NO_ANSWER

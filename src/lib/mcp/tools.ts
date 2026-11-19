@@ -56,6 +56,8 @@ import { loadCampaignReport, resolvePeriod } from "@/lib/marketing/load";
 import { addDays, daysBetween } from "@/lib/marketing/period";
 import { actOnProposal, listMarketingProposals, loadRatings, ratingKey, saveReport, setRating } from "@/lib/marketing/analysis";
 import { STATUSES, parseRating, parseReportInput, type Status } from "@/lib/marketing/analysis-rules";
+import { loadTrafficReport } from "@/lib/traffic/load";
+import { compareAdsWithLeads } from "@/lib/traffic/report";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
 // co panel i API agenta (src/lib/permissions.ts): odczyt + zapisy agenta,
@@ -457,6 +459,53 @@ export const TOOLS: McpTool[] = [
       const res = await actOnProposal(req(a, "id"), "implement", { userId: agent.userId, name: agent.name }, { note: req(a, "notatka") });
       if (!res.ok) throw new AgentApiError(res.message, res.status);
       return { ok: true, status: res.proposal.status };
+    },
+  },
+  {
+    name: "raport_ruchu",
+    title: "Raport ruchu na stronie (licznik)",
+    description:
+      "Anonimowy licznik ruchu wynajemlasera.pl (bez ciasteczek, bez IP — liczy też osoby, które odrzuciły baner cookies). Zwraca JSON z liczbami za okres (domyślnie ostatnie 28 dni). " +
+      "sekcja: kanaly (wejścia wg kanału i urządzenia: Google Ads wg kampanii, Google organiczne, Bing, Meta, Facebook / Instagram organiczne, poczta, bezpośrednio, inne domeny; kafelki; porównanie wejść z Google Ads wg kampanii z zapytaniami z tej kampanii), " +
+      "zgody (wybór w banerze i stan zgody przy wejściach), strony (odsłony, strony wejścia, wyjścia, średnie przewinięcie, czas, „wyszli od razu”), przejscia (prev → strona), " +
+      "formularze (lejek: wyświetlenia → start → próba → wysłany, porzucenia z polem i błędy wg formularza), klikniecia (najczęściej klikane elementy wg strony i urządzenia, telefony wg strony, punkty mapy kliknięć). Bez sekcji — wszystko. " +
+      "path zawęża do jednej strony. „Wejście” = początek wizyty; formularz liczony do kanału odsłony, na której się zaczął (wizyt nie łączymy między stronami). Tylko odczyt.",
+    inputSchema: obj({
+      od: s("Początek okresu RRRR-MM-DD (domyślnie 28 dni wstecz)."),
+      do: s("Koniec okresu RRRR-MM-DD (domyślnie dziś)."),
+      sekcja: s("Sekcja raportu.", { enum: ["kanaly", "zgody", "strony", "formularze", "klikniecia", "przejscia"] }),
+      path: s("Tylko jedna strona, np. /alma/."),
+    }),
+    readOnly: true,
+    run: async (a) => {
+      const od = str(a, "od");
+      const doo = str(a, "do");
+      if ((od && !/^\d{4}-\d{2}-\d{2}$/.test(od)) || (doo && !/^\d{4}-\d{2}-\d{2}$/.test(doo))) throw new AgentApiError("od / do: data RRRR-MM-DD.");
+      const sekcja = str(a, "sekcja");
+      if (sekcja && !["kanaly", "zgody", "strony", "formularze", "klikniecia", "przejscia"].includes(sekcja)) throw new AgentApiError("sekcja: kanaly, zgody, strony, formularze, klikniecia, przejscia.");
+      const { from, to } = resolvePeriod(od, doo);
+      const path = str(a, "path");
+      const { report: r, join } = await loadTrafficReport(from, to, { path });
+      const want = (k: string) => !sekcja || sekcja === k;
+      const out: Record<string, unknown> = { okres: { od: from, do: to }, sciezka: path, dane: r.hasData };
+      if (!r.hasData) out.uwaga = "Brak danych z licznika w tym okresie (licznik jeszcze nie działa na stronie albo okres jest za wczesny).";
+      if (want("kanaly")) {
+        const leads = await loadCampaignReport(from, to);
+        const google = leads.channels.find((c) => c.label === "Google Ads");
+        out.kafelki = { wejscia: r.tiles.visits, z_reklam: r.tiles.fromAds, odslony: r.tiles.pageViews, proc_akceptujacych_baner: r.tiles.bannerAcceptPct, formularz_zaczete: r.tiles.formStarted, formularz_wyslane: r.tiles.formSent };
+        out.kanaly = r.channels.map((c) => ({ kanal: c.channel, wejscia: c.visits, urzadzenia: c.byDev, start_formularza: c.formStarts }));
+        out.reklamy_wg_kampanii = r.campaigns.map((c) => ({ kanal: c.channel, kampania: c.label, wejscia: c.visits, start_formularza: c.formStarts }));
+        out.porownanie_google_ads_z_leadami = compareAdsWithLeads(
+          join.byCampaign,
+          (google?.children ?? []).filter((c) => !c.key.startsWith("(")).map((c) => ({ key: c.key, label: c.label, leads: c.metrics.leads.razem })),
+        ).map((c) => ({ kampania: c.label, wejscia: c.visits, start_formularza: c.formStarts, zapytania: c.leads, zapytan_na_100_wejsc: c.leadsPer100Visits }));
+      }
+      if (want("zgody")) out.zgody = { baner: r.consents.banner, przy_wejsciach: r.consents.entries };
+      if (want("strony")) out.strony = r.pages.map((p) => ({ strona: p.path, odslony: p.views, strony_wejscia: p.landings, wyjscia: p.exits, srednie_przewiniecie_proc: p.avgScroll, czas: p.time, wyszli_od_razu_proc: p.bouncedPct }));
+      if (want("przejscia")) out.przejscia = r.transitions.slice(0, 50).map((t) => ({ z: t.from, na: t.to, liczba: t.count }));
+      if (want("formularze")) out.formularze = r.forms.map((f) => ({ formularz: f.form, strony: f.paths, wyswietlenia: f.views, start: f.started, proba: f.tried, wyslany: f.sent, bledy_wg_pola: f.errors, porzucenia_wg_pola: f.abandoned }));
+      if (want("klikniecia")) out.klikniecia = { najczestsze: r.clicks.top.map((c) => ({ rodzaj: c.rodzaj, etykieta: c.etyk, strona: c.path, urzadzenie: c.dev, liczba: c.count })), telefon_wg_strony: r.clicks.phoneByPath, punkty_mapy: r.clicks.points.slice(0, 500) };
+      return out;
     },
   },
   {

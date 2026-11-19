@@ -71,6 +71,8 @@ const MCP_TOOLS = [
   "podejrzane_zlepki", "dopasowanie_decyzja", "uwagi_kierowcow", "rezerwacje_bez_kwoty",
   // Wniosek 54, etap 1b: raport kampanii (tylko odczyt).
   "raport_kampanii", "slowo_ocena_ustaw", "raport_marketing_zapisz", "propozycje_marketing_lista", "propozycja_marketing_wdrozona",
+  // Wniosek 54, etap 2: raport ruchu z licznika (tylko odczyt).
+  "raport_ruchu",
 ];
 
 const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;
@@ -102,7 +104,7 @@ function handlers(): Handler[] {
 // Publiczne z definicji trasy OAuth konektora MCP: rejestracja klienta
 // (tylko adresy powrotu claude.ai/claude.com) i endpoint tokenu (kod + PKCE
 // albo token odświeżający). Same nie dają dostępu do danych.
-const OAUTH_PUBLIC = ["POST oauth/register", "POST oauth/token"];
+const OAUTH_PUBLIC = ["POST oauth/register", "POST oauth/token", "POST ruch"]; // ruch = anonimowy licznik ze strony (wniosek 54, etap 2): przyjmuje tylko zdarzenia, nie daje dostępu do danych
 
 function deniesAgent(h: Handler): boolean {
   const b = h.body;
