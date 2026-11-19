@@ -99,9 +99,12 @@ export async function loadCampaignReport(from: string, to: string): Promise<Repo
   return buildReport({ leads, costs, from, to, localDay: warsawDay });
 }
 
+export type CostChannel = "GOOGLE_ADS" | "META";
+
 export async function loadCosts(from: string, to: string): Promise<CostRow[]> {
-  const rows = await prisma.adCostDay.findMany({ where: { channel: "GOOGLE_ADS", day: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } } });
+  const rows = await prisma.adCostDay.findMany({ where: { channel: { in: ["GOOGLE_ADS", "META"] }, day: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } } });
   return rows.map((c) => ({
+    channel: (c.channel === "META" ? "META" : "GOOGLE_ADS") as CostChannel,
     day: c.day.toISOString().slice(0, 10),
     campaignKey: c.campaignKey,
     campaignName: c.campaignName,
@@ -118,13 +121,13 @@ export async function loadCosts(from: string, to: string): Promise<CostRow[]> {
 // Zapis importu: dni z zakresu pliku (od najwcześniejszego do najpóźniejszego)
 // są najpierw czyszczone, potem wstawiane — ponowny import tych samych dni
 // nadpisuje je, bez dubli.
-export async function saveCosts(rows: CostRow[], batch: string): Promise<{ deleted: number; inserted: number; dayFrom: string; dayTo: string }> {
+export async function saveCosts(rows: CostRow[], batch: string, channel: CostChannel = "GOOGLE_ADS"): Promise<{ deleted: number; inserted: number; dayFrom: string; dayTo: string }> {
   if (!rows.length) return { deleted: 0, inserted: 0, dayFrom: "", dayTo: "" };
   const days = rows.map((r) => r.day).sort();
   const dayFrom = days[0];
   const dayTo = days[days.length - 1];
   const data: Prisma.AdCostDayCreateManyInput[] = rows.map((r) => ({
-    channel: "GOOGLE_ADS",
+    channel,
     day: new Date(`${r.day}T00:00:00Z`),
     campaignKey: r.campaignKey.slice(0, 120),
     campaignName: r.campaignName.slice(0, 191),
@@ -138,18 +141,18 @@ export async function saveCosts(rows: CostRow[], batch: string): Promise<{ delet
     importBatch: batch,
   }));
   return prisma.$transaction(async (tx) => {
-    const del = await tx.adCostDay.deleteMany({ where: { channel: "GOOGLE_ADS", day: { gte: new Date(`${dayFrom}T00:00:00Z`), lte: new Date(`${dayTo}T00:00:00Z`) } } });
+    const del = await tx.adCostDay.deleteMany({ where: { channel, day: { gte: new Date(`${dayFrom}T00:00:00Z`), lte: new Date(`${dayTo}T00:00:00Z`) } } });
     let inserted = 0;
     for (let i = 0; i < data.length; i += 500) inserted += (await tx.adCostDay.createMany({ data: data.slice(i, i + 500), skipDuplicates: true })).count;
     return { deleted: del.count, inserted, dayFrom, dayTo };
   }, { timeout: 60_000 });
 }
 
-export async function costStatus(): Promise<{ days: number; from: string | null; to: string | null; lastImportAt: string | null; totalCost: number }> {
+export async function costStatus(channel: CostChannel = "GOOGLE_ADS"): Promise<{ days: number; from: string | null; to: string | null; lastImportAt: string | null; totalCost: number }> {
   const [agg, last, days] = await Promise.all([
-    prisma.adCostDay.aggregate({ where: { channel: "GOOGLE_ADS" }, _min: { day: true }, _max: { day: true }, _sum: { cost: true } }),
-    prisma.adCostDay.findFirst({ where: { channel: "GOOGLE_ADS" }, orderBy: { importedAt: "desc" }, select: { importedAt: true } }),
-    prisma.adCostDay.groupBy({ by: ["day"], where: { channel: "GOOGLE_ADS" } }),
+    prisma.adCostDay.aggregate({ where: { channel }, _min: { day: true }, _max: { day: true }, _sum: { cost: true } }),
+    prisma.adCostDay.findFirst({ where: { channel }, orderBy: { importedAt: "desc" }, select: { importedAt: true } }),
+    prisma.adCostDay.groupBy({ by: ["day"], where: { channel } }),
   ]);
   return {
     days: days.length,
@@ -158,4 +161,10 @@ export async function costStatus(): Promise<{ days: number; from: string | null;
     lastImportAt: last?.importedAt.toISOString() ?? null,
     totalCost: Number(agg._sum.cost ?? 0),
   };
+}
+
+// ID grupy reklam Google → nazwa i kampania (z kolumny „Identyfikator grupy reklam” importu kosztów).
+export async function loadAdGroupNames(): Promise<Map<string, { name: string; campaignKey: string }>> {
+  const rows = await prisma.adCostDay.findMany({ where: { channel: "GOOGLE_ADS", adGroupId: { not: "" } }, distinct: ["adGroupId"], select: { adGroupId: true, adGroupName: true, campaignKey: true }, orderBy: { day: "desc" } });
+  return new Map(rows.filter((r) => r.adGroupName).map((r) => [r.adGroupId, { name: r.adGroupName, campaignKey: r.campaignKey }]));
 }

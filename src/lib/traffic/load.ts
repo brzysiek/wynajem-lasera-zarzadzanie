@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { addDays, warsawDay } from "@/lib/marketing/period";
+import { metricsDto, reclassify, type TrafficMetricsDto } from "./ads";
 import { buildTrafficReport, trafficJoin, type TrafficFilter, type TrafficJoin, type TrafficReport, type TrafficRow } from "./report";
 
 // Wniosek 54, etap 2: wczytanie zdarzeń licznika ruchu z okresu (dni Europe/Warsaw).
@@ -12,12 +13,14 @@ export async function loadTrafficRows(from: string, to: string): Promise<Traffic
     orderBy: { id: "asc" },
     take: MAX_ROWS,
   });
-  return rows
+  const mapped = rows
     .filter((r) => {
       const day = warsawDay(r.at);
       return day >= from && day <= to;
     })
     .map((r) => ({ at: r.at, pv: r.pv, path: r.path, dev: r.dev, type: r.type, channel: r.channel, data: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? (r.data as Record<string, unknown>) : null }));
+  // Kanał i klucze zawsze wg aktualnych reguł z surowych pól „wejscie”.
+  return reclassify(mapped);
 }
 
 export async function loadTrafficReport(from: string, to: string, f: TrafficFilter = {}): Promise<{ report: TrafficReport; join: TrafficJoin }> {
@@ -33,4 +36,9 @@ export function joinDto(j: TrafficJoin): TrafficJoinDto {
 
 export async function loadTrafficJoin(from: string, to: string): Promise<TrafficJoinDto> {
   return joinDto(trafficJoin(await loadTrafficRows(from, to)));
+}
+
+// Metryki jakości ruchu z reklam (wg kanału / kampanii / grupy / frazy) do kolumn w Kampaniach i Słowach kluczowych.
+export async function loadTrafficMetrics(from: string, to: string): Promise<TrafficMetricsDto> {
+  return metricsDto(await loadTrafficRows(from, to));
 }

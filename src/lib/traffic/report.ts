@@ -289,14 +289,25 @@ export function trafficJoin(rows: TrafficRow[]): TrafficJoin {
   return j;
 }
 
-// Porównanie: wejścia z Google Ads wg kampanii a leady z tej kampanii (leady z raportu kampanii).
-export function compareAdsWithLeads(visitsByCampaign: Map<string, { visits: number; formStarts: number }>, leadsByCampaign: { key: string; label: string; leads: number }[]) {
-  const keys = new Set([...visitsByCampaign.keys(), ...leadsByCampaign.map((l) => l.key)]);
+// Porównanie: wejścia z Google Ads wg kampanii a leady z tej kampanii oraz kliknięcia z importu kosztów
+// (ad_cost_days) za te same dni — czy licznik widzi tyle wejść, ile Google liczy kliknięć.
+export function compareAdsWithLeads(visitsByCampaign: Map<string, { visits: number; formStarts: number }>, leadsByCampaign: { key: string; label: string; leads: number }[], clicksByCampaign: Map<string, number> = new Map()) {
+  const keys = new Set([...visitsByCampaign.keys(), ...leadsByCampaign.map((l) => l.key), ...clicksByCampaign.keys()]);
   return [...keys]
     .map((key) => {
       const v = visitsByCampaign.get(key) ?? { visits: 0, formStarts: 0 };
       const l = leadsByCampaign.find((x) => x.key === key);
-      return { key, label: l?.label ?? key, visits: v.visits, formStarts: v.formStarts, leads: l?.leads ?? 0, leadsPer100Visits: v.visits > 0 ? Math.round(((l?.leads ?? 0) / v.visits) * 1000) / 10 : null };
+      const clicks = clicksByCampaign.get(key) ?? 0;
+      return {
+        key,
+        label: l?.label ?? key,
+        visits: v.visits,
+        formStarts: v.formStarts,
+        leads: l?.leads ?? 0,
+        leadsPer100Visits: v.visits > 0 ? Math.round(((l?.leads ?? 0) / v.visits) * 1000) / 10 : null,
+        clicks,
+        visitsPer100Clicks: clicks > 0 ? Math.round((v.visits / clicks) * 1000) / 10 : null,
+      };
     })
-    .sort((a, b) => b.visits - a.visits);
+    .sort((a, b) => b.visits - a.visits || b.clicks - a.clicks);
 }

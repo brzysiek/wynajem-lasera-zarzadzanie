@@ -102,5 +102,8 @@ describe("łączenie z kampaniami i leadami", () => {
     const c = compareAdsWithLeads(j.byCampaign, [{ key: "alma", label: "Alma", leads: 1 }, { key: "lightsheer", label: "LightSheer", leads: 3 }]);
     expect(c[0]).toMatchObject({ key: "alma", visits: 2, leads: 1, leadsPer100Visits: 50 });
     expect(c.find((x) => x.key === "lightsheer")).toMatchObject({ visits: 0, leads: 3, leadsPer100Visits: null });
+    const withClicks = compareAdsWithLeads(j.byCampaign, [{ key: "alma", label: "Alma", leads: 1 }], new Map([["alma", 8], ["marka", 5]]));
+    expect(withClicks.find((x) => x.key === "alma")).toMatchObject({ visits: 2, clicks: 8, visitsPer100Clicks: 25 });
+    expect(withClicks.find((x) => x.key === "marka")).toMatchObject({ visits: 0, clicks: 5, visitsPer100Clicks: 0 });
   });
 });

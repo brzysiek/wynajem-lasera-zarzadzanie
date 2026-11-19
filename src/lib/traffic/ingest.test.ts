@@ -69,6 +69,11 @@ describe("kanał wejścia", () => {
     expect(c({ src: "l.facebook.com" }).channel).toBe(TCH.FACEBOOK);
     expect(c({ src: "l.instagram.com" }).channel).toBe(TCH.INSTAGRAM);
   });
+  it("Meta: kampania, zestaw (utm_term) i reklama (utm_content) z prawdziwych znaczników; stare znaczniki = bez przypisania", () => {
+    const real = c({ m: true, src: "instagram.com", utm: { utm_source: "meta", utm_medium: "paid_social", utm_campaign: "WL | LEADS | WYNAJEM | 10.2026", utm_term: "Rolki - Cold – send_form - LightSheer", utm_content: "LightSheer B", utm_id: "120248178026130384" } });
+    expect(real).toMatchObject({ channel: TCH.META, campaignKey: "wl | leads | wynajem | 10.2026", group: "rolki - cold – send_form - lightsheer", term: "lightsheer b", groupLabel: "Rolki - Cold – send_form - LightSheer", termLabel: "LightSheer B" });
+    expect(c({ m: true, utm: { utm_source: "fb", utm_medium: "paid", utm_campaign: "wynajem_leads_2026" } })).toMatchObject({ channel: TCH.META, campaignKey: "(meta-bez-przypisania)", group: null, term: null });
+  });
   it("poczta, bezpośrednio, inne domeny, wewnętrzne", () => {
     expect(c({ src: "mail.google.com" }).channel).toBe(TCH.MAIL);
     expect(c({ utm: { utm_medium: "email" }, src: "" }).channel).toBe(TCH.MAIL);

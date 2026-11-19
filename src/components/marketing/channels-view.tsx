@@ -7,8 +7,9 @@ import { TYPE_LABEL } from "@/lib/leads/labels";
 import type { LeadTypeKey } from "@/lib/leads/parse-deal";
 import type { Node, Report } from "@/lib/marketing/report";
 import { CH } from "@/lib/marketing/source";
-import type { TrafficJoinDto } from "@/lib/traffic/load";
+import { nodeTrafficKey, type TrafficMetricsDto } from "@/lib/traffic/ads";
 import { Num, SignalList, type Pick } from "./signal-list";
+import { TRAFFIC_COLS, TrafficCells, TrafficHeads, totalMetrics } from "./traffic-cells";
 
 // Marketing → Kampanie (wniosek 54, etap 1c): tabela kanałów (domyślnie 6 kolumn,
 // reszta pod „+ Więcej kolumn”, wybór w localStorage), rozwijane kampanie Google Ads
@@ -47,10 +48,18 @@ function costPerBooking(n: Node, hasCosts: boolean): string {
   return "—";
 }
 
-export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { report: Report; query: string; csvQuery: string; hasCosts: boolean; traffic?: TrafficJoinDto }) {
+export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { report: Report; query: string; csvQuery: string; hasCosts: boolean; traffic?: TrafficMetricsDto }) {
   const more = useSyncExternalStore(subscribe, readMore, () => false);
   const [picked, setPicked] = useState<Pick | null>(null);
   const [open, setOpen] = useState<string | null>(CH.GOOGLE_ADS);
+  const [openSub, setOpenSub] = useState<Set<string>>(new Set()); // rozwinięte kampanie / zestawy Mety
+  const toggleSub = (k: string) =>
+    setOpenSub((prev) => {
+      const n = new Set(prev);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
 
   const setMore = (v: boolean) => {
     try {
@@ -69,9 +78,13 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
   const num = "px-2 py-2 text-right tabular-nums";
   const openNode = open ? channels.find((c) => c.label === open) : null;
   const returningCount = total.metrics.returning;
-  // Wniosek 54, etap 2: wejścia i starty formularza z licznika ruchu (pod „+ Więcej kolumn”).
-  const tv = (v: { visits: number; formStarts: number } | undefined, k: "visits" | "formStarts") => (traffic?.hasData ? INT(v?.[k] ?? 0) : "—");
-  const tTotal = traffic ? Object.values(traffic.byChannel).reduce((a, c) => ({ visits: a.visits + c.visits, formStarts: a.formStarts + c.formStarts }), { visits: 0, formStarts: 0 }) : undefined;
+  // Wniosek 54: jakość ruchu z licznika (wejścia, % wyszli od razu, % przewinęło ≥ 50, telefon, start formularza).
+  const hasTraffic = !!traffic?.hasData;
+  const tm = (n: Node) => {
+    const k = nodeTrafficKey(n.ckeys);
+    return k ? traffic?.byKey[k] : undefined;
+  };
+  const tTotal = totalMetrics(traffic);
 
   const row = (n: Node, opts: { isTotal?: boolean } = {}) => {
     const m = n.metrics;
@@ -104,8 +117,7 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
             <td className={num}>{m.impressions ? INT(m.impressions) : "—"}</td>
             <td className={`${num} whitespace-nowrap`}>{m.cost ? PLN(m.cost) : "—"}</td>
             <td className={`${num} whitespace-nowrap`}>{m.cost > 0 && m.leads.razem > 0 ? PLN(m.cost / m.leads.razem) : "—"}</td>
-            <td className={num} title="Wejścia z licznika ruchu (początki wizyt)">{tv(opts.isTotal ? tTotal : traffic?.byChannel[n.label], "visits")}</td>
-            <td className={num} title="Start formularza — tylko gdy formularz jest na stronie wejścia">{tv(opts.isTotal ? tTotal : traffic?.byChannel[n.label], "formStarts")}</td>
+            <TrafficCells m={opts.isTotal ? tTotal : tm(n)} hasData={hasTraffic} className={num} />
           </>
         )}
         <td className={`${num} whitespace-nowrap text-gray-600`}>{opts.isTotal ? "—" : costPerBooking(n, hasCosts)}</td>
@@ -145,8 +157,7 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
                     <th className={th}>Wyświetlenia</th>
                     <th className={th}>Koszt</th>
                     <th className={th}>Koszt / zapytanie</th>
-                    <th className={th} title="Z licznika ruchu">Wejścia</th>
-                    <th className={th} title="Tylko gdy formularz jest na stronie wejścia">Start formularza</th>
+                    <TrafficHeads />
                   </>
                 )}
                 <th className={th}>Koszt / rezerwację</th>
@@ -155,7 +166,7 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
             <tbody>
               {channels.length === 0 && (
                 <tr>
-                  <td colSpan={more ? 14 : 6} className="px-3 py-8 text-center text-gray-400">
+                  <td colSpan={more ? 9 + TRAFFIC_COLS : 6} className="px-3 py-8 text-center text-gray-400">
                     Brak zapytań w tym okresie.
                   </td>
                 </tr>
@@ -177,7 +188,7 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
         <section className="rounded-xl border border-gray-200 bg-white px-5 py-4">
           <h2 className="m-0 text-base font-semibold text-gray-900">{openNode.label} — kampanie</h2>
           <p className="mb-3 mt-0 text-xs text-gray-500">
-            Rozwinięcie wiersza „{openNode.label}”.{openNode.label === CH.GOOGLE_ADS ? " Kliknij kampanię, żeby zobaczyć jej słowa kluczowe." : ""}
+            Rozwinięcie wiersza „{openNode.label}”.{openNode.label === CH.GOOGLE_ADS ? " Kliknij kampanię, żeby zobaczyć jej słowa kluczowe." : ""}{openNode.label === CH.META ? " Kliknij kampanię, żeby zobaczyć zestawy reklam, a zestaw — reklamy. Zapytania ze starymi znacznikami (sprzed 28.10) są w wierszu „Meta — bez przypisania do reklamy”." : ""}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -189,35 +200,75 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
                   <th className={th}>Rezerwacje</th>
                   <th className={th}>Przychód</th>
                   <th className={th} title="Przychód ÷ koszt kampanii">Zwrot</th>
-                  {more && <th className={th} title="Z licznika ruchu">Wejścia</th>}
-                  {more && <th className={th} title="Tylko gdy formularz jest na stronie wejścia">Start formularza</th>}
+                  {more && <TrafficHeads />}
                 </tr>
               </thead>
               <tbody>
-                {openNode.children.map((c) => (
-                  <tr key={c.key} className="border-t border-gray-100">
-                    <td className="px-3 py-2">
-                      {openNode.label === CH.GOOGLE_ADS && c.key.indexOf("(") !== 0 ? (
-                        <Link href={`/marketing/slowa?kampania=${encodeURIComponent(c.key)}&${query}`} className="text-[#1B4FD8] underline">
-                          {c.label}
-                        </Link>
-                      ) : (
-                        c.label
-                      )}
-                    </td>
-                    <td className={`${num} whitespace-nowrap`}>{hasCosts && c.metrics.cost > 0 ? PLN(c.metrics.cost) : "[—]"}</td>
-                    <td className={num}><Num value={c.metrics.leads.razem} ids={c.ids.leads} title={`${c.label} — zapytania`} onPick={setPicked} /></td>
-                    <td className={num}><Num value={c.metrics.bookings} ids={c.ids.bookings} title={`${c.label} — rezerwacje`} onPick={setPicked} /></td>
-                    <td className={`${num} whitespace-nowrap`}>{PLN(c.metrics.revenue)}</td>
-                    <td className={num}>{c.metrics.revenueToCost != null ? `${c.metrics.revenueToCost.toLocaleString("pl-PL", { maximumFractionDigits: 1 })}×` : "[—]"}</td>
-                    {more && <td className={num}>{tv(openNode.label === CH.GOOGLE_ADS ? traffic?.byCampaign[c.key] : undefined, "visits")}</td>}
-                    {more && <td className={num}>{tv(openNode.label === CH.GOOGLE_ADS ? traffic?.byCampaign[c.key] : undefined, "formStarts")}</td>}
-                  </tr>
-                ))}
+                {openNode.children.flatMap((c) => {
+                  const isMeta = openNode.label === CH.META;
+                  const cells = (n: Node, label: string) => (
+                    <>
+                      <td className={`${num} whitespace-nowrap`}>{hasCosts && n.metrics.cost > 0 ? PLN(n.metrics.cost) : "[—]"}</td>
+                      <td className={num}><Num value={n.metrics.leads.razem} ids={n.ids.leads} title={`${label} — zapytania`} onPick={setPicked} /></td>
+                      <td className={num}><Num value={n.metrics.bookings} ids={n.ids.bookings} title={`${label} — rezerwacje`} onPick={setPicked} /></td>
+                      <td className={`${num} whitespace-nowrap`}>{PLN(n.metrics.revenue)}</td>
+                      <td className={num}>{n.metrics.revenueToCost != null ? `${n.metrics.revenueToCost.toLocaleString("pl-PL", { maximumFractionDigits: 1 })}×` : "[—]"}</td>
+                      {more && <TrafficCells m={tm(n)} hasData={hasTraffic} className={num} />}
+                    </>
+                  );
+                  const rows = [
+                    <tr key={c.key} className="border-t border-gray-100">
+                      <td className="px-3 py-2">
+                        {isMeta && c.children.length > 0 ? (
+                          <button type="button" onClick={() => toggleSub(c.key)} aria-expanded={openSub.has(c.key)} className="text-left text-[#1B4FD8] underline">
+                            {openSub.has(c.key) ? "▾" : "▸"} {c.label}
+                          </button>
+                        ) : openNode.label === CH.GOOGLE_ADS && c.key.indexOf("(") !== 0 ? (
+                          <Link href={`/marketing/slowa?kampania=${encodeURIComponent(c.key)}&${query}`} className="text-[#1B4FD8] underline">
+                            {c.label}
+                          </Link>
+                        ) : (
+                          c.label
+                        )}
+                      </td>
+                      {cells(c, c.label)}
+                    </tr>,
+                  ];
+                  if (isMeta && openSub.has(c.key)) {
+                    for (const z of c.children) {
+                      const zk = `${c.key}|${z.key}`;
+                      rows.push(
+                        <tr key={zk} className="border-t border-gray-100 bg-gray-50/60">
+                          <td className="py-2 pl-8 pr-3">
+                            {z.children.length > 0 ? (
+                              <button type="button" onClick={() => toggleSub(zk)} aria-expanded={openSub.has(zk)} className="text-left text-[#1B4FD8] underline" title="Zestaw reklam">
+                                {openSub.has(zk) ? "▾" : "▸"} {z.label}
+                              </button>
+                            ) : (
+                              z.label
+                            )}
+                          </td>
+                          {cells(z, `${c.label} / ${z.label}`)}
+                        </tr>,
+                      );
+                      if (openSub.has(zk)) {
+                        for (const r of z.children) {
+                          rows.push(
+                            <tr key={`${zk}|${r.key}`} className="border-t border-gray-100 bg-gray-50/30">
+                              <td className="py-2 pl-14 pr-3 text-gray-700" title="Reklama">{r.label}</td>
+                              {cells(r, `${z.label} / ${r.label}`)}
+                            </tr>,
+                          );
+                        }
+                      }
+                    }
+                  }
+                  return rows;
+                })}
               </tbody>
             </table>
           </div>
-          <p className="mb-0 mt-3 text-xs text-gray-500">„Zwrot” = przychód z rezerwacji ÷ koszt kampanii. Wartości pojawią się po pierwszym imporcie kosztów.</p>
+          <p className="mb-0 mt-3 text-xs text-gray-500">„Zwrot” = przychód z rezerwacji ÷ koszt kampanii. Wartości pojawią się po imporcie kosztów (Ustawienia pomiaru: Google Ads i Meta).</p>
         </section>
       )}
 

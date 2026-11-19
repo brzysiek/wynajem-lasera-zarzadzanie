@@ -5,7 +5,7 @@
 // PRYWATNOŚĆ (twarde wymagania): nie zapisujemy IP, user-agenta, nagłówków ani niczego, co
 // identyfikuje osobę. IP wolno użyć wyłącznie w pamięci do limitu paczek; user-agent
 // sprawdzamy w locie (filtr botów) i nigdzie nie zapisujemy. Nic z tego nie trafia do logów.
-import { CH, campaignFrom, normalizeKeyword } from "../marketing/source";
+import { CH, META_UNASSIGNED, campaignFrom, normName, normalizeKeyword } from "../marketing/source";
 
 export const MAX_BODY_BYTES = 16 * 1024;
 export const MAX_EVENTS = 50;
@@ -134,7 +134,10 @@ export function parseBeacon(body: string): ParseResult {
 const OWN_HOSTS = ["wynajemlasera.pl"];
 const hostOf = (src: string): string => src.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
 
-export type ChannelInfo = { channel: string; campaignKey: string | null; campaign: string | null; term: string | null; group: string | null };
+// Google Ads: campaignKey = kampania (slug), group = ID grupy (utm_content), term = fraza (utm_term).
+// Meta: campaignKey = kampania (nazwa), group = zestaw reklam (utm_term), term = reklama (utm_content);
+// *Label to oryginalne nazwy. Znaczniki sprzed nowego formatu Mety → „bez przypisania do reklamy”.
+export type ChannelInfo = { channel: string; campaignKey: string | null; campaign: string | null; term: string | null; group: string | null; termLabel?: string | null; groupLabel?: string | null };
 
 // Kanał wejścia z pola wejscie: g (kliknięcie Google Ads), m (kliknięcie Meta), src (domena odsyłająca), utm.
 export function classifyChannel(d: { src?: string; prev?: string; utm?: Record<string, string>; g?: boolean; m?: boolean }): ChannelInfo {
@@ -153,7 +156,13 @@ export function classifyChannel(d: { src?: string; prev?: string; utm?: Record<s
   // Przejście w obrębie witryny (prev z naszej strony albo odsyłacz z własnej domeny) — nie nowe wejście.
   if (d.prev || OWN_HOSTS.some((h) => src === h || src.endsWith(`.${h}`))) return out(TCH.INTERNAL);
   if (d.g || ((source === "google" || source === "adwords") && (medium === "cpc" || medium === "ppc" || medium === "paid"))) return out(TCH.GOOGLE_ADS, true);
-  if (d.m || ["meta", "fb", "ig", "facebook", "instagram"].includes(source)) return out(TCH.META, true);
+  if (d.m || ["meta", "fb", "ig", "facebook", "instagram"].includes(source)) {
+    const camp = (utm.utm_campaign ?? "").trim();
+    if (source === "meta" && camp && !/^\{.*\}$/.test(camp)) {
+      return { channel: TCH.META, campaignKey: normName(camp), campaign: camp, group: normName(utm.utm_term) || null, groupLabel: (utm.utm_term ?? "").trim() || null, term: normName(utm.utm_content) || null, termLabel: (utm.utm_content ?? "").trim() || null };
+    }
+    return { channel: TCH.META, campaignKey: META_UNASSIGNED.key, campaign: META_UNASSIGNED.label, group: null, term: null };
+  }
   if (medium === "email" || source === "email" || source === "newsletter" || /^(mail|poczta|webmail|outlook|mail\.google|mail\.yahoo)/.test(src) || src.endsWith("mail.google.com") || src.endsWith("outlook.live.com")) return out(TCH.MAIL);
   if (/(^|\.)google\.[a-z.]+$/.test(src)) return out(TCH.GOOGLE_ORG);
   if (src.endsWith("bing.com")) return out(TCH.BING);

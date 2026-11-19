@@ -52,11 +52,12 @@ import { listExclusions } from "@/lib/porzadki/exclusions";
 import { getHideKeywords } from "@/lib/porzadki/exclusion-load";
 import { loadPulseReport } from "@/lib/leads/pulse";
 import { LEVELS, delta, flatten, keywordTable, nodeJson, type Level } from "@/lib/marketing/report";
-import { loadCampaignReport, resolvePeriod } from "@/lib/marketing/load";
+import { loadAdGroupNames, loadCampaignReport, resolvePeriod } from "@/lib/marketing/load";
 import { addDays, daysBetween } from "@/lib/marketing/period";
 import { actOnProposal, listMarketingProposals, loadRatings, ratingKey, saveReport, setRating } from "@/lib/marketing/analysis";
 import { STATUSES, parseRating, parseReportInput, type Status } from "@/lib/marketing/analysis-rules";
-import { loadTrafficReport } from "@/lib/traffic/load";
+import { loadTrafficReport, loadTrafficRows } from "@/lib/traffic/load";
+import { adsMetricsByKey, adsTree, emptyMetrics, nodeTrafficKey } from "@/lib/traffic/ads";
 import { compareAdsWithLeads } from "@/lib/traffic/report";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
@@ -326,10 +327,11 @@ export const TOOLS: McpTool[] = [
       "Raport kampanii (wniosek 54, etap 1b) do cotygodniowej analizy marketingu: skąd przychodzą sygnały i ile to kosztuje. Źródło każdego sygnału ustala panel z danych formularza WWW w kolejności: " +
       "ostatnie wejście (utm / gclid / gbraid) → pierwsze wejście → gad_campaignid z adresu wejścia → referrer (google, bing, facebook, instagram, inna strona) → „Bez źródła”; sygnały bez formularza: źródło klienta albo rodzaj kontaktu. " +
       "Poziomy: kanal → kampania → grupa → slowo (Google Ads: kampania z utm_campaign / ID Google, grupa = utm_content, słowo = utm_term; Meta: kampania + reklama). " +
-      "Każdy wiersz: wyświetlenia, kliknięcia, koszt (tylko Google Ads, z importu CSV — brak importu = koszt 0), leady (razem + cennik / kontakt / rezerwacja_www / szkolenie / inne), stale_klientki (osobno, poza kosztem pozyskania), " +
+      "Każdy wiersz: wyświetlenia, kliknięcia, koszt (Google Ads i Meta, z importów CSV w Marketing → Ustawienia pomiaru — brak importu = koszt 0; Meta: kampania → zestaw → reklama, stare znaczniki UTM sprzed 28.10 w wierszu „Meta — bez przypisania do reklamy”), leady (razem + cennik / kontakt / rezerwacja_www / szkolenie / inne), stale_klientki (osobno, poza kosztem pozyskania), " +
       "rozmowy (wpis rozmowy lub maila; każda oferta, rezerwacja i wygrana liczy się też jako rozmowa), oferty / rezerwacje / wygrane (co najmniej ten etap, wg najdalszego osiągniętego), przychod_netto (RentalFinance.totalNet, bez stałych klientek), koszt_na_lead / rozmowe / rezerwacje, przychod_do_kosztu, przegrane_wg_powodu, " +
       "stale_klientki_szczegoly (rezerwacje, wygrane i przychód stałych klientek — osobno, także klientki z wcześniejszym wynajmem), poza_branza_nie_klienci (przegrane z powodem „Poza branżą” — poza leadami), " +
-      "oraz „sygnaly” = id sygnałów za każdą liczbą. Pomija sygnały testowe i zarchiwizowane duplikaty. Dodatkowo: razem, bez_zrodla (lista do uzupełnienia), slowa_bez_leadow (koszt > 0, 0 leadów), trend_tygodniowy, uwagi. " +
+      "oraz „sygnaly” = id sygnałów za każdą liczbą. Pole „licznik” (poziomy kanal / kampania / grupa / slowo) = jakość ruchu z anonimowego licznika dla wejść z tym utm: wejscia, wyszli_od_razu_proc (koniec.wyjscie i czas <10 s), przewiniecie_50_proc, czas_30s_proc, klik_telefon, form_start / form_wyslany / form_porzucony (+ pole_porzucenia), bez_podsumowania (wejścia bez zdarzenia „koniec” — poza mianownikami procentów), malo_danych (< 20 wejść). " +
+      "UWAGA: licznik nie łączy wizyt między stronami — metryki dotyczą strony wejścia (np. formularz na innej podstronie się nie liczy). Brak danych licznika w okresie = licznik null. Pomija sygnały testowe i zarchiwizowane duplikaty. Dodatkowo: razem, bez_zrodla (lista do uzupełnienia), slowa_bez_leadow (koszt > 0, 0 leadów), trend_tygodniowy, uwagi. " +
       "Definicje (etap 1c): nowe zapytanie = lead z okresu BEZ stałych klientek (klient miał rezerwację lub wynajem przed datą zapytania) i bez kontaktów oznaczonych na karcie klienta „Nie liczyć w marketingu” (dostawca / partner); " +
       "etapy są kumulatywne (wynajem ⇒ rezerwacja ⇒ oferta ⇒ rozmowa ⇒ zapytanie); wygrane = wynajem zrealizowany (etap Wygrana). Dodatkowo: porownanie_z_poprzednim_okresem (ta sama długość), frazy_z_ocena (ocena i uzasadnienie zapisuje Claude narzędziem slowo_ocena_ustaw), bez_zrodla = tylko nowe zapytania. " +
       "Domyślnie ostatnie 28 dni. Tylko odczyt.",
@@ -350,7 +352,14 @@ export const TOOLS: McpTool[] = [
       const len = daysBetween(from, to);
       const prevTo = addDays(from, -1);
       const prevFrom = addDays(prevTo, -(len - 1));
-      const [report, prev, ratings] = await Promise.all([loadCampaignReport(from, to), loadCampaignReport(prevFrom, prevTo), loadRatings()]);
+      const [report, prev, ratings, trafficRows] = await Promise.all([loadCampaignReport(from, to), loadCampaignReport(prevFrom, prevTo), loadRatings(), loadTrafficRows(from, to)]);
+      const metricsByKey = adsMetricsByKey(trafficRows);
+      const hasCounter = trafficRows.length > 0;
+      const licznik = (n: { ckeys: string[] }) => {
+        if (!hasCounter) return null;
+        const key = nodeTrafficKey(n.ckeys);
+        return (key && metricsByKey.get(key)) || emptyMetrics();
+      };
       const cm = report.total.metrics;
       const pm = prev.total.metrics;
       const keywords = keywordTable(report);
@@ -358,7 +367,8 @@ export const TOOLS: McpTool[] = [
         okres: { od: from, do: to },
         poziom,
         kanal: str(a, "kanal"),
-        wiersze: flatten(report, poziom as Level, str(a, "kanal")).map(nodeJson),
+        uwaga_licznik: hasCounter ? "Pole licznik: wejścia z anonimowego licznika z tym utm; licznik nie łączy wizyt między stronami (metryki dotyczą strony wejścia). Procenty liczone bez wejść bez podsumowania (bez_podsumowania). malo_danych = mniej niż 20 wejść." : "Brak danych z licznika w tym okresie — pole licznik = null.",
+        wiersze: flatten(report, poziom as Level, str(a, "kanal")).map((n) => ({ ...nodeJson(n), licznik: licznik(n) })),
         razem: nodeJson(report.total),
         porownanie_z_poprzednim_okresem: {
           okres: { od: prevFrom, do: prevTo },
@@ -466,15 +476,17 @@ export const TOOLS: McpTool[] = [
     title: "Raport ruchu na stronie (licznik)",
     description:
       "Anonimowy licznik ruchu wynajemlasera.pl (bez ciasteczek, bez IP — liczy też osoby, które odrzuciły baner cookies). Zwraca JSON z liczbami za okres (domyślnie ostatnie 28 dni). " +
-      "sekcja: kanaly (wejścia wg kanału i urządzenia: Google Ads wg kampanii, Google organiczne, Bing, Meta, Facebook / Instagram organiczne, poczta, bezpośrednio, inne domeny; kafelki; porównanie wejść z Google Ads wg kampanii z zapytaniami z tej kampanii), " +
+      "sekcja: kanaly (wejścia wg kanału i urządzenia: Google Ads wg kampanii, Google organiczne, Bing, Meta, Facebook / Instagram organiczne, poczta, bezpośrednio, inne domeny; kafelki; porównanie wejść z Google Ads wg kampanii z zapytaniami z tej kampanii i kliknięciami z importu kosztów za te same dni), " +
+      "reklamy (jakość ruchu z reklam: Google Ads kampania → grupa → fraza, Meta kampania → zestaw → reklama; na wiersz: wejscia, wyszli_od_razu_proc, przewiniecie_50_proc, czas_30s_proc, klik_telefon, form_start / form_wyslany / form_porzucony + pole_porzucenia, bez_podsumowania, malo_danych (< 20 wejść); filtr kampania; licznik nie łączy wizyt między stronami — metryki dotyczą strony wejścia), " +
       "zgody (wybór w banerze i stan zgody przy wejściach), strony (odsłony, strony wejścia, wyjścia, średnie przewinięcie, czas, „wyszli od razu”), przejscia (prev → strona), " +
       "formularze (lejek: wyświetlenia → start → próba → wysłany, porzucenia z polem i błędy wg formularza), klikniecia (najczęściej klikane elementy wg strony i urządzenia, telefony wg strony, punkty mapy kliknięć). Bez sekcji — wszystko. " +
       "path zawęża do jednej strony. „Wejście” = początek wizyty; formularz liczony do kanału odsłony, na której się zaczął (wizyt nie łączymy między stronami). Tylko odczyt.",
     inputSchema: obj({
       od: s("Początek okresu RRRR-MM-DD (domyślnie 28 dni wstecz)."),
       do: s("Koniec okresu RRRR-MM-DD (domyślnie dziś)."),
-      sekcja: s("Sekcja raportu.", { enum: ["kanaly", "zgody", "strony", "formularze", "klikniecia", "przejscia"] }),
+      sekcja: s("Sekcja raportu.", { enum: ["kanaly", "reklamy", "zgody", "strony", "formularze", "klikniecia", "przejscia"] }),
       path: s("Tylko jedna strona, np. /alma/."),
+      kampania: s("Sekcja reklamy: tylko jedna kampania (fragment nazwy lub slug, np. alma)."),
     }),
     readOnly: true,
     run: async (a) => {
@@ -482,7 +494,7 @@ export const TOOLS: McpTool[] = [
       const doo = str(a, "do");
       if ((od && !/^\d{4}-\d{2}-\d{2}$/.test(od)) || (doo && !/^\d{4}-\d{2}-\d{2}$/.test(doo))) throw new AgentApiError("od / do: data RRRR-MM-DD.");
       const sekcja = str(a, "sekcja");
-      if (sekcja && !["kanaly", "zgody", "strony", "formularze", "klikniecia", "przejscia"].includes(sekcja)) throw new AgentApiError("sekcja: kanaly, zgody, strony, formularze, klikniecia, przejscia.");
+      if (sekcja && !["kanaly", "reklamy", "zgody", "strony", "formularze", "klikniecia", "przejscia"].includes(sekcja)) throw new AgentApiError("sekcja: kanaly, reklamy, zgody, strony, formularze, klikniecia, przejscia.");
       const { from, to } = resolvePeriod(od, doo);
       const path = str(a, "path");
       const { report: r, join } = await loadTrafficReport(from, to, { path });
@@ -498,7 +510,19 @@ export const TOOLS: McpTool[] = [
         out.porownanie_google_ads_z_leadami = compareAdsWithLeads(
           join.byCampaign,
           (google?.children ?? []).filter((c) => !c.key.startsWith("(")).map((c) => ({ key: c.key, label: c.label, leads: c.metrics.leads.razem })),
-        ).map((c) => ({ kampania: c.label, wejscia: c.visits, start_formularza: c.formStarts, zapytania: c.leads, zapytan_na_100_wejsc: c.leadsPer100Visits }));
+          new Map((google?.children ?? []).filter((c) => !c.key.startsWith("(")).map((c) => [c.key, c.metrics.clicks] as [string, number])),
+        ).map((c) => ({ kampania: c.label, wejscia: c.visits, start_formularza: c.formStarts, zapytania: c.leads, zapytan_na_100_wejsc: c.leadsPer100Visits, klikniecia_google_ads: c.clicks, wejsc_na_100_klikniec: c.visitsPer100Clicks }));
+        out.uwaga_kliknieciowa = "klikniecia_google_ads pochodzą z importu kosztów (ad_cost_days) za te same dni; wejsc_na_100_klikniec = ile kliknięć Google widzi licznik (bez ruchu wewnętrznego i botów, więc poniżej 100 to normalne).";
+      }
+      if (want("reklamy")) {
+        const rows = await loadTrafficRows(from, to);
+        const filtered = path ? rows.filter((x) => x.path === path) : rows;
+        const tree = adsTree(filtered, { groupNames: await loadAdGroupNames(), campaign: str(a, "kampania") });
+        out.reklamy = {
+          opis: "Jakość ruchu z reklam wg utm. Licznik nie łączy wizyt między stronami — metryki dotyczą strony wejścia z danym utm. Procenty liczone bez wejść bez podsumowania (bez_podsumowania). malo_danych = mniej niż 20 wejść.",
+          google_ads: tree.google_ads,
+          meta: tree.meta,
+        };
       }
       if (want("zgody")) out.zgody = { baner: r.consents.banner, przy_wejsciach: r.consents.entries };
       if (want("strony")) out.strony = r.pages.map((p) => ({ strona: p.path, odslony: p.views, strony_wejscia: p.landings, wyjscia: p.exits, srednie_przewiniecie_proc: p.avgScroll, czas: p.time, wyszli_od_razu_proc: p.bouncedPct }));

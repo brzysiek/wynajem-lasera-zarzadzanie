@@ -23,7 +23,7 @@ export async function storeBeacon(b: ParsedBeacon, now = new Date()): Promise<nu
     dev: b.dev,
     type: e.type,
     channel,
-    data: (e.type === "wejscie" ? { ...e.data, channel, campaignKey: info!.campaignKey, campaign: info!.campaign, term: info!.term, group: info!.group } : e.data) as object,
+    data: (e.type === "wejscie" ? { ...e.data, channel, campaignKey: info!.campaignKey, campaign: info!.campaign, term: info!.term, group: info!.group, termLabel: info!.termLabel ?? null, groupLabel: info!.groupLabel ?? null } : e.data) as object,
   }));
   await prisma.trafficEvent.createMany({ data: rows });
 

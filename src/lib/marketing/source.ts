@@ -70,6 +70,13 @@ export function campaignFromCostName(name: string, id?: string | null): Campaign
   return { key: k ? `nazwa:${k}` : "nieznana", label: name.trim() || "(bez nazwy)" };
 }
 
+// Nazwy z Mety (kampania, zestaw, reklama): bez wielkości liter, spacje zwinięte i obcięte na końcach.
+export const normName = (v: string | null | undefined): string => (v ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+
+// Meta: leady sprzed 28.10 mają stare znaczniki (fb/paid, wynajem_leads_2026, kolber_wideo…) — przypisujemy je
+// tylko do kanału i okresu, bez dopasowania do reklamy.
+export const META_UNASSIGNED: CampaignRef = { key: "(meta-bez-przypisania)", label: "Meta — bez przypisania do reklamy" };
+
 export function normalizeKeyword(v: string | null | undefined): string {
   const s = (v ?? "").toLowerCase().replace(/[[\]"+]/g, " ").replace(/\s+/g, " ").trim();
   return /^\{.*\}$/.test(s) ? "" : s;
@@ -83,6 +90,9 @@ export type SourceInfo = {
   adGroup: string | null; // utm_content: Google = ID grupy, Meta = reklama
   keyword: string | null; // znormalizowane utm_term
   step: SourceStep;
+  // Meta: oryginalne nazwy zestawu (adGroup) i reklamy (keyword) do wyświetlenia.
+  adGroupLabel?: string | null;
+  keywordLabel?: string | null;
   // Grupa i / lub słowo wzięte z pierwszego wejścia (ostatnie ma tę samą kampanię, ale bez utm_content / utm_term).
   fromFirst: boolean;
 };
@@ -178,7 +188,27 @@ export function attributeSource(input: SourceInput): SourceInfo {
     let adGroup: string | null = null;
     let keyword: string | null = null;
     let fromFirst = false;
-    if (channel === CH.GOOGLE_ADS || channel === CH.META) {
+    if (channel === CH.META) {
+      // Nowy format znaczników Mety: utm_source=meta, utm_campaign = kampania, utm_term = zestaw reklam, utm_content = reklama.
+      const camp = p.campaign.trim();
+      let set = p.term.trim();
+      let ad = p.content.trim();
+      let usedFirst = false;
+      if (step === "last" && camp && normName(camp) === normName(first.campaign)) {
+        if (!set && first.term.trim()) {
+          set = first.term.trim();
+          usedFirst = true;
+        }
+        if (!ad && first.content.trim()) {
+          ad = first.content.trim();
+          usedFirst = true;
+        }
+      }
+      const fresh = p.source === "meta" && camp.length > 0 && !/^\{.*\}$/.test(camp);
+      if (!fresh) return { channel, campaign: META_UNASSIGNED, adGroup: null, keyword: null, step, fromFirst: false };
+      return { channel, campaign: { key: normName(camp), label: camp }, adGroup: normName(set) || null, keyword: normName(ad) || null, adGroupLabel: set || null, keywordLabel: ad || null, step, fromFirst: usedFirst };
+    }
+    if (channel === CH.GOOGLE_ADS) {
       campaign = campaignFrom(p.campaign);
       adGroup = clean(p.content) || null;
       keyword = normalizeKeyword(p.term) || null;

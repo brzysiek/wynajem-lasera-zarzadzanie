@@ -6,13 +6,18 @@ import { costStatus } from "@/lib/marketing/load";
 // Marketing → Ustawienia pomiaru (wniosek 54, etap 1c): import kosztów z Google Ads
 // i eksport konwersji do Google (CSV). Tylko ADMIN (layout Marketingu).
 export default async function MeasurementSettingsPage() {
-  const [status, p] = await Promise.all([costStatus(), conversionPreview()]);
+  const [status, metaStatus, p] = await Promise.all([costStatus(), costStatus("META"), conversionPreview()]);
   return (
     <div className="flex flex-col gap-10">
       <section>
         <h2 className="mb-1 text-lg font-semibold text-gray-900">Import kosztów</h2>
         <p className="mb-4 mt-0 text-sm text-gray-500">Koszty, kliknięcia i wyświetlenia z Google Ads per dzień, kampania, grupa i słowo kluczowe — z pliku CSV raportu słów kluczowych.</p>
-        <CostImport initial={status} />
+        <CostImport initial={status} platform="google" />
+      </section>
+      <section>
+        <h2 className="mb-1 text-lg font-semibold text-gray-900">Import kosztów Meta</h2>
+        <p className="mb-4 mt-0 text-sm text-gray-500">Koszty, wyświetlenia i kliknięcia linku z Menedżera reklam per dzień, kampania, zestaw reklam i reklama — z pliku CSV.</p>
+        <CostImport initial={metaStatus} platform="meta" />
       </section>
       <section>
         <h2 className="mb-1 text-lg font-semibold text-gray-900">Konwersje Google (eksport CSV)</h2>

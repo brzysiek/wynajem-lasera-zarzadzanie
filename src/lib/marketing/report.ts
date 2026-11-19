@@ -3,7 +3,7 @@
 // Każda liczba ma za sobą listę id sygnałów (klik w panelu, JSON dla MCP).
 import { REACH_ORDER } from "../leads/funnel";
 import type { CostRow } from "./costs-csv";
-import { CH, type SourceInfo } from "./source";
+import { CH, normName, type SourceInfo } from "./source";
 
 export type ReportLead = {
   id: string;
@@ -67,6 +67,7 @@ export type Metrics = Counts & {
 };
 
 export type Node = {
+  ckeys: string[]; // klucze od kanału do tego węzła (kanał, kampania, grupa / zestaw, fraza / reklama) — łączenie z licznikiem ruchu
   key: string;
   label: string;
   depth: number; // 0 kanał, 1 kampania, 2 grupa, 3 słowo
@@ -76,7 +77,7 @@ export type Node = {
   children: Node[];
 };
 
-type Acc = { impressions: number; clicks: number; cost: number; revenue: number; returningRevenue: number; ids: Record<string, string[]>; children: Map<string, AccNode>; key: string; label: string; depth: number; path: Node["path"] };
+type Acc = { ckeys: string[]; impressions: number; clicks: number; cost: number; revenue: number; returningRevenue: number; ids: Record<string, string[]>; children: Map<string, AccNode>; key: string; label: string; depth: number; path: Node["path"] };
 type AccNode = Acc;
 
 const ZERO_COUNTS = (): Counts => ({ leads: { razem: 0, cennik: 0, kontakt: 0, rezerwacja: 0, szkolenie: 0, inne: 0 }, returning: 0, returningBookings: 0, returningWins: 0, unqualified: 0, talked: 0, offers: 0, bookings: 0, wins: 0, lost: 0, lostByReason: {} });
@@ -85,7 +86,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const ratio = (num: number, den: number): number | null => (den > 0 && num > 0 ? round2(num / den) : null);
 
 function newAcc(key: string, label: string, depth: number, path: Node["path"]): Acc {
-  return { key, label, depth, path, impressions: 0, clicks: 0, cost: 0, revenue: 0, returningRevenue: 0, ids: {}, children: new Map() };
+  return { ckeys: [], key, label, depth, path, impressions: 0, clicks: 0, cost: 0, revenue: 0, returningRevenue: 0, ids: {}, children: new Map() };
 }
 
 const push = (a: Acc, metric: string, id: string) => {
@@ -142,6 +143,7 @@ function child(parent: Acc, key: string, label: string, path: Node["path"]): Acc
   let c = parent.children.get(key);
   if (!c) {
     c = newAcc(key, label, parent.depth + 1, path);
+    c.ckeys = [...parent.ckeys, key];
     parent.children.set(key, c);
   }
   return c;
@@ -166,6 +168,7 @@ function finalize(a: Acc): Node {
   const revenue = round2(a.revenue);
   const returningRevenue = round2(a.returningRevenue);
   return {
+    ckeys: a.ckeys,
     key: a.key,
     label: a.label,
     depth: a.depth,
@@ -227,14 +230,19 @@ export function buildReport(input: ReportInput): Report {
   }
   const groupLabel = (key: string) => groupLabels.get(key) ?? (/^\d+$/.test(key) ? `grupa ${key}` : key);
 
-  // ---- koszty (tylko Google Ads)
+  // ---- koszty (Google Ads i Meta z importu CSV)
   for (const c of input.costs) {
-    const ch = channelOf(CH.GOOGLE_ADS);
-    const camp = child(ch, c.campaignKey, c.campaignName, { kanal: CH.GOOGLE_ADS, kampania: c.campaignName });
-    const gKey = c.adGroupId || c.adGroupName || NO_GROUP;
-    const grp = child(camp, gKey, c.adGroupName || groupLabel(gKey), { kanal: CH.GOOGLE_ADS, kampania: c.campaignName, grupa: c.adGroupName || groupLabel(gKey) });
+    const meta = c.channel === "META";
+    const chName = meta ? CH.META : CH.GOOGLE_ADS;
+    const ch = channelOf(chName);
+    const camp = child(ch, c.campaignKey, c.campaignName, { kanal: chName, kampania: c.campaignName });
+    // Google: grupa po ID (nazwa z raportu), słowo po znormalizowanej frazie. Meta: zestaw i reklama po nazwach bez wielkości liter.
+    const gKey = meta ? normName(c.adGroupName) || NO_GROUP : c.adGroupId || c.adGroupName || NO_GROUP;
+    const gLabel = c.adGroupName || groupLabel(gKey);
+    const grp = child(camp, gKey, gLabel, { kanal: chName, kampania: c.campaignName, grupa: gLabel });
     const kKey = c.keyword || NO_KEYWORD;
-    const kw = child(grp, kKey, c.keywordText || kKey, { kanal: CH.GOOGLE_ADS, kampania: c.campaignName, grupa: grp.label, slowo: c.keywordText || kKey });
+    const kLabel = c.keywordText || kKey;
+    const kw = child(grp, kKey, kLabel, { kanal: chName, kampania: c.campaignName, grupa: grp.label, slowo: kLabel });
     for (const a of [root, ch, camp, grp, kw]) {
       a.impressions += c.impressions;
       a.clicks += c.clicks;
@@ -256,17 +264,19 @@ export function buildReport(input: ReportInput): Report {
     const ch = channelOf(src.channel);
     chain.push(ch);
     if (src.channel === CH.GOOGLE_ADS || src.channel === CH.META) {
+      const meta = src.channel === CH.META;
       const campKey = src.campaign?.key ?? UNKNOWN_CAMPAIGN;
       const campLabel = src.campaign?.label ?? UNKNOWN_CAMPAIGN;
       const camp = child(ch, campKey, campLabel, { kanal: src.channel, kampania: campLabel });
       chain.push(camp);
-      const gKey = src.adGroup ?? NO_GROUP;
-      const gLabel = src.adGroup ? (src.channel === CH.GOOGLE_ADS ? groupLabel(src.adGroup) : `reklama ${src.adGroup}`) : NO_GROUP;
-      const grp = child(camp, gKey, gLabel, { kanal: src.channel, kampania: campLabel, grupa: gLabel });
-      chain.push(grp);
-      if (src.channel === CH.GOOGLE_ADS) {
+      // Meta „bez przypisania do reklamy” (stare znaczniki) zostaje na poziomie kampanii.
+      if (!(meta && src.adGroup == null && src.keyword == null && campKey.startsWith("("))) {
+        const gKey = src.adGroup ?? NO_GROUP;
+        const gLabel = src.adGroup ? (meta ? (src.adGroupLabel ?? src.adGroup) : groupLabel(src.adGroup)) : NO_GROUP;
+        const grp = child(camp, gKey, gLabel, { kanal: src.channel, kampania: campLabel, grupa: gLabel });
+        chain.push(grp);
         const kKey = src.keyword ?? NO_KEYWORD;
-        const kLabel = src.keyword ? (keywordLabels.get(src.keyword) ?? src.keyword) : NO_KEYWORD;
+        const kLabel = src.keyword ? (meta ? (src.keywordLabel ?? src.keyword) : (keywordLabels.get(src.keyword) ?? src.keyword)) : NO_KEYWORD;
         chain.push(child(grp, kKey, kLabel, { kanal: src.channel, kampania: campLabel, grupa: gLabel, slowo: kLabel }));
       }
     }
@@ -321,8 +331,13 @@ export function buildReport(input: ReportInput): Report {
   }
 
   const notes: string[] = [];
-  if (!input.costs.length) notes.push("Brak zaimportowanych kosztów Google Ads w tym okresie — kolumny kosztowe będą puste.");
-  notes.push("Koszty pochodzą tylko z Google Ads (import CSV). Koszty Mety nie są importowane.");
+  const coverage = (ch: "GOOGLE_ADS" | "META", name: string) => {
+    const days = input.costs.filter((c) => (c.channel ?? "GOOGLE_ADS") === ch).map((c) => c.day).sort();
+    if (!days.length) return `Brak zaimportowanych kosztów ${name} w tym okresie — kolumny kosztowe tego kanału będą puste.`;
+    return `Koszty ${name} z importu CSV (zakres: ${days[0]} – ${days[days.length - 1]}).`;
+  };
+  notes.push(coverage("GOOGLE_ADS", "Google Ads"));
+  notes.push(coverage("META", "Mety"));
   notes.push("Stałe klientki (flaga sygnału albo wcześniejszy wynajem klienta) są w osobnej kolumnie, razem z ich rezerwacjami i wygranymi, i nie liczą się do kosztu pozyskania. Przegrane z powodem „Poza branżą” to nie klienci — osobna kolumna, poza liczbą leadów.");
   notes.push("Etap = najdalszy osiągnięty (maxStage). Rozmowa = wpis rozmowy lub maila w sygnale; każda oferta, rezerwacja i wygrana liczy się też jako rozmowa, więc oferty ≤ rozmowy.");
   return { from: input.from, to: input.to, total, channels: total.children, keywordsWithoutLeads, trend, unsourced, leads: leadInfo, notes };

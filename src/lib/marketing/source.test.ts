@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CH, attributeSource, campaignFrom, campaignFromCostName, channelFromReferrer, normalizeKeyword, urlParams } from "./source";
+import { CH, META_UNASSIGNED, attributeSource, campaignFrom, campaignFromCostName, channelFromReferrer, normalizeKeyword, urlParams } from "./source";
 
 const www = (attribution: Record<string, string>, extra: Partial<Parameters<typeof attributeSource>[0]> = {}) => attributeSource({ attribution, type: "REZERWACJA_WWW", ...extra });
 
@@ -60,10 +60,21 @@ describe("przypisanie źródła — kolejność z decyzji Tomka", () => {
     expect(r).toMatchObject({ channel: CH.GOOGLE_ADS, adGroup: "999", keyword: "wynajem lightsheer", step: "first" });
     expect(r.campaign?.key).toBe("lightsheer");
   });
-  it("Meta: kampania z utm_campaign, reklama z utm_content", () => {
-    const r = www({ utm_source: "meta", utm_campaign: "jesien", utm_content: "reklama-1" });
-    expect(r).toMatchObject({ channel: CH.META, adGroup: "reklama-1" });
-    expect(r.campaign?.key).toBe("jesien");
+  it("Meta (nowy format): kampania = utm_campaign, zestaw = utm_term, reklama = utm_content; bez wielkości liter", () => {
+    const r = www({ utm_source: "meta", utm_medium: "paid_social", utm_campaign: "WL | LEADS | WYNAJEM | 10.2026", utm_term: "Rolki - Cold – send_form - LightSheer ", utm_content: " LightSheer B" });
+    expect(r).toMatchObject({ channel: CH.META, adGroup: "rolki - cold – send_form - lightsheer", keyword: "lightsheer b", adGroupLabel: "Rolki - Cold – send_form - LightSheer", keywordLabel: "LightSheer B" });
+    expect(r.campaign).toEqual({ key: "wl | leads | wynajem | 10.2026", label: "WL | LEADS | WYNAJEM | 10.2026" });
+  });
+  it("Meta (stare znaczniki sprzed 28.10): tylko kanał Meta, „bez przypisania do reklamy”", () => {
+    for (const utm of [{ utm_source: "fb", utm_medium: "paid", utm_campaign: "wynajem_leads_2026", utm_content: "kolber_wideo" }, { utm_source: "facebook", utm_medium: "paid", utm_campaign: "kolber_wideo", utm_content: "" }] as Record<string, string>[]) {
+      const r = www(utm);
+      expect(r).toMatchObject({ channel: CH.META, adGroup: null, keyword: null });
+      expect(r.campaign).toEqual(META_UNASSIGNED);
+    }
+  });
+  it("Meta: ostatnie wejście ma kampanię, bez zestawu i reklamy — z pierwszego wejścia (ta sama kampania)", () => {
+    const r = www({ utm_source: "meta", utm_campaign: "Jesien", utm_term: "Zestaw A", utm_content: "Reklama 1", last_utm_source: "meta", last_utm_campaign: "jesien" });
+    expect(r).toMatchObject({ adGroup: "zestaw a", keyword: "reklama 1", fromFirst: true });
   });
   it("gclid bez utm → Google Ads; kampania z gad_campaignid w landing_url", () => {
     const r = www({ gclid: "G1", landing_url: "https://wynajemlasera.pl/alma/?gad_campaignid=24313522296" });

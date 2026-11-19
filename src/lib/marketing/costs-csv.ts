@@ -17,6 +17,7 @@ export type CostRowRaw = {
 };
 
 export type CostRow = {
+  channel?: "GOOGLE_ADS" | "META"; // domyślnie Google Ads; Meta: adGroup* = zestaw reklam, keyword* = reklama
   day: string;
   campaignKey: string;
   campaignName: string;

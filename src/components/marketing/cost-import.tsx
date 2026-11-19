@@ -25,7 +25,8 @@ function decode(buf: ArrayBuffer): string {
   return utf8.includes("�") ? new TextDecoder("windows-1250").decode(buf) : utf8;
 }
 
-export function CostImport({ initial }: { initial: CostStatus }) {
+export function CostImport({ initial, platform = "google" }: { initial: CostStatus; platform?: "google" | "meta" }) {
+  const isMeta = platform === "meta";
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [preview, setPreview] = useState<CostPreview | null>(null);
@@ -40,7 +41,7 @@ export function CostImport({ initial }: { initial: CostStatus }) {
     setError(null);
     setInfo(null);
     try {
-      const r = await fetch(`${BASE_PATH}/api/marketing/costs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: body, apply }) });
+      const r = await fetch(`${BASE_PATH}/api/marketing/costs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: body, apply, platform }) });
       const j = (await r.json().catch(() => ({}))) as { message?: string; preview?: CostPreview; applied?: boolean; deleted?: number; inserted?: number; status?: CostStatus };
       if (j.preview) setPreview(j.preview);
       if (!r.ok) return setError(j.message ?? "Nie udało się odczytać pliku.");
@@ -67,7 +68,7 @@ export function CostImport({ initial }: { initial: CostStatus }) {
 
   return (
     <div style={APP_CSS_VARS} className="flex max-w-3xl flex-col gap-4">
-      <Card title="Zaimportowane koszty">
+      <Card title={isMeta ? "Zaimportowane koszty Mety" : "Zaimportowane koszty"}>
         <p className="m-0 text-sm text-[var(--c-text)]">
           {status.days === 0 ? (
             "Nic jeszcze nie zaimportowano."
@@ -85,14 +86,25 @@ export function CostImport({ initial }: { initial: CostStatus }) {
         </p>
       </Card>
 
-      <Card title="Wczytaj raport z Google Ads">
-        <ol className="mb-3 mt-0 list-decimal pl-5 text-[13px] text-[var(--c-muted)]">
-          <li>W Google Ads: Raporty → Wstępnie zdefiniowane → Podstawowe → <b>Słowa kluczowe</b> (albo tabela „Słowa kluczowe wyszukiwania”).</li>
-          <li>
-            Segment <b>Czas → Dzień</b>. Kolumny: <b>Kampania</b>, <b>Grupa reklam</b>, <b>Identyfikator grupy reklam</b>, <b>Słowo kluczowe</b>, <b>Wyświetlenia</b>, <b>Kliknięcia</b>, <b>Koszt</b>.
-          </li>
-          <li>Pobierz jako .csv (nagłówki polskie lub angielskie, przecinek lub średnik — obie wersje działają). Kolumna z identyfikatorem grupy jest potrzebna, żeby leady (utm_content) połączyły się z kosztami grup.</li>
-        </ol>
+      <Card title={isMeta ? "Wczytaj raport z Menedżera reklam Mety" : "Wczytaj raport z Google Ads"}>
+        {isMeta ? (
+          <ol className="mb-3 mt-0 list-decimal pl-5 text-[13px] text-[var(--c-muted)]">
+            <li>W Menedżerze reklam Meta: poziom <b>Reklamy</b>, zakres dat, a w „Podział” → <b>Czas → Dzień</b>.</li>
+            <li>
+              Kolumny: <b>Dzień</b> (albo Początek raportowania), <b>Nazwa kampanii</b>, <b>Nazwa zestawu reklam</b>, <b>Nazwa reklamy</b>, <b>Wyświetlenia</b>, <b>Kliknięcia linku</b>, <b>Wydana kwota (PLN)</b>.
+            </li>
+            <li>Eksportuj jako .csv (nagłówki polskie lub angielskie, przecinek lub średnik). Bez podziału na dni plik zostanie odrzucony z komunikatem. Waluta inna niż PLN daje ostrzeżenie.</li>
+            <li>Dopasowanie do zapytań: <code>utm_campaign</code> = nazwa kampanii, <code>utm_term</code> = nazwa zestawu, <code>utm_content</code> = nazwa reklamy (bez wielkości liter). Zapytania ze starymi znacznikami (sprzed 28.10) trafiają do „Meta — bez przypisania do reklamy”.</li>
+          </ol>
+        ) : (
+          <ol className="mb-3 mt-0 list-decimal pl-5 text-[13px] text-[var(--c-muted)]">
+            <li>W Google Ads: Raporty → Wstępnie zdefiniowane → Podstawowe → <b>Słowa kluczowe</b> (albo tabela „Słowa kluczowe wyszukiwania”).</li>
+            <li>
+              Segment <b>Czas → Dzień</b>. Kolumny: <b>Kampania</b>, <b>Grupa reklam</b>, <b>Identyfikator grupy reklam</b>, <b>Słowo kluczowe</b>, <b>Wyświetlenia</b>, <b>Kliknięcia</b>, <b>Koszt</b>.
+            </li>
+            <li>Pobierz jako .csv (nagłówki polskie lub angielskie, przecinek lub średnik — obie wersje działają). Kolumna z identyfikatorem grupy jest potrzebna, żeby leady (utm_content) połączyły się z kosztami grup.</li>
+          </ol>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,text/csv" onChange={(e) => void onFile(e.target.files?.[0])} className="text-sm" />
           {fileName && <span className="text-xs text-[var(--c-muted)]">{fileName}</span>}
