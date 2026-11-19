@@ -69,6 +69,8 @@ const MCP_TOOLS = [
   "zadanie_utworz", "zadanie_zmien", "zadanie_komentarz", "wniosek_utworz", "wniosek_zmien", "wniosek_komentarz", "szkic_maila_utworz", "sugestia_zapisz", "oferta_dane", "do_sprawdzenia_lista", "do_sprawdzenia_rekomendacja",
   "uwaga_utworz", "uwaga_zmien", "dziennik_wpis", "propozycje_dodaj", "propozycje_lista",
   "podejrzane_zlepki", "dopasowanie_decyzja", "uwagi_kierowcow", "rezerwacje_bez_kwoty",
+  // Wniosek 54, etap 1b: raport kampanii (tylko odczyt).
+  "raport_kampanii",
 ];
 
 const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;

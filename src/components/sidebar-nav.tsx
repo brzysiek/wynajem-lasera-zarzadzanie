@@ -28,6 +28,14 @@ function PulseNavIcon() {
   );
 }
 
+function MarketingIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M3 12V8l9-4v12l-9-4Zm9-6h2.5a2.5 2.5 0 0 1 0 5H12M5 13l1 4h2l-.8-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // Plakietki w menu (wniosek 26): Sygnały — moje na dziś, Klienci — pasek
 // „Do zrobienia dziś”, Kalendarz — „Do dopięcia”. Pobierane przy wejściu i
 // co 2 minuty; błąd = brak plakietek, menu działa dalej.
@@ -162,6 +170,8 @@ function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT" | undefined): (
     { kind: "link", href: "/wysylka-sms", label: "Wysyłka SMS", icon: <SmsBubbleIcon /> },
   ];
   if (role === "ADMIN") items.push({ kind: "finance" });
+  // Wniosek 54, etap 1b: raport kampanii i import kosztów reklam — tylko ADMIN.
+  if (role === "ADMIN") items.push({ kind: "link", href: "/marketing/kampanie", label: "Marketing", matchAny: ["/marketing"], icon: <MarketingIcon /> });
   // Agent AI: z Finansów tylko Faktury VAT (odczyt + „FV bez faktury”).
   if (role === "AGENT") items.push({ kind: "link", href: "/finanse/faktury", label: "Faktury VAT", match: "/finanse", icon: <FinanceBarsIcon /> });
   // Porządki/optymalizacje — na dole listy: wnioski, uwagi, propozycje,

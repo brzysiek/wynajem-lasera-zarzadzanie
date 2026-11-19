@@ -1362,6 +1362,29 @@ model GoogleConversionExport {
   @@map("google_conversion_exports")
 }
 
+// Wniosek 54, etap 1b: koszty reklam per dzień / kampania / grupa / słowo
+// (import CSV z Google Ads). Ponowny import nadpisuje dni z zakresu pliku.
+model AdCostDay {
+  id           String   @id @default(cuid())
+  channel      String   @default("GOOGLE_ADS") @db.VarChar(16)
+  day          DateTime @db.Date
+  campaignKey  String   @db.VarChar(120)
+  campaignName String   @db.VarChar(191)
+  adGroupId    String   @default("") @db.VarChar(40)
+  adGroupName  String   @default("") @db.VarChar(150)
+  keyword      String   @default("") @db.VarChar(150)
+  keywordText  String   @default("") @db.VarChar(191)
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  cost         Decimal  @db.Decimal(12, 2)
+  importBatch  String   @db.VarChar(40)
+  importedAt   DateTime @default(now())
+
+  @@unique([channel, day, campaignKey, adGroupId, adGroupName, keyword], map: "ad_cost_days_uniq")
+  @@index([day])
+  @@map("ad_cost_days")
+}
+
 enum ActivityType {
   CALL
   CALL_NO_ANSWER

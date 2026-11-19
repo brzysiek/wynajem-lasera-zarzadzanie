@@ -51,6 +51,8 @@ import { addOpportunity } from "@/lib/clients/opportunities";
 import { listExclusions } from "@/lib/porzadki/exclusions";
 import { getHideKeywords } from "@/lib/porzadki/exclusion-load";
 import { loadPulseReport } from "@/lib/leads/pulse";
+import { LEVELS, flatten, nodeJson, type Level } from "@/lib/marketing/report";
+import { loadCampaignReport, resolvePeriod } from "@/lib/marketing/load";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
 // co panel i API agenta (src/lib/permissions.ts): odczyt + zapisy agenta,
@@ -310,6 +312,45 @@ export const TOOLS: McpTool[] = [
     run: async (a) => {
       const okres = str(a, "okres");
       return loadPulseReport({ period: okres === "7" || okres === "14" || okres === "30" ? okres : "week", personId: str(a, "osoba") });
+    },
+  },
+  {
+    name: "raport_kampanii",
+    title: "Raport kampanii (Marketing)",
+    description:
+      "Raport kampanii (wniosek 54, etap 1b) do cotygodniowej analizy marketingu: skąd przychodzą sygnały i ile to kosztuje. Źródło każdego sygnału ustala panel z danych formularza WWW w kolejności: " +
+      "ostatnie wejście (utm / gclid / gbraid) → pierwsze wejście → gad_campaignid z adresu wejścia → referrer (google, bing, facebook, instagram, inna strona) → „Bez źródła”; sygnały bez formularza: źródło klienta albo rodzaj kontaktu. " +
+      "Poziomy: kanal → kampania → grupa → slowo (Google Ads: kampania z utm_campaign / ID Google, grupa = utm_content, słowo = utm_term; Meta: kampania + reklama). " +
+      "Każdy wiersz: wyświetlenia, kliknięcia, koszt (tylko Google Ads, z importu CSV — brak importu = koszt 0), leady (razem + cennik / kontakt / rezerwacja_www / szkolenie / inne), stale_klientki (osobno, poza kosztem pozyskania), " +
+      "rozmowy (jak w tablicy sygnałów), oferty / rezerwacje / wygrane (co najmniej ten etap, wg najdalszego osiągniętego), przychod_netto (RentalFinance.totalNet), koszt_na_lead / rozmowe / rezerwacje, przychod_do_kosztu, przegrane_wg_powodu, " +
+      "oraz „sygnaly” = id sygnałów za każdą liczbą. Pomija sygnały testowe i zarchiwizowane duplikaty. Dodatkowo: razem, bez_zrodla (lista do uzupełnienia), slowa_bez_leadow (koszt > 0, 0 leadów), trend_tygodniowy, uwagi. " +
+      "Domyślnie ostatnie 28 dni. Tylko odczyt.",
+    inputSchema: obj({
+      od: s("Początek okresu RRRR-MM-DD (domyślnie 28 dni wstecz)."),
+      do: s("Koniec okresu RRRR-MM-DD (domyślnie dziś)."),
+      poziom: s("Poziom wierszy: kanal, kampania (domyślnie), grupa, slowo.", { enum: LEVELS }),
+      kanal: s("Tylko jeden kanał, np. „google ads”, „meta”, „bez źródła” (fragment nazwy)."),
+    }),
+    readOnly: true,
+    run: async (a) => {
+      const od = str(a, "od");
+      const doo = str(a, "do");
+      if ((od && !/^\d{4}-\d{2}-\d{2}$/.test(od)) || (doo && !/^\d{4}-\d{2}-\d{2}$/.test(doo))) throw new AgentApiError("od / do: data RRRR-MM-DD.");
+      const poziom = str(a, "poziom") ?? "kampania";
+      if (!(LEVELS as string[]).includes(poziom)) throw new AgentApiError(`poziom: ${LEVELS.join(", ")}.`);
+      const { from, to } = resolvePeriod(od, doo);
+      const report = await loadCampaignReport(from, to);
+      return {
+        okres: { od: from, do: to },
+        poziom,
+        kanal: str(a, "kanal"),
+        wiersze: flatten(report, poziom as Level, str(a, "kanal")).map(nodeJson),
+        razem: nodeJson(report.total),
+        bez_zrodla: report.unsourced.map((u) => ({ id: u.id, tytul: report.leads[u.id]?.title ?? null, typ: report.leads[u.id]?.type ?? null, kanal: u.channel, utworzono: report.leads[u.id]?.createdAt ?? null })),
+        slowa_bez_leadow: report.keywordsWithoutLeads.map((k) => ({ kampania: k.campaign, grupa: k.group, slowo_kluczowe: k.keyword, koszt: k.cost, klikniecia: k.clicks, wyswietlenia: k.impressions })),
+        trend_tygodniowy: report.trend.map((t) => ({ tydzien_od: t.week, kanal: t.channel, leady: t.leads, rozmowy: t.talked, rezerwacje: t.bookings, koszt: t.cost, sygnaly: { leady: t.ids.leads, rozmowy: t.ids.talked, rezerwacje: t.ids.bookings } })),
+        uwagi: report.notes,
+      };
     },
   },
   {
