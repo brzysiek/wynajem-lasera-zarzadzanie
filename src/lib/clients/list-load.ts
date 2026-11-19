@@ -4,7 +4,7 @@ import type { ClinicTypeKey, DeviceInterestKey, SourceKey } from "@/lib/clients/
 import { summarizeClient } from "@/lib/clients/summary";
 import { isRealizedRental, type ClientStatus } from "@/lib/clients/status";
 import { computeRhythm, headsFromText, monthsLabel, warsawDay, type RhythmRental } from "@/lib/clients/rhythm";
-import { isBeforeSeason, rhythmStrip, seasonWindow, statusCheck, type StripCell } from "@/lib/clients/list-rules";
+import { isBeforeSeason, isBeforeSeasonAction, plannedContact, rhythmStrip, seasonWindow, statusCheck, type PlannedDate, type PlannedKind, type StripCell } from "@/lib/clients/list-rules";
 import { computeRegion, type RegionKey } from "@/lib/clients/region";
 import { addressNeedsGeo } from "@/lib/clients/delivery-rules";
 import { BASE, distanceKm, geoKey, mapAddress } from "@/lib/clients/geo-rules";
@@ -103,6 +103,11 @@ export type ClientListRow = {
   nextStep: { text: string; dueAt: string | null; person: string | null; agent: boolean; href: string | null } | null;
   check: string | null; // „do sprawdzenia: …”
   beforeSeason: boolean;
+  // Wniosek 58: „przed sezonem” do działania TERAZ (bez zaplanowanego kontaktu w przyszłości; zaległy
+  // krok przeważa), najbliższy zaplanowany kontakt (RRRR-MM-DD… ISO) i jego źródło.
+  beforeSeasonAction: boolean;
+  plannedContactAt: string | null;
+  plannedContactKind: PlannedKind | null;
   // Wniosek 57: status „Uśpiony” z ręcznego oznaczenia (nie z rytmu) i data powrotu (RRRR-MM-DD).
   dormantManual: boolean;
   dormantReturnAt: string | null;
@@ -245,6 +250,7 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
           title: true,
           deviceInterest: true,
           nextActionAt: true,
+          returnAt: true,
           nextStepType: true,
           nextStepNote: true,
           archivedAt: true,
@@ -268,7 +274,12 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
     }),
   ]);
   const taskBy = new Map<string, (typeof tasks)[number]>();
-  for (const t of tasks) if (t.clientId && !taskBy.has(t.clientId)) taskBy.set(t.clientId, t);
+  const taskDatesBy = new Map<string, Date[]>(); // wniosek 58: wszystkie terminy otwartych zadań klienta
+  for (const t of tasks) {
+    if (!t.clientId) continue;
+    if (!taskBy.has(t.clientId)) taskBy.set(t.clientId, t);
+    if (t.dueDate) taskDatesBy.set(t.clientId, [...(taskDatesBy.get(t.clientId) ?? []), t.dueDate]);
+  }
   const proposalBy = new Map<string, string>();
   for (const p of proposals) {
     if (!p.clientId || proposalBy.has(p.clientId)) continue;
@@ -389,6 +400,19 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       window,
       today,
     });
+    // Wniosek 58: zaplanowany kontakt — krok (pole karty, otwarte zadania, krok otwartego sygnału),
+    // sygnał Odłożone z datą powrotu, ręczne „Uśpiona” z datą powrotu.
+    const planSteps: PlannedDate[] = [
+      ...(c.nextStepText && c.nextStepDueAt ? [{ at: c.nextStepDueAt, kind: "pole" as const }] : []),
+      ...(taskDatesBy.get(c.id) ?? []).map((at) => ({ at, kind: "zadanie" as const })),
+      ...c.leads.filter((l) => !l.archivedAt && l.stage !== "ODLOZONE" && (OPEN_LEAD_STAGES as readonly string[]).includes(l.stage) && l.nextActionAt).map((l) => ({ at: l.nextActionAt!, kind: "sygnal" as const })),
+    ];
+    const planReturns: PlannedDate[] = [
+      ...c.leads.filter((l) => !l.archivedAt && l.stage === "ODLOZONE" && l.returnAt).map((l) => ({ at: l.returnAt!, kind: "odlozone" as const })),
+      ...(summary.dormantManual && summary.dormantReturnAt ? [{ at: summary.dormantReturnAt, kind: "uspiona" as const }] : []),
+    ];
+    const seasonFlag = beforeSeason && !c.resignedAt;
+    const plan = plannedContact({ steps: planSteps, returns: planReturns }, today);
     const lastAt = summary.lastRentalAt;
     const overdueRatio =
       !nextRental && rhythm.rhythmDays && lastAt ? Math.round(((warsawDay(today).getTime() - warsawDay(lastAt).getTime()) / DAY / rhythm.rhythmDays) * 100) / 100 : null;
@@ -479,7 +503,10 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       nextStep,
       check,
       // „Zrezygnował” wypada z „przed sezonem” i „Kontaktu po wynajmie” (wniosek 24).
-      beforeSeason: beforeSeason && !c.resignedAt,
+      beforeSeason: seasonFlag,
+      beforeSeasonAction: isBeforeSeasonAction({ beforeSeason: seasonFlag, steps: planSteps, returns: planReturns }, today),
+      plannedContactAt: plan.plannedAt?.toISOString() ?? null,
+      plannedContactKind: plan.kind,
       dormantManual: summary.dormantManual,
       dormantReturnAt: summary.dormantReturnAt?.toISOString().slice(0, 10) ?? null,
       resigned: c.resignedAt && c.resignedReason ? { reason: c.resignedReason, at: c.resignedAt.toISOString(), recontactAt: c.resignedRecontactAt?.toISOString() ?? null } : null,

@@ -79,6 +79,34 @@ export function isBeforeSeason(input: {
   return inBase && !inSeason;
 }
 
+// ---------- Przed sezonem: do działania teraz (wniosek 58) ----------
+
+// Zaplanowany kontakt klientki — z trzech źródeł wniosku: następny krok z terminem (pole karty,
+// otwarte zadanie, krok otwartego sygnału), sygnał Odłożone z datą powrotu, ręczne „Uśpiona” z datą
+// powrotu. Daty porównujemy po dniu kalendarzowym: termin ≤ dziś = zaległy, > dziś = zaplanowany.
+export type PlannedKind = "pole" | "zadanie" | "sygnal" | "odlozone" | "uspiona";
+export type PlannedDate = { at: Date; kind: PlannedKind };
+export type PlannedInput = { steps: PlannedDate[]; returns: PlannedDate[] };
+
+const dayStart = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+// Najbliższy zaplanowany kontakt w przyszłości (albo null) i czy któryś krok jest zaległy / na dziś.
+export function plannedContact(c: PlannedInput, now: Date): { overdue: boolean; plannedAt: Date | null; kind: PlannedKind | null } {
+  const t = dayStart(now);
+  const overdue = c.steps.some((x) => dayStart(x.at) <= t);
+  const future = [...c.steps, ...c.returns].filter((x) => dayStart(x.at) > t).sort((a, b) => a.at.getTime() - b.at.getTime());
+  return { overdue, plannedAt: future[0]?.at ?? null, kind: future[0]?.kind ?? null };
+}
+
+// „Przed sezonem” do działania TERAZ: klientka z isBeforeSeason, która nie ma zaplanowanego kontaktu
+// w przyszłości. Zaległy krok (termin ≤ dziś) przeważa nad innym, przyszłym — wymaga uwagi.
+// Jedna funkcja dla licznika, listy Klienci i API agenta.
+export function isBeforeSeasonAction(c: { beforeSeason: boolean } & PlannedInput, now: Date): boolean {
+  if (!c.beforeSeason) return false;
+  const p = plannedContact(c, now);
+  return p.overdue || p.plannedAt == null;
+}
+
 // ---------- Pasek rytmu ----------
 
 // R = był wynajem, P = rezerwacja, F = wg rytmu powinna wynająć, a nie ma

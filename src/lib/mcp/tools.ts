@@ -155,7 +155,7 @@ export const TOOLS: McpTool[] = [
     description:
       "Klienci i kontakty z zapytań z paginacją. Filtry: brak telefonu / NIP / miasta, status (POTENCJALNY, NOWY, STALY, USPIONY, BYLY, NIE_KONTAKTOWAC), miasto, region, " +
       "„przed sezonem” (wynajmowały w poprzednim półroczu, a na bieżące nie mają wynajmu ani rezerwacji), bez następnego kroku, zmienione od daty, tylko kontakty z zapytań, wyszukiwanie (także nazwa robocza i aliasy z kalendarzy). " +
-      "Każdy rekord: shortName, region, rentals12m, nextRental (unassigned = rezerwacja bez klienta z propozycją), rhythmDays, churnRisk, nextStep, beforeSeason, check (status do sprawdzenia), " +
+      "Każdy rekord: shortName, region, rentals12m, nextRental (unassigned = rezerwacja bez klienta z propozycją), rhythmDays, churnRisk, nextStep, beforeSeason, beforeSeasonAction (true = do działania teraz: bez zaplanowanego kontaktu w przyszłości; zaległy krok przeważa), plannedContactAt (najbliższy zaplanowany kontakt: krok, zadanie, Odłożone, ręczne uśpienie z datą powrotu albo null), check (status do sprawdzenia), " +
       "deliveryAddresses (adresy dostawy z km i min od bazy; id do propozycji adres_dostawy), prices (ceny klienta: device × days, brak = cennik ogólny), " +
       "terms (transportNet za kurs, invoiceMode FULL/PARTIAL/NONE + invoicePartDefault, paymentForm, paymentTermDays, pulsesCharged).",
     inputSchema: obj({

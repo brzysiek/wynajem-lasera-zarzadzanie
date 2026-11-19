@@ -61,6 +61,9 @@ export type AgentClient = {
   churnRisk: ClientListRow["rhythm"]["risk"];
   nextStep: ClientListRow["nextStep"];
   beforeSeason: boolean;
+  // Wniosek 58: do działania teraz (bez zaplanowanego kontaktu w przyszłości) i data najbliższego zaplanowanego kontaktu.
+  beforeSeasonAction: boolean;
+  plannedContactAt: string | null;
   check: string | null;
   // Etap D: paszport dostawy (km / min od bazy) i warunki handlowe.
   deliveryAddresses: { id: string; label: string; isDefault: boolean; address: string; distanceKm: number | null; durationMin: number | null }[];
@@ -159,6 +162,8 @@ export async function listAgentClients(f: AgentClientFilters): Promise<AgentClie
       churnRisk: r.rhythm.risk,
       nextStep: r.nextStep,
       beforeSeason: r.beforeSeason,
+      beforeSeasonAction: r.beforeSeasonAction,
+      plannedContactAt: r.plannedContactAt,
       check: r.check,
       deliveryAddresses: c.deliveryAddresses.map((x) => ({
         id: x.id,

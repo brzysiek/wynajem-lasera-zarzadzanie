@@ -237,13 +237,20 @@ export function ClientsList({
   const pCounts = useMemo(() => potentialCounts(potentialRows), [potentialRows]);
 
   // Przed sezonem: najpierw po terminie wg rytmu, potem liczba wynajmów.
+  // Wniosek 58: licznik i lista główna = tylko do działania teraz (bez zaplanowanego kontaktu w przyszłości);
+  // zaplanowane (krok, zadanie, Odłożone, ręczne uśpienie z datą) w zwiniętej sekcji pod listą, po dacie.
   const seasonRows = useMemo(
     () =>
       clientsRows
-        .filter((r) => r.beforeSeason)
+        .filter((r) => r.beforeSeasonAction)
         .sort((a, b) => (b.overdueRatio ?? 0) - (a.overdueRatio ?? 0) || b.rentalsTotal - a.rentalsTotal),
     [clientsRows],
   );
+  const seasonPlanned = useMemo(
+    () => clientsRows.filter((r) => r.beforeSeason && !r.beforeSeasonAction).sort((a, b) => (a.plannedContactAt ?? "9999").localeCompare(b.plannedContactAt ?? "9999")),
+    [clientsRows],
+  );
+  const [plannedOpen, setPlannedOpen] = useState(false);
   const seasonTop = useMemo(() => [...seasonRows].sort((a, b) => b.rentalsTotal - a.rentalsTotal).slice(0, 7), [seasonRows]);
   const noPhone = useMemo(() => allRows.filter((r) => !r.hasPhone), [allRows]);
   const noPhoneClients = noPhone.filter((r) => r.status !== "POTENCJALNY").length;
@@ -629,6 +636,7 @@ export function ClientsList({
                   <span className="text-[20px] font-semibold leading-tight text-[#B8612F]" title={`wynajmowały w ${season.baseLabel}, a na ${season.seasonLabel} nie mają wynajmu ani rezerwacji`}>
                     {seasonRows.length} {seasonRows.length === 1 ? "klientka" : "klientek"}
                   </span>
+                  {seasonPlanned.length > 0 && <span className="text-[11.5px] text-[#5C6166]">+ {seasonPlanned.length} zaplanowanych (kontakt w przyszłości)</span>}
                 </div>
                 <div className="flex flex-none gap-[2px]" aria-hidden title={`${season.baseLabel.split(" ")[0]} wynajmowały · ${season.seasonLabel} nic w kalendarzu`}>
                   {["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"].map((m, i) => (
@@ -912,6 +920,30 @@ export function ClientsList({
                 ))
               )}
 
+              {special === "season" && seasonPlanned.length > 0 && (
+                <div className="border-t border-[#E4E7EA] bg-[#FBF7F3] px-3.5 py-2">
+                  <button type="button" onClick={() => setPlannedOpen(!plannedOpen)} aria-expanded={plannedOpen} className="text-[13px] font-semibold text-[#B8612F] hover:underline">
+                    {plannedOpen ? "▾" : "▸"} Zaplanowane ({seasonPlanned.length})
+                  </button>
+                  <span className="ml-2 text-[12px] text-[#5C6166]">mają już zaplanowany kontakt — wracają na listę same, gdy termin minie</span>
+                  {plannedOpen && (
+                    <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0 text-[13px]">
+                      {seasonPlanned.map((r) => (
+                        <li key={r.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 border-t border-[#EBD3C1] pt-1 first:border-t-0 first:pt-0">
+                          <span className="w-[92px] flex-none tabular-nums font-semibold text-[#B8612F]">{r.plannedContactAt ? new Date(r.plannedContactAt).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" }) : "—"}</span>
+                          <Link href={`/klienci/${r.id}`} className="font-medium text-[#1B6FA8] hover:underline">
+                            {r.shortName ?? r.name}
+                          </Link>
+                          <span className="text-[12px] text-[#5C6166]">
+                            {r.plannedContactKind === "odlozone" ? "sygnał odłożony do tej daty" : r.plannedContactKind === "uspiona" ? "ręcznie uśpiona do tej daty" : r.plannedContactKind === "sygnal" ? "krok sygnału" : r.plannedContactKind === "zadanie" ? "zadanie" : "następny krok"}
+                            {r.nextStep?.text ? ` · ${r.nextStep.text}` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-3 text-[12.5px] text-[#5C6166]">
                 <span>
                   Pokazano {page.length} z {visible.length}
