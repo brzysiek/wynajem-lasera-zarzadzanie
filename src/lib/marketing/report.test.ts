@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildReport, countsInReport, flatten, mondayOf, reportCsv, type ReportLead } from "./report";
+import { buildReport, countsInReport, flatten, isReturningLead, isUnqualified, metricsOfLead, mondayOf, reportCsv, type ReportLead } from "./report";
 import { CH, attributeSource } from "./source";
 import type { CostRow } from "./costs-csv";
 
@@ -129,5 +129,49 @@ describe("raport kampanii", () => {
       expect(ch.ids.leads?.length ?? 0).toBe(ch.metrics.leads.razem);
       expect(ch.ids.talked?.length ?? 0).toBe(ch.metrics.talked);
     }
+  });
+});
+
+describe("poprawki raportu (19.11)", () => {
+  const ALMA2 = { utm_source: "google", utm_campaign: "alma", utm_content: "111", utm_term: "wynajem lasera alma" };
+  it("każda oferta, rezerwacja i wygrana liczy się też jako rozmowa (oferty ≤ rozmowy)", () => {
+    expect(metricsOfLead(lead("a", ALMA2, { maxStage: "OFERTA", stage: "OFERTA", talked: false }))).toEqual(expect.arrayContaining(["talked", "offers"]));
+    expect(metricsOfLead(lead("b", ALMA2, { maxStage: "REZERWACJA", stage: "REZERWACJA", talked: false }))).toEqual(expect.arrayContaining(["talked", "offers", "bookings"]));
+    expect(metricsOfLead(lead("c", ALMA2, { maxStage: "WYGRANA", stage: "WYGRANA", talked: false }))).toEqual(expect.arrayContaining(["talked", "offers", "bookings", "wins"]));
+    expect(metricsOfLead(lead("d", ALMA2, { maxStage: "WYWIAD", stage: "WYWIAD", talked: false }))).not.toContain("talked");
+    const rep = buildReport({ leads: [lead("a", ALMA2, { maxStage: "OFERTA", stage: "OFERTA" }), lead("b", ALMA2, { maxStage: "REZERWACJA", stage: "REZERWACJA" })], costs: [], from: "2026-11-01", to: "2026-11-18", localDay });
+    expect(rep.total.metrics.offers).toBeLessThanOrEqual(rep.total.metrics.talked);
+    expect(rep.total.metrics.talked).toBe(2);
+  });
+  it("stałe klientki: tylko w swojej kolumnie, razem z rezerwacjami, wygranymi i przychodem; nie trafiają na listę „bez źródła”", () => {
+    const stala = lead("s1", null, { type: "EMAIL", returning: true, stage: "WYGRANA", maxStage: "WYGRANA", talked: true, revenue: 750 });
+    const stala2 = lead("s2", null, { type: "EMAIL", returning: true, stage: "REZERWACJA", maxStage: "REZERWACJA", revenue: 1270 });
+    const nowa = lead("n1", null, { type: "EMAIL" });
+    const rep = buildReport({ leads: [stala, stala2, nowa], costs: [], from: "2026-11-01", to: "2026-11-18", localDay });
+    const t = rep.total.metrics;
+    expect(t).toMatchObject({ returning: 2, returningWins: 1, returningBookings: 2, returningRevenue: 2020, wins: 0, bookings: 0, revenue: 0 });
+    expect(t.leads.razem).toBe(1);
+    expect(rep.unsourced.map((u) => u.id)).toEqual(["n1"]);
+    expect(rep.total.ids.returning_wins).toEqual(["s1"]);
+  });
+  it("stała klientka także po wcześniejszym wynajmie, mimo braku flagi", () => {
+    const created = new Date("2026-11-16T10:00:00Z");
+    expect(isReturningLead(false, new Date("2025-03-01T00:00:00Z"), created)).toBe(true);
+    expect(isReturningLead(false, new Date("2027-01-11T00:00:00Z"), created)).toBe(false); // własna rezerwacja z przyszłości
+    expect(isReturningLead(false, null, created)).toBe(false);
+    expect(isReturningLead(true, null, created)).toBe(true);
+  });
+  it("przegrana „Poza branżą” = nie klient: poza leadami, kosztem na lead i listą do uzupełnienia; „Inne” zostaje leadem", () => {
+    expect(isUnqualified({ stage: "PRZEGRANA", lostReason: "POZA_BRANZA" })).toBe(true);
+    expect(isUnqualified({ stage: "PRZEGRANA", lostReason: "INNE" })).toBe(false);
+    expect(isUnqualified({ stage: "SYGNAL", lostReason: "POZA_BRANZA" })).toBe(false);
+    const vendor = lead("v1", null, { type: "EMAIL", stage: "PRZEGRANA", lostReason: "POZA_BRANZA", maxStage: "SYGNAL" });
+    const real = lead("v2", ALMA2, { type: "POBRANIE_CENNIKA", stage: "PRZEGRANA", lostReason: "INNE", maxStage: "WYWIAD", talked: true });
+    const rep = buildReport({ leads: [vendor, real], costs: [cost({})], from: "2026-11-01", to: "2026-11-18", localDay });
+    expect(rep.total.metrics).toMatchObject({ unqualified: 1 });
+    expect(rep.total.metrics.leads.razem).toBe(1);
+    expect(rep.total.metrics.lostByReason).toEqual({ INNE: 1 });
+    expect(rep.unsourced).toEqual([]);
+    expect(rep.total.metrics.costPerLead).toBe(50);
   });
 });

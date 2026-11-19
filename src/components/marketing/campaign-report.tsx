@@ -28,54 +28,97 @@ function Num({ value, ids, title, onPick, dim }: { value: number; ids: string[] 
   );
 }
 
+const LOST_SHORT: Record<string, string> = { ODLEGLOSC: "daleko", CENA: "cena", KUPILA_URZADZENIE: "kupiła", INNE_URZADZENIE: "inne urz.", TERMIN_ZAJETY: "termin", BRAK_KONTAKTU: "brak kont.", TYLKO_CENNIK: "cennik", POZA_BRANZA: "poza br.", ARCHIWUM_IMPORTU: "archiwum", INNE: "inne", BRAK: "bez powodu" };
+
 function Row({ n, onPick, open, toggle, isTotal }: { n: Node; onPick: (p: Pick) => void; open: boolean; toggle: () => void; isTotal?: boolean }) {
   const m = n.metrics;
   const hasKids = n.children.length > 0;
   const name = `${n.path.kanal}${n.path.kampania ? ` › ${n.path.kampania}` : ""}${n.path.grupa ? ` › ${n.path.grupa}` : ""}${n.path.slowo ? ` › ${n.path.slowo}` : ""}`;
   const t = (what: string) => `${isTotal ? "Razem" : name} — ${what}`;
   const lost = Object.entries(m.lostByReason);
+  const types: [string, string, number, string[] | undefined][] = [
+    ["C", "cennik", m.leads.cennik, n.ids.leads_cennik],
+    ["K", "kontakt", m.leads.kontakt, n.ids.leads_kontakt],
+    ["R", "rezerwacja WWW", m.leads.rezerwacja, n.ids.leads_rezerwacja],
+    ["S", "szkolenie", m.leads.szkolenie, n.ids.leads_szkolenie],
+    ["I", "inne sygnały", m.leads.inne, n.ids.leads_inne],
+  ];
+  const num = "px-1.5 text-right tabular-nums";
   return (
     <tr className={`border-t border-gray-100 ${isTotal ? "bg-gray-50 font-semibold" : ""} ${n.depth === 0 ? "bg-white" : ""}`}>
-      <td className="sticky left-0 z-10 whitespace-nowrap bg-inherit px-3 py-1.5" style={{ paddingLeft: 12 + Math.max(n.depth, 0) * 16 }}>
-        {hasKids ? (
-          <button type="button" onClick={toggle} aria-expanded={open} className="mr-1.5 inline-block w-4 text-gray-500">
-            {open ? "▾" : "▸"}
-          </button>
-        ) : (
-          <span className="mr-1.5 inline-block w-4" />
-        )}
-        <span className={n.depth === 0 ? "font-medium text-gray-900" : "text-gray-800"}>{n.label}</span>
+      <td className="sticky left-0 z-10 max-w-[240px] bg-inherit px-2 py-1.5" style={{ paddingLeft: 8 + Math.max(n.depth, 0) * 14 }}>
+        <div className="flex items-start gap-1">
+          {hasKids ? (
+            <button type="button" onClick={toggle} aria-expanded={open} className="w-4 flex-none text-gray-500">
+              {open ? "▾" : "▸"}
+            </button>
+          ) : (
+            <span className="w-4 flex-none" />
+          )}
+          <span className={`break-words ${n.depth === 0 ? "font-medium text-gray-900" : "text-gray-800"}`}>{n.label}</span>
+        </div>
       </td>
-      <td className="px-2 text-right tabular-nums text-gray-600">{m.impressions ? INT(m.impressions) : "—"}</td>
-      <td className="px-2 text-right tabular-nums text-gray-600">{m.clicks ? INT(m.clicks) : "—"}</td>
-      <td className="px-2 text-right tabular-nums">{m.cost ? PLN(m.cost) : "—"}</td>
-      <td className="px-2 text-right tabular-nums"><Num value={m.leads.razem} ids={n.ids.leads} title={t("leady")} onPick={onPick} /></td>
-      <td className="px-2 text-right tabular-nums"><Num value={m.leads.cennik} ids={n.ids.leads_cennik} title={t("cennik")} onPick={onPick} dim /></td>
-      <td className="px-2 text-right tabular-nums"><Num value={m.leads.kontakt} ids={n.ids.leads_kontakt} title={t("kontakt")} onPick={onPick} dim /></td>
-      <td className="px-2 text-right tabular-nums"><Num value={m.leads.rezerwacja} ids={n.ids.leads_rezerwacja} title={t("rezerwacja WWW")} onPick={onPick} dim /></td>
-      <td className="px-2 text-right tabular-nums"><Num value={m.leads.szkolenie} ids={n.ids.leads_szkolenie} title={t("szkolenie")} onPick={onPick} dim /></td>
-      <td className="px-2 text-right tabular-nums"><Num value={m.leads.inne} ids={n.ids.leads_inne} title={t("inne sygnały")} onPick={onPick} dim /></td>
-      <td className="border-l border-gray-100 px-2 text-right tabular-nums"><Num value={m.returning} ids={n.ids.returning} title={t("stałe klientki")} onPick={onPick} dim /></td>
-      <td className="border-l border-gray-100 px-2 text-right tabular-nums"><Num value={m.talked} ids={n.ids.talked} title={t("rozmowy")} onPick={onPick} /></td>
-      <td className="px-2 text-right tabular-nums"><Num value={m.offers} ids={n.ids.offers} title={t("oferty")} onPick={onPick} /></td>
-      <td className="px-2 text-right tabular-nums"><Num value={m.bookings} ids={n.ids.bookings} title={t("rezerwacje")} onPick={onPick} /></td>
-      <td className="px-2 text-right tabular-nums"><Num value={m.wins} ids={n.ids.wins} title={t("wygrane")} onPick={onPick} /></td>
-      <td className="px-2 text-right tabular-nums">{m.revenue ? PLN(m.revenue) : "—"}</td>
-      <td className="border-l border-gray-100 px-2 text-right tabular-nums">{NUM(m.costPerLead)}</td>
-      <td className="px-2 text-right tabular-nums">{NUM(m.costPerTalk)}</td>
-      <td className="px-2 text-right tabular-nums">{NUM(m.costPerBooking)}</td>
-      <td className="px-2 text-right tabular-nums">{NUM(m.revenueToCost)}</td>
-      <td className="border-l border-gray-100 px-2 text-xs text-gray-600">
+      <td className={`${num} whitespace-nowrap text-gray-600`} title="wyświetlenia / kliknięcia">
+        {m.impressions || m.clicks ? `${INT(m.impressions)} / ${INT(m.clicks)}` : "—"}
+      </td>
+      <td className={`${num} whitespace-nowrap`}>{m.cost ? PLN(m.cost) : "—"}</td>
+      <td className={num}><Num value={m.leads.razem} ids={n.ids.leads} title={t("leady")} onPick={onPick} /></td>
+      <td className="px-1.5 text-xs text-gray-500">
+        <span className="flex flex-wrap gap-x-1.5">
+          {types.filter(([, , c]) => c > 0).map(([k, label, c, ids]) => (
+            <button key={k} type="button" title={label} onClick={() => onPick({ title: t(label), ids: ids ?? [] })} className="underline decoration-dotted hover:text-[#1B6FA8]">
+              {k} {c}
+            </button>
+          ))}
+          {types.every(([, , c]) => c === 0) && "—"}
+        </span>
+      </td>
+      <td className={num}><Num value={m.talked} ids={n.ids.talked} title={t("rozmowy")} onPick={onPick} /></td>
+      <td className={num}><Num value={m.offers} ids={n.ids.offers} title={t("oferty")} onPick={onPick} /></td>
+      <td className={num}><Num value={m.bookings} ids={n.ids.bookings} title={t("rezerwacje")} onPick={onPick} /></td>
+      <td className={num}><Num value={m.wins} ids={n.ids.wins} title={t("wygrane")} onPick={onPick} /></td>
+      <td className={`${num} whitespace-nowrap`}>{m.revenue ? PLN(m.revenue) : "—"}</td>
+      <td className={`${num} border-l border-gray-100`}>{NUM(m.costPerLead)}</td>
+      <td className={num}>{NUM(m.costPerTalk)}</td>
+      <td className={num}>{NUM(m.costPerBooking)}</td>
+      <td className={num}>{NUM(m.revenueToCost)}</td>
+      <td className="border-l border-gray-100 px-1.5 text-xs text-gray-600" title={m.returningRevenue ? `przychód netto stałych klientek: ${PLN(m.returningRevenue)}` : undefined}>
+        {m.returning ? (
+          <span className="flex flex-col">
+            <Num value={m.returning} ids={n.ids.returning} title={t("stałe klientki")} onPick={onPick} dim />
+            {(m.returningBookings > 0 || m.returningWins > 0) && (
+              <span className="whitespace-nowrap text-[11px] text-gray-500">
+                {m.returningBookings > 0 && (
+                  <button type="button" className="underline decoration-dotted hover:text-[#1B6FA8]" onClick={() => onPick({ title: t("stałe klientki — rezerwacje"), ids: n.ids.returning_bookings ?? [] })}>
+                    rez. {m.returningBookings}
+                  </button>
+                )}
+                {m.returningBookings > 0 && m.returningWins > 0 && " · "}
+                {m.returningWins > 0 && (
+                  <button type="button" className="underline decoration-dotted hover:text-[#1B6FA8]" onClick={() => onPick({ title: t("stałe klientki — wygrane"), ids: n.ids.returning_wins ?? [] })}>
+                    wygr. {m.returningWins}
+                  </button>
+                )}
+              </span>
+            )}
+          </span>
+        ) : (
+          "—"
+        )}
+      </td>
+      <td className={`${num} text-gray-500`}><Num value={m.unqualified} ids={n.ids.unqualified} title={t("poza branżą (nie klienci)")} onPick={onPick} dim /></td>
+      <td className="border-l border-gray-100 px-1.5 text-xs text-gray-600">
         {lost.length === 0
           ? "—"
-          : lost.map(([r, c], i) => (
-              <Fragment key={r}>
-                {i > 0 && ", "}
-                <button type="button" className="underline decoration-dotted hover:text-[#1B6FA8]" onClick={() => onPick({ title: t(`przegrane: ${LOST_REASON_LABEL[r as keyof typeof LOST_REASON_LABEL] ?? "bez powodu"}`), ids: n.ids[`lost_${r}`] ?? [] })}>
-                  {LOST_REASON_LABEL[r as keyof typeof LOST_REASON_LABEL] ?? "bez powodu"} {c}
+          : (
+            <span className="flex flex-wrap gap-x-1.5">
+              {lost.map(([r, c]) => (
+                <button key={r} type="button" className="whitespace-nowrap underline decoration-dotted hover:text-[#1B6FA8]" title={LOST_REASON_LABEL[r as keyof typeof LOST_REASON_LABEL] ?? "bez powodu"} onClick={() => onPick({ title: t(`przegrane: ${LOST_REASON_LABEL[r as keyof typeof LOST_REASON_LABEL] ?? "bez powodu"}`), ids: n.ids[`lost_${r}`] ?? [] })}>
+                  {LOST_SHORT[r] ?? r} {c}
                 </button>
-              </Fragment>
-            ))}
+              ))}
+            </span>
+          )}
       </td>
     </tr>
   );
@@ -124,7 +167,7 @@ export function CampaignReportView({ report, today, seasonFrom }: { report: Repo
   const btn = (on: boolean) => `h-8 rounded-md border px-3 text-sm ${on ? "border-[#1B6FA8] bg-[#E8F2F9] font-semibold text-[#1B6FA8]" : "border-gray-300 bg-white text-gray-700 hover:border-[#1B6FA8]"}`;
 
   const rows = [report.total, ...report.channels];
-  const th = "px-2 py-2 text-right font-medium";
+  const th = "px-1.5 py-2 text-right font-medium";
 
   return (
     <div className="flex flex-col gap-5">
@@ -163,30 +206,26 @@ export function CampaignReportView({ report, today, seasonFrom }: { report: Repo
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-        <table className="w-full min-w-[1500px] text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+        <table className="w-full text-[12.5px]">
+          <thead className="bg-gray-50 align-bottom text-[11px] uppercase leading-tight text-gray-500">
             <tr>
-              <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2 text-left font-medium">Kanał › kampania › grupa › słowo</th>
-              <th className={th}>Wyśw.</th>
-              <th className={th}>Klik.</th>
+              <th className="sticky left-0 z-10 bg-gray-50 px-2 py-2 text-left font-medium">Kanał › kampania › grupa › słowo</th>
+              <th className={th} title="Wyświetlenia / kliknięcia">Wyśw. / klik.</th>
               <th className={th}>Koszt</th>
               <th className={th}>Leady</th>
-              <th className={th} title="Pobranie cennika">Cennik</th>
-              <th className={th}>Kontakt</th>
-              <th className={th}>Rez. WWW</th>
-              <th className={th}>Szkol.</th>
-              <th className={th}>Inne</th>
-              <th className={`${th} border-l border-gray-200`} title="Stałe klientki — poza kosztem pozyskania">Stałe</th>
-              <th className={`${th} border-l border-gray-200`}>Rozmowy</th>
+              <th className="px-1.5 py-2 text-left font-medium" title="C cennik · K kontakt · R rezerwacja WWW · S szkolenie · I inne">Typy</th>
+              <th className={th}>Rozm.</th>
               <th className={th} title="Co najmniej etap Oferta">Oferty</th>
-              <th className={th} title="Co najmniej etap Rezerwacja">Rezerw.</th>
-              <th className={th}>Wygrane</th>
-              <th className={th} title="Suma netto z rozliczeń powiązanych wynajmów">Przychód</th>
-              <th className={`${th} border-l border-gray-200`}>Koszt/lead</th>
-              <th className={th}>Koszt/rozm.</th>
-              <th className={th}>Koszt/rez.</th>
-              <th className={th}>Przych./koszt</th>
-              <th className={`${th} border-l border-gray-200 text-left`}>Przegrane wg powodu</th>
+              <th className={th} title="Co najmniej etap Rezerwacja">Rez.</th>
+              <th className={th}>Wygr.</th>
+              <th className={th} title="Suma netto z rozliczeń powiązanych wynajmów (bez stałych klientek)">Przychód</th>
+              <th className={`${th} border-l border-gray-200`}>Koszt / lead</th>
+              <th className={th}>Koszt / rozm.</th>
+              <th className={th}>Koszt / rez.</th>
+              <th className={th}>Przych. / koszt</th>
+              <th className="border-l border-gray-200 px-1.5 py-2 text-left font-medium" title="Stałe klientki — poza kosztem pozyskania; pod spodem ich rezerwacje i wygrane">Stałe</th>
+              <th className={th} title="Przegrane z powodem „Poza branżą” — nie klienci, poza liczbą leadów">Poza br.</th>
+              <th className="border-l border-gray-200 px-1.5 py-2 text-left font-medium">Przegrane</th>
             </tr>
           </thead>
           <tbody>

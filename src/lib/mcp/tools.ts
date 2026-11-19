@@ -322,7 +322,8 @@ export const TOOLS: McpTool[] = [
       "ostatnie wejście (utm / gclid / gbraid) → pierwsze wejście → gad_campaignid z adresu wejścia → referrer (google, bing, facebook, instagram, inna strona) → „Bez źródła”; sygnały bez formularza: źródło klienta albo rodzaj kontaktu. " +
       "Poziomy: kanal → kampania → grupa → slowo (Google Ads: kampania z utm_campaign / ID Google, grupa = utm_content, słowo = utm_term; Meta: kampania + reklama). " +
       "Każdy wiersz: wyświetlenia, kliknięcia, koszt (tylko Google Ads, z importu CSV — brak importu = koszt 0), leady (razem + cennik / kontakt / rezerwacja_www / szkolenie / inne), stale_klientki (osobno, poza kosztem pozyskania), " +
-      "rozmowy (jak w tablicy sygnałów), oferty / rezerwacje / wygrane (co najmniej ten etap, wg najdalszego osiągniętego), przychod_netto (RentalFinance.totalNet), koszt_na_lead / rozmowe / rezerwacje, przychod_do_kosztu, przegrane_wg_powodu, " +
+      "rozmowy (wpis rozmowy lub maila; każda oferta, rezerwacja i wygrana liczy się też jako rozmowa), oferty / rezerwacje / wygrane (co najmniej ten etap, wg najdalszego osiągniętego), przychod_netto (RentalFinance.totalNet, bez stałych klientek), koszt_na_lead / rozmowe / rezerwacje, przychod_do_kosztu, przegrane_wg_powodu, " +
+      "stale_klientki_szczegoly (rezerwacje, wygrane i przychód stałych klientek — osobno, także klientki z wcześniejszym wynajmem), poza_branza_nie_klienci (przegrane z powodem „Poza branżą” — poza leadami), " +
       "oraz „sygnaly” = id sygnałów za każdą liczbą. Pomija sygnały testowe i zarchiwizowane duplikaty. Dodatkowo: razem, bez_zrodla (lista do uzupełnienia), slowa_bez_leadow (koszt > 0, 0 leadów), trend_tygodniowy, uwagi. " +
       "Domyślnie ostatnie 28 dni. Tylko odczyt.",
     inputSchema: obj({

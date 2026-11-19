@@ -5,7 +5,7 @@ import { STAGE_HISTORY_LABELS } from "@/lib/leads/labels";
 import { normalizeAttribution } from "@/lib/leads/attribution-view";
 import type { LeadStageKey } from "@/lib/leads/parse-deal";
 import { attributeSource, type Attr } from "./source";
-import { buildReport, countsInReport, type Report, type ReportLead } from "./report";
+import { buildReport, countsInReport, isReturningLead, type Report, type ReportLead } from "./report";
 import type { CostRow } from "./costs-csv";
 
 // Wniosek 54, etap 1b: wczytanie sygnałów i kosztów do raportu kampanii.
@@ -37,6 +37,7 @@ export async function loadCampaignReport(from: string, to: string): Promise<Repo
     where: { createdAt: { gte: new Date(`${addDays(from, -1)}T00:00:00Z`), lte: new Date(`${addDays(to, 2)}T00:00:00Z`) } },
     select: {
       id: true,
+      clientId: true,
       title: true,
       type: true,
       stage: true,
@@ -57,6 +58,19 @@ export async function loadCampaignReport(from: string, to: string): Promise<Repo
       activities: { where: { type: { in: ["STAGE_CHANGE", "CALL", "EMAIL"] } }, select: { type: true, body: true } },
     },
   });
+  // Wcześniejszy wynajem klienta (kalendarz i historia) — stała klientka mimo braku flagi.
+  const clientIds = [...new Set(rows.map((r) => r.clientId).filter((x): x is string => Boolean(x)))];
+  const [rentalMin, historyMin] = clientIds.length
+    ? await Promise.all([
+        prisma.rental.groupBy({ by: ["clientId"], where: { clientId: { in: clientIds }, eventType: "WYNAJEM", deletedInGoogle: false }, _min: { startsAt: true } }),
+        prisma.rentalHistory.groupBy({ by: ["clientId"], where: { clientId: { in: clientIds }, kind: "WYNAJEM", matchState: { in: ["AUTO", "CONFIRMED"] } }, _min: { startsAt: true } }),
+      ])
+    : [[], []];
+  const earliest = new Map<string, Date>();
+  for (const g of [...rentalMin, ...historyMin]) {
+    const d = g._min.startsAt;
+    if (g.clientId && d && (!earliest.has(g.clientId) || d < earliest.get(g.clientId)!)) earliest.set(g.clientId, d);
+  }
   const leads: ReportLead[] = [];
   for (const r of rows) {
     const day = warsawDay(r.createdAt);
@@ -78,7 +92,7 @@ export async function loadCampaignReport(from: string, to: string): Promise<Repo
       createdAt: r.createdAt,
       maxStage,
       talked,
-      returning: r.returningClient,
+      returning: isReturningLead(r.returningClient, r.clientId ? (earliest.get(r.clientId) ?? null) : null, r.createdAt),
       lostReason: r.lostReason,
       revenue: r.rental?.finance ? Number(r.rental.finance.totalNet) : null,
       contactEmail: r.contactEmail,

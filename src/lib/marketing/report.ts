@@ -43,6 +43,9 @@ const TYPE_METRIC: Record<string, string> = {
 export type Counts = {
   leads: { razem: number; cennik: number; kontakt: number; rezerwacja: number; szkolenie: number; inne: number };
   returning: number;
+  returningBookings: number; // stałe klientki: co najmniej rezerwacja
+  returningWins: number; // stałe klientki: wygrane
+  unqualified: number; // przegrane z powodem „Poza branżą” — nie klient, poza liczbą leadów
   talked: number;
   offers: number;
   bookings: number;
@@ -56,6 +59,7 @@ export type Metrics = Counts & {
   clicks: number;
   cost: number;
   revenue: number;
+  returningRevenue: number; // przychód netto stałych klientek (poza przychodem z pozyskania)
   costPerLead: number | null;
   costPerTalk: number | null;
   costPerBooking: number | null;
@@ -72,31 +76,51 @@ export type Node = {
   children: Node[];
 };
 
-type Acc = { impressions: number; clicks: number; cost: number; revenue: number; ids: Record<string, string[]>; children: Map<string, AccNode>; key: string; label: string; depth: number; path: Node["path"] };
+type Acc = { impressions: number; clicks: number; cost: number; revenue: number; returningRevenue: number; ids: Record<string, string[]>; children: Map<string, AccNode>; key: string; label: string; depth: number; path: Node["path"] };
 type AccNode = Acc;
 
-const ZERO_COUNTS = (): Counts => ({ leads: { razem: 0, cennik: 0, kontakt: 0, rezerwacja: 0, szkolenie: 0, inne: 0 }, returning: 0, talked: 0, offers: 0, bookings: 0, wins: 0, lost: 0, lostByReason: {} });
+const ZERO_COUNTS = (): Counts => ({ leads: { razem: 0, cennik: 0, kontakt: 0, rezerwacja: 0, szkolenie: 0, inne: 0 }, returning: 0, returningBookings: 0, returningWins: 0, unqualified: 0, talked: 0, offers: 0, bookings: 0, wins: 0, lost: 0, lostByReason: {} });
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const ratio = (num: number, den: number): number | null => (den > 0 && num > 0 ? round2(num / den) : null);
 
 function newAcc(key: string, label: string, depth: number, path: Node["path"]): Acc {
-  return { key, label, depth, path, impressions: 0, clicks: 0, cost: 0, revenue: 0, ids: {}, children: new Map() };
+  return { key, label, depth, path, impressions: 0, clicks: 0, cost: 0, revenue: 0, returningRevenue: 0, ids: {}, children: new Map() };
 }
 
 const push = (a: Acc, metric: string, id: string) => {
   (a.ids[metric] ??= []).push(id);
 };
 
-// Które metryki ma sygnał (stała klientka tylko w „returning”).
+// Stała klientka: flaga sygnału (wynajem w ostatnich 12 mies.) albo jakikolwiek
+// wcześniejszy wynajem klienta sprzed daty sygnału (kalendarz lub historia).
+export function isReturningLead(flag: boolean, earliestRental: Date | null, createdAt: Date): boolean {
+  return flag || (earliestRental != null && earliestRental.getTime() < createdAt.getTime());
+}
+
+// Przegrana z powodem „Poza branżą” (np. firma oferująca regenerację głowic) to nie klient.
+export function isUnqualified(l: Pick<ReportLead, "stage" | "lostReason">): boolean {
+  return l.stage === "PRZEGRANA" && l.lostReason === "POZA_BRANZA";
+}
+
+// Które metryki ma sygnał. Stała klientka tylko w „returning” (+ jej rezerwacje /
+// wygrane osobno), nie-klient tylko w „unqualified”; reszta to leady z pozyskania.
+// Każda oferta, rezerwacja i wygrana liczy się też jako rozmowa.
 export function metricsOfLead(l: ReportLead): string[] {
-  if (l.returning) return ["returning"];
-  const m = ["leads", TYPE_METRIC[l.type] ?? "leads_inne"];
   const reach = REACH_ORDER.indexOf(l.maxStage as (typeof REACH_ORDER)[number]);
-  if (l.talked) m.push("talked");
+  const won = l.stage === "WYGRANA" || l.maxStage === "WYGRANA";
+  if (l.returning) {
+    const m = ["returning"];
+    if (reach >= REACH_ORDER.indexOf("REZERWACJA")) m.push("returning_bookings");
+    if (won) m.push("returning_wins");
+    return m;
+  }
+  if (isUnqualified(l)) return ["unqualified"];
+  const m = ["leads", TYPE_METRIC[l.type] ?? "leads_inne"];
+  if (l.talked || reach >= REACH_ORDER.indexOf("OFERTA")) m.push("talked");
   if (reach >= REACH_ORDER.indexOf("OFERTA")) m.push("offers");
   if (reach >= REACH_ORDER.indexOf("REZERWACJA")) m.push("bookings");
-  if (l.stage === "WYGRANA" || l.maxStage === "WYGRANA") m.push("wins");
+  if (won) m.push("wins");
   if (l.stage === "PRZEGRANA") {
     m.push("lost");
     m.push(`lost_${l.lostReason ?? "BRAK"}`);
@@ -123,6 +147,9 @@ function finalize(a: Acc): Node {
   const counts = ZERO_COUNTS();
   counts.leads = { razem: n("leads"), cennik: n("leads_cennik"), kontakt: n("leads_kontakt"), rezerwacja: n("leads_rezerwacja"), szkolenie: n("leads_szkolenie"), inne: n("leads_inne") };
   counts.returning = n("returning");
+  counts.returningBookings = n("returning_bookings");
+  counts.returningWins = n("returning_wins");
+  counts.unqualified = n("unqualified");
   counts.talked = n("talked");
   counts.offers = n("offers");
   counts.bookings = n("bookings");
@@ -131,6 +158,7 @@ function finalize(a: Acc): Node {
   for (const k of Object.keys(ids)) if (k.startsWith("lost_")) counts.lostByReason[k.slice(5)] = ids[k].length;
   const cost = round2(a.cost);
   const revenue = round2(a.revenue);
+  const returningRevenue = round2(a.returningRevenue);
   return {
     key: a.key,
     label: a.label,
@@ -143,6 +171,7 @@ function finalize(a: Acc): Node {
       clicks: a.clicks,
       cost,
       revenue,
+      returningRevenue,
       costPerLead: ratio(cost, counts.leads.razem),
       costPerTalk: ratio(cost, counts.talked),
       costPerBooking: ratio(cost, counts.bookings),
@@ -213,8 +242,9 @@ export function buildReport(input: ReportInput): Report {
   for (const l of input.leads) {
     const src = l.source;
     leadInfo[l.id] = { id: l.id, title: l.title, type: l.type, stage: l.stage, createdAt: l.createdAt.toISOString(), channel: src.channel, termFromFirst: src.fromFirst };
-    if (src.channel === CH.NONE || src.channel === CH.PHONE_EMAIL) unsourced.push({ id: l.id, channel: src.channel });
     const metrics = metricsOfLead(l);
+    // Do uzupełnienia tylko leady z pozyskania — nie stałe klientki i nie nie-klienci.
+    if (metrics.includes("leads") && (src.channel === CH.NONE || src.channel === CH.PHONE_EMAIL)) unsourced.push({ id: l.id, channel: src.channel });
     if (src.fromFirst && !l.returning) metrics.push("term_from_first"); // tylko lista id, nie liczba
     const chain: Acc[] = [root];
     const ch = channelOf(src.channel);
@@ -236,7 +266,10 @@ export function buildReport(input: ReportInput): Report {
     }
     for (const a of chain) {
       for (const m of metrics) push(a, m, l.id);
-      if (!l.returning && l.revenue != null && Number.isFinite(l.revenue)) a.revenue += l.revenue;
+      if (l.revenue != null && Number.isFinite(l.revenue)) {
+        if (l.returning) a.returningRevenue += l.revenue;
+        else if (metrics.includes("leads")) a.revenue += l.revenue;
+      }
     }
   }
 
@@ -284,7 +317,8 @@ export function buildReport(input: ReportInput): Report {
   const notes: string[] = [];
   if (!input.costs.length) notes.push("Brak zaimportowanych kosztów Google Ads w tym okresie — kolumny kosztowe będą puste.");
   notes.push("Koszty pochodzą tylko z Google Ads (import CSV). Koszty Mety nie są importowane.");
-  notes.push("Stałe klientki (returningClient) są w osobnej kolumnie i nie liczą się do kosztu pozyskania. Etap = najdalszy osiągnięty (maxStage); rozmowa jak w tablicy sygnałów.");
+  notes.push("Stałe klientki (flaga sygnału albo wcześniejszy wynajem klienta) są w osobnej kolumnie, razem z ich rezerwacjami i wygranymi, i nie liczą się do kosztu pozyskania. Przegrane z powodem „Poza branżą” to nie klienci — osobna kolumna, poza liczbą leadów.");
+  notes.push("Etap = najdalszy osiągnięty (maxStage). Rozmowa = wpis rozmowy lub maila w sygnale; każda oferta, rezerwacja i wygrana liczy się też jako rozmowa, więc oferty ≤ rozmowy.");
   return { from: input.from, to: input.to, total, channels: total.children, keywordsWithoutLeads, trend, unsourced, leads: leadInfo, notes };
 }
 
@@ -315,7 +349,7 @@ export function reportCsv(rows: Node[]): string {
   const num = (v: number | null) => (v == null ? "" : String(v).replace(".", ","));
   const head = [
     "Kanał", "Kampania", "Grupa", "Słowo kluczowe", "Wyświetlenia", "Kliknięcia", "Koszt", "Leady", "Cennik", "Kontakt", "Rezerwacja WWW", "Szkolenie", "Inne",
-    "Stałe klientki", "Rozmowy", "Oferty", "Rezerwacje", "Wygrane", "Przychód netto", "Koszt/lead", "Koszt/rozmowę", "Koszt/rezerwację", "Przychód/koszt", "Przegrane wg powodu",
+    "Stałe klientki", "Stałe – rezerwacje", "Stałe – wygrane", "Stałe – przychód netto", "Poza branżą", "Rozmowy", "Oferty", "Rezerwacje", "Wygrane", "Przychód netto", "Koszt/lead", "Koszt/rozmowę", "Koszt/rezerwację", "Przychód/koszt", "Przegrane wg powodu",
   ];
   const esc = (s: string) => (/[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
   const lines = [head.join(";")];
@@ -325,7 +359,7 @@ export function reportCsv(rows: Node[]): string {
     lines.push(
       [
         n.path.kanal, n.path.kampania ?? "", n.path.grupa ?? "", n.path.slowo ?? "", m.impressions, m.clicks, num(m.cost), m.leads.razem, m.leads.cennik, m.leads.kontakt, m.leads.rezerwacja, m.leads.szkolenie, m.leads.inne,
-        m.returning, m.talked, m.offers, m.bookings, m.wins, num(m.revenue), num(m.costPerLead), num(m.costPerTalk), num(m.costPerBooking), num(m.revenueToCost), lost,
+        m.returning, m.returningBookings, m.returningWins, num(m.returningRevenue), m.unqualified, m.talked, m.offers, m.bookings, m.wins, num(m.revenue), num(m.costPerLead), num(m.costPerTalk), num(m.costPerBooking), num(m.revenueToCost), lost,
       ]
         .map((v) => esc(String(v)))
         .join(";"),
@@ -344,6 +378,9 @@ const IDS_PL: Record<string, string> = {
   leads_szkolenie: "leady_szkolenie",
   leads_inne: "leady_inne",
   returning: "stale_klientki",
+  returning_bookings: "stale_rezerwacje",
+  returning_wins: "stale_wygrane",
+  unqualified: "poza_branza",
   talked: "rozmowy",
   offers: "oferty",
   bookings: "rezerwacje",
@@ -367,6 +404,8 @@ export function nodeJson(n: Node) {
     koszt: m.cost,
     leady: { razem: m.leads.razem, cennik: m.leads.cennik, kontakt: m.leads.kontakt, rezerwacja_www: m.leads.rezerwacja, szkolenie: m.leads.szkolenie, inne: m.leads.inne },
     stale_klientki: m.returning,
+    stale_klientki_szczegoly: { rezerwacje: m.returningBookings, wygrane: m.returningWins, przychod_netto: m.returningRevenue },
+    poza_branza_nie_klienci: m.unqualified,
     rozmowy: m.talked,
     oferty: m.offers,
     rezerwacje: m.bookings,
