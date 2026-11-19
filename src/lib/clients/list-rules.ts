@@ -58,8 +58,8 @@ export function seasonWindow(today: Date): SeasonWindow {
 }
 
 // Klientka „przed sezonem”: nie potencjalna, nie „Nie kontaktować”, ≥ 1
-// wynajem w okresie bazowym, 0 wynajmów i 0 rezerwacji w sezonie; pomijana,
-// dopóki trwa jej przerwa sezonowa (np. VII–VIII).
+// wynajem w okresie bazowym, 0 wynajmów i 0 rezerwacji w sezonie, bez żadnej
+// przyszłej rezerwacji (wniosek 56); pomijana, dopóki trwa jej przerwa sezonowa (np. VII–VIII).
 export function isBeforeSeason(input: {
   status: ClientStatus;
   rentalDates: Date[]; // zrealizowane wynajmy
@@ -71,6 +71,9 @@ export function isBeforeSeason(input: {
   const w = input.window;
   if (input.status === "POTENCJALNY" || input.status === "NIE_KONTAKTOWAC") return false;
   if (input.seasonalBreak.includes(input.today.getMonth() + 1)) return false;
+  // Wniosek 56: jakakolwiek przyszła rezerwacja (także w następnym półroczu, np. styczeń)
+  // zdejmuje z listy — klientka już zarezerwowała, nie ma do kogo dzwonić.
+  if (input.bookedDates.some((d) => d.getTime() > input.today.getTime())) return false;
   const inBase = input.rentalDates.some((d) => d >= w.baseFrom && d < w.baseTo);
   const inSeason = [...input.rentalDates, ...input.bookedDates].some((d) => d >= w.seasonFrom && d < w.seasonTo);
   return inBase && !inSeason;

@@ -26,6 +26,12 @@ describe("przed sezonem — pętla półroczy", () => {
     expect(isBeforeSeason({ ...base, rentalDates: [d(2026, 4, 10)], bookedDates: [d(2026, 10, 23)] })).toBe(false);
     expect(isBeforeSeason({ ...base, rentalDates: [d(2026, 4, 10), d(2026, 9, 4)], bookedDates: [] })).toBe(false);
   });
+  it("wniosek 56: rezerwacja w następnym półroczu (styczeń) też zdejmuje z listy", () => {
+    // wrzesień 2026: sezon IX–XII, rezerwacja 11.01.2027 wypada poza sezon, ale klientka już zarezerwowała
+    expect(isBeforeSeason({ ...base, rentalDates: [d(2026, 4, 10)], bookedDates: [d(2027, 1, 11)] })).toBe(false);
+    // rezerwacja w przeszłości (wynajem z bazy) nie zdejmuje — to nie jest przyszła rezerwacja
+    expect(isBeforeSeason({ ...base, rentalDates: [d(2026, 4, 10)], bookedDates: [d(2026, 6, 5)] })).toBe(true);
+  });
   it("trwająca przerwa sezonowa, Nie kontaktować, potencjalna → nie", () => {
     expect(isBeforeSeason({ ...base, rentalDates: [d(2026, 4, 10)], bookedDates: [], seasonalBreak: [9] })).toBe(false);
     expect(isBeforeSeason({ ...base, status: "NIE_KONTAKTOWAC", rentalDates: [d(2026, 4, 10)], bookedDates: [] })).toBe(false);
