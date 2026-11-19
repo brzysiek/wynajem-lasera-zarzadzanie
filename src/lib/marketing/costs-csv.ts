@@ -42,7 +42,8 @@ const ALIASES: Record<string, RegExp> = {
   campaignId: /^(identyfikator kampanii|campaign id|id kampanii)$/,
   adGroup: /^(grupa reklam|grupa reklamowa|ad group|nazwa grupy reklam|ad group name)$/,
   adGroupId: /^(identyfikator grupy reklam|ad group id|id grupy reklam)$/,
-  keyword: /^(słowo kluczowe|slowo kluczowe|keyword|search keyword|słowo kluczowe w wyszukiwarce|keyword text|tekst słowa kluczowego)$/,
+  keyword: /^(słowo kluczowe|slowo kluczowe|keyword|search keyword|słowo kluczowe w sieci wyszukiwania|slowo kluczowe w sieci wyszukiwania|słowo kluczowe w wyszukiwarce|keyword text|tekst słowa kluczowego)$/,
+  currency: /^(kod waluty|currency code|currency|waluta)$/,
   impressions: /^(wyświetlenia|wyswietlenia|impressions|impr\.?)$/,
   clicks: /^(kliknięcia|klikniecia|clicks)$/,
   cost: /^(koszt|cost)(\s*\(.*\))?$/,
@@ -160,6 +161,7 @@ export function parseCostsCsv(text: string): CostParse {
 
   const cell = (cells: string[], k: keyof typeof ALIASES) => (cols[k] === undefined ? "" : (cells[cols[k]!] ?? ""));
   const raw: CostRowRaw[] = [];
+  const currencies = new Set<string>();
   let skipped = 0;
   for (const line of lines.slice(at + 1)) {
     const cells = splitLine(line, delim);
@@ -168,6 +170,8 @@ export function parseCostsCsv(text: string): CostParse {
       skipped++;
       continue;
     }
+    const cur = cell(cells, "currency").trim().toUpperCase();
+    if (cur) currencies.add(cur);
     raw.push({
       day,
       campaignName: cell(cells, "campaign"),
@@ -208,6 +212,9 @@ export function parseCostsCsv(text: string): CostParse {
   }
   const rows = [...map.values()].sort((a, b) => a.day.localeCompare(b.day) || a.campaignKey.localeCompare(b.campaignKey));
   if (!rows.length) warnings.push("Nagłówek jest, ale nie ma wierszy z poprawną datą.");
+  // Kolumna „Kod waluty” jest ignorowana, ale waluta inna niż PLN psułaby sumy — ostrzegamy.
+  const foreign = [...currencies].filter((c) => c !== "PLN");
+  if (foreign.length) warnings.push(`Waluta w pliku: ${foreign.join(", ")} (nie PLN) — kwoty zapiszą się bez przeliczenia. Sprawdź konto Google Ads albo przelicz plik.`);
   return { rows, skipped, warnings, headerFound: true };
 }
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { BTN, BTN_PRIMARY, Card, ErrorNote } from "@/components/porzadki/shared";
+import { APP_CSS_VARS } from "@/components/shell-tokens";
 
 // Ustawienia → Konwersje Google (wniosek 54, etap 1): ile konwersji czeka,
 // dlaczego sygnały odpadły i pobranie pliku CSV (z oznaczeniem albo bez).
@@ -76,7 +77,7 @@ export function GoogleConversionsPanel({ initial }: { initial: ConversionSummary
   }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div style={APP_CSS_VARS} className="flex max-w-3xl flex-col gap-4">
       <Card title="Do wgrania">
         <p className="mb-3 text-sm text-[var(--c-text)]">
           Sygnałów ze zgodą marketingową i identyfikatorem kliknięcia: <b>{data.leadsEligible}</b> (z {data.leadsChecked} z ostatnich 90 dni z formularzy WWW).

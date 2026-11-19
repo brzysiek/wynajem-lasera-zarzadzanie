@@ -34,6 +34,39 @@ const PL = [
   "Razem: konto,,,,,1384,17,149.25",
 ].join("\n");
 
+// Eksport z edytora raportów Google Ads (PL): dwie linie tytułu, potem nagłówek z „Słowo kluczowe w sieci wyszukiwania” i „Kod waluty”.
+const EDITOR = [
+  "Raport bez tytułu",
+  "6 października 2026 - 18 listopada 2026",
+  "Grupa reklam,Dzień,Kampania,Identyfikator grupy reklam,Słowo kluczowe w sieci wyszukiwania,Wyświetlenia,Kliknięcia,Kod waluty,Koszt",
+  'Alma ogólne,2026-11-17,Alma – wyszukiwanie,111,"[wynajem lasera alma]",120,6,PLN,"41,20"',
+  'Alma ogólne,2026-11-17,Alma – wyszukiwanie,111,"wynajem lasera alma",30,1,PLN,"8,05"',
+  'LS,2026-11-18,LightSheer – wyszukiwanie,222,"lightsheer wynajem","1 234",10,PLN,"100,00"',
+].join("\n");
+
+describe("import kosztów — format z edytora raportów Google Ads (A2)", () => {
+  it("rozpoznaje „Słowo kluczowe w sieci wyszukiwania” i dwie linie tytułu; kod waluty ignorowany", () => {
+    const p = parseCostsCsv(EDITOR);
+    expect(p.headerFound).toBe(true);
+    expect(p.warnings.some((w) => w.includes("Brak kolumny „Słowo kluczowe”"))).toBe(false);
+    expect(p.warnings.some((w) => w.includes("Waluta"))).toBe(false);
+    expect(p.rows).toHaveLength(2);
+    expect(p.rows.find((r) => r.campaignKey === "alma")).toMatchObject({ keyword: "wynajem lasera alma", adGroupId: "111", adGroupName: "Alma ogólne", impressions: 150, clicks: 7, cost: 49.25 });
+    expect(p.rows.find((r) => r.campaignKey === "lightsheer")).toMatchObject({ keyword: "lightsheer wynajem", impressions: 1234, cost: 100 });
+  });
+  it("waluta inna niż PLN daje ostrzeżenie w podglądzie", () => {
+    const eur = EDITOR.replace(/,PLN,/g, ",EUR,");
+    const pv = previewCosts(parseCostsCsv(eur));
+    expect(pv.warnings.some((w) => w.includes("EUR") && w.includes("nie PLN"))).toBe(true);
+  });
+  it("pozostałe synonimy frazy: Search keyword, Keyword, Słowo kluczowe", () => {
+    for (const h of ["Search keyword", "Keyword", "Słowo kluczowe"]) {
+      const csv = [`Day,Campaign,${h},Impr.,Clicks,Cost`, "2026-11-18,Alma,laser,5,1,3.5"].join("\n");
+      expect(parseCostsCsv(csv).rows[0], h).toMatchObject({ keyword: "laser", cost: 3.5 });
+    }
+  });
+});
+
 describe("import kosztów", () => {
   it("nagłówki PL, wiersze tytułowe, razem pominięte, typy dopasowania zsumowane", () => {
     const p = parseCostsCsv(PL);

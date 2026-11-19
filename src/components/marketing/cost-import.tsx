@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { BASE_PATH } from "@/lib/base-path";
 import { BTN, BTN_PRIMARY, Card, ErrorNote } from "@/components/porzadki/shared";
+import { APP_CSS_VARS } from "@/components/shell-tokens";
 import type { CostPreview } from "@/lib/marketing/costs-csv";
 
 // Marketing → Import kosztów (wniosek 54, etap 1b): CSV raportu słów kluczowych
@@ -65,7 +66,7 @@ export function CostImport({ initial }: { initial: CostStatus }) {
   }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div style={APP_CSS_VARS} className="flex max-w-3xl flex-col gap-4">
       <Card title="Zaimportowane koszty">
         <p className="m-0 text-sm text-[var(--c-text)]">
           {status.days === 0 ? (
@@ -110,7 +111,13 @@ export function CostImport({ initial }: { initial: CostStatus }) {
           <button type="button" className={BTN} disabled={busy || !text.trim()} onClick={() => void send(false)}>
             Podgląd
           </button>
-          <button type="button" className={BTN_PRIMARY} disabled={busy || !preview || preview.rows === 0} onClick={() => void send(true)}>
+          <button
+            type="button"
+            className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 disabled:opacity-100`}
+            disabled={busy || !preview || preview.rows === 0}
+            onClick={() => void send(true)}
+            title={!preview ? "Najpierw wczytaj plik i obejrzyj podgląd" : undefined}
+          >
             Zapisz koszty
           </button>
         </div>
