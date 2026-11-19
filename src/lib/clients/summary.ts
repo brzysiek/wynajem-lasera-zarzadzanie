@@ -1,7 +1,7 @@
 // Podsumowanie klienta z historii jego wynajmów — jedna czysta funkcja dla
 // listy i karty klienta, żeby liczby nigdy się nie rozjeżdżały. Bez
 // zależności (vitest bez aliasu "@/").
-import { arrivalDates, arrivalRhythmLabel, computeClientStatus, daysAgo, isRealizedRental, type ClientStatus } from "./status";
+import { arrivalDates, arrivalRhythmLabel, computeClientStatus, daysAgo, isDormantOverrideActive, isRealizedRental, type ClientStatus, type DormantInput, type StatusOverride } from "./status";
 import type { DeviceInterestKey } from "./labels";
 import { invoiceOnlyRentalDates } from "../history/invoices";
 
@@ -26,6 +26,9 @@ export type ClientInvoiceFact = {
 
 export type ClientSummary = {
   status: ClientStatus;
+  // Wniosek 57: status „Uśpiony” z ręcznego oznaczenia (nie z rytmu wynajmów) i data powrotu.
+  dormantManual: boolean;
+  dormantReturnAt: Date | null;
   // Wniosek 20: przyjazdy (kilka urządzeń w ciągu 3 dni = 1) i rytm obok
   // statusu („co ok. N mies.” / „okazjonalnie”, null przy 1 przyjeździe).
   arrivals: number;
@@ -59,7 +62,8 @@ export function realizedDatesOf(rentals: ClientRentalFact[], invoices: ClientInv
 // totalNet; transport rozliczany osobno nie wchodzi tam do przychodu, więc
 // i tu nie wchodzi). Przyszłe rezerwacje nie są jeszcze przychodem.
 export function summarizeClient(input: {
-  statusOverride: "NIE_KONTAKTOWAC" | null;
+  statusOverride: StatusOverride | null;
+  dormant?: DormantInput | null;
   rentals: ClientRentalFact[];
   invoices?: ClientInvoiceFact[];
   today: Date;
@@ -79,13 +83,16 @@ export function summarizeClient(input: {
     historical: true,
   }));
   const realized = [...realizedRentals, ...invoiceRentals].sort((a, b) => b.startsAt.getTime() - a.startsAt.getTime());
-  const status = computeClientStatus({
+  // Rezerwacja = wynajem (nie szkolenie) nieusunięty, zaczynający się po dziś.
+  const statusInput = {
     statusOverride: input.statusOverride,
+    dormant: input.dormant ?? null,
     realizedRentalDates: realized.map((r) => r.startsAt),
     today: input.today,
-    // Rezerwacja = wynajem (nie szkolenie) nieusunięty, zaczynający się po dziś.
     reservationDates: input.rentals.filter((r) => r.eventType === "WYNAJEM" && !r.deletedInGoogle && r.startsAt > input.today).map((r) => r.startsAt),
-  });
+  };
+  const status = computeClientStatus(statusInput);
+  const dormantManual = isDormantOverrideActive(statusInput);
 
   const finished = input.rentals.filter((r) => !r.deletedInGoogle && r.endsAt <= input.today && r.totalNet != null);
   const revenueNet = Math.round(finished.reduce((s, r) => s + (r.totalNet ?? 0), 0) * 100) / 100;
@@ -104,6 +111,8 @@ export function summarizeClient(input: {
   const realizedDates = realized.map((r) => r.startsAt);
   return {
     status,
+    dormantManual,
+    dormantReturnAt: dormantManual ? (input.dormant?.returnAt ?? null) : null,
     arrivals: arrivalDates(realizedDates).length,
     rhythmHint: arrivalRhythmLabel(realizedDates),
     rentals12m: realized.filter((r) => daysAgo(r.startsAt, input.today) <= 365).length,

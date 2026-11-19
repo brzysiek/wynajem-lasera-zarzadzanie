@@ -2,7 +2,7 @@
 // funkcje (vitest). Normalizacja telefonu wstrzykiwana (normalizePolishPhone
 // z src/lib/reminders.ts — ta sama co SMS).
 import { normalizeNip, parseDistanceKm, parseMoney } from "./hubspot-import";
-import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_KEYS, SOURCE_LABEL, type DeviceInterestKey } from "./labels";
+import { CLINIC_TYPE_LABEL, DEVICE_INTEREST_KEYS, DORMANT_REASON_KEYS, SOURCE_LABEL, type DeviceInterestKey, type DormantReasonKey } from "./labels";
 import { parseClientProfilePatch, parseContactProfilePatch, parseDay, type ClientProfilePatch, type ContactProfilePatch } from "./profile-fields";
 import { TRANSPORT_SOURCE_KEYS, type TransportSourceKey } from "./terms-rules";
 
@@ -41,7 +41,10 @@ export type ClientPatch = Partial<{
   clinicType: keyof typeof CLINIC_TYPE_LABEL | null;
   source: keyof typeof SOURCE_LABEL | null;
   deviceInterests: DeviceInterestKey[];
-  statusOverride: "NIE_KONTAKTOWAC" | null;
+  statusOverride: "NIE_KONTAKTOWAC" | "USPIONY" | null;
+  // Wniosek 57: powód i opcjonalna data powrotu przy „Uśpiona”.
+  dormantReason: DormantReasonKey | null;
+  dormantReturnAt: Date | null;
   notes: string | null;
 }> &
   ClientProfilePatch;
@@ -103,8 +106,17 @@ export function parseClientPatch(body: Record<string, unknown>): Result<ClientPa
   }
   if ("statusOverride" in body) {
     const v = body.statusOverride;
-    if (v !== null && v !== "NIE_KONTAKTOWAC") return { ok: false, message: "Nieprawidłowa blokada." };
+    if (v !== null && v !== "NIE_KONTAKTOWAC" && v !== "USPIONY") return { ok: false, message: "Nieprawidłowe oznaczenie statusu." };
     out.statusOverride = v;
+    if (v === "USPIONY") {
+      const reason = body.dormantReason;
+      if (typeof reason !== "string" || !(DORMANT_REASON_KEYS as readonly string[]).includes(reason)) return { ok: false, message: `Uśpiona: podaj powód (${DORMANT_REASON_KEYS.join(", ")}).` };
+      out.dormantReason = reason as DormantReasonKey;
+      const ret = body.dormantReturnAt;
+      if (ret == null || ret === "") out.dormantReturnAt = null;
+      else if (typeof ret === "string" && /^\d{4}-\d{2}-\d{2}$/.test(ret) && !Number.isNaN(new Date(`${ret}T00:00:00Z`).getTime())) out.dormantReturnAt = new Date(`${ret}T00:00:00Z`);
+      else return { ok: false, message: "Data powrotu: RRRR-MM-DD." };
+    }
   }
   if ("notes" in body) out.notes = typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
   // Nowe pola karty (sekcja 3) — src/lib/clients/profile-fields.ts.

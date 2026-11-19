@@ -4,7 +4,7 @@ import { BASE_PATH } from "@/lib/base-path";
 import { useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import type { ClientDetail } from "@/lib/clients/load";
-import { CLINIC_TYPE_LABEL, RESIGN_REASON_KEYS, RESIGN_REASON_LABEL, STATUS_LABEL, type ResignReasonKey } from "@/lib/clients/labels";
+import { CLINIC_TYPE_LABEL, DORMANT_REASON_KEYS, DORMANT_REASON_LABEL, RESIGN_REASON_KEYS, RESIGN_REASON_LABEL, STATUS_LABEL, type DormantReasonKey, type ResignReasonKey } from "@/lib/clients/labels";
 import { CallOutcomeDialog } from "@/components/leads/call-outcome-dialog";
 import { PERSON_ROLE_LABEL, type PersonRole } from "@/lib/clients/profile-fields";
 import { monthsLabel } from "@/lib/clients/rhythm";
@@ -38,12 +38,20 @@ export function CardHeader({
 }) {
   const [outcome, setOutcome] = useState(false);
   const [resigning, setResigning] = useState(false);
+  const [dormantOpen, setDormantOpen] = useState(false);
   const openLead = d.leads.find((l) => !l.archived && ["SYGNAL", "WYWIAD", "OFERTA", "REZERWACJA", "ODLOZONE"].includes(l.stage)) ?? null;
   async function undoResign() {
     const { ok } = await api(`/api/clients/${d.id}/resign`, "DELETE");
     notify?.(ok ? "Cofnięto „Zrezygnował”." : "Nie udało się cofnąć.", !ok);
     if (ok) onChanged?.();
   }
+  // Wniosek 57: cofnięcie ręcznego „Uśpiona”.
+  async function undoDormant() {
+    const { ok } = await api(`/api/clients/${d.id}`, "PATCH", { statusOverride: null });
+    notify?.(ok ? "Cofnięto „Uśpiona”." : "Nie udało się cofnąć.", !ok);
+    if (ok) onChanged?.();
+  }
+  const dormantActive = d.dormant?.active === true;
   const primary = d.contacts.find((c) => c.isPrimary) ?? d.contacts[0] ?? null;
   const email = d.contacts.find((c) => c.isPrimary && c.email)?.email ?? d.contacts.find((c) => c.email)?.email ?? null;
   const hasSms = d.contacts.some((c) => c.phone || c.phone2);
@@ -110,6 +118,30 @@ export function CardHeader({
                 Zrezygnował
               </span>
             )}
+            {dormantActive && d.dormant && (
+              <span
+                className="flex-none bg-[#FBF0E7] px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] text-[#B8612F]"
+                title={[
+                  "Uśpiona ręcznie — znika sama przy nowej rezerwacji",
+                  d.dormant.reason ? DORMANT_REASON_LABEL[d.dormant.reason] : null,
+                  d.dormant.returnAt ? `powrót ${new Date(`${d.dormant.returnAt}T00:00:00`).toLocaleDateString("pl-PL")}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              >
+                ręcznie{d.dormant.returnAt ? ` · do ${new Date(`${d.dormant.returnAt}T00:00:00`).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" })}` : ""}
+              </span>
+            )}
+            {!isAgent &&
+              (dormantActive ? (
+                <button type="button" onClick={() => void undoDormant()} className="flex-none text-[12px] text-[#5C6166] underline-offset-2 hover:text-[#1B6FA8] hover:underline">
+                  cofnij uśpienie
+                </button>
+              ) : d.statusOverride !== "NIE_KONTAKTOWAC" ? (
+                <button type="button" onClick={() => setDormantOpen(true)} className="flex-none text-[12px] text-[#8A939B] underline-offset-2 hover:text-[#B8612F] hover:underline" title="Oznacz jako uśpiona — wstrzymała współpracę. Oznaczenie znika samo przy nowej rezerwacji albo po dacie powrotu.">
+                  uśpiona?
+                </button>
+              ) : null)}
             {!isAgent &&
               (d.resigned ? (
                 <button type="button" onClick={() => void undoResign()} className="flex-none text-[12px] text-[#5C6166] underline-offset-2 hover:text-[#1B6FA8] hover:underline">
@@ -192,6 +224,17 @@ export function CardHeader({
           }}
         />
       )}
+      {dormantOpen && (
+        <DormantDialog
+          clientId={d.id}
+          onClose={() => setDormantOpen(false)}
+          onDone={() => {
+            setDormantOpen(false);
+            notify?.("Klientka oznaczona jako uśpiona.");
+            onChanged?.();
+          }}
+        />
+      )}
       {resigning && (
         <ResignDialog
           clientId={d.id}
@@ -203,6 +246,60 @@ export function CardHeader({
           }}
         />
       )}
+    </div>
+  );
+}
+
+// Wniosek 57: „Uśpiona” — wstrzymała współpracę (brak klientów, własny sprzęt…). Powód
+// obowiązkowy, data powrotu opcjonalna (w tym dniu zadanie „zapytać o powrót”). Oznaczenie
+// znika samo przy nowej rezerwacji; wyliczony status wraca. To nie „Nie kontaktować”.
+function DormantDialog({ clientId, onClose, onDone }: { clientId: string; onClose: () => void; onDone: () => void }) {
+  const [reason, setReason] = useState<DormantReasonKey>("BRAK_KLIENTOW");
+  const [returnAt, setReturnAt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const { ok, data } = await api<{ message?: string }>(`/api/clients/${clientId}`, "PATCH", { statusOverride: "USPIONY", dormantReason: reason, dormantReturnAt: returnAt || null });
+    setBusy(false);
+    if (!ok) return setError(data.message ?? "Nie udało się zapisać.");
+    onDone();
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="flex w-full max-w-md flex-col gap-3 bg-white p-5" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Uśpiona">
+        <h2 className="m-0 text-[17px] font-semibold text-[#0C3450]">Oznacz jako uśpiona</h2>
+        <p className="m-0 text-[12.5px] text-[#5C6166]">Status zmienia się od razu na „Uśpiony”. Oznaczenie znika samo, gdy pojawi się nowa rezerwacja albo minie data powrotu — wtedy wraca status wyliczony z wynajmów.</p>
+        <label className={LABEL_WIDE}>
+          Powód
+          <select className={INPUT} value={reason} onChange={(e) => setReason(e.target.value as DormantReasonKey)}>
+            {DORMANT_REASON_KEYS.map((k) => (
+              <option key={k} value={k}>
+                {DORMANT_REASON_LABEL[k]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={LABEL_WIDE}>
+          Data powrotu (opcjonalnie — w tym dniu zadanie „zapytać o powrót”)
+          <input type="date" className={INPUT} value={returnAt} onChange={(e) => setReturnAt(e.target.value)} />
+        </label>
+        {error && <p className="m-0 text-[12.5px] text-[#B8612F]">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className={BTN_OUTLINE}>
+            Anuluj
+          </button>
+          <button type="button" disabled={busy} onClick={() => void save()} className={BTN_PRIMARY}>
+            Zapisz
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

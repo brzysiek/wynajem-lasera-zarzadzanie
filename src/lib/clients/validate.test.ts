@@ -10,6 +10,17 @@ const deps = {
   },
 };
 
+describe("parseClientPatch — „Uśpiona” (wniosek 57)", () => {
+  it("wymaga powodu z listy; data powrotu opcjonalna i poprawna", () => {
+    expect(parseClientPatch({ statusOverride: "USPIONY" }).ok).toBe(false);
+    expect(parseClientPatch({ statusOverride: "USPIONY", dormantReason: "cokolwiek" }).ok).toBe(false);
+    expect(parseClientPatch({ statusOverride: "USPIONY", dormantReason: "BRAK_KLIENTOW", dormantReturnAt: "15.03.2027" }).ok).toBe(false);
+    const ok = parseClientPatch({ statusOverride: "USPIONY", dormantReason: "WLASNY_SPRZET", dormantReturnAt: "2027-03-15" });
+    expect(ok).toMatchObject({ ok: true, data: { statusOverride: "USPIONY", dormantReason: "WLASNY_SPRZET" } });
+    expect(parseClientPatch({ statusOverride: "USPIONY", dormantReason: "INNE" })).toMatchObject({ ok: true, data: { dormantReturnAt: null } });
+  });
+});
+
 describe("parseClientPatch", () => {
   it("zmienia tylko pola obecne w body i normalizuje wartości", () => {
     const r = parseClientPatch({ nip: "679-000-11-22", transportPriceNet: "120,00 zł", distanceKm: "18 km", city: "  Kraków " });

@@ -56,6 +56,16 @@ export const SOURCE_LABEL = {
 } as const;
 export type SourceKey = keyof typeof SOURCE_LABEL;
 
+// Wniosek 57: powód ręcznego oznaczenia „Uśpiona”.
+export const DORMANT_REASON_LABEL = {
+  BRAK_KLIENTOW: "brak klientów",
+  WLASNY_SPRZET: "własny sprzęt",
+  PRZERWA_SEZONOWA: "przerwa sezonowa",
+  INNE: "inny powód",
+} as const;
+export type DormantReasonKey = keyof typeof DORMANT_REASON_LABEL;
+export const DORMANT_REASON_KEYS = Object.keys(DORMANT_REASON_LABEL) as DormantReasonKey[];
+
 export const CLINIC_TYPE_LABEL = {
   GABINET_KOSMETOLOGICZNY: "Gabinet kosmetologiczny",
   KLINIKA_MEDYCYNY_ESTETYCZNEJ: "Klinika medycyny estetycznej",

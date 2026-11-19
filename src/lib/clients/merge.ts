@@ -46,7 +46,11 @@ export async function mergeClients(
     fill.qualifiedAt = source.qualifiedAt;
     fill.qualifiedReason = source.qualifiedReason;
   }
-  if (!target.statusOverride && source.statusOverride) fill.statusOverride = source.statusOverride;
+  if (!target.statusOverride && source.statusOverride) {
+    fill.statusOverride = source.statusOverride;
+    // Wniosek 57: „Uśpiona” przenosi też powód, datę powrotu i datę ustawienia.
+    if (source.statusOverride === "USPIONY") Object.assign(fill, { statusOverrideAt: source.statusOverrideAt, dormantReason: source.dormantReason, dormantReturnAt: source.dormantReturnAt });
+  }
   const changes = changedFields(target as unknown as Record<string, unknown>, fill);
 
   const moved: Record<string, number> = {};

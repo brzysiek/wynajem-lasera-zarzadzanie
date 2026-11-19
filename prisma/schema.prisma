@@ -752,6 +752,7 @@ model FuelInvoice {
 // Jedyna ręczna wartość statusu — reszta statusów wynika z wynajmów.
 enum ClientStatusOverride {
   NIE_KONTAKTOWAC
+  USPIONY // wniosek 57: ręcznie „Uśpiona” — znika sama przy nowej rezerwacji / po dacie powrotu
 }
 
 enum DeviceInterest {
@@ -817,6 +818,11 @@ model Client {
   source            ClientSource?
   deviceInterests   Json? // DeviceInterest[]
   statusOverride    ClientStatusOverride?
+  // Wniosek 57: kiedy ustawiono nadpisanie, powód „Uśpiona” (BRAK_KLIENTOW | WLASNY_SPRZET |
+  // PRZERWA_SEZONOWA | INNE) i opcjonalna data powrotu (po niej zadanie „zapytać o powrót”).
+  statusOverrideAt  DateTime?
+  dormantReason     String?               @db.VarChar(24)
+  dormantReturnAt   DateTime?             @db.Date
   // Ostatni policzony status (wniosek 20) — tylko do dziennika zmian: codzienny
   // cron porównuje z bieżącą regułą i zapisuje zmianę (przed → po). Status
   // nadal liczony przy odczycie (status.ts), to pole go nie ustala.

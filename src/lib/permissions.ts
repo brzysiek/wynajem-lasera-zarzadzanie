@@ -65,6 +65,8 @@ export const AGENT_CLIENT_FIELDS = [
   "source",
   "deviceInterests",
   "statusOverride",
+  "dormantReason", // wniosek 57: „Uśpiona” tylko przez propozycję (patrz update.ts)
+  "dormantReturnAt",
   // Karta klienta, sekcja 3 (bez warunków handlowych — te agent tylko
   // proponuje: PROPOSAL_ONLY_CLIENT_FIELDS w src/lib/clients/profile-fields.ts).
   "shortName",

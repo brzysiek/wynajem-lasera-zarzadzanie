@@ -128,7 +128,8 @@ export function ClientDataForm({
       clinicType: f.clinicType || null,
       source: f.source || null,
       deviceInterests: f.deviceInterests,
-      statusOverride: f.blocked ? "NIE_KONTAKTOWAC" : null,
+      // Wniosek 57: ręczne „Uśpiona” zostaje, gdy formularz go nie dotyka (zmienia się je osobno, w nagłówku karty).
+      ...(f.blocked ? { statusOverride: "NIE_KONTAKTOWAC" } : detail.statusOverride === "USPIONY" ? {} : { statusOverride: null }),
     });
     setSaving(false);
     if (!ok) return setError(data.message ?? "Nie udało się zapisać.");

@@ -1,5 +1,5 @@
 // Status klienta — LICZONY z historii wynajmów przy odczycie, nigdzie nie
-// zapisywany (jedyny wyjątek: ręczna blokada NIE_KONTAKTOWAC na kliencie).
+// zapisywany (wyjątki: ręczna blokada NIE_KONTAKTOWAC i czasowe „Uśpiona” na kliencie).
 // Czyste funkcje bez zależności (vitest bez aliasu "@/"). Daty po lokalnych
 // składowych — serwer działa w Europe/Warsaw, jak reszta aplikacji
 // (src/lib/pricing/duration.ts, src/lib/revenue/period.ts).
@@ -77,14 +77,39 @@ export function arrivalDates(dates: Date[]): Date[] {
 // isRealizedRental (filtrowanie robi wywołujący); `reservationDates` —
 // przyszłe rezerwacje (rezerwacja w ciągu 3 dni od zrealizowanego przyjazdu
 // to ten sam przyjazd, nie nowy).
+export type StatusOverride = "NIE_KONTAKTOWAC" | "USPIONY";
+
+// Wniosek 57: ręczne „Uśpiona” (wstrzymała współpracę) obowiązuje tylko do czasu, aż:
+// pojawi się rezerwacja (jakakolwiek przyszła), nastąpi nowy zrealizowany wynajem po dacie
+// ustawienia albo minie data powrotu. Potem wraca status wyliczony z wynajmów.
+export type DormantInput = { setAt: Date | null; returnAt: Date | null };
+
+export function isDormantOverrideActive(input: {
+  statusOverride: StatusOverride | null;
+  dormant?: DormantInput | null;
+  realizedRentalDates: Date[];
+  today: Date;
+  reservationDates?: Date[];
+  hasFutureReservation?: boolean;
+}): boolean {
+  if (input.statusOverride !== "USPIONY") return false;
+  if ((input.reservationDates ?? []).length > 0 || input.hasFutureReservation === true) return false;
+  const d = input.dormant;
+  if (d?.returnAt && dayIndex(input.today) >= dayIndex(d.returnAt)) return false;
+  if (d?.setAt && input.realizedRentalDates.some((r) => dayIndex(r) > dayIndex(d.setAt as Date))) return false;
+  return true;
+}
+
 export function computeClientStatus(input: {
-  statusOverride: "NIE_KONTAKTOWAC" | null;
+  statusOverride: StatusOverride | null;
+  dormant?: DormantInput | null;
   realizedRentalDates: Date[];
   today: Date;
   reservationDates?: Date[];
   hasFutureReservation?: boolean;
 }): ClientStatus {
   if (input.statusOverride === "NIE_KONTAKTOWAC") return "NIE_KONTAKTOWAC";
+  if (isDormantOverrideActive(input)) return "USPIONY";
   const realized = arrivalDates(input.realizedRentalDates);
   const lastRealized = realized[realized.length - 1] ?? null;
   const reservations = (input.reservationDates ?? []).filter((d) => !lastRealized || dayIndex(d) - dayIndex(lastRealized) > ARRIVAL_GAP_DAYS);

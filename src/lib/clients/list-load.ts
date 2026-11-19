@@ -103,6 +103,9 @@ export type ClientListRow = {
   nextStep: { text: string; dueAt: string | null; person: string | null; agent: boolean; href: string | null } | null;
   check: string | null; // „do sprawdzenia: …”
   beforeSeason: boolean;
+  // Wniosek 57: status „Uśpiony” z ręcznego oznaczenia (nie z rytmu) i data powrotu (RRRR-MM-DD).
+  dormantManual: boolean;
+  dormantReturnAt: string | null;
   // Wniosek 24: stan „Zrezygnował” (powód, data ponownego kontaktu) albo null.
   resigned: { reason: string; at: string; recontactAt: string | null } | null;
   overdueRatio: number | null; // dni od ostatniego / rytm, bez rezerwacji
@@ -204,6 +207,8 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       geoQuery: true,
       nip: true,
       statusOverride: true,
+      statusOverrideAt: true,
+      dormantReturnAt: true,
       resignedAt: true,
       resignedReason: true,
       resignedRecontactAt: true,
@@ -295,6 +300,7 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
     const rentalRows = c.rentals as unknown as (RentalFactRow & (typeof c.rentals)[number])[];
     const summary = summarizeClient({
       statusOverride: c.statusOverride,
+      dormant: { setAt: c.statusOverrideAt, returnAt: c.dormantReturnAt },
       rentals: [...rentalRows.map(toFact), ...c.history.map(historyToFact)],
       invoices: c.invoices.map(invoiceToFact),
       today,
@@ -474,6 +480,8 @@ export async function loadClientRows(today = new Date(), opts: { unassigned?: Un
       check,
       // „Zrezygnował” wypada z „przed sezonem” i „Kontaktu po wynajmie” (wniosek 24).
       beforeSeason: beforeSeason && !c.resignedAt,
+      dormantManual: summary.dormantManual,
+      dormantReturnAt: summary.dormantReturnAt?.toISOString().slice(0, 10) ?? null,
       resigned: c.resignedAt && c.resignedReason ? { reason: c.resignedReason, at: c.resignedAt.toISOString(), recontactAt: c.resignedRecontactAt?.toISOString() ?? null } : null,
       overdueRatio,
       pickupAt: c.resignedAt ? null : pickupAt,

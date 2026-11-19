@@ -5,7 +5,7 @@ import type { TransportZone } from "@/lib/clients/delivery-rules";
 import { loadClientPrices, type ClientPriceDto } from "@/lib/clients/terms";
 import { deviceCodeFor, invoiceNetOf, positionsSummary, type ClientPriceRow } from "@/lib/clients/terms-rules";
 import { getHubspotContactUrl } from "@/lib/integrations/hubspot";
-import type { ClinicTypeKey, DeviceInterestKey, SourceKey } from "@/lib/clients/labels";
+import type { ClinicTypeKey, DeviceInterestKey, DormantReasonKey, SourceKey } from "@/lib/clients/labels";
 import { realizedDatesOf, summarizeClient } from "@/lib/clients/summary";
 import { loadOpenTasksFor, type OpenTaskDto } from "@/lib/task-links";
 import { rentalDurationDays } from "@/lib/pricing/duration";
@@ -126,7 +126,9 @@ export type ClientDetail = {
   deviceInterests: DeviceInterestKey[];
   // Archiwum (Porządki): null = klient aktywny.
   archive: { at: string; reason: string | null; note: string | null; batch: string | null } | null;
-  statusOverride: "NIE_KONTAKTOWAC" | null;
+  statusOverride: "NIE_KONTAKTOWAC" | "USPIONY" | null;
+  // Wniosek 57: szczegóły ręcznego „Uśpiona” (powód, data powrotu, data ustawienia) i czy jeszcze obowiązuje.
+  dormant: { reason: DormantReasonKey | null; returnAt: string | null; setAt: string | null; active: boolean } | null;
   // Wniosek 24: stan „Zrezygnował” (powód, data, opcjonalny ponowny kontakt).
   resigned: { at: string; reason: string | null; note: string | null; recontactAt: string | null } | null;
   notes: string | null;
@@ -356,6 +358,7 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
 
   const summary = summarizeClient({
     statusOverride: c.statusOverride,
+    dormant: { setAt: c.statusOverrideAt, returnAt: c.dormantReturnAt },
     rentals: [...(c.rentals as unknown as RentalFactRow[]).map(toFact), ...c.history.map(historyToFact)],
     invoices: c.invoices.map(invoiceToFact),
     today,
@@ -703,6 +706,10 @@ export async function loadClientDetail(id: string, today = new Date()): Promise<
     deviceInterests: parseInterests(c.deviceInterests),
     archive: c.archivedAt ? { at: c.archivedAt.toISOString(), reason: c.archiveReason, note: c.archiveNote, batch: c.archiveBatch } : null,
     statusOverride: c.statusOverride,
+    dormant:
+      c.statusOverride === "USPIONY"
+        ? { reason: (c.dormantReason as DormantReasonKey | null) ?? null, returnAt: c.dormantReturnAt?.toISOString().slice(0, 10) ?? null, setAt: c.statusOverrideAt?.toISOString() ?? null, active: summary.dormantManual }
+        : null,
     resigned: c.resignedAt ? { at: c.resignedAt.toISOString(), reason: c.resignedReason, note: c.resignedNote, recontactAt: c.resignedRecontactAt?.toISOString() ?? null } : null,
     notes: c.notes,
     hubspotCompanyId: c.hubspotCompanyId,
@@ -899,6 +906,8 @@ export async function loadClientStatusInfo(ids: string[], today = new Date()): P
     select: {
       id: true,
       statusOverride: true,
+      statusOverrideAt: true,
+      dormantReturnAt: true,
       rentals: { select: RENTAL_FACT_SELECT },
       history: { where: HISTORY_FACT_WHERE, select: HISTORY_FACT_SELECT },
       invoices: { where: INVOICE_FACT_WHERE, select: INVOICE_FACT_SELECT },
@@ -908,7 +917,7 @@ export async function loadClientStatusInfo(ids: string[], today = new Date()): P
     clients.map((c) => {
       const rentals = [...(c.rentals as RentalFactRow[]).map(toFact), ...c.history.map(historyToFact)];
       const invoices = c.invoices.map(invoiceToFact);
-      return [c.id, { status: summarizeClient({ statusOverride: c.statusOverride, rentals, invoices, today }).status, realized: realizedDatesOf(rentals, invoices) }];
+      return [c.id, { status: summarizeClient({ statusOverride: c.statusOverride, dormant: { setAt: c.statusOverrideAt, returnAt: c.dormantReturnAt }, rentals, invoices, today }).status, realized: realizedDatesOf(rentals, invoices) }];
     }),
   );
 }

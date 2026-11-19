@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONFIRMATION_TRACKED_SINCE, arrivalDates, arrivalRhythmLabel, computeClientStatus, daysAgo, isRealizedRental } from "./status";
+import { CONFIRMATION_TRACKED_SINCE, arrivalDates, arrivalRhythmLabel, computeClientStatus, daysAgo, isDormantOverrideActive, isRealizedRental } from "./status";
 
 const today = new Date(2026, 9, 1, 12, 0); // 1.10.2026, 12:00
 const ago = (n: number) => new Date(2026, 9, 1 - n, 10, 0);
@@ -99,5 +99,39 @@ describe("isRealizedRental", () => {
 
   it("szkolenie → nie liczy się do statusu", () => {
     expect(isRealizedRental({ ...base, eventType: "SZKOLENIE", endsAt: new Date(2026, 7, 15) })).toBe(false);
+  });
+});
+
+describe("ręczne „Uśpiona” (wniosek 57)", () => {
+  const setAt = new Date(2026, 9, 1, 9, 0); // oznaczone 1.10.2026
+  const dormant = (dates: Date[], opts: { setAt?: Date | null; returnAt?: Date | null; reservations?: Date[]; now?: Date } = {}) =>
+    computeClientStatus({
+      statusOverride: "USPIONY",
+      dormant: { setAt: opts.setAt === undefined ? setAt : opts.setAt, returnAt: opts.returnAt ?? null },
+      realizedRentalDates: dates,
+      today: opts.now ?? today,
+      reservationDates: opts.reservations ?? [],
+    });
+  it("stała klientka (ostatni wynajem 3 mies. temu) po oznaczeniu jest Uśpiona", () => {
+    expect(dormant([ago(100), ago(200)])).toBe("USPIONY");
+    expect(status([ago(100), ago(200)])).toBe("STALY"); // bez oznaczenia — jak dotąd
+  });
+  it("nowa rezerwacja zdejmuje oznaczenie (wraca status wyliczony)", () => {
+    expect(dormant([ago(100), ago(200)], { reservations: [soon] })).toBe("STALY");
+    expect(dormant([], { reservations: [soon] })).toBe("NOWY");
+  });
+  it("nowy zrealizowany wynajem po dacie ustawienia zdejmuje oznaczenie; wcześniejszy nie", () => {
+    expect(dormant([ago(100), new Date(2026, 9, 1, 8, 0)])).toBe("USPIONY"); // ten sam dzień
+    expect(dormant([ago(100), new Date(2026, 9, 20)], { now: new Date(2026, 9, 25) })).toBe("STALY");
+  });
+  it("po dacie powrotu oznaczenie wygasa", () => {
+    const ret = new Date(2026, 10, 15);
+    expect(dormant([ago(100), ago(200)], { returnAt: ret, now: new Date(2026, 10, 14) })).toBe("USPIONY");
+    expect(dormant([ago(100), ago(200)], { returnAt: ret, now: new Date(2026, 10, 15) })).toBe("STALY");
+  });
+  it("blokada „Nie kontaktować” wygrywa; brak daty ustawienia = oznaczenie trwa do rezerwacji / powrotu", () => {
+    expect(computeClientStatus({ statusOverride: "NIE_KONTAKTOWAC", realizedRentalDates: [ago(10)], today })).toBe("NIE_KONTAKTOWAC");
+    expect(dormant([ago(10)], { setAt: null })).toBe("USPIONY");
+    expect(isDormantOverrideActive({ statusOverride: null, realizedRentalDates: [], today })).toBe(false);
   });
 });

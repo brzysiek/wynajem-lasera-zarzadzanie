@@ -1096,6 +1096,11 @@ function ClientRow({
               zrezygnował
             </span>
           )}
+          {r.dormantManual && (
+            <span className="flex-none whitespace-nowrap bg-[#FBF0E7] px-[7px] py-px text-[10.5px] font-medium uppercase tracking-[0.14em] text-[#B8612F]" title={`Uśpiona ręcznie — znika sama przy nowej rezerwacji${r.dormantReturnAt ? ` · powrót ${new Date(`${r.dormantReturnAt}T00:00:00`).toLocaleDateString("pl-PL")}` : ""}`}>
+              uśpiona ręcznie
+            </span>
+          )}
           {r.rhythmHint && r.status !== "POTENCJALNY" && r.status !== "NIE_KONTAKTOWAC" && <span className="flex-none text-[12px] text-[#5C6166]">{r.rhythmHint}</span>}
           <span className="truncate text-[12px] text-[#5C6166]">{meta}</span>
         </div>

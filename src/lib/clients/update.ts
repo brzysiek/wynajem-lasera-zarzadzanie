@@ -11,6 +11,7 @@ import { changedFields } from "@/lib/changelog/diff";
 import { parseProvenance } from "@/lib/changelog/provenance";
 import { fieldEntries, recordChanges } from "@/lib/changelog/record";
 import { enrichClient } from "@/lib/clients/enrich";
+import { createDormantReturnTask } from "@/lib/clients/dormant";
 import { logWarn } from "@/lib/logger";
 import { CLIENT_JSON_FIELDS, CONTACT_JSON_FIELDS, readFieldMeta, stampFieldMeta } from "@/lib/clients/profile-fields";
 
@@ -69,6 +70,10 @@ export async function patchClient(
     const denied = Object.keys(parsed.data).filter((k) => !allowed.includes(k));
     if (denied.length) return { ok: false, status: 403, message: `Pole poza zakresem agenta: ${denied.join(", ")}.` };
   }
+  // Wniosek 57: „Uśpiona” agent tylko proponuje (propozycja zaakceptowana przez ADMIN).
+  if (isAgent && parsed.data.statusOverride === "USPIONY" && !opts.approvedById) {
+    return { ok: false, status: 403, message: "Oznaczenie „Uśpiona” agent zgłasza jako propozycję (decyduje biuro)." };
+  }
   const { deviceInterests, ...rest } = parsed.data;
 
   const current = await prisma.client.findUnique({ where: { id } });
@@ -91,6 +96,17 @@ export async function patchClient(
     Object.assign(rest, { transportSource: src });
     Object.assign(parsed.data, { transportSource: src });
   }
+  // Wniosek 57: data ustawienia oznaczenia (kiedy „Uśpiona” przestaje obowiązywać po nowym wynajmie).
+  if ("statusOverride" in parsed.data && parsed.data.statusOverride !== current.statusOverride) {
+    const at = parsed.data.statusOverride ? new Date() : null;
+    Object.assign(rest, { statusOverrideAt: at });
+    Object.assign(parsed.data, { statusOverrideAt: at });
+  }
+  // Zdjęcie „Uśpiona” (albo blokada „Nie kontaktować”) czyści powód i datę powrotu.
+  if ("statusOverride" in parsed.data && parsed.data.statusOverride !== "USPIONY") {
+    Object.assign(rest, { dormantReason: null, dormantReturnAt: null });
+    Object.assign(parsed.data, { dormantReason: null, dormantReturnAt: null });
+  }
   const changes = changedFields(current as unknown as Record<string, unknown>, parsed.data);
 
   const fieldMeta = stamp(current.fieldMeta, changes.map((c) => c.field), actor, provenance.value);
@@ -105,6 +121,13 @@ export async function patchClient(
     });
     await recordChanges(tx, { userId: actor.userId, provenance: provenance.value, approvedById: opts.approvedById }, fieldEntries("CLIENT", id, id, changes));
   });
+
+  // Wniosek 57: „Uśpiona” z datą powrotu → zadanie „zapytać o powrót” na ten dzień.
+  if (parsed.data.statusOverride === "USPIONY" && parsed.data.dormantReturnAt && changes.some((c) => c.field === "statusOverride" || c.field === "dormantReturnAt")) {
+    await createDormantReturnTask(id, parsed.data.dormantReturnAt, parsed.data.dormantReason ?? null, actor.userId || null).catch((err) =>
+      logWarn("dormant_return_task_failed", { clientId: id, message: err instanceof Error ? err.message : String(err) }),
+    );
+  }
 
   // Tylko faktyczna zmiana pól z wynajmu odświeża PRZYSZŁE wynajmy (zakończone
   // zostają z danymi z tamtego dnia — refresh.ts).
