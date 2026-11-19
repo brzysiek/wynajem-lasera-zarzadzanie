@@ -437,6 +437,8 @@ function ConsentsSection({ d, onChanged, notify, headless }: Props & { headless?
     { key: "marketingConsent.source", label: "Źródło zgody", placeholder: "formularz, rozmowa…" },
     { key: "googleReview.askedAt", label: "Prośba o opinię", kind: "date" },
     { key: "googleReview.given", label: "Opinia wystawiona", kind: "bool" },
+    { key: "marketingExcluded", label: "Nie liczyć w marketingu (dostawca / partner / inne)", kind: "bool" },
+    { key: "marketingExcludedReason", label: "Powód (nie liczyć w marketingu)", placeholder: "dostawca, partner…" },
   ];
   const initial = {
     smsReminders: boolInput(p.smsReminders),
@@ -446,6 +448,8 @@ function ConsentsSection({ d, onChanged, notify, headless }: Props & { headless?
     "marketingConsent.source": mc?.source ?? "",
     "googleReview.askedAt": dateInput(p.googleReview?.askedAt),
     "googleReview.given": boolInput(p.googleReview?.given),
+    marketingExcluded: boolInput(p.marketingExcluded),
+    marketingExcludedReason: p.marketingExcludedReason ?? "",
   };
   const smsOn = p.smsReminders === true || (p.smsReminders === null && !!lastSms);
   const smsText = p.smsReminders === false ? "nie" : smsOn ? `✓ tak${lastSms ? ` (ostatni ${dmy(lastSms)})` : ""}` : null;
@@ -471,6 +475,9 @@ function ConsentsSection({ d, onChanged, notify, headless }: Props & { headless?
           </Row>
           <Row label="Mailing / oferty" labelWidth={150}>
             {consent ?? <Missing>brak zapisanej zgody</Missing>}
+          </Row>
+          <Row label="Nie liczyć w marketingu" labelWidth={190}>
+            {p.marketingExcluded ? <span className="text-[#B8612F]">tak{p.marketingExcludedReason ? ` · ${p.marketingExcludedReason}` : ""}</span> : "nie"}
           </Row>
           <Row label="Nie kontaktować" labelWidth={190}>
             {d.statusOverride === "NIE_KONTAKTOWAC" ? <span className="text-[#B8612F]">tak</span> : "nie"}

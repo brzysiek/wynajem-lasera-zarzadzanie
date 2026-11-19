@@ -51,8 +51,11 @@ import { addOpportunity } from "@/lib/clients/opportunities";
 import { listExclusions } from "@/lib/porzadki/exclusions";
 import { getHideKeywords } from "@/lib/porzadki/exclusion-load";
 import { loadPulseReport } from "@/lib/leads/pulse";
-import { LEVELS, flatten, nodeJson, type Level } from "@/lib/marketing/report";
+import { LEVELS, delta, flatten, keywordTable, nodeJson, type Level } from "@/lib/marketing/report";
 import { loadCampaignReport, resolvePeriod } from "@/lib/marketing/load";
+import { addDays, daysBetween } from "@/lib/marketing/period";
+import { actOnProposal, listMarketingProposals, loadRatings, ratingKey, saveReport, setRating } from "@/lib/marketing/analysis";
+import { STATUSES, parseRating, parseReportInput, type Status } from "@/lib/marketing/analysis-rules";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
 // co panel i API agenta (src/lib/permissions.ts): odczyt + zapisy agenta,
@@ -325,6 +328,8 @@ export const TOOLS: McpTool[] = [
       "rozmowy (wpis rozmowy lub maila; każda oferta, rezerwacja i wygrana liczy się też jako rozmowa), oferty / rezerwacje / wygrane (co najmniej ten etap, wg najdalszego osiągniętego), przychod_netto (RentalFinance.totalNet, bez stałych klientek), koszt_na_lead / rozmowe / rezerwacje, przychod_do_kosztu, przegrane_wg_powodu, " +
       "stale_klientki_szczegoly (rezerwacje, wygrane i przychód stałych klientek — osobno, także klientki z wcześniejszym wynajmem), poza_branza_nie_klienci (przegrane z powodem „Poza branżą” — poza leadami), " +
       "oraz „sygnaly” = id sygnałów za każdą liczbą. Pomija sygnały testowe i zarchiwizowane duplikaty. Dodatkowo: razem, bez_zrodla (lista do uzupełnienia), slowa_bez_leadow (koszt > 0, 0 leadów), trend_tygodniowy, uwagi. " +
+      "Definicje (etap 1c): nowe zapytanie = lead z okresu BEZ stałych klientek (klient miał rezerwację lub wynajem przed datą zapytania) i bez kontaktów oznaczonych na karcie klienta „Nie liczyć w marketingu” (dostawca / partner); " +
+      "etapy są kumulatywne (wynajem ⇒ rezerwacja ⇒ oferta ⇒ rozmowa ⇒ zapytanie); wygrane = wynajem zrealizowany (etap Wygrana). Dodatkowo: porownanie_z_poprzednim_okresem (ta sama długość), frazy_z_ocena (ocena i uzasadnienie zapisuje Claude narzędziem slowo_ocena_ustaw), bez_zrodla = tylko nowe zapytania. " +
       "Domyślnie ostatnie 28 dni. Tylko odczyt.",
     inputSchema: obj({
       od: s("Początek okresu RRRR-MM-DD (domyślnie 28 dni wstecz)."),
@@ -340,18 +345,118 @@ export const TOOLS: McpTool[] = [
       const poziom = str(a, "poziom") ?? "kampania";
       if (!(LEVELS as string[]).includes(poziom)) throw new AgentApiError(`poziom: ${LEVELS.join(", ")}.`);
       const { from, to } = resolvePeriod(od, doo);
-      const report = await loadCampaignReport(from, to);
+      const len = daysBetween(from, to);
+      const prevTo = addDays(from, -1);
+      const prevFrom = addDays(prevTo, -(len - 1));
+      const [report, prev, ratings] = await Promise.all([loadCampaignReport(from, to), loadCampaignReport(prevFrom, prevTo), loadRatings()]);
+      const cm = report.total.metrics;
+      const pm = prev.total.metrics;
+      const keywords = keywordTable(report);
       return {
         okres: { od: from, do: to },
         poziom,
         kanal: str(a, "kanal"),
         wiersze: flatten(report, poziom as Level, str(a, "kanal")).map(nodeJson),
         razem: nodeJson(report.total),
+        porownanie_z_poprzednim_okresem: {
+          okres: { od: prevFrom, do: prevTo },
+          zapytania: { teraz: cm.leads.razem, poprzednio: pm.leads.razem, ...delta(cm.leads.razem, pm.leads.razem) },
+          rozmowy: { teraz: cm.talked, poprzednio: pm.talked, ...delta(cm.talked, pm.talked) },
+          oferty: { teraz: cm.offers, poprzednio: pm.offers, ...delta(cm.offers, pm.offers) },
+          rezerwacje: { teraz: cm.bookings, poprzednio: pm.bookings, ...delta(cm.bookings, pm.bookings) },
+          wygrane: { teraz: cm.wins, poprzednio: pm.wins, ...delta(cm.wins, pm.wins) },
+          przychod_netto: { teraz: cm.revenue, poprzednio: pm.revenue, ...delta(cm.revenue, pm.revenue) },
+          koszt: { teraz: cm.cost, poprzednio: pm.cost, ...delta(cm.cost, pm.cost) },
+        },
+        frazy_z_ocena: keywords.rows.map((k) => {
+          const r = ratings.get(ratingKey(k.campaignKey, k.keyword));
+          return {
+            kampania: k.campaign,
+            fraza: k.label,
+            koszt: k.cost,
+            klikniecia: k.clicks,
+            zapytania: k.leads,
+            rezerwacje: k.bookings,
+            ocena: r?.rating ?? null,
+            ocena_uzasadnienie: r?.reason ?? null,
+            ocena_data: r?.ratedAt.slice(0, 10) ?? null,
+            sygnaly: { zapytania: k.leadIds, rezerwacje: k.bookingIds },
+          };
+        }),
+        zapytania_google_ads_bez_frazy: keywords.withoutKeyword.leads,
         bez_zrodla: report.unsourced.map((u) => ({ id: u.id, tytul: report.leads[u.id]?.title ?? null, typ: report.leads[u.id]?.type ?? null, kanal: u.channel, utworzono: report.leads[u.id]?.createdAt ?? null })),
         slowa_bez_leadow: report.keywordsWithoutLeads.map((k) => ({ kampania: k.campaign, grupa: k.group, slowo_kluczowe: k.keyword, koszt: k.cost, klikniecia: k.clicks, wyswietlenia: k.impressions })),
         trend_tygodniowy: report.trend.map((t) => ({ tydzien_od: t.week, kanal: t.channel, leady: t.leads, rozmowy: t.talked, rezerwacje: t.bookings, koszt: t.cost, sygnaly: { leady: t.ids.leads, rozmowy: t.ids.talked, rezerwacje: t.ids.bookings } })),
         uwagi: report.notes,
       };
+    },
+  },
+  {
+    name: "slowo_ocena_ustaw",
+    title: "Ocena frazy (Marketing)",
+    description:
+      "Zapisuje ocenę frazy kluczowej w zakładce Marketing → Słowa kluczowe: dziala, obserwuj, do_wykluczenia (brak zdejmuje ocenę). Ocena nie jest liczona automatycznie — zapisuje ją Claude przy cotygodniowej analizie; w panelu widać datę i uzasadnienie. " +
+      "kampania: slug (lightsheer, alma, ogolne-lokalne, pozostale, marka), nazwa albo numer kampanii Google. Zmiana trafia do dziennika panelu. Niczego nie zmienia w Google Ads — wykluczenie frazy zgłaszasz jako propozycję w raporcie (raport_marketing_zapisz).",
+    inputSchema: obj(
+      { kampania: s("Kampania: slug, nazwa albo numer Google."), fraza: s("Fraza kluczowa (jak w raporcie)."), ocena: s("Ocena.", { enum: ["dziala", "obserwuj", "do_wykluczenia", "brak"] }), uzasadnienie: s("Uzasadnienie (wymagane poza oceną „brak”).") },
+      ["kampania", "fraza", "ocena"],
+    ),
+    readOnly: false,
+    run: async (a, agent) => {
+      const p = parseRating(a);
+      if (!p.ok) throw new AgentApiError(p.message);
+      return { ok: true, ...(await setRating({ campaign: p.value.campaign, phrase: p.value.phrase, rating: p.value.rating, reason: p.value.reason }, { userId: agent.userId, name: agent.name })) };
+    },
+  },
+  {
+    name: "raport_marketing_zapisz",
+    title: "Zapisz raport marketingowy",
+    description:
+      "Zapisuje cotygodniowy raport marketingowy (zakładka Marketing → Analiza): okres, tytuł, najważniejsze wnioski (1–3 pozycje {tytul, opis}), pełna treść w markdown (liczby, tabele) i propozycje zmian {obszar: google_ads | meta | strona | panel, tytul, uzasadnienie}. " +
+      "Propozycje dostają status „czeka” — decyduje administrator (Akceptuję / Odrzucam), nic nie dzieje się samo. Wpis trafia do dziennika panelu.",
+    inputSchema: obj(
+      {
+        okres_od: s("Początek okresu RRRR-MM-DD."),
+        okres_do: s("Koniec okresu RRRR-MM-DD."),
+        tytul: s("Tytuł raportu."),
+        wnioski: { type: "array", maxItems: 3, items: obj({ tytul: s("Tytuł wniosku."), opis: s("Krótki opis.") }, ["tytul", "opis"]), description: "Najważniejsze wnioski tygodnia (1–3)." },
+        tresc_md: s("Pełny raport w markdown."),
+        propozycje: { type: "array", items: obj({ obszar: s("Obszar.", { enum: ["google_ads", "meta", "strona", "panel"] }), tytul: s("Tytuł propozycji."), uzasadnienie: s("Uzasadnienie.") }, ["obszar", "tytul", "uzasadnienie"]), description: "Propozycje zmian (opcjonalnie)." },
+      },
+      ["okres_od", "okres_do", "tytul", "wnioski", "tresc_md"],
+    ),
+    readOnly: false,
+    run: async (a, agent) => {
+      const p = parseReportInput(a);
+      if (!p.ok) throw new AgentApiError(p.message);
+      return { ok: true, ...(await saveReport(p.value, { userId: agent.userId, name: agent.name })) };
+    },
+  },
+  {
+    name: "propozycje_marketing_lista",
+    title: "Propozycje marketingowe",
+    description:
+      "Lista propozycji zmian z raportów marketingowych (zakładka Analiza) ze statusem: czeka, zaakceptowana (do wdrożenia), odrzucona (z komentarzem), wdrozona. Opcjonalny filtr status. Tylko odczyt.",
+    inputSchema: obj({ status: s("Status.", { enum: [...STATUSES] }) }),
+    readOnly: true,
+    run: async (a) => {
+      const status = str(a, "status");
+      if (status && !(STATUSES as readonly string[]).includes(status)) throw new AgentApiError(`status: ${STATUSES.join(", ")}.`);
+      const rows = await listMarketingProposals(status as Status | null);
+      return { propozycje: rows.map((p) => ({ id: p.id, raport: p.reportTitle, okres: { od: p.periodFrom, do: p.periodTo }, obszar: p.area, tytul: p.title, uzasadnienie: p.reasoning, status: p.status, decyzja_kto: p.decidedByName, decyzja_kiedy: p.decidedAt, komentarz: p.comment, wdrozone_kiedy: p.implementedAt, wdrozone_przez: p.implementedBy, notatka_wdrozenia: p.implementedNote })) };
+    },
+  },
+  {
+    name: "propozycja_marketing_wdrozona",
+    title: "Oznacz propozycję jako wdrożoną",
+    description:
+      "Oznacza ZAAKCEPTOWANĄ propozycję marketingową jako wdrożoną (po tym, jak zmiana została zrobiona, np. wykluczono frazę w Google Ads) z notatką, co zrobiono. Nie akceptuje i nie odrzuca — to robi administrator w panelu. Wpis trafia do dziennika panelu.",
+    inputSchema: obj({ id: s("ID propozycji."), notatka: s("Co zostało wdrożone.") }, ["id", "notatka"]),
+    readOnly: false,
+    run: async (a, agent) => {
+      const res = await actOnProposal(req(a, "id"), "implement", { userId: agent.userId, name: agent.name }, { note: req(a, "notatka") });
+      if (!res.ok) throw new AgentApiError(res.message, res.status);
+      return { ok: true, status: res.proposal.status };
     },
   },
   {

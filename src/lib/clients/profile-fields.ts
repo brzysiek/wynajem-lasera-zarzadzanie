@@ -41,6 +41,8 @@ export type ClientProfilePatch = Partial<{
   frameAgreement: FrameAgreement | null;
   marketingConsent: MarketingConsent | null;
   smsReminders: boolean | null;
+  marketingExcluded: boolean | null;
+  marketingExcludedReason: string | null;
   googleReview: GoogleReview | null;
   nextStepText: string | null;
   nextStepDueAt: Date | null;
@@ -75,6 +77,8 @@ export const CLIENT_PROFILE_FIELDS = [
   "frameAgreement",
   "marketingConsent",
   "smsReminders",
+  "marketingExcluded",
+  "marketingExcludedReason",
   "googleReview",
   "nextStepText",
   "nextStepDueAt",
@@ -135,6 +139,8 @@ export const CLIENT_FIELD_LABEL: Record<string, string> = {
   frameAgreement: "umowa ramowa",
   marketingConsent: "zgoda marketingowa",
   smsReminders: "SMS-przypomnienia",
+  marketingExcluded: "nie liczyć w marketingu",
+  marketingExcludedReason: "powód: nie liczyć w marketingu",
   googleReview: "opinia Google",
   nextStepText: "następny krok",
   nextStepDueAt: "termin następnego kroku",
@@ -375,6 +381,12 @@ export function parseClientProfilePatch(body: Record<string, unknown>): Result<C
     if (b === "invalid") return { ok: false, message: "SMS-przypomnienia: tak albo nie." };
     out.smsReminders = b;
   }
+  if (has("marketingExcluded")) {
+    const b = bool(body.marketingExcluded);
+    if (b === "invalid") return { ok: false, message: "Nie liczyć w marketingu: tak albo nie." };
+    out.marketingExcluded = b;
+  }
+  if (has("marketingExcludedReason")) out.marketingExcludedReason = text(body.marketingExcludedReason, 191);
   if (has("googleReview")) {
     const o = obj(body.googleReview);
     if (o === "invalid") return { ok: false, message: "googleReview: obiekt { askedAt, given }." };

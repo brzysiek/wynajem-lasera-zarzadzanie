@@ -5,24 +5,13 @@ import { STAGE_HISTORY_LABELS } from "@/lib/leads/labels";
 import { normalizeAttribution } from "@/lib/leads/attribution-view";
 import type { LeadStageKey } from "@/lib/leads/parse-deal";
 import { attributeSource, type Attr } from "./source";
-import { buildReport, countsInReport, isReturningLead, type Report, type ReportLead } from "./report";
+import { buildReport, countsInReport, isReturningLead, type PriorRental, type Report, type ReportLead } from "./report";
 import type { CostRow } from "./costs-csv";
+import { addDays, isDay, warsawDay } from "./period";
 
 // Wniosek 54, etap 1b: wczytanie sygnałów i kosztów do raportu kampanii.
 
-const DAY_FMT = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Warsaw", year: "numeric", month: "2-digit", day: "2-digit" });
-export const warsawDay = (d: Date): string => DAY_FMT.format(d); // RRRR-MM-DD
-
-const MS = 86_400_000;
-export const addDays = (day: string, n: number): string => new Date(new Date(`${day}T00:00:00Z`).getTime() + n * MS).toISOString().slice(0, 10);
-
-// Sezon zaczyna się 1.09 (poprzedni rok, gdy jeszcze nie ma września).
-export function seasonStart(today: string): string {
-  const y = Number(today.slice(0, 4));
-  return today.slice(5) >= "09-01" ? `${y}-09-01` : `${y - 1}-09-01`;
-}
-
-export const isDay = (v: string | null | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(`${v}T00:00:00Z`).getTime());
+export { addDays, isDay, seasonStart, warsawDay } from "./period";
 
 export function resolvePeriod(from: string | null | undefined, to: string | null | undefined, now = new Date()): { from: string; to: string } {
   const today = warsawDay(now);
@@ -53,28 +42,28 @@ export async function loadCampaignReport(from: string, to: string): Promise<Repo
       utmSource: true,
       utmCampaign: true,
       gclid: true,
-      client: { select: { source: true } },
+      client: { select: { source: true, marketingExcluded: true } },
       rental: { select: { finance: { select: { totalNet: true } } } },
       activities: { where: { type: { in: ["STAGE_CHANGE", "CALL", "EMAIL"] } }, select: { type: true, body: true } },
     },
   });
-  // Wcześniejszy wynajem klienta (kalendarz i historia) — stała klientka mimo braku flagi.
+  // Wcześniejsze rezerwacje i wynajmy klienta (kalendarz + historia) — stała klientka mimo braku flagi.
   const clientIds = [...new Set(rows.map((r) => r.clientId).filter((x): x is string => Boolean(x)))];
-  const [rentalMin, historyMin] = clientIds.length
+  const [rentalRows, historyRows] = clientIds.length
     ? await Promise.all([
-        prisma.rental.groupBy({ by: ["clientId"], where: { clientId: { in: clientIds }, eventType: "WYNAJEM", deletedInGoogle: false }, _min: { startsAt: true } }),
-        prisma.rentalHistory.groupBy({ by: ["clientId"], where: { clientId: { in: clientIds }, kind: "WYNAJEM", matchState: { in: ["AUTO", "CONFIRMED"] } }, _min: { startsAt: true } }),
+        prisma.rental.findMany({ where: { clientId: { in: clientIds }, eventType: "WYNAJEM", deletedInGoogle: false }, select: { id: true, clientId: true, startsAt: true, createdAt: true } }),
+        prisma.rentalHistory.findMany({ where: { clientId: { in: clientIds }, kind: "WYNAJEM", matchState: { in: ["AUTO", "CONFIRMED"] } }, select: { clientId: true, startsAt: true } }),
       ])
     : [[], []];
-  const earliest = new Map<string, Date>();
-  for (const g of [...rentalMin, ...historyMin]) {
-    const d = g._min.startsAt;
-    if (g.clientId && d && (!earliest.has(g.clientId) || d < earliest.get(g.clientId)!)) earliest.set(g.clientId, d);
-  }
+  const priorOf = (clientId: string | null): { rentals: PriorRental[]; history: Date[] } => ({
+    rentals: clientId ? rentalRows.filter((x) => x.clientId === clientId).map((x) => ({ id: x.id, startsAt: x.startsAt, createdAt: x.createdAt })) : [],
+    history: clientId ? historyRows.filter((x) => x.clientId === clientId).map((x) => x.startsAt) : [],
+  });
   const leads: ReportLead[] = [];
   for (const r of rows) {
     const day = warsawDay(r.createdAt);
     if (day < from || day > to) continue;
+    if (r.client?.marketingExcluded) continue; // dostawca / partner — poza wszystkimi liczbami w Marketingu
     if (!countsInReport({ contactEmail: r.contactEmail, archivedAt: r.archivedAt, archiveReason: r.archiveReason })) continue;
     const talked = r.activities.some((a) => a.type === "CALL" || a.type === "EMAIL");
     const maxStage = maxStageReached(
@@ -92,7 +81,7 @@ export async function loadCampaignReport(from: string, to: string): Promise<Repo
       createdAt: r.createdAt,
       maxStage,
       talked,
-      returning: isReturningLead(r.returningClient, r.clientId ? (earliest.get(r.clientId) ?? null) : null, r.createdAt),
+      returning: isReturningLead(r.returningClient, priorOf(r.clientId), { createdAt: r.createdAt, rentalId: r.rentalId }),
       lostReason: r.lostReason,
       revenue: r.rental?.finance ? Number(r.rental.finance.totalNet) : null,
       contactEmail: r.contactEmail,

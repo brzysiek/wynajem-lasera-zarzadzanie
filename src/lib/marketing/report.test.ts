@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildReport, countsInReport, flatten, isReturningLead, isUnqualified, metricsOfLead, mondayOf, reportCsv, type ReportLead } from "./report";
+import { buildReport, countsInReport, delta, flatten, isReturningLead, isUnqualified, keywordTable, metricsOfLead, mondayOf, reportCsv, type ReportLead } from "./report";
 import { CH, attributeSource } from "./source";
 import type { CostRow } from "./costs-csv";
 
@@ -98,7 +98,8 @@ describe("raport kampanii", () => {
   it("Meta, bez źródła i telefon/e-mail są osobnymi kanałami; lista do uzupełnienia", () => {
     expect(rep.channels.find((c) => c.label === CH.META)!.metrics.bookings).toBe(1);
     expect(rep.channels.find((c) => c.label === CH.NONE)!.metrics.leads.razem).toBe(1);
-    expect(rep.unsourced.map((u) => u.id).sort()).toEqual(["l7", "l8"]);
+    expect(rep.unsourced.map((u) => u.id)).toEqual(["l7"]); // telefon / e-mail to osobny kanał, nie „bez źródła”
+    expect(rep.channels.find((c) => c.label === CH.PHONE_EMAIL)!.metrics.leads.razem).toBe(1);
     expect(rep.total.metrics.leads.razem).toBe(7);
   });
   it("słowa z kosztem i bez leadów", () => {
@@ -146,7 +147,7 @@ describe("poprawki raportu (19.11)", () => {
   it("stałe klientki: tylko w swojej kolumnie, razem z rezerwacjami, wygranymi i przychodem; nie trafiają na listę „bez źródła”", () => {
     const stala = lead("s1", null, { type: "EMAIL", returning: true, stage: "WYGRANA", maxStage: "WYGRANA", talked: true, revenue: 750 });
     const stala2 = lead("s2", null, { type: "EMAIL", returning: true, stage: "REZERWACJA", maxStage: "REZERWACJA", revenue: 1270 });
-    const nowa = lead("n1", null, { type: "EMAIL" });
+    const nowa = lead("n1", { form: "kontakt" }, { type: "KONTAKT" });
     const rep = buildReport({ leads: [stala, stala2, nowa], costs: [], from: "2026-11-01", to: "2026-11-18", localDay });
     const t = rep.total.metrics;
     expect(t).toMatchObject({ returning: 2, returningWins: 1, returningBookings: 2, returningRevenue: 2020, wins: 0, bookings: 0, revenue: 0 });
@@ -154,12 +155,18 @@ describe("poprawki raportu (19.11)", () => {
     expect(rep.unsourced.map((u) => u.id)).toEqual(["n1"]);
     expect(rep.total.ids.returning_wins).toEqual(["s1"]);
   });
-  it("stała klientka także po wcześniejszym wynajmie, mimo braku flagi", () => {
-    const created = new Date("2026-11-16T10:00:00Z");
-    expect(isReturningLead(false, new Date("2025-03-01T00:00:00Z"), created)).toBe(true);
-    expect(isReturningLead(false, new Date("2027-01-11T00:00:00Z"), created)).toBe(false); // własna rezerwacja z przyszłości
-    expect(isReturningLead(false, null, created)).toBe(false);
-    expect(isReturningLead(true, null, created)).toBe(true);
+  it("stała klientka także po wcześniejszej rezerwacji lub wynajmie, mimo braku flagi", () => {
+    const lead = { createdAt: new Date("2026-11-16T10:00:00Z"), rentalId: "R-own" };
+    const none = { rentals: [], history: [] };
+    expect(isReturningLead(false, { rentals: [], history: [new Date("2025-03-01T00:00:00Z")] }, lead)).toBe(true); // historia wynajmów
+    expect(isReturningLead(false, { rentals: [{ id: "R-old", startsAt: new Date("2026-06-01T00:00:00Z"), createdAt: new Date("2026-05-01T00:00:00Z") }], history: [] }, lead)).toBe(true);
+    // rezerwacja założona przed zapytaniem, termin w przyszłości — też „miała rezerwację”
+    expect(isReturningLead(false, { rentals: [{ id: "R-fut", startsAt: new Date("2026-12-01T00:00:00Z"), createdAt: new Date("2026-11-10T00:00:00Z") }], history: [] }, lead)).toBe(true);
+    // własna rezerwacja zapytania (powstała po nim) nie robi z nowej klientki stałej
+    expect(isReturningLead(false, { rentals: [{ id: "R-own", startsAt: new Date("2026-11-01T00:00:00Z"), createdAt: new Date("2026-11-01T00:00:00Z") }], history: [] }, lead)).toBe(false);
+    expect(isReturningLead(false, { rentals: [{ id: "R-after", startsAt: new Date("2027-01-11T00:00:00Z"), createdAt: new Date("2026-11-17T00:00:00Z") }], history: [] }, lead)).toBe(false);
+    expect(isReturningLead(false, none, lead)).toBe(false);
+    expect(isReturningLead(true, none, lead)).toBe(true);
   });
   it("przegrana „Poza branżą” = nie klient: poza leadami, kosztem na lead i listą do uzupełnienia; „Inne” zostaje leadem", () => {
     expect(isUnqualified({ stage: "PRZEGRANA", lostReason: "POZA_BRANZA" })).toBe(true);
@@ -173,5 +180,29 @@ describe("poprawki raportu (19.11)", () => {
     expect(rep.total.metrics.lostByReason).toEqual({ INNE: 1 });
     expect(rep.unsourced).toEqual([]);
     expect(rep.total.metrics.costPerLead).toBe(50);
+  });
+});
+
+describe("tabela słów kluczowych i porównanie okresów", () => {
+  const A = { utm_source: "google", utm_campaign: "alma", utm_content: "111", utm_term: "wynajem lasera alma" };
+  it("scala frazę ponad grupami reklam; zapytania bez frazy liczone osobno", () => {
+    const leads = [
+      lead("k1", A, { maxStage: "REZERWACJA", stage: "REZERWACJA", talked: true }),
+      lead("k2", { ...A, utm_content: "222" }, { maxStage: "OFERTA", stage: "OFERTA" }),
+      lead("k3", { utm_source: "google", utm_campaign: "alma" }),
+    ];
+    const costs = [cost({ cost: 40, clicks: 4 }), cost({ adGroupId: "222", adGroupName: "Druga", cost: 10, clicks: 1 }), cost({ keyword: "bez efektu", keywordText: "bez efektu", cost: 5, clicks: 1 })];
+    const t = keywordTable(buildReport({ leads, costs, from: "2026-11-01", to: "2026-11-18", localDay }));
+    const alma = t.rows.find((r) => r.keyword === "wynajem lasera alma")!;
+    expect(alma).toMatchObject({ campaign: "Alma", cost: 50, clicks: 5, leads: 2, bookings: 1 });
+    expect(alma.leadIds.sort()).toEqual(["k1", "k2"]);
+    expect(t.rows.find((r) => r.keyword === "bez efektu")).toMatchObject({ cost: 5, leads: 0 });
+    expect(t.withoutKeyword).toEqual({ leads: 1, ids: ["k3"] });
+    expect(t.rows[0].keyword).toBe("wynajem lasera alma"); // malejąco wg kosztu
+  });
+  it("delta: różnica i procent (brak podstawy = null)", () => {
+    expect(delta(19, 10)).toEqual({ diff: 9, pct: 90 });
+    expect(delta(3, 0)).toEqual({ diff: 3, pct: null });
+    expect(delta(0, 4)).toEqual({ diff: -4, pct: -100 });
   });
 });

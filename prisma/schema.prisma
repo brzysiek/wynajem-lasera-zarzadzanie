@@ -888,6 +888,10 @@ model Client {
   frameAgreement     Json? // { fileId, name, signedAt, note, url } — umowa ramowa / kaucja (plik: ClientFile)
   marketingConsent   Json? // { email, sms, date, source }
   smsReminders       Boolean?
+  // Wniosek 54, etap 1c: kontakt, który nie jest klientem (dostawca / partner / inne)
+  // — nie wchodzi do żadnych liczb w zakładce Marketing.
+  marketingExcluded       Boolean?
+  marketingExcludedReason String?   @db.VarChar(191)
   googleReview       Json? // { askedAt, given }
   nextStepText       String?   @db.Text // „Następny krok” (baner na karcie)
   nextStepDueAt      DateTime?
@@ -1383,6 +1387,62 @@ model AdCostDay {
   @@unique([channel, day, campaignKey, adGroupId, adGroupName, keyword], map: "ad_cost_days_uniq")
   @@index([day])
   @@map("ad_cost_days")
+}
+
+// Wniosek 54, etap 1c: ocena frazy (działa / obserwuj / do wykluczenia) — zapisuje
+// Claude (MCP slowo_ocena_ustaw), nie liczy się automatycznie.
+model MarketingKeywordRating {
+  id           String   @id @default(cuid())
+  campaignKey  String   @db.VarChar(120)
+  campaignName String   @db.VarChar(191)
+  keyword      String   @db.VarChar(150) // znormalizowana fraza
+  keywordText  String   @db.VarChar(191)
+  rating       String   @db.VarChar(20) // dziala | obserwuj | do_wykluczenia
+  reason       String?  @db.Text
+  ratedByName  String   @db.VarChar(80)
+  ratedAt      DateTime @default(now())
+
+  @@unique([campaignKey, keyword], map: "mkt_keyword_rating_uniq")
+  @@map("marketing_keyword_ratings")
+}
+
+// Cotygodniowy raport marketingowy Claude’a (zakładka Analiza) i propozycje zmian
+// z niego — nic nie dzieje się samo, decyduje administrator.
+model MarketingReport {
+  id          String   @id @default(cuid())
+  periodFrom  DateTime @db.Date
+  periodTo    DateTime @db.Date
+  title       String   @db.VarChar(191)
+  conclusions Json // [{ tytul, opis }] — maks. 3
+  contentMd   String   @db.LongText
+  author      String   @db.VarChar(80)
+  createdAt   DateTime @default(now())
+
+  proposals MarketingProposal[]
+
+  @@index([periodTo])
+  @@map("marketing_reports")
+}
+
+model MarketingProposal {
+  id              String          @id @default(cuid())
+  reportId        String
+  report          MarketingReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  area            String          @db.VarChar(16) // google_ads | meta | strona | panel
+  title           String          @db.VarChar(191)
+  reasoning       String          @db.Text
+  status          String          @default("czeka") @db.VarChar(16) // czeka | zaakceptowana | odrzucona | wdrozona
+  decidedByName   String?         @db.VarChar(80)
+  decidedAt       DateTime?
+  comment         String?         @db.Text
+  implementedAt   DateTime?
+  implementedBy   String?         @db.VarChar(80)
+  implementedNote String?         @db.Text
+  createdAt       DateTime        @default(now())
+
+  @@index([reportId])
+  @@index([status])
+  @@map("marketing_proposals")
 }
 
 enum ActivityType {

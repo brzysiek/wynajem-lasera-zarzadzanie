@@ -90,6 +90,7 @@ export const ENTITY_LABEL: Record<string, string> = {
   NOTE: "notatka",
   TASK_COMMENT: "komentarz do zadania",
   RENTAL: "rezerwacja",
+  MARKETING: "marketing",
 };
 
 export const OPERATION_LABEL: Record<string, string> = {

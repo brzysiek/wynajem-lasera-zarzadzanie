@@ -9,13 +9,13 @@ export type Attr = Record<string, string | string[]>;
 
 export const CH = {
   GOOGLE_ADS: "Google Ads",
-  META: "Meta (reklamy)",
-  GOOGLE_ORG: "Google – wyniki organiczne",
+  META: "Meta reklamy",
+  GOOGLE_ORG: "Google organiczne",
   BING: "Bing",
-  FACEBOOK: "Facebook",
-  INSTAGRAM: "Instagram",
+  FACEBOOK: "Facebook (organiczny)",
+  INSTAGRAM: "Instagram (organiczny)",
   OTHER_SITE: "Inna strona",
-  PHONE_EMAIL: "Telefon / e-mail – nieznane",
+  PHONE_EMAIL: "Telefon / e-mail",
   REFERRAL: "Polecenie",
   RETURNING: "Stała klientka",
   OLX: "OLX",

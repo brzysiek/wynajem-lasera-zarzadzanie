@@ -92,10 +92,16 @@ const push = (a: Acc, metric: string, id: string) => {
   (a.ids[metric] ??= []).push(id);
 };
 
-// Stała klientka: flaga sygnału (wynajem w ostatnich 12 mies.) albo jakikolwiek
-// wcześniejszy wynajem klienta sprzed daty sygnału (kalendarz lub historia).
-export function isReturningLead(flag: boolean, earliestRental: Date | null, createdAt: Date): boolean {
-  return flag || (earliestRental != null && earliestRental.getTime() < createdAt.getTime());
+// Stała klientka = klient, który PRZED datą tego zapytania miał już rezerwację lub
+// wynajem (kalendarz — wpis utworzony albo termin przed zapytaniem; historia
+// wynajmów), albo sygnał ma flagę „stała klientka”. Własna rezerwacja zapytania
+// (powiązany wynajem) się nie liczy.
+export type PriorRental = { id: string; startsAt: Date; createdAt: Date };
+export function isReturningLead(flag: boolean, prior: { rentals: PriorRental[]; history: Date[] }, lead: { createdAt: Date; rentalId: string | null }): boolean {
+  if (flag) return true;
+  const t = lead.createdAt.getTime();
+  if (prior.history.some((d) => d.getTime() < t)) return true;
+  return prior.rentals.some((r) => r.id !== lead.rentalId && (r.startsAt.getTime() < t || r.createdAt.getTime() < t));
 }
 
 // Przegrana z powodem „Poza branżą” (np. firma oferująca regenerację głowic) to nie klient.
@@ -243,8 +249,8 @@ export function buildReport(input: ReportInput): Report {
     const src = l.source;
     leadInfo[l.id] = { id: l.id, title: l.title, type: l.type, stage: l.stage, createdAt: l.createdAt.toISOString(), channel: src.channel, termFromFirst: src.fromFirst };
     const metrics = metricsOfLead(l);
-    // Do uzupełnienia tylko leady z pozyskania — nie stałe klientki i nie nie-klienci.
-    if (metrics.includes("leads") && (src.channel === CH.NONE || src.channel === CH.PHONE_EMAIL)) unsourced.push({ id: l.id, channel: src.channel });
+    // Do uzupełnienia tylko nowe zapytania bez źródła — nie stałe klientki i nie nie-klienci.
+    if (metrics.includes("leads") && src.channel === CH.NONE) unsourced.push({ id: l.id, channel: src.channel });
     if (src.fromFirst && !l.returning) metrics.push("term_from_first"); // tylko lista id, nie liczba
     const chain: Acc[] = [root];
     const ch = channelOf(src.channel);
@@ -419,4 +425,56 @@ export function nodeJson(n: Node) {
     przegrane_wg_powodu: m.lostByReason,
     sygnaly,
   };
+}
+
+// ------------------------------------------------------------ słowa kluczowe
+
+export type KeywordRow = {
+  campaignKey: string;
+  campaign: string;
+  keyword: string; // znormalizowane — klucz oceny
+  label: string;
+  cost: number;
+  clicks: number;
+  impressions: number;
+  leads: number;
+  bookings: number;
+  leadIds: string[];
+  bookingIds: string[];
+};
+
+// Frazy z kosztem i / lub zapytaniami, scalone po (kampania, fraza) ponad grupami
+// reklam. Zapytania bez frazy nie są frazami — liczymy je osobno.
+export function keywordTable(report: Report): { rows: KeywordRow[]; withoutKeyword: { leads: number; ids: string[] } } {
+  const map = new Map<string, KeywordRow>();
+  const noKw: string[] = [];
+  const google = report.channels.find((c) => c.label === CH.GOOGLE_ADS);
+  for (const camp of google?.children ?? []) {
+    for (const grp of camp.children) {
+      for (const kw of grp.children) {
+        if (kw.key === NO_KEYWORD) {
+          noKw.push(...(kw.ids.leads ?? []));
+          continue;
+        }
+        const key = `${camp.key}\u0001${kw.key}`;
+        const m = kw.metrics;
+        const cur = map.get(key) ?? { campaignKey: camp.key, campaign: camp.label, keyword: kw.key, label: kw.label, cost: 0, clicks: 0, impressions: 0, leads: 0, bookings: 0, leadIds: [], bookingIds: [] };
+        cur.cost = round2(cur.cost + m.cost);
+        cur.clicks += m.clicks;
+        cur.impressions += m.impressions;
+        cur.leads += m.leads.razem;
+        cur.bookings += m.bookings;
+        cur.leadIds.push(...(kw.ids.leads ?? []));
+        cur.bookingIds.push(...(kw.ids.bookings ?? []));
+        map.set(key, cur);
+      }
+    }
+  }
+  const rows = [...map.values()].sort((a, b) => b.cost - a.cost || b.leads - a.leads || a.label.localeCompare(b.label, "pl"));
+  return { rows, withoutKeyword: { leads: noKw.length, ids: noKw } };
+}
+
+// Zmiana względem poprzedniego okresu: różnica bezwzględna i procentowa (null, gdy brak podstawy).
+export function delta(cur: number, prev: number): { diff: number; pct: number | null } {
+  return { diff: round2(cur - prev), pct: prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null };
 }

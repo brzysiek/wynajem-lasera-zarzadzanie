@@ -34,6 +34,8 @@ export type ClientProfileDto = {
   frameAgreement: FrameAgreement | null;
   marketingConsent: MarketingConsent | null;
   smsReminders: boolean | null;
+  marketingExcluded: boolean | null;
+  marketingExcludedReason: string | null;
   googleReview: GoogleReview | null;
   nextStep: { text: string; dueAt: string | null } | null;
   enrichedAt: string | null;
@@ -72,6 +74,8 @@ export function profileDto(c: Client): ClientProfileDto {
     frameAgreement: objOrNull<FrameAgreement>(c.frameAgreement),
     marketingConsent: objOrNull<MarketingConsent>(c.marketingConsent),
     smsReminders: c.smsReminders,
+    marketingExcluded: c.marketingExcluded,
+    marketingExcludedReason: c.marketingExcludedReason,
     googleReview: objOrNull<GoogleReview>(c.googleReview),
     nextStep: c.nextStepText ? { text: c.nextStepText, dueAt: c.nextStepDueAt?.toISOString() ?? null } : null,
     enrichedAt: c.enrichedAt?.toISOString() ?? null,

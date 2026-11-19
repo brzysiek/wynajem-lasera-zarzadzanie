@@ -70,7 +70,7 @@ const MCP_TOOLS = [
   "uwaga_utworz", "uwaga_zmien", "dziennik_wpis", "propozycje_dodaj", "propozycje_lista",
   "podejrzane_zlepki", "dopasowanie_decyzja", "uwagi_kierowcow", "rezerwacje_bez_kwoty",
   // Wniosek 54, etap 1b: raport kampanii (tylko odczyt).
-  "raport_kampanii",
+  "raport_kampanii", "slowo_ocena_ustaw", "raport_marketing_zapisz", "propozycje_marketing_lista", "propozycja_marketing_wdrozona",
 ];
 
 const WRITE_METHODS = ["POST", "PATCH", "PUT", "DELETE"] as const;

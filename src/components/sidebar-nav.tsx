@@ -171,7 +171,7 @@ function itemsFor(role: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT" | undefined): (
   ];
   if (role === "ADMIN") items.push({ kind: "finance" });
   // Wniosek 54, etap 1b: raport kampanii i import kosztów reklam — tylko ADMIN.
-  if (role === "ADMIN") items.push({ kind: "link", href: "/marketing/kampanie", label: "Marketing", matchAny: ["/marketing"], icon: <MarketingIcon /> });
+  if (role === "ADMIN") items.push({ kind: "link", href: "/marketing/przeglad", label: "Marketing", matchAny: ["/marketing"], icon: <MarketingIcon /> });
   // Agent AI: z Finansów tylko Faktury VAT (odczyt + „FV bez faktury”).
   if (role === "AGENT") items.push({ kind: "link", href: "/finanse/faktury", label: "Faktury VAT", match: "/finanse", icon: <FinanceBarsIcon /> });
   // Porządki/optymalizacje — na dole listy: wnioski, uwagi, propozycje,
