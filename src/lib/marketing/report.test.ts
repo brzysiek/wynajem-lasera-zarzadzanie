@@ -105,6 +105,12 @@ describe("raport kampanii", () => {
   it("słowa z kosztem i bez leadów", () => {
     expect(rep.keywordsWithoutLeads).toEqual([{ campaign: "Alma", group: "Inna", keyword: "bez efektu", cost: 30, clicks: 4, impressions: 100 }]);
   });
+  it("wniosek 59: koszt Mety w trendzie idzie do kanału Meta, a „słowa bez leadów” to tylko frazy Google Ads", () => {
+    const rep = buildReport({ leads: [], costs: [cost({}), cost({ channel: "META", campaignKey: "wl", campaignName: "WL", adGroupId: "", adGroupName: "Zestaw", keyword: "reklama", keywordText: "Reklama", cost: 70 })], from: "2026-11-01", to: "2026-11-30", localDay });
+    expect(rep.trend.find((t) => t.channel === CH.META)?.cost).toBe(70);
+    expect(rep.trend.find((t) => t.channel === CH.GOOGLE_ADS)?.cost).toBe(50);
+    expect(rep.keywordsWithoutLeads.map((k) => k.keyword)).toEqual(["wynajem lasera alma"]);
+  });
   it("trend tygodniowy: poniedziałek tygodnia, koszty z dni importu", () => {
     expect(mondayOf("2026-11-10")).toBe("2026-11-09");
     const g = rep.trend.filter((t) => t.channel === CH.GOOGLE_ADS);

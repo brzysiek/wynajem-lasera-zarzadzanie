@@ -44,7 +44,28 @@ export function OverviewView({ o, prevLabel, todo }: { o: Overview; prevLabel: s
           value={PLN(o.revenue.value)}
           sub={o.revenue.avgPerBooking != null ? `śr. ${PLN(o.revenue.avgPerBooking)} / rezerwacja` : <Compare t={o.revenue} label={prevLabel} money />}
         />
-        <KpiTile title="Wydatki na reklamy" value={o.spend.hasCost ? PLN(o.spend.value) : "[—]"} sub={o.spend.hasCost ? "z importu kosztów Google Ads" : "po imporcie kosztów"} />
+        <KpiTile
+          title="Wydatki na reklamy"
+          value={o.spend.hasCost ? PLN(o.spend.value) : "[—]"}
+          sub={
+            o.spend.hasCost ? (
+              <>
+                <span className="block">Google {PLN(o.spend.google)} · Meta {PLN(o.spend.meta)}</span>
+                <span className="block" title="Zakres dni zaimportowanych kosztów w wybranym okresie">
+                  {o.spend.ranges.map((r, i) => (
+                    <span key={r.label} className={r.incomplete ? "text-[#8F3F0A]" : ""}>
+                      {i > 0 ? " · " : ""}
+                      {r.label}: {r.text}
+                      {r.incomplete && !r.text.startsWith("brak") ? " (niepełny okres)" : ""}
+                    </span>
+                  ))}
+                </span>
+              </>
+            ) : (
+              "po imporcie kosztów"
+            )
+          }
+        />
       </div>
 
       <section className="rounded-xl border border-gray-200 bg-white px-5 py-4">

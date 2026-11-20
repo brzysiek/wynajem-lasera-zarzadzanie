@@ -294,7 +294,7 @@ export function buildReport(input: ReportInput): Report {
   // ---- słowa z kosztem i bez leadów
   const keywordsWithoutLeads: Report["keywordsWithoutLeads"] = [];
   const walk = (n: Node) => {
-    if (n.depth === 3 && n.metrics.cost > 0 && n.metrics.leads.razem === 0 && n.metrics.returning === 0) {
+    if (n.depth === 3 && n.path.kanal === CH.GOOGLE_ADS && n.metrics.cost > 0 && n.metrics.leads.razem === 0 && n.metrics.returning === 0) {
       keywordsWithoutLeads.push({ campaign: n.path.kampania ?? "", group: n.path.grupa ?? "", keyword: n.path.slowo ?? n.label, cost: n.metrics.cost, clicks: n.metrics.clicks, impressions: n.metrics.impressions });
     }
     n.children.forEach(walk);
@@ -322,7 +322,7 @@ export function buildReport(input: ReportInput): Report {
     if (ms.includes("talked")) c.talked.push(l.id);
     if (ms.includes("bookings")) c.bookings.push(l.id);
   }
-  for (const k of input.costs) cell(mondayOf(k.day), CH.GOOGLE_ADS).cost += k.cost;
+  for (const k of input.costs) cell(mondayOf(k.day), k.channel === "META" ? CH.META : CH.GOOGLE_ADS).cost += k.cost;
   const trend: Report["trend"] = [];
   for (const week of [...weeks.keys()].sort()) {
     for (const [channel, c] of weeks.get(week)!) {

@@ -163,6 +163,18 @@ export async function costStatus(channel: CostChannel = "GOOGLE_ADS"): Promise<{
   };
 }
 
+// Zakres zaimportowanych dni kosztów w okresie raportu (osobno Google Ads i Meta).
+export async function costCoverage(from: string, to: string): Promise<{ channel: "GOOGLE_ADS" | "META"; days: number; from: string | null; to: string | null }[]> {
+  const rows = await prisma.adCostDay.groupBy({
+    by: ["channel", "day"],
+    where: { channel: { in: ["GOOGLE_ADS", "META"] }, day: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } },
+  });
+  return (["GOOGLE_ADS", "META"] as const).map((channel) => {
+    const days = rows.filter((r) => r.channel === channel).map((r) => r.day.toISOString().slice(0, 10)).sort();
+    return { channel, days: days.length, from: days[0] ?? null, to: days[days.length - 1] ?? null };
+  });
+}
+
 // ID grupy reklam Google → nazwa i kampania (z kolumny „Identyfikator grupy reklam” importu kosztów).
 export async function loadAdGroupNames(): Promise<Map<string, { name: string; campaignKey: string }>> {
   const rows = await prisma.adCostDay.findMany({ where: { channel: "GOOGLE_ADS", adGroupId: { not: "" } }, distinct: ["adGroupId"], select: { adGroupId: true, adGroupName: true, campaignKey: true }, orderBy: { day: "desc" } });

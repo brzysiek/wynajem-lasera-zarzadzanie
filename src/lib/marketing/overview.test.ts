@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildReport, type ReportLead } from "./report";
-import { overview, todoItems } from "./overview";
+import { overview, spendRanges, todoItems } from "./overview";
+import type { CostRow } from "./costs-csv";
 import { attributeSource } from "./source";
 
 const localDay = (d: Date) => d.toISOString().slice(0, 10);
@@ -61,5 +62,36 @@ describe("do zrobienia", () => {
     const stale = todoItems({ unsourced: 0, waitingProposals: 0, lastCostImportAt: "2026-11-01T10:00:00Z", now, pendingConversions: 0, query: "" });
     expect(stale).toHaveLength(1);
     expect(stale[0].text).toContain("01.11.2026");
+  });
+});
+
+const costRow = (over: Partial<CostRow>): CostRow => ({ channel: "GOOGLE_ADS", day: "2026-11-10", campaignKey: "alma", campaignName: "Alma", adGroupId: "1", adGroupName: "G", keyword: "k", keywordText: "k", impressions: 10, clicks: 2, cost: 100, ...over });
+
+describe("wydatki na reklamy (wniosek 59): Google Ads + Meta", () => {
+  const withCosts = buildReport({ leads: [], costs: [costRow({}), costRow({ channel: "META", campaignKey: "wl", campaignName: "WL", adGroupName: "Zestaw", keyword: "reklama", keywordText: "Reklama", cost: 40.5, clicks: 5 })], from: "2026-10-22", to: "2026-11-18", localDay });
+  it("wartość kafelka to suma obu kanałów, z podziałem na Google i Meta", () => {
+    const o = overview(withCosts, rep([]), { from: "2026-10-22", to: "2026-11-18" }, []);
+    expect(o.spend).toMatchObject({ value: 140.5, google: 100, meta: 40.5, hasCost: true });
+  });
+  it("zakres dni importu: pełny, niepełny (brak końca okresu), brak importu", () => {
+    const period = { from: "2026-10-23", to: "2026-11-20" };
+    const r = spendRanges(period, [
+      { channel: "GOOGLE_ADS", days: 20, from: "2026-10-23", to: "2026-11-18" },
+      { channel: "META", days: 28, from: "2026-10-23", to: "2026-11-19" },
+    ]);
+    expect(r[0]).toEqual({ label: "Google", text: "23.10–18.11", incomplete: true });
+    expect(r[1]).toEqual({ label: "Meta", text: "23.10–19.11", incomplete: false });
+    const none = spendRanges(period, [{ channel: "GOOGLE_ADS", days: 3, from: "2026-10-23", to: "2026-11-20" }]);
+    expect(none[1]).toMatchObject({ label: "Meta", incomplete: true });
+    expect(none[1].text).toContain("brak zaimportowanych");
+  });
+  it("przypomnienie o kosztach Meta tylko gdy już je importowano i import jest starszy niż 7 dni", () => {
+    const now = new Date("2026-11-30T10:00:00Z");
+    const base = { unsourced: 0, waitingProposals: 0, lastCostImportAt: "2026-11-29T10:00:00Z", now, pendingConversions: 0, query: "" };
+    expect(todoItems({ ...base, lastMetaImportAt: null })).toEqual([]);
+    expect(todoItems({ ...base })).toEqual([]);
+    const stale = todoItems({ ...base, lastMetaImportAt: "2026-11-20T07:13:00Z" });
+    expect(stale).toHaveLength(1);
+    expect(stale[0].text).toContain("koszty Meta");
   });
 });

@@ -43,9 +43,17 @@ function costPerBooking(n: Node, hasCosts: boolean): string {
   if (FREE.includes(n.label)) return "bezpłatne";
   if (PAID.includes(n.label)) {
     if (!hasCosts || n.metrics.cost <= 0) return "[po imporcie]";
-    return n.metrics.bookings > 0 ? PLN(n.metrics.cost / n.metrics.bookings) : "brak rezerwacji";
+    if (n.metrics.bookings > 0) return PLN(n.metrics.cost / n.metrics.bookings);
+    // Koszt jest, rezerwacji brak: pokaż, ile kosztuje zapytanie (albo że zapytań też nie było).
+    return n.metrics.leads.razem > 0 ? `brak rezerwacji · ${PLN(n.metrics.cost / n.metrics.leads.razem)} / zapytanie` : "brak rezerwacji · 0 zapytań";
   }
   return "—";
+}
+
+// Koszt kanału w widoku domyślnym: płatne bez zaimportowanych kosztów → „[po imporcie]”, reszta bez kosztu → „—”.
+function costCell(n: Node, isTotal: boolean): string {
+  if (n.metrics.cost > 0) return PLN(n.metrics.cost);
+  return !isTotal && PAID.includes(n.label) ? "[po imporcie]" : "—";
 }
 
 export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { report: Report; query: string; csvQuery: string; hasCosts: boolean; traffic?: TrafficMetricsDto }) {
@@ -106,6 +114,7 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
         <td className={num}><Num value={m.offers} ids={n.ids.offers} title={t("oferty")} onPick={setPicked} /></td>
         <td className={num}><Num value={m.bookings} ids={n.ids.bookings} title={t("rezerwacje")} onPick={setPicked} /></td>
         <td className={`${num} whitespace-nowrap`}>{PLN(m.revenue)}</td>
+        <td className={`${num} whitespace-nowrap`} title="Koszt z importów CSV (Google Ads i Meta) w wybranym okresie">{costCell(n, !!opts.isTotal)}</td>
         {more && (
           <>
             <td className={num}><Num value={m.talked} ids={n.ids.talked} title={t("rozmowy")} onPick={setPicked} /></td>
@@ -115,12 +124,11 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
             </td>
             <td className={num}>{m.clicks ? INT(m.clicks) : "—"}</td>
             <td className={num}>{m.impressions ? INT(m.impressions) : "—"}</td>
-            <td className={`${num} whitespace-nowrap`}>{m.cost ? PLN(m.cost) : "—"}</td>
             <td className={`${num} whitespace-nowrap`}>{m.cost > 0 && m.leads.razem > 0 ? PLN(m.cost / m.leads.razem) : "—"}</td>
             <TrafficCells m={opts.isTotal ? tTotal : tm(n)} hasData={hasTraffic} className={num} />
           </>
         )}
-        <td className={`${num} whitespace-nowrap text-gray-600`}>{opts.isTotal ? "—" : costPerBooking(n, hasCosts)}</td>
+        <td className={`${num} text-gray-600`}>{opts.isTotal ? "—" : costPerBooking(n, hasCosts)}</td>
       </tr>
     );
   };
@@ -148,6 +156,7 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
                 <th className={th}>Oferty</th>
                 <th className={th}>Rezerwacje</th>
                 <th className={th}>Przychód</th>
+                <th className={th} title="Koszt z importów CSV (Google Ads i Meta)">Koszt</th>
                 {more && (
                   <>
                     <th className={th}>Rozmowy</th>
@@ -155,7 +164,6 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
                     <th className={th} title="oferty / zapytania · rezerwacje / oferty">% kroków</th>
                     <th className={th}>Kliknięcia</th>
                     <th className={th}>Wyświetlenia</th>
-                    <th className={th}>Koszt</th>
                     <th className={th}>Koszt / zapytanie</th>
                     <TrafficHeads />
                   </>
@@ -166,7 +174,7 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
             <tbody>
               {channels.length === 0 && (
                 <tr>
-                  <td colSpan={more ? 9 + TRAFFIC_COLS : 6} className="px-3 py-8 text-center text-gray-400">
+                  <td colSpan={more ? 13 + TRAFFIC_COLS : 7} className="px-3 py-8 text-center text-gray-400">
                     Brak zapytań w tym okresie.
                   </td>
                 </tr>
@@ -177,7 +185,7 @@ export function ChannelsView({ report, query, csvQuery, hasCosts, traffic }: { r
           </table>
         </div>
         <p className="mb-0 mt-3 text-xs text-gray-500">
-          „Więcej kolumn” dokłada: rozmowy, wygrane (wynajem zrealizowany), odsetek kroków, kliknięcia, wyświetlenia, koszt i koszt / zapytanie. Stałe klientki i dostawcy nie liczą się jako nowe zapytania
+          „Więcej kolumn” dokłada: rozmowy, wygrane (wynajem zrealizowany), odsetek kroków, kliknięcia, wyświetlenia, koszt / zapytanie i jakość ruchu z licznika. Stałe klientki i dostawcy nie liczą się jako nowe zapytania
           {returningCount > 0 ? ` (pominięto ${returningCount} ${returningCount === 1 ? "stałą klientkę" : "stałych klientek"})` : ""}.
         </p>
       </section>
