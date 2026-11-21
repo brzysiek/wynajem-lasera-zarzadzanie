@@ -4,10 +4,10 @@
 // UWAGA (do opisu pól): licznik NIE łączy wizyt między stronami — metryki dotyczą wyświetlenia strony,
 // od którego zaczęła się wizyta (strona wejścia z danym utm). Nie wolno z nich wyciągać wniosków o całej
 // ścieżce osoby (np. że formularz na innej podstronie nie został wysłany).
-import { TCH, classifyChannel } from "./ingest";
+import { MIN_VISITS, TCH, classifyChannel } from "./ingest";
 import { isVisit, type TrafficRow } from "./report";
 
-export const MIN_VISITS = 20; // poniżej: „mało danych”
+export { MIN_VISITS };
 
 export type AdMetrics = {
   wejscia: number;
@@ -16,6 +16,8 @@ export type AdMetrics = {
   wyszli_od_razu_proc: number | null;
   przewiniecie_50_proc: number | null;
   czas_30s_proc: number | null;
+  sredni_czas_s: number | null; // z pola `sek` skryptu v2 (tylko wejścia z pomiarem); null = brak pomiarów
+  z_pomiarem_czasu: number;
   klik_telefon: number;
   form_start: number;
   form_wyslany: number;
@@ -24,8 +26,8 @@ export type AdMetrics = {
   malo_danych: boolean;
 };
 
-type Acc = { visits: number; ended: number; bounced: number; scroll50: number; time30: number; phone: number; start: number; sent: number; aband: number; fields: Map<string, number> };
-const newAcc = (): Acc => ({ visits: 0, ended: 0, bounced: 0, scroll50: 0, time30: 0, phone: 0, start: 0, sent: 0, aband: 0, fields: new Map() });
+type Acc = { visits: number; ended: number; bounced: number; scroll50: number; time30: number; secSum: number; secN: number; phone: number; start: number; sent: number; aband: number; fields: Map<string, number> };
+const newAcc = (): Acc => ({ visits: 0, ended: 0, bounced: 0, scroll50: 0, time30: 0, secSum: 0, secN: 0, phone: 0, start: 0, sent: 0, aband: 0, fields: new Map() });
 const pct = (a: number, b: number): number | null => (b > 0 ? Math.round((a / b) * 100) : null);
 
 export function metricsOf(a: Acc): AdMetrics {
@@ -37,6 +39,8 @@ export function metricsOf(a: Acc): AdMetrics {
     wyszli_od_razu_proc: pct(a.bounced, a.ended),
     przewiniecie_50_proc: pct(a.scroll50, a.ended),
     czas_30s_proc: pct(a.time30, a.ended),
+    sredni_czas_s: a.secN > 0 ? Math.round((a.secSum / a.secN) * 10) / 10 : null,
+    z_pomiarem_czasu: a.secN,
     klik_telefon: a.phone,
     form_start: a.start,
     form_wyslany: a.sent,
@@ -55,10 +59,10 @@ export const grpKey = (channel: string, camp: string, group: string) => ["grp", 
 export const kwKey = (channel: string, camp: string, group: string, term: string) => ["kw", channel, camp, group, term].join(SEP);
 export const kwcKey = (camp: string, term: string) => ["kwc", camp, term].join(SEP);
 
-type PvFacts = { ended: boolean; bounced: boolean; scroll50: boolean; time30: boolean; phone: number; start: boolean; sent: boolean; aband: string[] };
+type PvFacts = { ended: boolean; bounced: boolean; scroll50: boolean; time30: boolean; sek: number | null; phone: number; start: boolean; sent: boolean; aband: string[] };
 
 function factsOf(events: TrafficRow[]): PvFacts {
-  const f: PvFacts = { ended: false, bounced: false, scroll50: false, time30: false, phone: 0, start: false, sent: false, aband: [] };
+  const f: PvFacts = { ended: false, bounced: false, scroll50: false, time30: false, sek: null, phone: 0, start: false, sent: false, aband: [] };
   let last: TrafficRow | null = null;
   for (const e of events) {
     const d = e.data ?? {};
@@ -75,6 +79,8 @@ function factsOf(events: TrafficRow[]): PvFacts {
     f.scroll50 = typeof d.przew === "number" && d.przew >= 50;
     f.time30 = d.czas === "30s-2min" || d.czas === ">2min";
   }
+  // Czas aktywny: ostatnie „koniec” z polem sek (sumy rosnące w obrębie odsłony — nie sumujemy kilku).
+  for (const e of events) if (e.type === "koniec" && typeof e.data?.sek === "number") f.sek = e.data.sek;
   return f;
 }
 
@@ -85,6 +91,10 @@ function add(a: Acc, f: PvFacts) {
     if (f.bounced) a.bounced++;
     if (f.scroll50) a.scroll50++;
     if (f.time30) a.time30++;
+  }
+  if (f.sek !== null) {
+    a.secSum += f.sek;
+    a.secN++;
   }
   a.phone += f.phone;
   if (f.start) a.start++;

@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { TrafficReport } from "@/lib/traffic/report";
+import { MIN_VISITS } from "@/lib/traffic/ingest";
+import type { AttentionStats, TrafficReport } from "@/lib/traffic/report";
 
 // Marketing → Ruch na stronie (wniosek 54, etap 2): dane z anonimowego licznika (bez ciasteczek) —
 // liczy wszystkie wejścia, także osób, które odrzuciły baner. Układ jak w makiecie.
@@ -28,6 +29,40 @@ function Card({ title, sub, children, className = "" }: { title: string; sub?: s
   );
 }
 
+const fmtS = (n: number) => n.toLocaleString("pl-PL", { maximumFractionDigits: 1 });
+
+// Mapa uwagi: pionowy pasek 10 pasów (0–10% … 90–100% długości strony), kolor wg średnich sekund w paśmie.
+function AttentionMap({ a, height }: { a: AttentionStats; height: number }) {
+  if (a.n === 0) {
+    return <div className="flex w-28 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 p-2 text-center text-xs text-gray-500" style={{ height }}>brak danych (przed 21.11)</div>;
+  }
+  const max = Math.max(...a.avgSeconds, 0.1);
+  return (
+    <div className="w-28 shrink-0" aria-label="Mapa uwagi">
+      <div className="flex flex-col overflow-hidden rounded-lg border border-gray-200" style={{ height }}>
+        {a.avgSeconds.map((sec, i) => {
+          const alpha = Math.round(10 + (sec / max) * 80) / 100;
+          return (
+            <div
+              key={i}
+              className="flex flex-1 items-center justify-between gap-1 border-b border-white/60 px-1.5 text-[11px] last:border-b-0"
+              style={{ backgroundColor: `rgba(220, 38, 38, ${alpha})` }}
+              title={`${i * 10}–${(i + 1) * 10}% strony: średnio ${fmtS(sec)} s, zobaczyło ${a.seenPct[i] ?? 0}% wizyt`}
+            >
+              <span className="tabular-nums text-gray-900">{fmtS(sec)} s</span>
+              <span className="tabular-nums text-gray-700">{a.seenPct[i] ?? 0}%</span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mb-0 mt-1 text-[11px] leading-tight text-gray-500">
+        {a.n} {a.n === 1 ? "wizyta" : "wizyt"} z pomiarem
+        {a.fewData && <span className="ml-1 rounded-full bg-gray-100 px-1.5 py-0.5 font-medium text-gray-500">mało danych</span>}
+      </p>
+    </div>
+  );
+}
+
 const th = "py-1 px-1.5 text-right font-medium";
 const td = "py-1.5 px-1.5 text-right tabular-nums";
 
@@ -44,6 +79,7 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
   const [mapPath, setMapPath] = useState(paths[0] ?? "/");
   const [mapDev, setMapDev] = useState<"telefon" | "komputer">("telefon");
   const dots = report.clicks.points.filter((p) => p.path === mapPath && (mapDev === "telefon" ? p.dev !== "komputer" : p.dev === "komputer"));
+  const mapAttention = report.pages.find((p) => p.path === mapPath)?.attention[mapDev] ?? { n: 0, avgSeconds: [], seenPct: [], fewData: true };
   const mapHeight = Math.min(2400, Math.max(320, Math.round(Math.max(0, ...dots.map((p) => p.y)) + 80)));
   const bn = report.consents.banner;
   const en = report.consents.entries;
@@ -128,7 +164,7 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
 
         <Card title="Strony: wejścia i wyjścia" className="lg:col-span-2">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
+            <table className="w-full min-w-[760px] text-sm">
               <thead className="text-xs text-gray-500">
                 <tr>
                   <th className="py-1 text-left font-medium">Strona</th>
@@ -137,6 +173,7 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
                   <th className={th} title="Wyszli z witryny z tej strony">Wyjścia</th>
                   <th className={th}>Przewinięte</th>
                   <th className={th}>Czas (najczęściej)</th>
+                  <th className={th} title="Czas aktywny (karta widoczna) z pomiaru sekundowego skryptu v2; średnia z odsłon, które mają pomiar">Średni czas (s)</th>
                   <th className={th}>Wyszli od razu</th>
                 </tr>
               </thead>
@@ -151,6 +188,16 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
                       <td className={td}>{INT(p.exits)}</td>
                       <td className={td}>{p.avgScroll != null ? `${p.avgScroll} %` : "—"}</td>
                       <td className={td}>{top ? top[0] : "—"}</td>
+                      <td className={td} title={p.timeS.n > 0 ? `Mediana ${p.timeS.median} s · z pomiarem ${p.timeS.n} z ${p.views} odsłon` : undefined}>
+                        {p.timeS.n > 0 ? (
+                          <>
+                            {fmtS(p.timeS.avg ?? 0)}
+                            {p.timeS.n < MIN_VISITS && <span className="ml-1 text-[10px] text-gray-400">mało danych</span>}
+                          </>
+                        ) : (
+                          <span className="whitespace-nowrap text-xs text-gray-400">brak danych (przed 21.11)</span>
+                        )}
+                      </td>
                       <td className={td}>{p.bouncedPct != null ? `${p.bouncedPct} %` : "—"}</td>
                     </tr>
                   );
@@ -202,7 +249,7 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
           )}
         </Card>
 
-        <Card title="Gdzie klikają" sub="Najczęściej klikane elementy; telefon wg strony" className="lg:col-span-2">
+        <Card title="Gdzie klikają" sub="Najczęściej klikane elementy; telefon wg strony; mapa kliknięć i mapa uwagi" className="lg:col-span-2">
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[420px] text-sm">
@@ -254,13 +301,18 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
                   <option value="komputer">komputer</option>
                 </select>
               </div>
-              <div className="relative w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100" style={{ height: mapHeight }} aria-label="Mapa kliknięć">
-                {dots.map((p, i) => (
-                  <span key={i} className="absolute -ml-1 -mt-1 inline-block h-2 w-2 rounded-full bg-red-600/60" style={{ left: `${p.x}%`, top: p.y }} />
-                ))}
-                {dots.length === 0 && <div className="flex h-full items-center justify-center text-sm text-gray-500">Brak kliknięć na tej stronie i urządzeniu.</div>}
+              <div className="flex gap-3">
+                <div className="relative min-w-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-gray-100" style={{ height: mapHeight }} aria-label="Mapa kliknięć">
+                  {dots.map((p, i) => (
+                    <span key={i} className="absolute -ml-1 -mt-1 inline-block h-2 w-2 rounded-full bg-red-600/60" style={{ left: `${p.x}%`, top: p.y }} />
+                  ))}
+                  {dots.length === 0 && <div className="flex h-full items-center justify-center px-2 text-center text-sm text-gray-500">Brak kliknięć na tej stronie i urządzeniu.</div>}
+                </div>
+                <AttentionMap a={mapAttention} height={mapHeight} />
               </div>
-              <p className="mb-0 mt-1 text-xs text-gray-500">Kropki: miejsce kliknięcia (x w % szerokości, y w pikselach od góry strony).</p>
+              <p className="mb-0 mt-1 text-xs text-gray-500">
+                Kropki: miejsce kliknięcia (x w % szerokości, y w pikselach od góry strony). Pasek po prawej to mapa uwagi: 10 pasów wysokości strony (od góry), w każdym średnie sekundy w oknie przeglądarki i odsetek wizyt, które go zobaczyły; ciemniejszy = dłużej.
+              </p>
             </div>
           </div>
         </Card>

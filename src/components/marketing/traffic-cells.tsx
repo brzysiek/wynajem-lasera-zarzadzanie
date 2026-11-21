@@ -67,6 +67,8 @@ export function totalMetrics(t: TrafficMetricsDto | undefined): AdMetrics | unde
     wyszli_od_razu_proc: null,
     przewiniecie_50_proc: null,
     czas_30s_proc: null,
+    sredni_czas_s: null,
+    z_pomiarem_czasu: sum((m) => m.z_pomiarem_czasu),
     klik_telefon: sum((m) => m.klik_telefon),
     form_start: sum((m) => m.form_start),
     form_wyslany: sum((m) => m.form_wyslany),

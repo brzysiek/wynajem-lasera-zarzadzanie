@@ -330,7 +330,7 @@ export const TOOLS: McpTool[] = [
       "Każdy wiersz: wyświetlenia, kliknięcia, koszt (Google Ads i Meta, z importów CSV w Marketing → Ustawienia pomiaru — brak importu = koszt 0; Meta: kampania → zestaw → reklama, stare znaczniki UTM sprzed 28.10 w wierszu „Meta — bez przypisania do reklamy”), leady (razem + cennik / kontakt / rezerwacja_www / szkolenie / inne), stale_klientki (osobno, poza kosztem pozyskania), " +
       "rozmowy (wpis rozmowy lub maila; każda oferta, rezerwacja i wygrana liczy się też jako rozmowa), oferty / rezerwacje / wygrane (co najmniej ten etap, wg najdalszego osiągniętego), przychod_netto (RentalFinance.totalNet, bez stałych klientek), koszt_na_lead / rozmowe / rezerwacje, przychod_do_kosztu, przegrane_wg_powodu, " +
       "stale_klientki_szczegoly (rezerwacje, wygrane i przychód stałych klientek — osobno, także klientki z wcześniejszym wynajmem), poza_branza_nie_klienci (przegrane z powodem „Poza branżą” — poza leadami), " +
-      "oraz „sygnaly” = id sygnałów za każdą liczbą. Pole „licznik” (poziomy kanal / kampania / grupa / slowo) = jakość ruchu z anonimowego licznika dla wejść z tym utm: wejscia, wyszli_od_razu_proc (koniec.wyjscie i czas <10 s), przewiniecie_50_proc, czas_30s_proc, klik_telefon, form_start / form_wyslany / form_porzucony (+ pole_porzucenia), bez_podsumowania (wejścia bez zdarzenia „koniec” — poza mianownikami procentów), malo_danych (< 20 wejść). " +
+      "oraz „sygnaly” = id sygnałów za każdą liczbą. Pole „licznik” (poziomy kanal / kampania / grupa / slowo) = jakość ruchu z anonimowego licznika dla wejść z tym utm: wejscia, wyszli_od_razu_proc (koniec.wyjscie i czas <10 s), przewiniecie_50_proc, czas_30s_proc, sredni_czas_s (czas aktywny z pomiaru sekundowego, tylko wejścia z pomiarem; z_pomiarem_czasu), klik_telefon, form_start / form_wyslany / form_porzucony (+ pole_porzucenia), bez_podsumowania (wejścia bez zdarzenia „koniec” — poza mianownikami procentów), malo_danych (< 20 wejść). " +
       "UWAGA: licznik nie łączy wizyt między stronami — metryki dotyczą strony wejścia (np. formularz na innej podstronie się nie liczy). Brak danych licznika w okresie = licznik null. Pomija sygnały testowe i zarchiwizowane duplikaty. Dodatkowo: razem, bez_zrodla (lista do uzupełnienia), slowa_bez_leadow (koszt > 0, 0 leadów), trend_tygodniowy, uwagi. " +
       "Definicje (etap 1c): nowe zapytanie = lead z okresu BEZ stałych klientek (klient miał rezerwację lub wynajem przed datą zapytania) i bez kontaktów oznaczonych na karcie klienta „Nie liczyć w marketingu” (dostawca / partner); " +
       "etapy są kumulatywne (wynajem ⇒ rezerwacja ⇒ oferta ⇒ rozmowa ⇒ zapytanie); wygrane = wynajem zrealizowany (etap Wygrana). Dodatkowo: porownanie_z_poprzednim_okresem (ta sama długość), frazy_z_ocena (ocena i uzasadnienie zapisuje Claude narzędziem slowo_ocena_ustaw), bez_zrodla = tylko nowe zapytania. " +
@@ -477,8 +477,8 @@ export const TOOLS: McpTool[] = [
     description:
       "Anonimowy licznik ruchu wynajemlasera.pl (bez ciasteczek, bez IP — liczy też osoby, które odrzuciły baner cookies). Zwraca JSON z liczbami za okres (domyślnie ostatnie 28 dni). " +
       "sekcja: kanaly (wejścia wg kanału i urządzenia: Google Ads wg kampanii, Google organiczne, Bing, Meta, Facebook / Instagram organiczne, poczta, bezpośrednio, inne domeny; kafelki; porównanie wejść z Google Ads wg kampanii z zapytaniami z tej kampanii i kliknięciami z importu kosztów za te same dni), " +
-      "reklamy (jakość ruchu z reklam: Google Ads kampania → grupa → fraza, Meta kampania → zestaw → reklama; na wiersz: wejscia, wyszli_od_razu_proc, przewiniecie_50_proc, czas_30s_proc, klik_telefon, form_start / form_wyslany / form_porzucony + pole_porzucenia, bez_podsumowania, malo_danych (< 20 wejść); filtr kampania; licznik nie łączy wizyt między stronami — metryki dotyczą strony wejścia), " +
-      "zgody (wybór w banerze i stan zgody przy wejściach), strony (odsłony, strony wejścia, wyjścia, średnie przewinięcie, czas, „wyszli od razu”), przejscia (prev → strona), " +
+      "reklamy (jakość ruchu z reklam: Google Ads kampania → grupa → fraza, Meta kampania → zestaw → reklama; na wiersz: wejscia, wyszli_od_razu_proc, przewiniecie_50_proc, czas_30s_proc, sredni_czas_s (czas aktywny z pomiaru sekundowego, tylko wejścia z pomiarem; z_pomiarem_czasu), klik_telefon, form_start / form_wyslany / form_porzucony + pole_porzucenia, bez_podsumowania, malo_danych (< 20 wejść); filtr kampania; licznik nie łączy wizyt między stronami — metryki dotyczą strony wejścia), " +
+      "zgody (wybór w banerze i stan zgody przy wejściach), strony (odsłony, strony wejścia, wyjścia, średnie przewinięcie, czas w przedziałach, „wyszli od razu”; od skryptu v2 także sredni_czas_s / mediana_czasu_s z czasu aktywnego i uwaga_pasy — mapa uwagi: średnie sekundy na każdy z 10 pasów wysokości strony i odsetek odsłon, które zobaczyły pas, osobno telefon (z tabletem) i komputer; zdarzenia sprzed v2 nie mają tych pól → brak danych, nie zera), przejscia (prev → strona), " +
       "formularze (lejek: wyświetlenia → start → próba → wysłany, porzucenia z polem i błędy wg formularza), klikniecia (najczęściej klikane elementy wg strony i urządzenia, telefony wg strony, punkty mapy kliknięć). Bez sekcji — wszystko. " +
       "path zawęża do jednej strony. „Wejście” = początek wizyty; formularz liczony do kanału odsłony, na której się zaczął (wizyt nie łączymy między stronami). Tylko odczyt.",
     inputSchema: obj({
@@ -525,7 +525,24 @@ export const TOOLS: McpTool[] = [
         };
       }
       if (want("zgody")) out.zgody = { baner: r.consents.banner, przy_wejsciach: r.consents.entries };
-      if (want("strony")) out.strony = r.pages.map((p) => ({ strona: p.path, odslony: p.views, strony_wejscia: p.landings, wyjscia: p.exits, srednie_przewiniecie_proc: p.avgScroll, czas: p.time, wyszli_od_razu_proc: p.bouncedPct }));
+      if (want("strony")) {
+        const mapa = (a: (typeof r.pages)[number]["attention"]["telefon"]) =>
+          a.n === 0 ? "brak danych (przed 21.11)" : { odslon_z_pomiarem: a.n, malo_danych: a.fewData, srednie_sekundy_na_pas: a.avgSeconds, zobaczylo_pas_proc: a.seenPct };
+        out.strony = r.pages.map((p) => ({
+          strona: p.path,
+          odslony: p.views,
+          strony_wejscia: p.landings,
+          wyjscia: p.exits,
+          srednie_przewiniecie_proc: p.avgScroll,
+          czas: p.time,
+          wyszli_od_razu_proc: p.bouncedPct,
+          z_pomiarem_czasu: p.timeS.n,
+          sredni_czas_s: p.timeS.n ? p.timeS.avg : "brak danych (przed 21.11)",
+          mediana_czasu_s: p.timeS.n ? p.timeS.median : "brak danych (przed 21.11)",
+          uwaga_pasy: { telefon: mapa(p.attention.telefon), komputer: mapa(p.attention.komputer) },
+        }));
+        out.uwaga_strony = "sredni_czas_s / mediana_czasu_s = czas aktywny (karta widoczna, max 1800 s) tylko z odsłon, które mają pomiar (z_pomiarem_czasu). uwaga_pasy: pas 1 = 0–10% wysokości strony … pas 10 = 90–100%; srednie_sekundy_na_pas liczone na odsłonach z pomiarem, zobaczylo_pas_proc = odsetek z > 0 s; malo_danych = mniej niż 20 odsłon.";
+      }
       if (want("przejscia")) out.przejscia = r.transitions.slice(0, 50).map((t) => ({ z: t.from, na: t.to, liczba: t.count }));
       if (want("formularze")) out.formularze = r.forms.map((f) => ({ formularz: f.form, strony: f.paths, wyswietlenia: f.views, start: f.started, proba: f.tried, wyslany: f.sent, bledy_wg_pola: f.errors, porzucenia_wg_pola: f.abandoned }));
       if (want("klikniecia")) out.klikniecia = { najczestsze: r.clicks.top.map((c) => ({ rodzaj: c.rodzaj, etykieta: c.etyk, strona: c.path, urzadzenie: c.dev, liczba: c.count })), telefon_wg_strony: r.clicks.phoneByPath, punkty_mapy: r.clicks.points.slice(0, 500) };

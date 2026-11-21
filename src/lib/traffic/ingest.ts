@@ -19,6 +19,10 @@ export const CONSENT_STATES = ["s1m1", "s1m0", "s0m0", "brak"] as const;
 export const BANNER_CHOICES = ["wszystkie", "wlasny", "odrzucam"] as const;
 export const SCROLL_STEPS = [0, 25, 50, 75, 100] as const;
 export const TIME_BUCKETS = ["<10s", "10-30s", "30s-2min", ">2min"] as const;
+// Skrypt licznika v2 (wniosek 60): czas aktywny w sekundach i sekundy w 10 pasach wysokości strony.
+export const MAX_SECONDS = 1800;
+export const BAND_COUNT = 10;
+export const MIN_VISITS = 20; // poniżej: „mało danych” (raporty jakości ruchu i mapa uwagi)
 
 // Kanały ruchu. Te same nazwy co w raporcie leadów (CH), żeby dało się je łączyć.
 export const TCH = {
@@ -44,6 +48,14 @@ const str = (v: unknown, max: number): string => (typeof v === "string" ? v.trim
 const truthy = (v: unknown): boolean => v === true || v === 1 || v === "1" || v === "true";
 const pick = <T extends string>(v: unknown, allowed: readonly T[]): T | null => (typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : null);
 const num = (v: unknown, min: number, max: number): number | null => (typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : null);
+// Liczba całkowita w zakresie — poza zakresem albo ułamek = odrzucenie (null), nie przycinanie.
+const intIn = (v: unknown, min: number, max: number): number | null => (typeof v === "number" && Number.isInteger(v) && v >= min && v <= max ? v : null);
+// Dokładnie 10 liczb całkowitych 0–1800; cokolwiek innego = null (zdarzenie zapisujemy bez pola).
+export function parseBands(v: unknown): number[] | null {
+  if (!Array.isArray(v) || v.length !== BAND_COUNT) return null;
+  const out = v.map((x) => intIn(x, 0, MAX_SECONDS));
+  return out.every((x): x is number => x !== null) ? out : null;
+}
 
 function parseEvent(raw: unknown): ParsedEvent | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -100,6 +112,13 @@ function parseEvent(raw: unknown): ParsedEvent | null {
       data.przew = typeof o.przew === "number" && (SCROLL_STEPS as readonly number[]).includes(o.przew) ? o.przew : 0;
       data.czas = pick(o.czas, TIME_BUCKETS) ?? "<10s";
       data.wyjscie = truthy(o.wyjscie);
+      // v2: pola dodajemy tylko, gdy przeszły walidację (stare paczki ich nie mają).
+      {
+        const sek = intIn(o.sek, 0, MAX_SECONDS);
+        if (sek !== null) data.sek = sek;
+        const pasy = parseBands(o.pasy);
+        if (pasy) data.pasy = pasy;
+      }
       break;
   }
   return { type, t, data };

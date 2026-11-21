@@ -4,7 +4,7 @@
 // z leadami. „Wejście” = początek wizyty (wejscie bez prev, nie z własnej witryny); każde
 // wyświetlenie strony = wejscie (odsłona). Wizyt nie łączymy między stronami (brak
 // identyfikatora wizyty — to etap 3, tylko za zgodą), więc kanał formularza = kanał tej odsłony.
-import { TCH } from "./ingest";
+import { BAND_COUNT, MIN_VISITS, TCH } from "./ingest";
 
 export type TrafficRow = { at: Date; pv: string; path: string; dev: string; type: string; channel: string; data: Record<string, unknown> | null };
 
@@ -35,7 +35,17 @@ export type TrafficReport = {
     banner: { wszystkie: number; wlasny: number; odrzucam: number; shown: number };
     entries: { s1m1: number; s1m0: number; s0m0: number; brak: number };
   };
-  pages: { path: string; views: number; landings: number; exits: number; avgScroll: number | null; time: Record<string, number>; bouncedPct: number | null }[];
+  pages: {
+    path: string;
+    views: number;
+    landings: number;
+    exits: number;
+    avgScroll: number | null;
+    time: Record<string, number>;
+    bouncedPct: number | null;
+    timeS: TimeStats; // czas aktywny w sekundach (skrypt v2)
+    attention: { telefon: AttentionStats; komputer: AttentionStats }; // mapa uwagi: 10 pasów wysokości strony
+  }[];
   transitions: { from: string; to: string; count: number }[];
   forms: {
     form: string;
@@ -53,6 +63,31 @@ export type TrafficReport = {
     points: { path: string; dev: string; x: number; y: number }[];
   };
 };
+
+// Czas aktywny z pola `sek`: tylko odsłony z pomiarem (zdarzenia sprzed skryptu v2 go nie mają → n = 0, nie zera).
+export type TimeStats = { n: number; avg: number | null; median: number | null };
+// Mapa uwagi: średnie sekundy na pas i odsetek odsłon, które w ogóle zobaczyły pas (> 0 s). n = odsłony z pomiarem.
+export type AttentionStats = { n: number; avgSeconds: number[]; seenPct: (number | null)[]; fewData: boolean };
+
+const round1 = (x: number) => Math.round(x * 10) / 10;
+const median = (a: number[]): number => {
+  const v = [...a].sort((x, y) => x - y);
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
+export const timeStats = (secs: number[]): TimeStats => ({ n: secs.length, avg: secs.length ? round1(secs.reduce((a, b) => a + b, 0) / secs.length) : null, median: secs.length ? round1(median(secs)) : null });
+// Telefon i tablet razem (jak na mapie kliknięć), komputer osobno.
+export const attentionGroup = (dev: string): "telefon" | "komputer" => (dev === "komputer" ? "komputer" : "telefon");
+export function attentionStats(bands: number[][]): AttentionStats {
+  const n = bands.length;
+  return {
+    n,
+    avgSeconds: Array.from({ length: BAND_COUNT }, (_, i) => (n ? round1(bands.reduce((a, b) => a + b[i], 0) / n) : 0)),
+    seenPct: Array.from({ length: BAND_COUNT }, (_, i) => pct(bands.filter((b) => b[i] > 0).length, n)),
+    fewData: n < MIN_VISITS,
+  };
+}
+const isBands = (v: unknown): v is number[] => Array.isArray(v) && v.length === BAND_COUNT && v.every((x) => typeof x === "number");
 
 export type TrafficFilter = { path?: string | null };
 
@@ -152,6 +187,22 @@ export function buildTrafficReport(rows: TrafficRow[], range: { from: string; to
     p.time[t] = (p.time[t] ?? 0) + 1;
     if (t === "<10s" && n(d(r).przew) === 0) p.bounced++;
   }
+  // Czas aktywny i pasy: z ostatniego „koniec” danej odsłony, które je ma (sumy rosną — nie zliczamy kilku).
+  const secByPv = new Map<string, { path: string; sek: number }>();
+  const bandsByPv = new Map<string, { path: string; dev: string; pasy: number[] }>();
+  for (const r of all) {
+    if (r.type !== "koniec") continue;
+    if (typeof d(r).sek === "number") secByPv.set(r.pv, { path: r.path, sek: d(r).sek as number });
+    if (isBands(d(r).pasy)) bandsByPv.set(r.pv, { path: r.path, dev: r.dev, pasy: d(r).pasy as number[] });
+  }
+  const secByPath = new Map<string, number[]>();
+  for (const x of secByPv.values()) secByPath.set(x.path, [...(secByPath.get(x.path) ?? []), x.sek]);
+  const bandsByPath = new Map<string, { telefon: number[][]; komputer: number[][] }>();
+  for (const x of bandsByPv.values()) {
+    const b = bandsByPath.get(x.path) ?? { telefon: [], komputer: [] };
+    b[attentionGroup(x.dev)].push(x.pasy);
+    bandsByPath.set(x.path, b);
+  }
   const pages = [...pg.entries()]
     .map(([path, p]) => ({
       path,
@@ -161,6 +212,8 @@ export function buildTrafficReport(rows: TrafficRow[], range: { from: string; to
       avgScroll: p.scroll.length ? Math.round(p.scroll.reduce((a, b) => a + b, 0) / p.scroll.length) : null,
       time: p.time,
       bouncedPct: pct(p.bounced, p.ends),
+      timeS: timeStats(secByPath.get(path) ?? []),
+      attention: { telefon: attentionStats(bandsByPath.get(path)?.telefon ?? []), komputer: attentionStats(bandsByPath.get(path)?.komputer ?? []) },
     }))
     .sort((a, b) => b.views - a.views);
   const transitions = [...trans.entries()]
