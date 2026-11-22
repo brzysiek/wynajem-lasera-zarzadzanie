@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { DRIVER_USER_WHERE } from "@/lib/rental-driver";
-import { VIEW_COOKIE, actsAsDriver, isDriverPreview } from "@/lib/effective-role";
+import { VIEW_COOKIE, actsAsDriver, isDriverOwnPreview, isDriverPreview } from "@/lib/effective-role";
 import { getAllReminderTemplates } from "@/lib/reminders";
 import { listSmsTemplates } from "@/lib/message-templates";
 import { RentalForm, type Rental, type ReminderOffset } from "@/components/rental-form";
@@ -68,10 +68,11 @@ export default async function RentalDetailPage({
   const viewCookie = (await cookies()).get(VIEW_COOKIE)?.value;
   const driverMode = actsAsDriver(role, session?.user.canActAsDriver, viewCookie);
   const preview = isDriverPreview(role, session?.user.canActAsDriver, viewCookie);
+  const ownOnly = isDriverOwnPreview(role, session?.user.canActAsDriver, viewCookie);
 
   // Driver (real or ADMIN/STAFF preview) gets the read-only card + finance
   // panel. A real KIEROWCA only sees rentals assigned to them; a preview
-  // opens any rental.
+  // opens any rental, a „tylko moje” preview only the ones assigned to the user.
   if (driverMode) {
     // driver: nie dołączany tutaj wcale — ta gałąź renderuje widok samego
     // KIEROWCY (real albo preview), więc nawet niewykorzystywany server-side
@@ -87,7 +88,7 @@ export default async function RentalDetailPage({
       loadFinanceFormContext(),
       prisma.vehicle.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     ]);
-    if (!rental || (!preview && rental.driverId !== session!.user.id)) {
+    if (!rental || ((!preview || ownOnly) && rental.driverId !== session!.user.id)) {
       notFound();
     }
     const [passport, pulseTerms] = await Promise.all([

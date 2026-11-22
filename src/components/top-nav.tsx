@@ -93,20 +93,23 @@ function SteeringWheelIcon({ className = "h-4 w-4" }: { className?: string }) {
 
 // Suwak Panel ↔ Kierowca w prawym górnym rogu (widoczny w obu trybach) —
 // zastępuje w całości baner „podgląd kierowcy" i przycisk powrotu.
-function ViewToggle({ driverActive }: { driverActive: boolean }) {
+// W trybie kierowcy dochodzi wybór: „Wszystkie” (jak widzą kierowcy) albo „Tylko moje” (rezerwacje,
+// w których jestem kierowcą).
+function ViewToggle({ driverActive, ownOnly }: { driverActive: boolean; ownOnly: boolean }) {
   const [busy, setBusy] = useState(false);
-  function toggle() {
+  function setMode(mode: "panel" | "driver" | "driver_own") {
     if (busy) return;
     setBusy(true);
     void fetch(`${BASE_PATH}/api/view`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: driverActive ? "panel" : "driver" }),
+      body: JSON.stringify({ mode }),
     })
       .catch(() => {})
       // Pełne przeładowanie — middleware musi przeliczyć rolę efektywną.
       .finally(() => window.location.assign(`${BASE_PATH}/kalendarz`));
   }
+  const toggle = () => setMode(driverActive ? "panel" : "driver");
   return (
     <div className="flex items-center gap-2">
       <span
@@ -141,6 +144,30 @@ function ViewToggle({ driverActive }: { driverActive: boolean }) {
         <SteeringWheelIcon className="h-3.5 w-3.5" />
         Kierowca
       </span>
+      {driverActive && (
+        <div role="group" aria-label="Zakres widoku kierowcy" className="ml-1 inline-flex overflow-hidden rounded-md border border-blue-200 text-xs font-medium">
+          <button
+            type="button"
+            aria-pressed={!ownOnly}
+            disabled={busy}
+            onClick={() => ownOnly && setMode("driver")}
+            title="Wszystkie rezerwacje — tak jak widzą je kierowcy"
+            className={`px-2 py-1 disabled:opacity-50 ${!ownOnly ? "bg-blue-600 text-white" : "bg-white text-blue-700 hover:bg-blue-50"}`}
+          >
+            Wszystkie
+          </button>
+          <button
+            type="button"
+            aria-pressed={ownOnly}
+            disabled={busy}
+            onClick={() => !ownOnly && setMode("driver_own")}
+            title="Tylko rezerwacje, w których jesteś kierowcą"
+            className={`px-2 py-1 disabled:opacity-50 ${ownOnly ? "bg-blue-600 text-white" : "bg-white text-blue-700 hover:bg-blue-50"}`}
+          >
+            Tylko moje
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -178,6 +205,7 @@ export function TopNav({
   role,
   canActAsDriver = false,
   driverPreview = false,
+  driverOwnOnly = false,
   showTasks = false,
   openTaskCount = null,
   onToggleTasks,
@@ -187,6 +215,7 @@ export function TopNav({
   role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
   canActAsDriver?: boolean;
   driverPreview?: boolean;
+  driverOwnOnly?: boolean;
   showTasks?: boolean;
   openTaskCount?: number | null;
   onToggleTasks?: () => void;
@@ -238,7 +267,7 @@ export function TopNav({
         </div>
 
         <div className="flex items-center gap-3">
-          {canActAsDriver && <ViewToggle driverActive={driverPreview} />}
+          {canActAsDriver && <ViewToggle driverActive={driverPreview} ownOnly={driverOwnOnly} />}
           {/* Desktop: ten sam przycisk żyje teraz w prawym pasku ikon (IconRail) —
               tu tylko na mobile, gdzie zachowujemy dzisiejsze umiejscowienie 1:1. */}
           {showTasks && onToggleTasks && (

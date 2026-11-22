@@ -22,6 +22,7 @@ import { linkUnassignedRentalsSafe } from "@/lib/clients/rental-match";
 import { syncLeadsWithRentalsSafe } from "@/lib/leads/rental-link";
 import { updateLead } from "@/lib/leads/actions";
 import { toDriverRental } from "@/lib/rentals/driver-dto";
+import { VIEW_COOKIE, isDriverOwnPreview } from "@/lib/effective-role";
 
 const RENTAL_INCLUDE = {
   device: true,
@@ -62,12 +63,14 @@ export async function GET(req: NextRequest) {
   }
 
   const isDriver = session.user.role === "KIEROWCA";
+  // Podgląd kierowcy „tylko moje” (ADMIN/STAFF z canActAsDriver): rezerwacje, w których jestem kierowcą.
+  const ownPreview = isDriverOwnPreview(session.user.role, session.user.canActAsDriver, req.cookies.get(VIEW_COOKIE)?.value);
   const where = {
     deletedInGoogle: false,
     startsAt: { lte: new Date(to) },
     endsAt: { gte: new Date(from) },
     // Drivers only ever see the rentals an admin assigned to them.
-    ...(isDriver ? { driverId: session.user.id } : {}),
+    ...(isDriver || ownPreview ? { driverId: session.user.id } : {}),
   };
   // Wniosek 31: konto KIEROWCA dostaje zawężone pola (bez cen, faktur, SMS, e-maila i NIP).
   if (isDriver) {

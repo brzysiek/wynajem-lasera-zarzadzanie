@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { logInfo } from "@/lib/logger";
-import { DRIVER_VIEW_VALUE, VIEW_COOKIE } from "@/lib/effective-role";
+import { DRIVER_OWN_VIEW_VALUE, DRIVER_VIEW_VALUE, VIEW_COOKIE } from "@/lib/effective-role";
 
 // Włącza/wyłącza „podgląd kierowcy" dla bieżącego użytkownika (cookie).
 // Dostępne tylko dla kont z uprawnieniem canActAsDriver.
@@ -19,11 +19,13 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null);
-  const enable = body?.mode === DRIVER_VIEW_VALUE;
+  // Tryby: „driver” (wszystkie rezerwacje jak widzi kierowca), „driver_own” (tylko moje), inne = panel.
+  const mode = body?.mode === DRIVER_VIEW_VALUE || body?.mode === DRIVER_OWN_VIEW_VALUE ? (body.mode as string) : null;
+  const enable = mode !== null;
 
-  const res = NextResponse.json({ ok: true, mode: enable ? DRIVER_VIEW_VALUE : "panel" });
+  const res = NextResponse.json({ ok: true, mode: mode ?? "panel" });
   if (enable) {
-    res.cookies.set(VIEW_COOKIE, DRIVER_VIEW_VALUE, {
+    res.cookies.set(VIEW_COOKIE, mode, {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
@@ -32,6 +34,6 @@ export async function POST(req: NextRequest) {
   } else {
     res.cookies.set(VIEW_COOKIE, "", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 0 });
   }
-  logInfo("driver_view_toggled", { userId: session.user.id, mode: enable ? "driver" : "panel" });
+  logInfo("driver_view_toggled", { userId: session.user.id, mode: mode ?? "panel" });
   return res;
 }

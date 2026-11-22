@@ -39,6 +39,7 @@ export function AppShell({
   role,
   canActAsDriver = false,
   driverPreview = false,
+  driverOwnOnly = false,
   children,
 }: {
   userName: string;
@@ -46,6 +47,7 @@ export function AppShell({
   role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
   canActAsDriver?: boolean;
   driverPreview?: boolean;
+  driverOwnOnly?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -98,6 +100,7 @@ export function AppShell({
             role={role}
             canActAsDriver={canActAsDriver}
             driverPreview={driverPreview}
+            driverOwnOnly={driverOwnOnly}
             showTasks={showTasks}
             openTaskCount={openTaskCount}
             onToggleTasks={() => setTasksOpen((v) => !v)}

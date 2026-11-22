@@ -6,6 +6,8 @@
 
 export const VIEW_COOKIE = "wl_view";
 export const DRIVER_VIEW_VALUE = "driver";
+// Podgląd kierowcy z zawężeniem do własnych rezerwacji (te, w których jestem kierowcą).
+export const DRIVER_OWN_VIEW_VALUE = "driver_own";
 
 // Czy to ADMIN/STAFF w trybie podglądu kierowcy (nie prawdziwy KIEROWCA).
 export function isDriverPreview(
@@ -14,7 +16,21 @@ export function isDriverPreview(
   viewCookie: string | undefined,
 ): boolean {
   // AGENT nigdy nie przełącza się w tryb kierowcy (nawet ze starą flagą).
-  return role !== "KIEROWCA" && role !== "AGENT" && Boolean(canActAsDriver) && viewCookie === DRIVER_VIEW_VALUE;
+  return (
+    role !== "KIEROWCA" &&
+    role !== "AGENT" &&
+    Boolean(canActAsDriver) &&
+    (viewCookie === DRIVER_VIEW_VALUE || viewCookie === DRIVER_OWN_VIEW_VALUE)
+  );
+}
+
+// Podgląd kierowcy w wariancie „tylko moje” — widać wyłącznie rezerwacje przypisane do tej osoby.
+export function isDriverOwnPreview(
+  role: string | undefined,
+  canActAsDriver: boolean | undefined,
+  viewCookie: string | undefined,
+): boolean {
+  return isDriverPreview(role, canActAsDriver, viewCookie) && viewCookie === DRIVER_OWN_VIEW_VALUE;
 }
 
 // Czy żądanie ma się zachować jak dla kierowcy: prawdziwy KIEROWCA albo

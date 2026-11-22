@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
-import { VIEW_COOKIE, actsAsDriver, isDriverPreview } from "@/lib/effective-role";
+import { VIEW_COOKIE, actsAsDriver, isDriverOwnPreview, isDriverPreview } from "@/lib/effective-role";
 
 export default async function AppLayout({
   children,
@@ -18,6 +18,7 @@ export default async function AppLayout({
   const viewCookie = (await cookies()).get(VIEW_COOKIE)?.value;
   const driverMode = actsAsDriver(session.user.role, session.user.canActAsDriver, viewCookie);
   const driverPreview = isDriverPreview(session.user.role, session.user.canActAsDriver, viewCookie);
+  const driverOwnOnly = isDriverOwnPreview(session.user.role, session.user.canActAsDriver, viewCookie);
 
   return (
     <AppShell
@@ -26,6 +27,7 @@ export default async function AppLayout({
       role={driverMode ? "KIEROWCA" : session.user.role}
       canActAsDriver={session.user.canActAsDriver && session.user.role !== "KIEROWCA" && session.user.role !== "AGENT"}
       driverPreview={driverPreview}
+      driverOwnOnly={driverOwnOnly}
     >
       {children}
     </AppShell>
