@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
 import { logInfo, logWarn } from "@/lib/logger";
+import { canBeAssignedAsDriver } from "@/lib/rental-driver";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
@@ -29,6 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     role?: "ADMIN" | "STAFF" | "KIEROWCA" | "AGENT";
     canActAsDriver?: boolean;
     agentAssignable?: boolean;
+    driverAssignable?: boolean;
     grammaticalGender?: "M" | "F" | null;
     hourlyRate?: number | null;
     driverColor?: string | null;
@@ -67,6 +69,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body?.agentAssignable === "boolean") data.agentAssignable = body.agentAssignable;
   const roleAfter = data.role ?? target.role;
   if (roleAfter !== "ADMIN" && roleAfter !== "STAFF") data.agentAssignable = false;
+  // Flaga „może być kierowcą w rezerwacji” — tylko biuro (ADMIN/STAFF); KIEROWCA jest przypisywalny z samej roli.
+  if (typeof body?.driverAssignable === "boolean") data.driverAssignable = body.driverAssignable;
+  if (roleAfter !== "ADMIN" && roleAfter !== "STAFF" && (data.driverAssignable ?? target.driverAssignable)) data.driverAssignable = false;
   // Agent AI nigdy nie przełącza się w tryb kierowcy.
   if ((data.role ?? target.role) === "AGENT") data.canActAsDriver = false;
 
@@ -74,12 +79,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data.grammaticalGender = body.grammaticalGender;
   }
 
-  // hourlyRate ma sens wyłącznie dla roli KIEROWCA (schema.prisma, sekcja
-  // bezpieczeństwa docs/prompt-claude-code-dashboard-kosztow.md 1.4) — dla
-  // efektywnej roli (po tym PATCH-u) innej niż KIEROWCA zawsze wymuszamy
-  // null, niezależnie co przyszło w body.
+  // hourlyRate ma sens wyłącznie dla osoby, którą można przypisać jako kierowcę: rola KIEROWCA albo
+  // ADMIN/STAFF z flagą driverAssignable (schema.prisma, sekcja bezpieczeństwa
+  // docs/prompt-claude-code-dashboard-kosztow.md 1.4) — dla pozostałych (po tym PATCH-u) zawsze
+  // wymuszamy null, niezależnie co przyszło w body. Stawka trafia tylko do odpowiedzi ADMIN-only.
   const effectiveRole = data.role ?? target.role;
-  if (effectiveRole !== "KIEROWCA") {
+  const effectiveAssignable = data.driverAssignable ?? target.driverAssignable;
+  if (!canBeAssignedAsDriver({ role: effectiveRole, driverAssignable: effectiveAssignable })) {
     if (target.hourlyRate !== null) data.hourlyRate = null;
   } else if ("hourlyRate" in (body ?? {})) {
     if (body.hourlyRate === null) {
@@ -135,6 +141,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       email: updated.email,
       role: updated.role,
       canActAsDriver: updated.canActAsDriver,
+      driverAssignable: updated.driverAssignable,
       agentAssignable: updated.agentAssignable,
       grammaticalGender: updated.grammaticalGender,
       hourlyRate: updated.hourlyRate !== null ? updated.hourlyRate.toString() : null,

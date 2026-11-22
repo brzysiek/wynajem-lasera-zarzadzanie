@@ -103,6 +103,10 @@ model User {
   // ADMIN/STAFF z tą flagą mogą przełączyć aplikację w „podgląd kierowcy"
   // (rola efektywna, bez zmiany roli w bazie) — patrz src/lib/effective-role.ts.
   canActAsDriver Boolean @default(false)
+  // ADMIN/STAFF z tą flagą mogą być przypisani jako kierowca w rezerwacji (wniosek: Tomek jeździ
+  // sam). Osobna od canActAsDriver („podgląd kierowcy”), bo tę mają też osoby, które nie jeżdżą.
+  // Rola KIEROWCA jest przypisywalna zawsze (flaga jej nie dotyczy).
+  driverAssignable Boolean @default(false)
   // Agent AI (rola AGENT) może przydzielać tej osobie zadania — ustawia
   // ADMIN w Ustawienia → Użytkownicy. Domyślnie nie.
   agentAssignable Boolean @default(false)

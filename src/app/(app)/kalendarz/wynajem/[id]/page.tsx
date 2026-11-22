@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { DRIVER_USER_WHERE } from "@/lib/rental-driver";
 import { VIEW_COOKIE, actsAsDriver, isDriverPreview } from "@/lib/effective-role";
 import { getAllReminderTemplates } from "@/lib/reminders";
 import { listSmsTemplates } from "@/lib/message-templates";
@@ -235,7 +236,7 @@ export default async function RentalDetailPage({
     listSmsTemplates(),
     isAdmin
       ? prisma.user.findMany({
-          where: { role: "KIEROWCA" },
+          where: DRIVER_USER_WHERE,
           orderBy: { name: "asc" },
           select: { id: true, name: true, driverColor: true },
         })

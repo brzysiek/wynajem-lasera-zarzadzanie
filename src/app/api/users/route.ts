@@ -23,6 +23,7 @@ export async function GET() {
       email: true,
       role: true,
       canActAsDriver: true,
+      driverAssignable: true,
       agentAssignable: true,
       grammaticalGender: true,
       hourlyRate: true,

@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { DRIVER_USER_WHERE } from "@/lib/rental-driver";
 import { getAllReminderTemplates } from "@/lib/reminders";
 import { loadFinanceFormContext } from "@/lib/finance";
 import { RentalForm } from "@/components/rental-form";
@@ -67,7 +68,7 @@ export default async function NewRentalPage({
     getAllReminderTemplates(),
     isAdmin
       ? prisma.user.findMany({
-          where: { role: "KIEROWCA" },
+          where: DRIVER_USER_WHERE,
           orderBy: { name: "asc" },
           select: { id: true, name: true, driverColor: true },
         })

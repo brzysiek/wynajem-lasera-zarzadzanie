@@ -84,7 +84,7 @@ export function CalendarDeviceFilterProvider({
         if (cancelled) return;
         const list: CalendarFilterDriver[] = Array.isArray(d?.users)
           ? d.users
-              .filter((u: { role?: string }) => u.role === "KIEROWCA")
+              .filter((u: { role?: string; driverAssignable?: boolean }) => u.role === "KIEROWCA" || ((u.role === "ADMIN" || u.role === "STAFF") && u.driverAssignable === true))
               .map((u: { id: string; name: string }) => ({ id: u.id, name: u.name }))
           : [];
         setRawDrivers(list);

@@ -14,6 +14,7 @@ type User = {
   email: string;
   role: Role;
   canActAsDriver: boolean;
+  driverAssignable: boolean;
   agentAssignable: boolean;
   grammaticalGender: Gender | null;
   // Tylko dla roli KIEROWCA — nigdy nie pojawia się w żadnym widoku/API
@@ -201,9 +202,12 @@ function EditForm({
   const [role, setRole] = useState(user.role);
   const [canActAsDriver, setCanActAsDriver] = useState(user.canActAsDriver);
   const [agentAssignable, setAgentAssignable] = useState(user.agentAssignable);
+  const [driverAssignable, setDriverAssignable] = useState(user.driverAssignable);
   const [gender, setGender] = useState<Gender | "">(user.grammaticalGender ?? "");
   const [hourlyRate, setHourlyRate] = useState(user.hourlyRate ?? "");
   const [driverColor, setDriverColor] = useState(user.driverColor ?? "#2563EB");
+  // Stawka i kolor ikony dotyczą kierowcy: rola KIEROWCA albo ADMIN/STAFF z flagą „można przypisać jako kierowcę”.
+  const isDriverAccount = role === "KIEROWCA" || ((role === "ADMIN" || role === "STAFF") && driverAssignable);
   const [changingPassword, setChangingPassword] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -225,7 +229,7 @@ function EditForm({
       }
     }
     let hourlyRateValue: number | null = null;
-    if (role === "KIEROWCA" && hourlyRate.trim() !== "") {
+    if (isDriverAccount && hourlyRate.trim() !== "") {
       hourlyRateValue = Number(hourlyRate.trim().replace(",", "."));
       if (!Number.isFinite(hourlyRateValue) || hourlyRateValue < 0) {
         setError("Stawka godzinowa musi być nieujemną liczbą.");
@@ -241,6 +245,7 @@ function EditForm({
       role?: Role;
       canActAsDriver?: boolean;
       agentAssignable?: boolean;
+      driverAssignable?: boolean;
       grammaticalGender?: Gender | null;
       hourlyRate?: number | null;
       driverColor?: string | null;
@@ -252,11 +257,13 @@ function EditForm({
     if (effectiveCanDrive !== user.canActAsDriver) body.canActAsDriver = effectiveCanDrive;
     const effectiveAssignable = (role === "ADMIN" || role === "STAFF") && agentAssignable;
     if (effectiveAssignable !== user.agentAssignable) body.agentAssignable = effectiveAssignable;
+    const effectiveDriverAssignable = (role === "ADMIN" || role === "STAFF") && driverAssignable;
+    if (effectiveDriverAssignable !== user.driverAssignable) body.driverAssignable = effectiveDriverAssignable;
     if ((gender || null) !== (user.grammaticalGender ?? null)) body.grammaticalGender = gender || null;
-    if (role === "KIEROWCA" && hourlyRate.trim() !== (user.hourlyRate ?? "")) {
+    if (isDriverAccount && hourlyRate.trim() !== (user.hourlyRate ?? "")) {
       body.hourlyRate = hourlyRateValue;
     }
-    if (role === "KIEROWCA" && driverColor !== (user.driverColor ?? "#2563EB")) {
+    if (isDriverAccount && driverColor !== (user.driverColor ?? "#2563EB")) {
       body.driverColor = driverColor;
     }
     if (changingPassword) body.password = password;
@@ -348,6 +355,16 @@ function EditForm({
 
       {(role === "ADMIN" || role === "STAFF") && (
         <label className="mt-3 flex items-start gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={driverAssignable} onChange={(e) => setDriverAssignable(e.target.checked)} className="mt-0.5" />
+          <span>
+            Można przypisać jako kierowcę w rezerwacji
+            <span className="block text-xs text-gray-400">Osoba pojawia się na liście „Kierowca” w rezerwacji; poniżej stawka godzinowa i kolor na kalendarzu.</span>
+          </span>
+        </label>
+      )}
+
+      {(role === "ADMIN" || role === "STAFF") && (
+        <label className="mt-3 flex items-start gap-2 text-sm text-gray-700">
           <input type="checkbox" checked={agentAssignable} onChange={(e) => setAgentAssignable(e.target.checked)} className="mt-0.5" />
           <span>
             Agent AI może przydzielać zadania
@@ -356,7 +373,7 @@ function EditForm({
         </label>
       )}
 
-      {role === "KIEROWCA" && (
+      {isDriverAccount && (
         <div className="mt-3 flex flex-wrap gap-4">
           <label className="flex flex-col gap-1 text-sm text-gray-700 sm:max-w-[220px]">
             Stawka godzinowa (zł)
@@ -508,6 +525,11 @@ function UserRow({
           {pending && (
             <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
               zaproszenie oczekujące
+            </span>
+          )}
+          {user.driverAssignable && user.role !== "KIEROWCA" && (
+            <span className="ml-2 rounded-full bg-[#EAF4FB] px-2 py-0.5 text-xs font-medium text-[#1B6FA8]" title="Można przypisać jako kierowcę w rezerwacji.">
+              kierowca w rezerwacjach
             </span>
           )}
           {user.canActAsDriver && user.role !== "KIEROWCA" && (
