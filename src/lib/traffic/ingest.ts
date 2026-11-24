@@ -44,7 +44,14 @@ const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_c
 export type ParsedEvent = { type: EventType; t: number | null; data: Record<string, unknown> };
 export type ParsedBeacon = { pv: string; path: string; dev: string; events: ParsedEvent[] };
 
-const str = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
+// Przycięcie do `max` znaków; nie zostawia połówki znaku spoza BMP (osierocony surrogat psuje JSON w bazie).
+const str = (v: unknown, max: number): string => {
+  if (typeof v !== "string") return "";
+  let out = v.trim().slice(0, max);
+  const last = out.charCodeAt(out.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) out = out.slice(0, -1);
+  return out;
+};
 const truthy = (v: unknown): boolean => v === true || v === 1 || v === "1" || v === "true";
 const pick = <T extends string>(v: unknown, allowed: readonly T[]): T | null => (typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : null);
 const num = (v: unknown, min: number, max: number): number | null => (typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : null);
@@ -55,6 +62,21 @@ export function parseBands(v: unknown): number[] | null {
   if (!Array.isArray(v) || v.length !== BAND_COUNT) return null;
   const out = v.map((x) => intIn(x, 0, MAX_SECONDS));
   return out.every((x): x is number => x !== null) ? out : null;
+}
+
+// Skrypt v3 (24.11.2026): rodzaj kliknięcia Google Ads w polu `gt` zdarzenia „wejscie” — tylko rodzaj, nigdy wartość
+// identyfikatora. Dozwolone: gclid, gbraid, wbraid i połączenia przez „+” (np. gclid+gbraid); reszta = null.
+export const CLICK_KIND_PARTS = ["gclid", "gbraid", "wbraid"] as const;
+export const MAX_GT_LENGTH = 30;
+export function parseClickKind(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const raw = v.trim().toLowerCase();
+  if (!raw || raw.length > MAX_GT_LENGTH) return null;
+  const parts = raw.split("+");
+  if (!parts.every((p) => (CLICK_KIND_PARTS as readonly string[]).includes(p))) return null;
+  // Stała kolejność i bez powtórzeń: „wbraid+gclid” i „gclid+wbraid” to ten sam rodzaj.
+  const uniq = CLICK_KIND_PARTS.filter((p) => parts.includes(p));
+  return uniq.join("+");
 }
 
 function parseEvent(raw: unknown): ParsedEvent | null {
@@ -76,6 +98,7 @@ function parseEvent(raw: unknown): ParsedEvent | null {
       }
       data.utm = utm;
       data.g = truthy(o.g);
+      data.gt = parseClickKind(o.gt); // v3; wcześniejsze wejścia nie mają tego pola → brak danych
       data.m = truthy(o.m);
       data.zgoda = pick(o.zgoda, CONSENT_STATES) ?? "brak";
       break;
@@ -189,6 +212,20 @@ export function classifyChannel(d: { src?: string; prev?: string; utm?: Record<s
   if (src === "instagram.com" || src.endsWith(".instagram.com")) return out(TCH.INSTAGRAM);
   if (!src) return out(TCH.DIRECT);
   return out(TCH.OTHER);
+}
+
+// Zdarzenia testowe skryptu (utm_campaign=test-licznik-…, np. test-licznik-v3) nie wchodzą do żadnego raportu —
+// pomijamy całą odsłonę (pv), na której wejście miało taką kampanię. Niczego nie kasujemy z bazy.
+export const TEST_CAMPAIGN_PREFIX = "test-licznik";
+export function dropTestEvents<T extends { pv: string; type: string; data: Record<string, unknown> | null }>(rows: T[]): T[] {
+  const testPvs = new Set<string>();
+  for (const r of rows) {
+    if (r.type !== "wejscie") continue;
+    const utm = r.data?.utm;
+    const camp = utm && typeof utm === "object" && !Array.isArray(utm) ? (utm as Record<string, unknown>).utm_campaign : null;
+    if (typeof camp === "string" && camp.trim().toLowerCase().startsWith(TEST_CAMPAIGN_PREFIX)) testPvs.add(r.pv);
+  }
+  return testPvs.size ? rows.filter((r) => !testPvs.has(r.pv)) : rows;
 }
 
 // ---------------------------------------------------------------- boty i limity

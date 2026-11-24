@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { MIN_VISITS } from "@/lib/traffic/ingest";
-import type { AttentionStats, TrafficReport } from "@/lib/traffic/report";
+import { GT_KINDS, type AttentionStats, type TrafficReport } from "@/lib/traffic/report";
 
 // Marketing → Ruch na stronie (wniosek 54, etap 2): dane z anonimowego licznika (bez ciasteczek) —
 // liczy wszystkie wejścia, także osób, które odrzuciły baner. Układ jak w makiecie.
 
 const INT = (n: number) => n.toLocaleString("pl-PL");
+const GT_NAMES: Record<(typeof GT_KINDS)[number], string> = { gclid: "gclid", gbraid: "gbraid (iPhone / Safari)", wbraid: "wbraid", inne: "inne połączenia (np. gclid+gbraid)", brak: "brak danych (sprzed 24.11)" };
 const DEV_LABEL: Record<string, string> = { telefon: "telefon", tablet: "tablet", komputer: "komputer", nieznane: "nieznane" };
 
 function Kpi({ title, children }: { title: string; children: React.ReactNode }) {
@@ -70,6 +71,7 @@ export type AdsComparison = { key: string; label: string; visits: number; formSt
 
 export function TrafficView({ report, comparison }: { report: TrafficReport; comparison: AdsComparison }) {
   const t = report.tiles;
+  const gtTotal = GT_KINDS.reduce((n, k) => n + report.gt.total[k].visits, 0);
   const devOf = (c: { byDev: Record<string, number> }) =>
     Object.entries(c.byDev)
       .filter(([, n]) => n > 0)
@@ -129,6 +131,25 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
                   </li>
                 ))}
               </ul>
+            </>
+          )}
+          {gtTotal > 0 && (
+            <>
+              <h3 className="mb-1 mt-4 text-sm font-semibold text-gray-900">Google Ads wg rodzaju kliknięcia</h3>
+              <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
+                {GT_KINDS.filter((k) => report.gt.total[k].visits > 0).map((k) => (
+                  <li key={k} className="flex justify-between gap-2">
+                    <span>
+                      {GT_NAMES[k]}
+                      <span className="ml-2 text-xs text-gray-500">{devOf({ byDev: report.gt.total[k].byDev })}</span>
+                    </span>
+                    <span className="tabular-nums">
+                      {INT(report.gt.total[k].visits)} <span className="text-xs text-gray-500">· start formularza {INT(report.gt.total[k].formStarts)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="m-0 mt-1 text-xs text-gray-500">Rodzaj kliknięcia zapisuje skrypt v3 od 24.11.2026 — wcześniejsze wejścia to „brak danych”. Zapisujemy tylko rodzaj, nie wartość identyfikatora.</p>
             </>
           )}
         </Card>
@@ -221,7 +242,7 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
           </ul>
         </Card>
 
-        <Card title="Gdzie rezygnują w formularzu" sub="Lejek i ostatnie pole przed porzuceniem">
+        <Card title="Gdzie rezygnują w formularzu" sub="Lejek i ostatnie pole przed porzuceniem. Od 24.11 start liczony też po tapnięciu, a przyciski mają nazwy — porównuj okresy z granicą 24.11">
           {report.forms.length === 0 ? (
             <p className="m-0 text-sm text-gray-400">Brak zdarzeń formularzy.</p>
           ) : (
@@ -233,6 +254,12 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
                 <div className="text-sm text-gray-700">
                   wyświetlenia {INT(f.views)} → start {INT(f.started)} → próba {INT(f.tried)} → wysłany <b>{INT(f.sent)}</b>
                 </div>
+                {f.abandonSteps && (
+                  <div className="mt-1 text-xs text-gray-600">
+                    Porzucenia wg kroku: krok 1 (przyciski) <b>{f.abandonSteps.krok1_przycisk}</b> · krok 2 (pola) <b>{f.abandonSteps.krok2_pola}</b>
+                    {f.abandonSteps.inne_przyciski + f.abandonSteps.nieznane > 0 && <> · inne {f.abandonSteps.inne_przyciski + f.abandonSteps.nieznane}</>}
+                  </div>
+                )}
                 {f.abandoned.length > 0 && (
                   <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0 text-sm text-gray-700">
                     {f.abandoned.map((a) => (

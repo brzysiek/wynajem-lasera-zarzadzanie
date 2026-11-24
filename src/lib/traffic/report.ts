@@ -24,6 +24,32 @@ const bumpDev = (c: DevCounts, dev: string) => {
 const AD_CHANNELS: string[] = [TCH.GOOGLE_ADS, TCH.META];
 const pct = (a: number, b: number): number | null => (b > 0 ? Math.round((a / b) * 100) : null);
 
+// Rodzaj kliknięcia Google Ads (pole `gt` skryptu v3, od 24.11.2026): gclid / gbraid / wbraid, „inne” = połączenia
+// (np. gclid+gbraid), „brak” = wejście bez pola gt (sprzed 24.11 albo skrypt nie rozpoznał rodzaju).
+export const GT_KINDS = ["gclid", "gbraid", "wbraid", "inne", "brak"] as const;
+export type GtKind = (typeof GT_KINDS)[number];
+export function gtKindOf(gt: unknown): GtKind {
+  if (typeof gt !== "string" || !gt) return "brak";
+  return gt === "gclid" || gt === "gbraid" || gt === "wbraid" ? gt : "inne";
+}
+// Czy kliknięcie miało gbraid lub wbraid (także w połączeniu, np. gclid+gbraid).
+export const gtHasBraid = (gt: unknown): boolean => typeof gt === "string" && /(^|\+)(gbraid|wbraid)(\+|$)/.test(gt);
+export type GtCell = { visits: number; byDev: DevCounts; formStarts: number };
+export type GtBreakdown = Record<GtKind, GtCell>;
+export const emptyGt = (): GtBreakdown => Object.fromEntries(GT_KINDS.map((k) => [k, { visits: 0, byDev: emptyDev(), formStarts: 0 }])) as GtBreakdown;
+
+// Porzucenie wielokrokowego formularza: przycisk kroku 1 (nazwa „[klasa] napis” od skryptu v3) albo pole kroku 2 (pole z name).
+export const STEP1_BUTTON_CLASSES = ["lsr-tile", "button", "lsr-next"] as const;
+export const MULTISTEP_FORMS = ["5878", "5795"];
+export type AbandonStep = "krok1_przycisk" | "krok2_pola" | "inne_przyciski" | "nieznane";
+export function abandonStep(field: string): AbandonStep {
+  if (!field || field === "(nieznane pole)") return "nieznane";
+  const m = /^\[([^\]]*)\]/.exec(field);
+  if (!m) return "krok2_pola";
+  return (STEP1_BUTTON_CLASSES as readonly string[]).includes(m[1].trim().toLowerCase()) ? "krok1_przycisk" : "inne_przyciski";
+}
+export type AbandonSteps = Record<AbandonStep, number>;
+
 export type TrafficReport = {
   from: string;
   to: string;
@@ -31,6 +57,8 @@ export type TrafficReport = {
   tiles: { visits: number; fromAds: number; pageViews: number; bannerAcceptPct: number | null; bannerChoices: number; formStarted: number; formSent: number };
   channels: { channel: string; visits: number; byDev: DevCounts; formStarts: number }[];
   campaigns: { channel: string; key: string; label: string; visits: number; formStarts: number }[];
+  // Google Ads wg rodzaju kliknięcia (gt): ogółem i wg kampanii.
+  gt: { total: GtBreakdown; campaigns: { key: string; label: string; gt: GtBreakdown }[] };
   consents: {
     banner: { wszystkie: number; wlasny: number; odrzucam: number; shown: number };
     entries: { s1m1: number; s1m0: number; s0m0: number; brak: number };
@@ -56,6 +84,7 @@ export type TrafficReport = {
     sent: number;
     errors: { field: string; count: number }[];
     abandoned: { field: string; count: number; errorsAvg: number }[];
+    abandonSteps: AbandonSteps | null; // tylko formularze wielokrokowe
   }[];
   clicks: {
     top: { rodzaj: string; etyk: string; path: string; dev: string; count: number }[];
@@ -140,6 +169,34 @@ export function buildTrafficReport(rows: TrafficRow[], range: { from: string; to
     if (!e || !AD_CHANNELS.includes(e.channel) || !isVisit(e)) continue;
     const key = s(d(e).campaignKey) || "(kampania nieznana)";
     campOf(e.channel, key, s(d(e).campaign) || key).formStarts++;
+  }
+
+  // ---- Google Ads wg rodzaju kliknięcia (gt)
+  const gtTotal = emptyGt();
+  const gtCamp = new Map<string, { key: string; label: string; gt: GtBreakdown }>();
+  const gtCampOf = (e: TrafficRow) => {
+    const key = s(d(e).campaignKey) || "(kampania nieznana)";
+    let c = gtCamp.get(key);
+    if (!c) {
+      c = { key, label: s(d(e).campaign) || key, gt: emptyGt() };
+      gtCamp.set(key, c);
+    }
+    return c;
+  };
+  for (const v of visits) {
+    if (v.channel !== TCH.GOOGLE_ADS) continue;
+    const kind = gtKindOf(d(v).gt);
+    for (const cell of [gtTotal[kind], gtCampOf(v).gt[kind]]) {
+      cell.visits++;
+      bumpDev(cell.byDev, v.dev);
+    }
+  }
+  for (const pv of startPvs) {
+    const e = entryByPv.get(pv);
+    if (!e || e.channel !== TCH.GOOGLE_ADS || !isVisit(e)) continue;
+    const kind = gtKindOf(d(e).gt);
+    gtTotal[kind].formStarts++;
+    gtCampOf(e).gt[kind].formStarts++;
   }
 
   // ---- zgody
@@ -247,6 +304,14 @@ export function buildTrafficReport(rows: TrafficRow[], range: { from: string; to
       x.ab.set(field, a);
     }
   }
+  // Podział porzuceń na krok 1 (przyciski) i krok 2 (pola) — dla formularzy wielokrokowych (po id albo po nazwach „[klasa] napis”).
+  const multistep = (form: string, ab: Map<string, { count: number; errs: number }>): AbandonSteps | null => {
+    const isMulti = MULTISTEP_FORMS.some((id) => form.includes(id)) || [...ab.keys()].some((f) => f.startsWith("["));
+    if (!isMulti) return null;
+    const out: AbandonSteps = { krok1_przycisk: 0, krok2_pola: 0, inne_przyciski: 0, nieznane: 0 };
+    for (const [field, a] of ab) out[abandonStep(field)] += a.count;
+    return out;
+  };
   const forms = [...fm.entries()]
     .map(([form, x]) => ({
       form,
@@ -257,6 +322,7 @@ export function buildTrafficReport(rows: TrafficRow[], range: { from: string; to
       sent: x.sent.size,
       errors: [...x.err.entries()].map(([field, count]) => ({ field, count })).sort((a, b) => b.count - a.count),
       abandoned: [...x.ab.entries()].map(([field, a]) => ({ field, count: a.count, errorsAvg: Math.round((a.errs / a.count) * 10) / 10 })).sort((a, b) => b.count - a.count),
+      abandonSteps: multistep(form, x.ab),
     }))
     .sort((a, b) => b.started - a.started);
 
@@ -292,6 +358,7 @@ export function buildTrafficReport(rows: TrafficRow[], range: { from: string; to
     },
     channels: [...ch.entries()].map(([channel, c]) => ({ channel, ...c })).sort((a, b) => b.visits - a.visits),
     campaigns: [...camp.values()].sort((a, b) => b.visits - a.visits),
+    gt: { total: gtTotal, campaigns: [...gtCamp.values()].sort((a, b) => GT_KINDS.reduce((n, k) => n + b.gt[k].visits, 0) - GT_KINDS.reduce((n, k) => n + a.gt[k].visits, 0)) },
     consents: { banner, entries },
     pages,
     transitions,

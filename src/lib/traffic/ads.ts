@@ -5,7 +5,7 @@
 // od którego zaczęła się wizyta (strona wejścia z danym utm). Nie wolno z nich wyciągać wniosków o całej
 // ścieżce osoby (np. że formularz na innej podstronie nie został wysłany).
 import { MIN_VISITS, TCH, classifyChannel } from "./ingest";
-import { isVisit, type TrafficRow } from "./report";
+import { gtHasBraid, isVisit, type TrafficRow } from "./report";
 
 export { MIN_VISITS };
 
@@ -18,6 +18,9 @@ export type AdMetrics = {
   czas_30s_proc: number | null;
   sredni_czas_s: number | null; // z pola `sek` skryptu v2 (tylko wejścia z pomiarem); null = brak pomiarów
   z_pomiarem_czasu: number;
+  wejscia_gbraid_wbraid: number; // wejścia z kliknięcia Google z gbraid lub wbraid (skrypt v3, pole gt)
+  z_rodzajem_klikniecia: number; // wejścia, dla których znamy rodzaj kliknięcia (od 24.11.2026) — mianownik poniższego procentu
+  gbraid_wbraid_proc: number | null; // udział gbraid+wbraid w wejściach z ustalonym rodzajem kliknięcia; null = brak danych
   klik_telefon: number;
   form_start: number;
   form_wyslany: number;
@@ -26,8 +29,8 @@ export type AdMetrics = {
   malo_danych: boolean;
 };
 
-type Acc = { visits: number; ended: number; bounced: number; scroll50: number; time30: number; secSum: number; secN: number; phone: number; start: number; sent: number; aband: number; fields: Map<string, number> };
-const newAcc = (): Acc => ({ visits: 0, ended: 0, bounced: 0, scroll50: 0, time30: 0, secSum: 0, secN: 0, phone: 0, start: 0, sent: 0, aband: 0, fields: new Map() });
+type Acc = { visits: number; ended: number; bounced: number; scroll50: number; time30: number; secSum: number; secN: number; braid: number; gtKnown: number; phone: number; start: number; sent: number; aband: number; fields: Map<string, number> };
+const newAcc = (): Acc => ({ visits: 0, ended: 0, bounced: 0, scroll50: 0, time30: 0, secSum: 0, secN: 0, braid: 0, gtKnown: 0, phone: 0, start: 0, sent: 0, aband: 0, fields: new Map() });
 const pct = (a: number, b: number): number | null => (b > 0 ? Math.round((a / b) * 100) : null);
 
 export function metricsOf(a: Acc): AdMetrics {
@@ -41,6 +44,9 @@ export function metricsOf(a: Acc): AdMetrics {
     czas_30s_proc: pct(a.time30, a.ended),
     sredni_czas_s: a.secN > 0 ? Math.round((a.secSum / a.secN) * 10) / 10 : null,
     z_pomiarem_czasu: a.secN,
+    wejscia_gbraid_wbraid: a.braid,
+    z_rodzajem_klikniecia: a.gtKnown,
+    gbraid_wbraid_proc: pct(a.braid, a.gtKnown),
     klik_telefon: a.phone,
     form_start: a.start,
     form_wyslany: a.sent,
@@ -84,8 +90,12 @@ function factsOf(events: TrafficRow[]): PvFacts {
   return f;
 }
 
-function add(a: Acc, f: PvFacts) {
+function add(a: Acc, f: PvFacts, gt: unknown = null) {
   a.visits++;
+  if (typeof gt === "string" && gt) {
+    a.gtKnown++;
+    if (gtHasBraid(gt)) a.braid++;
+  }
   if (f.ended) {
     a.ended++;
     if (f.bounced) a.bounced++;
@@ -127,26 +137,26 @@ function visitsWithFacts(rows: TrafficRow[]) {
 
 export function adsMetricsByKey(rows: TrafficRow[]): Map<string, AdMetrics> {
   const accs = new Map<string, Acc>();
-  const bump = (key: string, f: PvFacts) => {
+  const bump = (key: string, f: PvFacts, gt: unknown) => {
     let a = accs.get(key);
     if (!a) {
       a = newAcc();
       accs.set(key, a);
     }
-    add(a, f);
+    add(a, f, gt);
   };
   for (const { row, f } of visitsWithFacts(rows)) {
     const d = row.data ?? {};
-    bump(chKey(row.channel), f);
+    bump(chKey(row.channel), f, d.gt);
     if (row.channel !== TCH.GOOGLE_ADS && row.channel !== TCH.META) continue;
     const camp = s(d.campaignKey);
     if (!camp) continue;
     const group = s(d.group);
     const term = s(d.term);
-    bump(campKey(row.channel, camp), f);
-    bump(grpKey(row.channel, camp, group), f);
-    bump(kwKey(row.channel, camp, group, term), f);
-    if (row.channel === TCH.GOOGLE_ADS && term) bump(kwcKey(camp, term), f);
+    bump(campKey(row.channel, camp), f, d.gt);
+    bump(grpKey(row.channel, camp, group), f, d.gt);
+    bump(kwKey(row.channel, camp, group, term), f, d.gt);
+    if (row.channel === TCH.GOOGLE_ADS && term) bump(kwcKey(camp, term), f, d.gt);
   }
   return new Map([...accs].map(([k, a]) => [k, metricsOf(a)]));
 }

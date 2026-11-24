@@ -58,7 +58,7 @@ import { actOnProposal, listMarketingProposals, loadRatings, ratingKey, saveRepo
 import { STATUSES, parseRating, parseReportInput, type Status } from "@/lib/marketing/analysis-rules";
 import { loadTrafficReport, loadTrafficRows } from "@/lib/traffic/load";
 import { adsMetricsByKey, adsTree, emptyMetrics, nodeTrafficKey } from "@/lib/traffic/ads";
-import { compareAdsWithLeads } from "@/lib/traffic/report";
+import { compareAdsWithLeads, emptyGt, GT_KINDS, type GtBreakdown } from "@/lib/traffic/report";
 
 // Narzędzia serwera MCP (/api/mcp) dla konta z rolą AGENT — te same reguły
 // co panel i API agenta (src/lib/permissions.ts): odczyt + zapisy agenta,
@@ -139,6 +139,17 @@ const TASK_INCLUDE = {
   assignee: { select: { id: true, name: true } },
   _count: { select: { comments: true } },
 } as const;
+
+// Raport ruchu v3: rozbicie wejść Google Ads wg rodzaju kliknięcia (pole gt skryptu) w polskich kluczach.
+const FORM_NOTE = "Od 24.11.2026 (skrypt v3) start formularza liczony jest też po tapnięciu / kliknięciu w przycisk formularza, a przyciski bez atrybutu name mają nazwy „[klasa] napis” — liczba startów może wzrosnąć, więc porównuj okresy z granicą 24.11. porzucenia_wg_krokow (formularze wielokrokowe 5878, 5795): krok_1_przyciski = pole zaczyna się od [lsr-tile] / [button] / [lsr-next], krok_2_pola = pola z name.";
+const GT_LABEL: Record<(typeof GT_KINDS)[number], string> = { gclid: "gclid", gbraid: "gbraid", wbraid: "wbraid", inne: "inne_polaczenia", brak: "brak_danych" };
+function gtJson(b: GtBreakdown) {
+  const kinds = Object.fromEntries(GT_KINDS.map((k) => [GT_LABEL[k], { wejscia: b[k].visits, urzadzenia: b[k].byDev, start_formularza: b[k].formStarts }]));
+  const total = GT_KINDS.reduce((n, k) => n + b[k].visits, 0);
+  const known = total - b.brak.visits;
+  const braid = b.gbraid.visits + b.wbraid.visits;
+  return { wejscia_razem: total, ...kinds, z_rodzajem_klikniecia: known, gbraid_wbraid_proc_z_rodzajem: known > 0 ? Math.round((braid / known) * 100) : null };
+}
 
 export const TOOLS: McpTool[] = [
   // ------------------------------------------------------------- odczyt
@@ -330,7 +341,7 @@ export const TOOLS: McpTool[] = [
       "Każdy wiersz: wyświetlenia, kliknięcia, koszt (Google Ads i Meta, z importów CSV w Marketing → Ustawienia pomiaru — brak importu = koszt 0; Meta: kampania → zestaw → reklama, stare znaczniki UTM sprzed 28.10 w wierszu „Meta — bez przypisania do reklamy”), leady (razem + cennik / kontakt / rezerwacja_www / szkolenie / inne), stale_klientki (osobno, poza kosztem pozyskania), " +
       "rozmowy (wpis rozmowy lub maila; każda oferta, rezerwacja i wygrana liczy się też jako rozmowa), oferty / rezerwacje / wygrane (co najmniej ten etap, wg najdalszego osiągniętego), przychod_netto (RentalFinance.totalNet, bez stałych klientek), koszt_na_lead / rozmowe / rezerwacje, przychod_do_kosztu, przegrane_wg_powodu, " +
       "stale_klientki_szczegoly (rezerwacje, wygrane i przychód stałych klientek — osobno, także klientki z wcześniejszym wynajmem), poza_branza_nie_klienci (przegrane z powodem „Poza branżą” — poza leadami), " +
-      "oraz „sygnaly” = id sygnałów za każdą liczbą. Pole „licznik” (poziomy kanal / kampania / grupa / slowo) = jakość ruchu z anonimowego licznika dla wejść z tym utm: wejscia, wyszli_od_razu_proc (koniec.wyjscie i czas <10 s), przewiniecie_50_proc, czas_30s_proc, sredni_czas_s (czas aktywny z pomiaru sekundowego, tylko wejścia z pomiarem; z_pomiarem_czasu), klik_telefon, form_start / form_wyslany / form_porzucony (+ pole_porzucenia), bez_podsumowania (wejścia bez zdarzenia „koniec” — poza mianownikami procentów), malo_danych (< 20 wejść). " +
+      "oraz „sygnaly” = id sygnałów za każdą liczbą. Pole „licznik” (poziomy kanal / kampania / grupa / slowo) = jakość ruchu z anonimowego licznika dla wejść z tym utm: wejscia, wyszli_od_razu_proc (koniec.wyjscie i czas <10 s), przewiniecie_50_proc, czas_30s_proc, sredni_czas_s (czas aktywny z pomiaru sekundowego, tylko wejścia z pomiarem; z_pomiarem_czasu), wejscia_gbraid_wbraid (wejścia z kliknięcia Google z gbraid / wbraid; od 24.11, z_rodzajem_klikniecia = wejścia z ustalonym rodzajem, gbraid_wbraid_proc), klik_telefon, form_start / form_wyslany / form_porzucony (+ pole_porzucenia), bez_podsumowania (wejścia bez zdarzenia „koniec” — poza mianownikami procentów), malo_danych (< 20 wejść). " +
       "UWAGA: licznik nie łączy wizyt między stronami — metryki dotyczą strony wejścia (np. formularz na innej podstronie się nie liczy). Brak danych licznika w okresie = licznik null. Pomija sygnały testowe i zarchiwizowane duplikaty. Dodatkowo: razem, bez_zrodla (lista do uzupełnienia), slowa_bez_leadow (koszt > 0, 0 leadów), trend_tygodniowy, uwagi. " +
       "Definicje (etap 1c): nowe zapytanie = lead z okresu BEZ stałych klientek (klient miał rezerwację lub wynajem przed datą zapytania) i bez kontaktów oznaczonych na karcie klienta „Nie liczyć w marketingu” (dostawca / partner); " +
       "etapy są kumulatywne (wynajem ⇒ rezerwacja ⇒ oferta ⇒ rozmowa ⇒ zapytanie); wygrane = wynajem zrealizowany (etap Wygrana). Dodatkowo: porownanie_z_poprzednim_okresem (ta sama długość), frazy_z_ocena (ocena i uzasadnienie zapisuje Claude narzędziem slowo_ocena_ustaw), bez_zrodla = tylko nowe zapytania. " +
@@ -476,10 +487,10 @@ export const TOOLS: McpTool[] = [
     title: "Raport ruchu na stronie (licznik)",
     description:
       "Anonimowy licznik ruchu wynajemlasera.pl (bez ciasteczek, bez IP — liczy też osoby, które odrzuciły baner cookies). Zwraca JSON z liczbami za okres (domyślnie ostatnie 28 dni). " +
-      "sekcja: kanaly (wejścia wg kanału i urządzenia: Google Ads wg kampanii, Google organiczne, Bing, Meta, Facebook / Instagram organiczne, poczta, bezpośrednio, inne domeny; kafelki; porównanie wejść z Google Ads wg kampanii z zapytaniami z tej kampanii i kliknięciami z importu kosztów za te same dni), " +
-      "reklamy (jakość ruchu z reklam: Google Ads kampania → grupa → fraza, Meta kampania → zestaw → reklama; na wiersz: wejscia, wyszli_od_razu_proc, przewiniecie_50_proc, czas_30s_proc, sredni_czas_s (czas aktywny z pomiaru sekundowego, tylko wejścia z pomiarem; z_pomiarem_czasu), klik_telefon, form_start / form_wyslany / form_porzucony + pole_porzucenia, bez_podsumowania, malo_danych (< 20 wejść); filtr kampania; licznik nie łączy wizyt między stronami — metryki dotyczą strony wejścia), " +
+      "sekcja: kanaly (wejścia wg kanału i urządzenia: Google Ads wg kampanii, Google organiczne, Bing, Meta, Facebook / Instagram organiczne, poczta, bezpośrednio, inne domeny; kafelki; porównanie wejść z Google Ads wg kampanii z zapytaniami z tej kampanii i kliknięciami z importu kosztów za te same dni; od skryptu v3 (24.11.2026) także google_ads_wg_rodzaju_klikniecia — wejścia z Google Ads wg rodzaju kliknięcia gclid / gbraid / wbraid / inne_polaczenia / brak_danych (sprzed 24.11) z urządzeniem i startem formularza, ogółem i wg kampanii, oraz zapytania z kampanii wg identyfikatora zapisanego w atrybucji formularza), " +
+      "reklamy (jakość ruchu z reklam: Google Ads kampania → grupa → fraza, Meta kampania → zestaw → reklama; na wiersz: wejscia, wyszli_od_razu_proc, przewiniecie_50_proc, czas_30s_proc, sredni_czas_s (czas aktywny z pomiaru sekundowego, tylko wejścia z pomiarem; z_pomiarem_czasu), klik_telefon, form_start / form_wyslany / form_porzucony + pole_porzucenia, bez_podsumowania, malo_danych (< 20 wejść), wejscia_gbraid_wbraid + gbraid_wbraid_proc (udział gbraid / wbraid w wejściach z ustalonym rodzajem kliknięcia, z_rodzajem_klikniecia; od 24.11); filtr kampania; licznik nie łączy wizyt między stronami — metryki dotyczą strony wejścia), " +
       "zgody (wybór w banerze i stan zgody przy wejściach), strony (odsłony, strony wejścia, wyjścia, średnie przewinięcie, czas w przedziałach, „wyszli od razu”; od skryptu v2 także sredni_czas_s / mediana_czasu_s z czasu aktywnego i uwaga_pasy — mapa uwagi: średnie sekundy na każdy z 10 pasów wysokości strony i odsetek odsłon, które zobaczyły pas, osobno telefon (z tabletem) i komputer; zdarzenia sprzed v2 nie mają tych pól → brak danych, nie zera), przejscia (prev → strona), " +
-      "formularze (lejek: wyświetlenia → start → próba → wysłany, porzucenia z polem i błędy wg formularza), klikniecia (najczęściej klikane elementy wg strony i urządzenia, telefony wg strony, punkty mapy kliknięć). Bez sekcji — wszystko. " +
+      "formularze (lejek: wyświetlenia → start → próba → wysłany, porzucenia z polem i błędy wg formularza; od v3 przyciski mają nazwy „[klasa] napis”, a formularze wielokrokowe — porzucenia_wg_krokow: krok 1 (przyciski) vs krok 2 (pola); start liczony też po tapnięciu — porównuj okresy z granicą 24.11), klikniecia (najczęściej klikane elementy wg strony i urządzenia, telefony wg strony, punkty mapy kliknięć). Bez sekcji — wszystko. " +
       "path zawęża do jednej strony. „Wejście” = początek wizyty; formularz liczony do kanału odsłony, na której się zaczął (wizyt nie łączymy między stronami). Tylko odczyt.",
     inputSchema: obj({
       od: s("Początek okresu RRRR-MM-DD (domyślnie 28 dni wstecz)."),
@@ -504,6 +515,15 @@ export const TOOLS: McpTool[] = [
       if (want("kanaly")) {
         const leads = await loadCampaignReport(from, to);
         const google = leads.channels.find((c) => c.label === "Google Ads");
+        const leadClickKinds = (ids: string[]) => {
+          const n = { gclid: 0, gbraid: 0, wbraid: 0, brak_identyfikatora: 0 };
+          for (const id of ids) {
+            const k = leads.leads[id]?.clickKind;
+            if (k) n[k]++;
+            else n.brak_identyfikatora++;
+          }
+          return n;
+        };
         out.kafelki = { wejscia: r.tiles.visits, z_reklam: r.tiles.fromAds, odslony: r.tiles.pageViews, proc_akceptujacych_baner: r.tiles.bannerAcceptPct, formularz_zaczete: r.tiles.formStarted, formularz_wyslane: r.tiles.formSent };
         out.kanaly = r.channels.map((c) => ({ kanal: c.channel, wejscia: c.visits, urzadzenia: c.byDev, start_formularza: c.formStarts }));
         out.reklamy_wg_kampanii = r.campaigns.map((c) => ({ kanal: c.channel, kampania: c.label, wejscia: c.visits, start_formularza: c.formStarts }));
@@ -511,7 +531,28 @@ export const TOOLS: McpTool[] = [
           join.byCampaign,
           (google?.children ?? []).filter((c) => !c.key.startsWith("(")).map((c) => ({ key: c.key, label: c.label, leads: c.metrics.leads.razem })),
           new Map((google?.children ?? []).filter((c) => !c.key.startsWith("(")).map((c) => [c.key, c.metrics.clicks] as [string, number])),
-        ).map((c) => ({ kampania: c.label, wejscia: c.visits, start_formularza: c.formStarts, zapytania: c.leads, zapytan_na_100_wejsc: c.leadsPer100Visits, klikniecia_google_ads: c.clicks, wejsc_na_100_klikniec: c.visitsPer100Clicks }));
+        ).map((c) => {
+          // Zapytania z tej kampanii wg identyfikatora zapisanego w atrybucji formularza (gclid ma pierwszeństwo, potem gbraid / wbraid).
+          const node = (google?.children ?? []).find((x) => x.key === c.key);
+          return {
+            kampania: c.label,
+            wejscia: c.visits,
+            start_formularza: c.formStarts,
+            wejscia_wg_rodzaju_klikniecia: gtJson(r.gt.campaigns.find((x) => x.key === c.key)?.gt ?? emptyGt()),
+            zapytania: c.leads,
+            zapytania_wg_identyfikatora: leadClickKinds(node?.ids.leads ?? []),
+            zapytan_na_100_wejsc: c.leadsPer100Visits,
+            klikniecia_google_ads: c.clicks,
+            wejsc_na_100_klikniec: c.visitsPer100Clicks,
+          };
+        });
+        out.google_ads_wg_rodzaju_klikniecia = {
+          opis: "Wejścia z Google Ads wg rodzaju kliknięcia (pole gt skryptu v3, od 24.11.2026; tylko rodzaj, nigdy wartość identyfikatora): gclid / gbraid / wbraid, inne_polaczenia (np. gclid+gbraid), brak_danych (wejścia bez pola gt — sprzed 24.11). Z urządzeniem i startem formularza. gbraid_wbraid_proc_z_rodzajem liczone tylko z wejść z ustalonym rodzajem.",
+          razem: gtJson(r.gt.total),
+          wg_kampanii: r.gt.campaigns.map((c) => ({ kampania: c.label, ...gtJson(c.gt) })),
+          zapytania_razem_wg_identyfikatora: leadClickKinds((google?.children ?? []).filter((c) => !c.key.startsWith("(")).flatMap((c) => c.ids.leads ?? [])),
+        };
+        out.uwaga_start_formularza = FORM_NOTE;
         out.uwaga_kliknieciowa = "klikniecia_google_ads pochodzą z importu kosztów (ad_cost_days) za te same dni; wejsc_na_100_klikniec = ile kliknięć Google widzi licznik (bez ruchu wewnętrznego i botów, więc poniżej 100 to normalne).";
       }
       if (want("reklamy")) {
@@ -544,7 +585,10 @@ export const TOOLS: McpTool[] = [
         out.uwaga_strony = "sredni_czas_s / mediana_czasu_s = czas aktywny (karta widoczna, max 1800 s) tylko z odsłon, które mają pomiar (z_pomiarem_czasu). uwaga_pasy: pas 1 = 0–10% wysokości strony … pas 10 = 90–100%; srednie_sekundy_na_pas liczone na odsłonach z pomiarem, zobaczylo_pas_proc = odsetek z > 0 s; malo_danych = mniej niż 20 odsłon.";
       }
       if (want("przejscia")) out.przejscia = r.transitions.slice(0, 50).map((t) => ({ z: t.from, na: t.to, liczba: t.count }));
-      if (want("formularze")) out.formularze = r.forms.map((f) => ({ formularz: f.form, strony: f.paths, wyswietlenia: f.views, start: f.started, proba: f.tried, wyslany: f.sent, bledy_wg_pola: f.errors, porzucenia_wg_pola: f.abandoned }));
+      if (want("formularze")) {
+        out.formularze = r.forms.map((f) => ({ formularz: f.form, strony: f.paths, wyswietlenia: f.views, start: f.started, proba: f.tried, wyslany: f.sent, bledy_wg_pola: f.errors, porzucenia_wg_pola: f.abandoned, ...(f.abandonSteps ? { porzucenia_wg_krokow: { krok_1_przyciski: f.abandonSteps.krok1_przycisk, krok_2_pola: f.abandonSteps.krok2_pola, inne_przyciski: f.abandonSteps.inne_przyciski, nieznane: f.abandonSteps.nieznane } } : {}) }));
+        out.uwagi_formularze = FORM_NOTE;
+      }
       if (want("klikniecia")) out.klikniecia = { najczestsze: r.clicks.top.map((c) => ({ rodzaj: c.rodzaj, etykieta: c.etyk, strona: c.path, urzadzenie: c.dev, liczba: c.count })), telefon_wg_strony: r.clicks.phoneByPath, punkty_mapy: r.clicks.points.slice(0, 500) };
       return out;
     },

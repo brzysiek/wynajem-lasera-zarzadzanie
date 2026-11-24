@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { addDays, warsawDay } from "@/lib/marketing/period";
 import { metricsDto, reclassify, type TrafficMetricsDto } from "./ads";
+import { dropTestEvents } from "./ingest";
 import { buildTrafficReport, trafficJoin, type TrafficFilter, type TrafficJoin, type TrafficReport, type TrafficRow } from "./report";
 
 // Wniosek 54, etap 2: wczytanie zdarzeń licznika ruchu z okresu (dni Europe/Warsaw).
@@ -20,7 +21,7 @@ export async function loadTrafficRows(from: string, to: string): Promise<Traffic
     })
     .map((r) => ({ at: r.at, pv: r.pv, path: r.path, dev: r.dev, type: r.type, channel: r.channel, data: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? (r.data as Record<string, unknown>) : null }));
   // Kanał i klucze zawsze wg aktualnych reguł z surowych pól „wejscie”.
-  return reclassify(mapped);
+  return reclassify(dropTestEvents(mapped));
 }
 
 export async function loadTrafficReport(from: string, to: string, f: TrafficFilter = {}): Promise<{ report: TrafficReport; join: TrafficJoin }> {

@@ -4,6 +4,7 @@ import { maxStageReached } from "@/lib/leads/funnel";
 import { STAGE_HISTORY_LABELS } from "@/lib/leads/labels";
 import { normalizeAttribution } from "@/lib/leads/attribution-view";
 import type { LeadStageKey } from "@/lib/leads/parse-deal";
+import { clickKindOf } from "@/lib/leads/google-conversions";
 import { attributeSource, type Attr } from "./source";
 import { buildReport, countsInReport, isReturningLead, type PriorRental, type Report, type ReportLead } from "./report";
 import type { CostRow } from "./costs-csv";
@@ -87,6 +88,7 @@ export async function loadCampaignReport(from: string, to: string): Promise<Repo
       contactEmail: r.contactEmail,
       archivedAt: r.archivedAt,
       archiveReason: r.archiveReason,
+      clickKind: clickKindOf(normalizeAttribution(r.attribution) as Attr | null),
       source: attributeSource({
         attribution: normalizeAttribution(r.attribution) as Attr | null,
         type: r.type,

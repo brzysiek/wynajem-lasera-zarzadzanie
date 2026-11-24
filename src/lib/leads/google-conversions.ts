@@ -29,6 +29,17 @@ export function pickClickId(attr: Attr | null): ClickId | null {
   return null;
 }
 
+// Rodzaj identyfikatora Google zapisany w atrybucji zgłoszenia (do porównania z licznikiem ruchu): gclid, jeśli jest
+// (pierwsze lub ostatnie wejście — tak samo jak traktuje go Google), inaczej gbraid / wbraid; też z adresu wejścia.
+export function clickKindOf(attr: Attr | null): ClickKind | null {
+  if (!attr) return null;
+  const url = clickIdsFromUrl(one(attr.landing_url));
+  for (const kind of ["gclid", "gbraid", "wbraid"] as const) {
+    if (one(attr[kind]) || one(attr[`last_${kind}`]) || url[kind]) return kind;
+  }
+  return null;
+}
+
 // Identyfikatory z adresu strony wejścia (landing_url). Odporne na brak
 // schematu i na krzywe adresy — zwraca tylko to, co jest w query stringu.
 export function clickIdsFromUrl(url: string | null | undefined): Partial<Record<ClickKind, string>> {

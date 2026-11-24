@@ -20,6 +20,7 @@ export type ReportLead = {
   archivedAt: Date | null;
   archiveReason: string | null;
   source: SourceInfo;
+  clickKind?: "gclid" | "gbraid" | "wbraid" | null; // jakim identyfikatorem Google zapisało się zgłoszenie (atrybucja z formularza)
 };
 
 // Sygnały testowe (+test) i zarchiwizowane duplikaty / spam nie wchodzą do raportu.
@@ -208,7 +209,7 @@ export type Report = {
   keywordsWithoutLeads: { campaign: string; group: string; keyword: string; cost: number; clicks: number; impressions: number }[];
   trend: { week: string; channel: string; leads: number; talked: number; bookings: number; cost: number; ids: { leads: string[]; talked: string[]; bookings: string[] } }[];
   unsourced: { id: string; channel: string }[];
-  leads: Record<string, { id: string; title: string; type: string; stage: string; createdAt: string; channel: string; termFromFirst: boolean }>;
+  leads: Record<string, { id: string; title: string; type: string; stage: string; createdAt: string; channel: string; termFromFirst: boolean; clickKind: "gclid" | "gbraid" | "wbraid" | null }>;
   notes: string[];
 };
 
@@ -255,7 +256,7 @@ export function buildReport(input: ReportInput): Report {
   const unsourced: Report["unsourced"] = [];
   for (const l of input.leads) {
     const src = l.source;
-    leadInfo[l.id] = { id: l.id, title: l.title, type: l.type, stage: l.stage, createdAt: l.createdAt.toISOString(), channel: src.channel, termFromFirst: src.fromFirst };
+    leadInfo[l.id] = { id: l.id, title: l.title, type: l.type, stage: l.stage, createdAt: l.createdAt.toISOString(), channel: src.channel, termFromFirst: src.fromFirst, clickKind: l.clickKind ?? null };
     const metrics = metricsOfLead(l);
     // Do uzupełnienia tylko nowe zapytania bez źródła — nie stałe klientki i nie nie-klienci.
     if (metrics.includes("leads") && src.channel === CH.NONE) unsourced.push({ id: l.id, channel: src.channel });
