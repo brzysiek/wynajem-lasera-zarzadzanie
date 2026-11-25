@@ -123,6 +123,14 @@ export function reservationFirstStep(
   return { nextActionAt: sla < morning ? sla : morning, nextStepType: "PIERWSZY_KONTAKT", nextStepNote: base, urgentInDays: null };
 }
 
+// Zgłoszenie z formularza „Zapytaj o wynajem” bez telefonu (wniosek 62): ten sam termin kroku co przy rezerwacji,
+// ale to „pierwszy kontakt — mail” (odpowiedź mailem z ceną i terminami), nie telefon.
+export const EMAIL_ONLY_FIRST_NOTE = "klientka zostawiła tylko e-mail — odpisz mailem z ceną i terminami";
+export function emailOnlyFirstStep(step: { nextActionAt: Date; nextStepType: "PIERWSZY_KONTAKT"; nextStepNote: string; urgentInDays: number | null }) {
+  const urgent = /^PILNE — termin [^:]+: /.exec(step.nextStepNote)?.[0] ?? "";
+  return { ...step, nextStepNote: `${urgent}${EMAIL_ONLY_FIRST_NOTE}` };
+}
+
 // ------------------------------------------------------------------ wynik kontaktu
 
 export type Outcome = "talked" | "no_answer" | "callback" | "offer_sent" | "email" | "postpone";
@@ -307,6 +315,8 @@ export function callQueue<T extends FunnelLead>(leads: T[], now: Date): T[] {
       isOpen(l) &&
       in2026(l) &&
       l.stage !== "REZERWACJA" &&
+      // Zapytanie z formularza bez telefonu (tylko e-mail) wymaga maila, nie telefonu — nie trafia do „Do obdzwonienia”.
+      !(l.type === "REZERWACJA_WWW" && !l.phone && l.nextStepType === "PIERWSZY_KONTAKT") &&
       (!l.firstContactAt || (!!l.nextActionAt && l.nextActionAt <= eod && PHONE_STEPS.includes(l.nextStepType as NextStepType))),
   );
   const rank = (l: T) => (l.nextActionAt && l.nextActionAt < sod ? 0 : TYPE_RANK[l.type]);

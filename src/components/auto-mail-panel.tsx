@@ -15,6 +15,7 @@ type Config = {
   body: string;
   attachments: Attachment[];
   rez: { enabled: boolean; subject: string; body: string };
+  inquiry: { subject: string; body: string };
   footer: string;
   alertEmail: string;
 };
@@ -26,6 +27,12 @@ const SAMPLE_SUMMARY: SummaryRow[] = [
   { label: "Liczba dni", value: "2 dni" },
   { label: "Miejscowość gabinetu", value: "Kraków" },
 ];
+// Przykładowe zgłoszenie z formularza „Zapytaj o wynajem”.
+const SAMPLE_INQUIRY: SummaryRow[] = [
+  { label: "Urządzenie", value: "Alma Harmony XL Pro" },
+  { label: "Miejscowość gabinetu", value: "Kraków" },
+  { label: "Kiedy mniej więcej", value: "w tym miesiącu" },
+];
 type Recent = { id: string; kind: string; leadId: string | null; toAddress: string; status: string; attempts: number; error: string | null; createdAt: string; sentAt: string | null };
 
 const API = `${BASE_PATH}/api/auto-mail/cennik`;
@@ -34,7 +41,7 @@ const INPUT = "w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:
 const BTN = "rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 hover:border-[#1B6FA8] disabled:opacity-50";
 const BTN_PRIMARY = "rounded-md bg-[#1B6FA8] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#0C3450] disabled:opacity-50";
 const STATUS: Record<string, string> = { SENT: "wysłany", PENDING: "w kolejce", FAILED: "nie wysłany" };
-const KIND_LABEL: Record<string, string> = { www_cennik: "cennik", www_cennik_test: "cennik", www_rezerwacja: "rezerwacja", www_rezerwacja_test: "rezerwacja" };
+const KIND_LABEL: Record<string, string> = { www_cennik: "cennik", www_cennik_test: "cennik", www_rezerwacja: "rezerwacja", www_rezerwacja_test: "rezerwacja", www_zapytanie: "zapytanie", www_zapytanie_test: "zapytanie" };
 
 const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} kB`);
 const when = (iso: string) => new Date(iso).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -47,10 +54,12 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
     body: initialConfig.body,
     rezSubject: initialConfig.rez.subject,
     rezBody: initialConfig.rez.body,
+    inqSubject: initialConfig.inquiry.subject,
+    inqBody: initialConfig.inquiry.body,
     footer: initialConfig.footer,
     alertEmail: initialConfig.alertEmail,
   });
-  const [testKind, setTestKind] = useState<"cennik" | "rezerwacja">("cennik");
+  const [testKind, setTestKind] = useState<"cennik" | "rezerwacja" | "zapytanie">("cennik");
   const [recent, setRecent] = useState(initialRecent);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; error?: boolean } | null>(null);
@@ -62,12 +71,19 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
     draft.body !== cfg.body ||
     draft.rezSubject !== cfg.rez.subject ||
     draft.rezBody !== cfg.rez.body ||
+    draft.inqSubject !== cfg.inquiry.subject ||
+    draft.inqBody !== cfg.inquiry.body ||
     draft.footer !== cfg.footer ||
     draft.alertEmail !== cfg.alertEmail;
   const preview = useMemo(() => renderAutoMail({ subject: draft.subject, body: draft.body }, { name: "Anna", footer: draft.footer }), [draft.subject, draft.body, draft.footer]);
   const rezPreview = useMemo(
     () => renderAutoMail({ subject: draft.rezSubject, body: draft.rezBody }, { name: "Anna", summary: SAMPLE_SUMMARY, footer: draft.footer }),
     [draft.rezSubject, draft.rezBody, draft.footer],
+  );
+
+  const inqPreview = useMemo(
+    () => renderAutoMail({ subject: draft.inqSubject, body: draft.inqBody }, { name: "Anna", summary: SAMPLE_INQUIRY, footer: draft.footer }),
+    [draft.inqSubject, draft.inqBody, draft.footer],
   );
 
   async function reload() {
@@ -257,6 +273,36 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
       </section>
 
       <section className={CARD}>
+        <h2 className="mb-1 text-lg font-semibold text-gray-900">Mail po formularzu „Zapytaj o wynajem” — treść</h2>
+        <p className="mb-4 text-sm text-gray-500">Formularz „Zapytaj o termin” (CF7 6252) to zapytanie, nie rezerwacja — dostaje osobny mail, bez słowa „rezerwacja”. Wysyłany razem z potwierdzeniem rezerwacji (jeden przełącznik wyżej).</p>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="flex flex-col gap-3">
+            <label className="text-sm text-gray-700">
+              Temat
+              <input className={`${INPUT} mt-1`} value={draft.inqSubject} onChange={(e) => setDraft({ ...draft, inqSubject: e.target.value })} />
+            </label>
+            <label className="text-sm text-gray-700">
+              Treść
+              <textarea className={`${INPUT} mt-1 font-mono text-[13px]`} rows={12} value={draft.inqBody} onChange={(e) => setDraft({ ...draft, inqBody: e.target.value })} />
+            </label>
+            <p className="text-xs text-gray-500">
+              <code className="rounded bg-gray-100 px-1">{"{imie}"}</code> i <code className="rounded bg-gray-100 px-1">{"{zgloszenie}"}</code> (urządzenie, miejscowość, „kiedy mniej więcej”) jak wyżej. Bez załączników.
+            </p>
+          </div>
+          <div>
+            <div className="mb-1 text-sm text-gray-700">Podgląd (imię „Anna”, przykładowe zapytanie)</div>
+            <div className="rounded-md border border-gray-200 bg-gray-50 p-4">
+              <div className="mb-1 text-xs text-gray-500">
+                Od: {draft.fromName} &lt;{AUTO_MAIL_FROM}&gt;
+              </div>
+              <div className="mb-3 text-sm font-semibold text-gray-900">{inqPreview.subject || "(bez tematu)"}</div>
+              <div className="rounded bg-white p-3 text-sm [&_a]:text-[#1B6FA8] [&_a]:underline" dangerouslySetInnerHTML={{ __html: inqPreview.html }} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className={CARD}>
         <h2 className="mb-1 text-lg font-semibold text-gray-900">Stopka (wspólny podpis)</h2>
         <p className="mb-3 text-sm text-gray-500">Doklejana na końcu obu maili automatycznych. Podpis Ani trzymaj tutaj — zmiana w jednym miejscu zmienia oba maile (w treściach wyżej już go nie powtarzaj). Może to być zwykły tekst albo kod HTML (zaczynający się od <code className="rounded bg-gray-100 px-1">&lt;</code>), np. podpis z logo — grafika musi mieć publiczny adres https (np. plik w bibliotece mediów strony), a nie być wklejona „w środku” maila. Skrypty i ramki są usuwane.</p>
         <textarea className={`${INPUT} max-w-2xl font-mono text-[13px]`} rows={5} value={draft.footer} onChange={(e) => setDraft({ ...draft, footer: e.target.value })} />
@@ -316,9 +362,10 @@ export function AutoMailPanel({ initialConfig, initialRecent, myEmail }: { initi
         <h2 className="mb-1 text-lg font-semibold text-gray-900">Próbna wysyłka</h2>
         <p className="mb-3 text-sm text-gray-500">Wysyła zapisaną treść z załącznikami z kontakt@ na podany adres — działa także przy wyłączonej wysyłce.</p>
         <div className="flex flex-wrap items-center gap-2">
-          <select className={`${INPUT} w-auto`} value={testKind} onChange={(e) => setTestKind(e.target.value as "cennik" | "rezerwacja")} aria-label="Który mail">
+          <select className={`${INPUT} w-auto`} value={testKind} onChange={(e) => setTestKind(e.target.value as "cennik" | "rezerwacja" | "zapytanie")} aria-label="Który mail">
             <option value="cennik">mail z cennikiem</option>
             <option value="rezerwacja">potwierdzenie rezerwacji</option>
+            <option value="zapytanie">potwierdzenie zapytania („Zapytaj o wynajem”)</option>
           </select>
           <input className={`${INPUT} max-w-xs`} type="email" value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="adres e-mail" />
           <button type="button" className={BTN} disabled={!!busy || !testTo || (testKind === "cennik" && !cfg.attachments.length)} onClick={() => void sendTest()}>

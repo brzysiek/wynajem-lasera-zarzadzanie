@@ -4,8 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { extractExternalId, parseWebhookBody, parseWwwForm, redactForLog, tokenMatches } from "@/lib/leads/www-form";
 import { sendAlert } from "@/lib/alerts";
 import { intakeWwwForm } from "@/lib/leads/www-intake";
-import { deliverAutoMail, queueWwwPriceMail, queueWwwReservationMail } from "@/lib/leads/auto-mail";
-import { reservationSummary } from "@/lib/leads/auto-mail-render";
+import { deliverAutoMail, queueWwwInquiryMail, queueWwwPriceMail, queueWwwReservationMail } from "@/lib/leads/auto-mail";
+import { inquirySummary, reservationSummary } from "@/lib/leads/auto-mail-render";
 import { logError, logInfo, logWarn } from "@/lib/logger";
 
 // Formularze Contact Form 7 z wynajemlasera.pl → sygnał w panelu (03.10.2026),
@@ -79,8 +79,13 @@ export async function POST(req: NextRequest) {
       try {
         // Wpis o mailu na żywym sygnale (przy ponownym zapytaniu to ten, do którego dopisano zgłoszenie).
         const base = { leadId: res.mergedInto ?? res.leadId ?? null, email: form.email, name: form.name };
+        // Formularz „Zapytaj o wynajem” (wniosek 62) dostaje mail o ZAPYTANIU, nie o rezerwacji.
         const mailId =
-          form.type === "POBRANIE_CENNIKA" ? await queueWwwPriceMail(base) : await queueWwwReservationMail({ ...base, summary: reservationSummary(form) });
+          form.type === "POBRANIE_CENNIKA"
+            ? await queueWwwPriceMail(base)
+            : form.inquiry
+              ? await queueWwwInquiryMail({ ...base, summary: inquirySummary(form) })
+              : await queueWwwReservationMail({ ...base, summary: reservationSummary(form) });
         if (mailId) after(() => deliverAutoMail(mailId).then(() => undefined));
       } catch (err) {
         logError("auto_mail_queue_failed", err);

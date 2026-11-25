@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const to = typeof b?.to === "string" ? b.to.trim().toLowerCase() : "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return NextResponse.json({ message: "Podaj poprawny adres e-mail." }, { status: 400 });
   const name = typeof b?.name === "string" && b.name.trim() ? b.name.trim() : null;
-  const res = await sendTestAutoMail(to, name, b?.kind === "rezerwacja" ? "rezerwacja" : "cennik");
+  const res = await sendTestAutoMail(to, name, b?.kind === "rezerwacja" ? "rezerwacja" : b?.kind === "zapytanie" ? "zapytanie" : "cennik");
   if (!res.ok) return NextResponse.json({ message: `Nie wysłano: ${res.error}` }, { status: 502 });
   return NextResponse.json({ ok: true });
 }

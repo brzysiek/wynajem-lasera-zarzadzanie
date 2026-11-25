@@ -3,7 +3,7 @@ import { normalizePolishPhone } from "@/lib/reminders";
 import { isLocked, readFieldMeta } from "@/lib/clients/profile-fields";
 import { isPlaceholderEmail } from "@/lib/clients/placeholder";
 import { loadExclusionMatcher } from "@/lib/porzadki/exclusion-load";
-import { FIRST_CONTACT_SLA_HOURS, addWorkHours, reservationFirstStep } from "@/lib/leads/funnel";
+import { FIRST_CONTACT_SLA_HOURS, addWorkHours, emailOnlyFirstStep, reservationFirstStep } from "@/lib/leads/funnel";
 import { defaultLeadOwnerId } from "@/lib/leads/owner";
 import { intakeRules, mergeRepeatInquiry, DUPLICATE_WINDOW_MIN } from "@/lib/leads/intake";
 import { leadTitle } from "@/lib/leads/parse-deal";
@@ -100,7 +100,10 @@ export async function intakeWwwForm(form: WwwForm, now = new Date()): Promise<Ww
   const owner = await defaultLeadOwnerId();
   // Rezerwacja WWW: krok „pierwszy telefon” z notatką (wniosek 38); pilny, gdy
   // termin rezerwacji wypada w ciągu 3 dni.
-  const resStep = form.type === "REZERWACJA_WWW" ? reservationFirstStep(now, { requestedFrom: form.requestedFrom, hasCity: !!form.city }) : null;
+  const baseResStep = form.type === "REZERWACJA_WWW" ? reservationFirstStep(now, { requestedFrom: form.requestedFrom, hasCity: !!form.city }) : null;
+  // Formularz „Zapytaj o wynajem” (wniosek 62): tylko e-mail, bez telefonu → pierwszy kontakt mailem.
+  const emailOnly = !!baseResStep && form.inquiry && !phone && !!email;
+  const resStep = baseResStep && emailOnly ? emailOnlyFirstStep(baseResStep) : baseResStep;
   const funnel = intake.duplicateOf
     ? { archivedAt: now, archiveReason: "DUPLIKAT", archiveNote: `ponowne zapytanie — scalone z otwartym sygnałem ${intake.duplicateOf.id}` }
     : intake.returning
@@ -139,7 +142,7 @@ export async function intakeWwwForm(form: WwwForm, now = new Date()): Promise<Ww
     await tx.leadActivity.createMany({
       data: [
         { leadId: l.id, clientId: ref?.clientId ?? null, type: "SYSTEM", body: `Sygnał z formularza WWW (${form.rawType || "inny"}) — bezpośrednio ze strony, bez HubSpota`, createdAt: now },
-        ...(resStep?.urgentInDays != null && !intake.duplicateOf
+        ...(resStep?.urgentInDays != null && !emailOnly && !intake.duplicateOf
           ? [{ leadId: l.id, clientId: ref?.clientId ?? null, type: "SYSTEM" as const, body: `PILNE: termin rezerwacji ${resStep.urgentInDays === 0 ? "dziś" : resStep.urgentInDays === 1 ? "jutro" : `za ${resStep.urgentInDays} dni`} — zadzwonić od razu`, createdAt: now }]
           : []),
         ...(form.test ? [{ leadId: l.id, clientId: null, type: "SYSTEM" as const, body: "TEST — sprawdzenie formularza po wdrożeniu, do usunięcia (Porządki → Archiwum)", createdAt: now }] : []),

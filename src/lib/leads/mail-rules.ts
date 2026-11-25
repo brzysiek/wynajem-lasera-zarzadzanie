@@ -14,6 +14,7 @@ export const AUTO_WWW_MAIL_SUBJECTS = [
   AUTO_PRICE_LIST_SUBJECT,
   "Wstępna rezerwacja sprzętu WynajemLasera.pl",
   "Otrzymaliśmy Twoją rezerwację — WynajemLasera.pl",
+  "Otrzymaliśmy Twoje zapytanie — WynajemLasera.pl", // formularz „Zapytaj o wynajem” (wniosek 62)
 ];
 // Porównanie odporne na wielkość liter, podwójne spacje i rodzaj myślnika.
 const canon = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ").replace(/[—–-]+/g, "-");

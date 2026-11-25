@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaffSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
-import { AUTO_MAIL_ENABLED_KEY, AUTO_MAIL_FROM_NAME_KEY, FOOTER_TEMPLATE_KEY, REZ_MAIL_ENABLED_KEY, REZ_MAIL_TEMPLATE_KEY, ensureAutoMailTemplates, loadAutoMailConfig, recentAutoMails } from "@/lib/leads/auto-mail";
+import { AUTO_MAIL_ENABLED_KEY, AUTO_MAIL_FROM_NAME_KEY, FOOTER_TEMPLATE_KEY, INQUIRY_MAIL_TEMPLATE_KEY, REZ_MAIL_ENABLED_KEY, REZ_MAIL_TEMPLATE_KEY, ensureAutoMailTemplates, loadAutoMailConfig, recentAutoMails } from "@/lib/leads/auto-mail";
 import { AUTO_MAIL_TEMPLATE_KEY } from "@/lib/leads/auto-mail-render";
 import { ALERT_EMAIL_KEY } from "@/lib/alerts";
 import { validAlertEmail } from "@/lib/ops/health-rules";
@@ -28,6 +28,8 @@ export async function PUT(req: NextRequest) {
     rezSubject?: unknown;
     rezBody?: unknown;
     rezEnabled?: unknown;
+    inqSubject?: unknown;
+    inqBody?: unknown;
     footer?: unknown;
     alertEmail?: unknown;
   } | null;
@@ -40,10 +42,12 @@ export async function PUT(req: NextRequest) {
   const rezSubject = typeof b.rezSubject === "string" ? b.rezSubject.trim() : cfg.rez.subject;
   const rezBody = typeof b.rezBody === "string" ? b.rezBody.trim() : cfg.rez.body;
   const rezEnabled = typeof b.rezEnabled === "boolean" ? b.rezEnabled : cfg.rez.enabled;
+  const inqSubject = typeof b.inqSubject === "string" ? b.inqSubject.trim() : cfg.inquiry.subject;
+  const inqBody = typeof b.inqBody === "string" ? b.inqBody.trim() : cfg.inquiry.body;
   const footer = typeof b.footer === "string" ? b.footer.trim() : cfg.footer;
   const alertEmail = typeof b.alertEmail === "string" ? b.alertEmail.trim().toLowerCase() : cfg.alertEmail;
   if (alertEmail && !validAlertEmail(alertEmail)) return NextResponse.json({ message: "Adres alarmów jest niepoprawny." }, { status: 400 });
-  if (!subject || !body || !rezSubject || !rezBody) return NextResponse.json({ message: "Temat i treść nie mogą być puste." }, { status: 400 });
+  if (!subject || !body || !rezSubject || !rezBody || !inqSubject || !inqBody) return NextResponse.json({ message: "Temat i treść nie mogą być puste." }, { status: 400 });
   if (enabled && !cfg.attachments.length) return NextResponse.json({ message: "Najpierw dodaj załączniki (cennik i katalog)." }, { status: 400 });
 
   await ensureAutoMailTemplates();
@@ -51,6 +55,7 @@ export async function PUT(req: NextRequest) {
   await prisma.$transaction([
     prisma.messageTemplate.update({ where: { key: AUTO_MAIL_TEMPLATE_KEY }, data: { subject, body } }),
     prisma.messageTemplate.update({ where: { key: REZ_MAIL_TEMPLATE_KEY }, data: { subject: rezSubject, body: rezBody } }),
+    prisma.messageTemplate.update({ where: { key: INQUIRY_MAIL_TEMPLATE_KEY }, data: { subject: inqSubject, body: inqBody } }),
     prisma.messageTemplate.update({ where: { key: FOOTER_TEMPLATE_KEY }, data: { body: footer } }),
     prisma.setting.upsert({ where: { key: AUTO_MAIL_FROM_NAME_KEY }, create: { key: AUTO_MAIL_FROM_NAME_KEY, value: fromName }, update: { value: fromName } }),
     flag(AUTO_MAIL_ENABLED_KEY, enabled),

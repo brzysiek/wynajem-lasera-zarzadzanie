@@ -93,7 +93,19 @@ export type WwwForm = {
   courseDate: string | null;
   attribution: Record<string, string | string[]>;
   test: boolean; // e-mail test+www-…@wynajemlasera.pl (sprawdzenie po wdrożeniu)
+  inquiry: boolean; // formularz „Zapytaj o wynajem” (CF7 6252, wniosek 62) — to zapytanie, nie rezerwacja
 };
+
+// Typ wysyłany do panelu zostaje „rezerwacja-wynajmu” (pomiar i konwersja), więc nowy formularz rozpoznajemy po
+// pierwszej linii wiadomości („Formularz: zapytanie o wynajem (v1)”) albo po ID formularza CF7 (_wpcf7 = 6252).
+export const INQUIRY_FORM_ID = "6252";
+export function isInquiryForm(body: Record<string, unknown>): boolean {
+  const msg = body["contact-message"];
+  const text = Array.isArray(msg) ? String(msg[0] ?? "") : typeof msg === "string" ? msg : "";
+  if (/^\s*Formularz:\s*zapytanie o wynajem/i.test(text)) return true;
+  const id = body["_wpcf7"];
+  return String(Array.isArray(id) ? id[0] : (id ?? "")).trim() === INQUIRY_FORM_ID;
+}
 
 type Body = Record<string, unknown>;
 
@@ -156,7 +168,11 @@ export function parseWwwForm(body: Body): WwwForm {
   const rawType = (str(body.text) ?? "").toLowerCase();
   const type = WWW_TYPE[rawType] ?? "INNE";
   // Rezerwacja wysyła contact-device; formularz cennika — pole „urzadzenie”.
+  const inquiry = isInquiryForm(body);
+  // Nowy formularz wpisuje urządzenie w wiadomość („Konfiguracja: …”) — gdy pola contact-device brak, bierzemy stamtąd.
+  const configLine = inquiry ? (str(body["contact-message"])?.match(/^[ \t]*Konfiguracja[ \t]*:[ \t]*(.+)$/im)?.[1]?.trim() ?? null) : null;
   const devicesList = [...list(body["contact-device"]), ...list(body["urzadzenie"])];
+  if (!devicesList.length && configLine) devicesList.push(configLine);
   const devicesText = devicesList.length ? devicesList.join(", ") : null;
   const devices = [...new Set(interestsFromText(devicesText).filter((d) => d !== "SZKOLENIE"))] as DeviceInterestKey[];
   const email = str(body["contact-email"])?.toLowerCase() ?? null;
@@ -211,6 +227,7 @@ export function parseWwwForm(body: Body): WwwForm {
     courseDate,
     attribution,
     test: !!email && /^test\+www-/.test(email),
+    inquiry,
   };
 }
 

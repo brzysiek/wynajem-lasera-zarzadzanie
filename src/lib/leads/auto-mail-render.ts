@@ -24,7 +24,36 @@ export const DEFAULT_RESERVATION_MAIL = {
     "Masz pytanie? Zadzwoń do Ani: +48 531 574 115 albo odpisz na tę wiadomość.",
 };
 
+// Mail po formularzu „Zapytaj o wynajem” (CF7 6252, wniosek 62): komunikujemy ZAPYTANIE, nie rezerwację —
+// bez słów „rezerwacja potwierdzona / Twoja rezerwacja”, bez obietnicy telefonu „od razu”.
+export const DEFAULT_INQUIRY_MAIL = {
+  subject: "Otrzymaliśmy Twoje zapytanie — WynajemLasera.pl",
+  body:
+    "Dzień dobry {imie},\n\ndziękujemy za zapytanie o wynajem. Oto, co od Ciebie otrzymaliśmy:\n\n{zgloszenie}\n\n" +
+    "Co dalej? Ania odezwie się z ceną (z dojazdem do Twojego gabinetu) i wolnymi terminami — telefonicznie albo mailem, zależnie od podanego kontaktu. " +
+    "To nie jest rezerwacja: nic nie płacisz i do niczego się nie zobowiązujesz.\n\n" +
+    "Pilne? Zadzwoń do Ani: +48 531 574 115 albo odpisz na tę wiadomość.",
+};
+
 export type SummaryRow = { label: string; value: string };
+
+// Wartość z linii „Etykieta: wartość” w treści wiadomości (formularz składa wiadomość sam).
+export function messageLine(message: string | null | undefined, label: string): string | null {
+  const esc = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = (message ?? "").match(new RegExp(`^[ \\t]*${esc}[ \\t]*:[ \\t]*(.+)$`, "im"));
+  return m?.[1].trim() || null;
+}
+
+// Blok zgłoszenia do maila po formularzu „Zapytaj o wynajem”: urządzenie, miejscowość, „kiedy mniej więcej”.
+export function inquirySummary(f: { devicesText: string | null; city: string | null; message: string | null }): SummaryRow[] {
+  return (
+    [
+      { label: "Urządzenie", value: f.devicesText ?? messageLine(f.message, "Konfiguracja") },
+      { label: "Miejscowość gabinetu", value: f.city },
+      { label: "Kiedy mniej więcej", value: messageLine(f.message, "Kiedy mniej więcej") },
+    ] as { label: string; value: string | null }[]
+  ).filter((r): r is SummaryRow => !!r.value?.trim());
+}
 
 // Blok zgłoszenia do maila potwierdzającego — wartości tak, jak wybrała
 // klientka (surowe pola formularza), puste pomijane.
