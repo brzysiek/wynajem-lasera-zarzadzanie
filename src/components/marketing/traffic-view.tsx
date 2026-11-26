@@ -2,13 +2,27 @@
 
 import { useMemo, useState } from "react";
 import { MIN_VISITS } from "@/lib/traffic/ingest";
-import { GT_KINDS, type AttentionStats, type TrafficReport } from "@/lib/traffic/report";
+import { GT_KINDS, INQUIRY_STAGES, type AttentionStats, type FormFunnel, type InquiryStage, type TrafficReport } from "@/lib/traffic/report";
 
 // Marketing → Ruch na stronie (wniosek 54, etap 2): dane z anonimowego licznika (bez ciasteczek) —
 // liczy wszystkie wejścia, także osób, które odrzuciły baner. Układ jak w makiecie.
 
 const INT = (n: number) => n.toLocaleString("pl-PL");
 const GT_NAMES: Record<(typeof GT_KINDS)[number], string> = { gclid: "gclid", gbraid: "gbraid (iPhone / Safari)", wbraid: "wbraid", inne: "inne połączenia (np. gclid+gbraid)", brak: "brak danych (sprzed 24.11)" };
+const STAGE_NAMES: Record<InquiryStage, string> = {
+  urzadzenie: "urządzenie",
+  kontakt: "kontakt",
+  miejscowosc: "miejscowość",
+  kiedy: "„Kiedy”",
+  data: "data / dni",
+  imie: "imię",
+  zgoda: "zgoda",
+  wyslij_bez_skutku: "„Wyślij” bez wysłania",
+  inne: "inne",
+  nieznane: "nieznane",
+  otwarte_bez_dotkniecia: "otwarte bez dotyku",
+};
+const funnelText = (f: FormFunnel) => `${f.views}${f.opened !== null ? ` (otwarć ${f.opened})` : ""} → ${f.started} → ${f.tried} → ${f.sent}`;
 const DEV_LABEL: Record<string, string> = { telefon: "telefon", tablet: "tablet", komputer: "komputer", nieznane: "nieznane" };
 
 function Kpi({ title, children }: { title: string; children: React.ReactNode }) {
@@ -254,6 +268,27 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
                 <div className="text-sm text-gray-700">
                   wyświetlenia {INT(f.views)} → start {INT(f.started)} → próba {INT(f.tried)} → wysłany <b>{INT(f.sent)}</b>
                 </div>
+                {f.opened !== null && <div className="text-xs text-gray-500">otwarć okna {INT(f.opened)}</div>}
+                {f.abandonStages && (
+                  <div className="mt-1 text-xs text-gray-600">
+                    Porzucenia wg etapu:{" "}
+                    {INQUIRY_STAGES.filter((k) => f.abandonStages![k] !== null && (f.abandonStages![k] as number) > 0).map((k) => (
+                      <span key={k} className="mr-2">
+                        {STAGE_NAMES[k]} <b>{f.abandonStages![k]}</b>
+                      </span>
+                    ))}
+                    {INQUIRY_STAGES.every((k) => !f.abandonStages![k]) && <span className="text-gray-400">brak porzuceń</span>}
+                    {f.abandonStages.otwarte_bez_dotkniecia === null && <span className="text-gray-400"> · „otwarte bez dotyku” — wymaga zdarzenia form_otwarty ze skryptu</span>}
+                  </div>
+                )}
+                {f.byPath.length > 1 && (
+                  <div className="mt-1 text-xs text-gray-600">
+                    Wg stron: {f.byPath.map((p) => `${p.path} ${p.views}→${p.started}→${p.tried}→${p.sent}`).join(" · ")}
+                  </div>
+                )}
+                {f.byDev.length > 1 && (
+                  <div className="text-xs text-gray-600">Wg urządzeń: {f.byDev.map((p) => `${p.dev} ${p.views}→${p.started}→${p.tried}→${p.sent}`).join(" · ")}</div>
+                )}
                 {f.abandonSteps && (
                   <div className="mt-1 text-xs text-gray-600">
                     Porzucenia wg kroku: krok 1 (przyciski) <b>{f.abandonSteps.krok1_przycisk}</b> · krok 2 (pola) <b>{f.abandonSteps.krok2_pola}</b>
@@ -275,6 +310,35 @@ export function TrafficView({ report, comparison }: { report: TrafficReport; com
             ))
           )}
         </Card>
+
+        {report.inquiryWindow && (
+          <Card title="Okno zapytania — przed / po" sub="Stare okno (5878 + 5795) i nowe (6252) razem; odsłony liczone raz na stronę. Kolejność: odsłony → start → próba → wysłany" className="lg:col-span-2">
+            <div className="mb-2 text-sm text-gray-700">
+              Stare: <b>{funnelText(report.inquiryWindow.stare)}</b> · Nowe: <b>{funnelText(report.inquiryWindow.nowe)}</b>
+            </div>
+            <div className="mb-2 text-xs text-gray-500">{report.inquiryWindow.forms.map((x) => `${x.form}: ${x.from} – ${x.to}`).join(" · ")}</div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[420px] text-sm">
+                <thead className="text-xs text-gray-500">
+                  <tr>
+                    <th className="py-1 text-left font-medium">Strona</th>
+                    <th className="py-1 text-left font-medium">Stare</th>
+                    <th className="py-1 text-left font-medium">Nowe</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.inquiryWindow.byPath.map((p) => (
+                    <tr key={p.path} className="border-t border-gray-100">
+                      <td className="py-1.5">{p.path}</td>
+                      <td className="py-1.5 tabular-nums">{funnelText(p.stare)}</td>
+                      <td className="py-1.5 tabular-nums">{funnelText(p.nowe)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
 
         <Card title="Gdzie klikają" sub="Najczęściej klikane elementy; telefon wg strony; mapa kliknięć i mapa uwagi" className="lg:col-span-2">
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

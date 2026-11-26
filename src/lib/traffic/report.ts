@@ -50,6 +50,40 @@ export function abandonStep(field: string): AbandonStep {
 }
 export type AbandonSteps = Record<AbandonStep, number>;
 
+// Wniosek 63: formularz zapytania 6252 jest jednoekranowy — „etap” = ostatni element, którego dotknięto przed wyjściem
+// (nazwy pól z `form_porzucony.pole` / `form_blad.pola`, od skryptu v3: pole z name albo „[klasa] napis”).
+export const INQUIRY_FORM_ID = "6252";
+export const INQUIRY_STAGES = ["urzadzenie", "kontakt", "miejscowosc", "kiedy", "data", "imie", "zgoda", "wyslij_bez_skutku", "inne", "nieznane", "otwarte_bez_dotkniecia"] as const;
+export type InquiryStage = (typeof INQUIRY_STAGES)[number];
+export type InquiryStages = Record<InquiryStage, number | null>;
+export function inquiryStage(field: string): InquiryStage {
+  if (!field || field === "(nieznane pole)") return "nieznane";
+  const m = /^\[([^\]]*)\]\s*(.*)$/.exec(field);
+  const cls = (m ? m[1] : "").trim().toLowerCase();
+  const text = (m ? m[2] : field).trim().toLowerCase();
+  if (cls === "zf-chg" || /^zq-dev/.test(text)) return "urzadzenie";
+  if (cls === "zf-go") return "wyslij_bez_skutku";
+  if (cls === "zf-datebtn" || cls === "zf-days" || /^contact-(date|days)/.test(text)) return "data";
+  if (cls === "zf-kiedy" || /^(w tym miesiącu|w przyszłym|jeszcze nie wiem)/.test(text)) return "kiedy";
+  if (/^wl-kontakt|^contact-(email|phone|tel)/.test(text)) return "kontakt";
+  if (/^miejscowosc|^contact-(city|miejsc)/.test(text)) return "miejscowosc";
+  if (/^contact-name/.test(text)) return "imie";
+  if (/^acceptance/.test(text)) return "zgoda";
+  return "inne";
+}
+export const emptyStages = (): InquiryStages => Object.fromEntries(INQUIRY_STAGES.map((k) => [k, k === "otwarte_bez_dotkniecia" ? null : 0])) as InquiryStages;
+
+// Okno zapytania na stronie: stare 5878 + 5795 (do 25/26.11.2026) i nowe 6252 — liczone razem, bez podwójnego liczenia odsłon.
+export const INQUIRY_WINDOW_OLD = ["5878", "5795"];
+export const INQUIRY_WINDOW_NEW = [INQUIRY_FORM_ID];
+export type FormFunnel = { views: number; opened: number | null; started: number; tried: number; sent: number };
+export type InquiryWindow = {
+  forms: { form: string; group: "stare" | "nowe"; from: string; to: string; started: number; tried: number; sent: number }[];
+  stare: FormFunnel;
+  nowe: FormFunnel;
+  byPath: { path: string; stare: FormFunnel; nowe: FormFunnel }[];
+};
+
 export type TrafficReport = {
   from: string;
   to: string;
@@ -85,7 +119,13 @@ export type TrafficReport = {
     errors: { field: string; count: number }[];
     abandoned: { field: string; count: number; errorsAvg: number }[];
     abandonSteps: AbandonSteps | null; // tylko formularze wielokrokowe
+    opened: number | null; // otwarcia okna (zdarzenie form_otwarty, wniosek 63); null = skrypt jeszcze ich nie wysyła
+    abandonStages: InquiryStages | null; // tylko formularz zapytania 6252 (jednoekranowy)
+    errorStages: InquiryStages | null;
+    byPath: ({ path: string } & FormFunnel)[];
+    byDev: ({ dev: string } & FormFunnel)[];
   }[];
+  inquiryWindow: InquiryWindow | null;
   clicks: {
     top: { rodzaj: string; etyk: string; path: string; dev: string; count: number }[];
     phoneByPath: { path: string; count: number }[];
@@ -278,23 +318,22 @@ export function buildTrafficReport(rows: TrafficRow[], range: { from: string; to
     .sort((a, b) => b.count - a.count);
 
   // ---- formularze
-  const fm = new Map<string, { paths: Set<string>; start: Set<string>; proba: Set<string>; sent: Set<string>; err: Map<string, number>; ab: Map<string, { count: number; errs: number }> }>();
+  const fm = new Map<string, { paths: Set<string>; err: Map<string, number>; ab: Map<string, { count: number; errs: number }> }>();
   const fmOf = (id: string) => {
     let x = fm.get(id);
     if (!x) {
-      x = { paths: new Set(), start: new Set(), proba: new Set(), sent: new Set(), err: new Map(), ab: new Map() };
+      x = { paths: new Set(), err: new Map(), ab: new Map() };
       fm.set(id, x);
     }
     return x;
   };
+  const formRows: TrafficRow[] = [];
   for (const r of all) {
     const id = s(d(r).form);
     if (!id) continue;
+    formRows.push(r);
     const x = fmOf(id);
     x.paths.add(r.path);
-    if (r.type === "form_start") x.start.add(r.pv);
-    if (r.type === "form_proba") x.proba.add(r.pv);
-    if (r.type === "form_wyslany") x.sent.add(r.pv);
     if (r.type === "form_blad") for (const field of (Array.isArray(d(r).pola) ? (d(r).pola as unknown[]) : []).map(s).filter(Boolean)) x.err.set(field, (x.err.get(field) ?? 0) + 1);
     if (r.type === "form_porzucony") {
       const field = s(d(r).pole) || "(nieznane pole)";
@@ -304,27 +343,104 @@ export function buildTrafficReport(rows: TrafficRow[], range: { from: string; to
       x.ab.set(field, a);
     }
   }
+  const uniqPv = (rs: TrafficRow[], type: string) => new Set(rs.filter((r) => r.type === type).map((r) => r.pv));
+  // Lejek z wierszy zdarzeń formularza (rs) i odsłon stron (viewRows); `openKnown` = skrypt wysyła form_otwarty.
+  const funnel = (rs: TrafficRow[], viewRows: TrafficRow[], openKnown: boolean): FormFunnel => ({
+    views: viewRows.length,
+    opened: openKnown ? uniqPv(rs, "form_otwarty").size : null,
+    started: uniqPv(rs, "form_start").size,
+    tried: uniqPv(rs, "form_proba").size,
+    sent: uniqPv(rs, "form_wyslany").size,
+  });
   // Podział porzuceń na krok 1 (przyciski) i krok 2 (pola) — dla formularzy wielokrokowych (po id albo po nazwach „[klasa] napis”).
   const multistep = (form: string, ab: Map<string, { count: number; errs: number }>): AbandonSteps | null => {
+    if (form.includes(INQUIRY_FORM_ID)) return null; // jednoekranowy — patrz abandonStages
     const isMulti = MULTISTEP_FORMS.some((id) => form.includes(id)) || [...ab.keys()].some((f) => f.startsWith("["));
     if (!isMulti) return null;
     const out: AbandonSteps = { krok1_przycisk: 0, krok2_pola: 0, inne_przyciski: 0, nieznane: 0 };
     for (const [field, a] of ab) out[abandonStep(field)] += a.count;
     return out;
   };
+  const stagesOf = (m: Map<string, { count: number } | number>): InquiryStages => {
+    const out = emptyStages();
+    for (const [field, v] of m) out[inquiryStage(field)] = (out[inquiryStage(field)] ?? 0) + (typeof v === "number" ? v : v.count);
+    return out;
+  };
   const forms = [...fm.entries()]
-    .map(([form, x]) => ({
-      form,
-      paths: [...x.paths].sort(),
-      views: views.filter((v) => x.paths.has(v.path)).length,
-      started: x.start.size,
-      tried: x.proba.size,
-      sent: x.sent.size,
-      errors: [...x.err.entries()].map(([field, count]) => ({ field, count })).sort((a, b) => b.count - a.count),
-      abandoned: [...x.ab.entries()].map(([field, a]) => ({ field, count: a.count, errorsAvg: Math.round((a.errs / a.count) * 10) / 10 })).sort((a, b) => b.count - a.count),
-      abandonSteps: multistep(form, x.ab),
-    }))
+    .map(([form, x]) => {
+      const rs = formRows.filter((r) => s(d(r).form) === form);
+      // Odsłony liczymy od pierwszego zdarzenia tego formularza — wcześniej okno mogło go jeszcze nie mieć (wniosek 63).
+      const first = Math.min(...rs.map((r) => r.at.getTime()));
+      const vr = views.filter((v) => x.paths.has(v.path) && v.at.getTime() >= first);
+      const openKnown = rs.some((r) => r.type === "form_otwarty");
+      const total = funnel(rs, vr, openKnown);
+      const isInquiry = form.includes(INQUIRY_FORM_ID);
+      let abandonStages: InquiryStages | null = null;
+      let errorStages: InquiryStages | null = null;
+      if (isInquiry) {
+        abandonStages = stagesOf(x.ab);
+        errorStages = stagesOf(x.err);
+        errorStages.otwarte_bez_dotkniecia = null;
+        // okno otwarte, ale bez żadnego dotyku (start liczony też po tapnięciu) i bez porzucenia
+        const touched = new Set(rs.filter((r) => r.type === "form_start" || r.type === "form_porzucony").map((r) => r.pv));
+        abandonStages.otwarte_bez_dotkniecia = openKnown ? [...uniqPv(rs, "form_otwarty")].filter((pv) => !touched.has(pv)).length : null;
+      }
+      return {
+        form,
+        paths: [...x.paths].sort(),
+        views: total.views,
+        started: total.started,
+        tried: total.tried,
+        sent: total.sent,
+        errors: [...x.err.entries()].map(([field, count]) => ({ field, count })).sort((a, b) => b.count - a.count),
+        abandoned: [...x.ab.entries()].map(([field, a]) => ({ field, count: a.count, errorsAvg: Math.round((a.errs / a.count) * 10) / 10 })).sort((a, b) => b.count - a.count),
+        abandonSteps: multistep(form, x.ab),
+        opened: total.opened,
+        abandonStages,
+        errorStages,
+        byPath: [...x.paths].sort().map((path) => ({ path, ...funnel(rs.filter((r) => r.path === path), vr.filter((v) => v.path === path), openKnown) })).sort((a, b) => b.views - a.views),
+        byDev: [...new Set(rs.map((r) => r.dev))].sort().map((dev) => ({ dev, ...funnel(rs.filter((r) => r.dev === dev), vr.filter((v) => v.dev === dev), openKnown) })),
+      };
+    })
     .sort((a, b) => b.started - a.started);
+
+  // Okno zapytania (wniosek 63): stare 5878 + 5795 i nowe 6252 razem — odsłony liczone raz na stronę, bez podwójnego liczenia.
+  const idIn = (form: string, ids: string[]) => ids.some((id) => form.includes(id));
+  const day = (dt: Date) => dt.toLocaleDateString("sv-SE", { timeZone: "Europe/Warsaw" });
+  const groupRows = (ids: string[]) => formRows.filter((r) => idIn(s(d(r).form), ids));
+  const oldRows = groupRows(INQUIRY_WINDOW_OLD);
+  const newRows = groupRows(INQUIRY_WINDOW_NEW);
+  const inquiryWindow: InquiryWindow | null =
+    oldRows.length + newRows.length === 0
+      ? null
+      : (() => {
+          const openKnown = newRows.some((r) => r.type === "form_otwarty") || oldRows.some((r) => r.type === "form_otwarty");
+          // Odsłony strony od pierwszego zdarzenia grupy; stare okno — tylko do pierwszego zdarzenia nowego (potem go nie było).
+          const firstOf = (rs: TrafficRow[]) => (rs.length ? Math.min(...rs.map((r) => r.at.getTime())) : null);
+          const oldFrom = firstOf(oldRows);
+          const newFrom = firstOf(newRows);
+          const of = (rs: TrafficRow[], from: number | null, to: number | null, path?: string) => {
+            const sub = path ? rs.filter((r) => r.path === path) : rs;
+            const paths = new Set(path ? (sub.length ? [path] : []) : rs.map((r) => r.path));
+            const vr = views.filter((v) => paths.has(v.path) && from !== null && v.at.getTime() >= from && (to === null || v.at.getTime() < to));
+            return funnel(sub, vr, openKnown);
+          };
+          const allPaths = [...new Set([...oldRows, ...newRows].map((r) => r.path))];
+          return {
+            forms: [...fm.keys()]
+              .filter((f) => idIn(f, [...INQUIRY_WINDOW_OLD, ...INQUIRY_WINDOW_NEW]))
+              .map((form) => {
+                const rs = formRows.filter((r) => s(d(r).form) === form);
+                const times = rs.map((r) => r.at.getTime());
+                const f = funnel(rs, [], false);
+                return { form, group: idIn(form, INQUIRY_WINDOW_NEW) ? ("nowe" as const) : ("stare" as const), from: day(new Date(Math.min(...times))), to: day(new Date(Math.max(...times))), started: f.started, tried: f.tried, sent: f.sent };
+              })
+              .sort((a, b) => a.from.localeCompare(b.from)),
+            stare: of(oldRows, oldFrom, newFrom),
+            nowe: of(newRows, newFrom, null),
+            byPath: allPaths.map((path) => ({ path, stare: of(oldRows, oldFrom, newFrom, path), nowe: of(newRows, newFrom, null, path) })).sort((a, b) => b.stare.views + b.nowe.views - (a.stare.views + a.nowe.views)),
+          };
+        })();
 
   // ---- kliknięcia
   const top = new Map<string, { rodzaj: string; etyk: string; path: string; dev: string; count: number }>();
@@ -363,6 +479,7 @@ export function buildTrafficReport(rows: TrafficRow[], range: { from: string; to
     pages,
     transitions,
     forms,
+    inquiryWindow,
     clicks: {
       top: [...top.values()].sort((a, b) => b.count - a.count).slice(0, 40),
       phoneByPath: [...phone.entries()].map(([path, count]) => ({ path, count })).sort((a, b) => b.count - a.count),

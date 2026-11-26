@@ -141,7 +141,19 @@ const TASK_INCLUDE = {
 } as const;
 
 // Raport ruchu v3: rozbicie wejść Google Ads wg rodzaju kliknięcia (pole gt skryptu) w polskich kluczach.
-const FORM_NOTE = "Od 24.11.2026 (skrypt v3) start formularza liczony jest też po tapnięciu / kliknięciu w przycisk formularza, a przyciski bez atrybutu name mają nazwy „[klasa] napis” — liczba startów może wzrosnąć, więc porównuj okresy z granicą 24.11. porzucenia_wg_krokow (formularze wielokrokowe 5878, 5795): krok_1_przyciski = pole zaczyna się od [lsr-tile] / [button] / [lsr-next], krok_2_pola = pola z name.";
+const FORM_NOTE = "Od 24.11.2026 (skrypt v3) start formularza liczony jest też po tapnięciu / kliknięciu w przycisk formularza, a przyciski bez atrybutu name mają nazwy „[klasa] napis” — liczba startów może wzrosnąć, więc porównuj okresy z granicą 24.11. porzucenia_wg_krokow (formularze wielokrokowe 5878, 5795): krok_1_przyciski = pole zaczyna się od [lsr-tile] / [button] / [lsr-next], krok_2_pola = pola z name. porzucenia_wg_krokow dotyczy tylko starych formularzy 5878 / 5795 (do 25–26.11). Od 26.11.2026 jedynym formularzem zapytania jest 6252 (jednoekranowy): porzucenia_wg_etapu = ostatni dotknięty element przed wyjściem (urzadzenie, kontakt, miejscowosc, kiedy, data, imie, zgoda, wyslij_bez_skutku = klik „Wyślij” bez wysłania, inne, nieznane; otwarte_bez_dotkniecia = okno otwarte bez dotyku — tylko gdy skrypt wysyła zdarzenie form_otwarty, inaczej null), bledy_wg_etapu = to samo dla błędów walidacji, lejek_wg_stron / lejek_wg_urzadzen = lejek osobno dla każdej strony i urządzenia. okno_zapytania = stare okno (5878 + 5795) i nowe (6252) razem, z datami pierwszego i ostatniego zdarzenia każdego formularza, odsłony liczone raz na stronę. wyswietlenia = odsłony stron, na których formularz wystąpił w zdarzeniach (nie otwarcia okna); otwarcia_okna = zdarzenia form_otwarty (null, dopóki skrypt ich nie wysyła).";
+// Lejek formularza w odpowiedzi MCP (wniosek 63); label + key dodają nazwę strony / urządzenia.
+type FunnelIn = { views: number; opened: number | null; started: number; tried: number; sent: number };
+const funnelJson =
+  (label?: string, key?: "path" | "dev") =>
+  (f: FunnelIn & { path?: string; dev?: string }) => ({
+    ...(label && key ? { [label]: f[key] } : {}),
+    wyswietlenia: f.views,
+    otwarcia_okna: f.opened,
+    start: f.started,
+    proba: f.tried,
+    wyslany: f.sent,
+  });
 const GT_LABEL: Record<(typeof GT_KINDS)[number], string> = { gclid: "gclid", gbraid: "gbraid", wbraid: "wbraid", inne: "inne_polaczenia", brak: "brak_danych" };
 function gtJson(b: GtBreakdown) {
   const kinds = Object.fromEntries(GT_KINDS.map((k) => [GT_LABEL[k], { wejscia: b[k].visits, urzadzenia: b[k].byDev, start_formularza: b[k].formStarts }]));
@@ -490,7 +502,7 @@ export const TOOLS: McpTool[] = [
       "sekcja: kanaly (wejścia wg kanału i urządzenia: Google Ads wg kampanii, Google organiczne, Bing, Meta, Facebook / Instagram organiczne, poczta, bezpośrednio, inne domeny; kafelki; porównanie wejść z Google Ads wg kampanii z zapytaniami z tej kampanii i kliknięciami z importu kosztów za te same dni; od skryptu v3 (24.11.2026) także google_ads_wg_rodzaju_klikniecia — wejścia z Google Ads wg rodzaju kliknięcia gclid / gbraid / wbraid / inne_polaczenia / brak_danych (sprzed 24.11) z urządzeniem i startem formularza, ogółem i wg kampanii, oraz zapytania z kampanii wg identyfikatora zapisanego w atrybucji formularza), " +
       "reklamy (jakość ruchu z reklam: Google Ads kampania → grupa → fraza, Meta kampania → zestaw → reklama; na wiersz: wejscia, wyszli_od_razu_proc, przewiniecie_50_proc, czas_30s_proc, sredni_czas_s (czas aktywny z pomiaru sekundowego, tylko wejścia z pomiarem; z_pomiarem_czasu), klik_telefon, form_start / form_wyslany / form_porzucony + pole_porzucenia, bez_podsumowania, malo_danych (< 20 wejść), wejscia_gbraid_wbraid + gbraid_wbraid_proc (udział gbraid / wbraid w wejściach z ustalonym rodzajem kliknięcia, z_rodzajem_klikniecia; od 24.11); filtr kampania; licznik nie łączy wizyt między stronami — metryki dotyczą strony wejścia), " +
       "zgody (wybór w banerze i stan zgody przy wejściach), strony (odsłony, strony wejścia, wyjścia, średnie przewinięcie, czas w przedziałach, „wyszli od razu”; od skryptu v2 także sredni_czas_s / mediana_czasu_s z czasu aktywnego i uwaga_pasy — mapa uwagi: średnie sekundy na każdy z 10 pasów wysokości strony i odsetek odsłon, które zobaczyły pas, osobno telefon (z tabletem) i komputer; zdarzenia sprzed v2 nie mają tych pól → brak danych, nie zera), przejscia (prev → strona), " +
-      "formularze (lejek: wyświetlenia → start → próba → wysłany, porzucenia z polem i błędy wg formularza; od v3 przyciski mają nazwy „[klasa] napis”, a formularze wielokrokowe — porzucenia_wg_krokow: krok 1 (przyciski) vs krok 2 (pola); start liczony też po tapnięciu — porównuj okresy z granicą 24.11), klikniecia (najczęściej klikane elementy wg strony i urządzenia, telefony wg strony, punkty mapy kliknięć). Bez sekcji — wszystko. " +
+      "formularze (lejek: wyświetlenia → start → próba → wysłany, porzucenia z polem i błędy wg formularza; od v3 przyciski mają nazwy „[klasa] napis”, a formularze wielokrokowe — porzucenia_wg_krokow (stare 5878/5795): krok 1 vs krok 2; dla jednoekranowego 6252 — porzucenia_wg_etapu, lejek_wg_stron, lejek_wg_urzadzen; okno_zapytania = stare i nowe okno razem; start liczony też po tapnięciu — porównuj okresy z granicą 24.11), klikniecia (najczęściej klikane elementy wg strony i urządzenia, telefony wg strony, punkty mapy kliknięć). Bez sekcji — wszystko. " +
       "path zawęża do jednej strony. „Wejście” = początek wizyty; formularz liczony do kanału odsłony, na której się zaczął (wizyt nie łączymy między stronami). Tylko odczyt.",
     inputSchema: obj({
       od: s("Początek okresu RRRR-MM-DD (domyślnie 28 dni wstecz)."),
@@ -586,7 +598,10 @@ export const TOOLS: McpTool[] = [
       }
       if (want("przejscia")) out.przejscia = r.transitions.slice(0, 50).map((t) => ({ z: t.from, na: t.to, liczba: t.count }));
       if (want("formularze")) {
-        out.formularze = r.forms.map((f) => ({ formularz: f.form, strony: f.paths, wyswietlenia: f.views, start: f.started, proba: f.tried, wyslany: f.sent, bledy_wg_pola: f.errors, porzucenia_wg_pola: f.abandoned, ...(f.abandonSteps ? { porzucenia_wg_krokow: { krok_1_przyciski: f.abandonSteps.krok1_przycisk, krok_2_pola: f.abandonSteps.krok2_pola, inne_przyciski: f.abandonSteps.inne_przyciski, nieznane: f.abandonSteps.nieznane } } : {}) }));
+        out.formularze = r.forms.map((f) => ({ formularz: f.form, strony: f.paths, wyswietlenia: f.views, start: f.started, proba: f.tried, wyslany: f.sent, bledy_wg_pola: f.errors, porzucenia_wg_pola: f.abandoned, ...(f.abandonSteps ? { porzucenia_wg_krokow: { krok_1_przyciski: f.abandonSteps.krok1_przycisk, krok_2_pola: f.abandonSteps.krok2_pola, inne_przyciski: f.abandonSteps.inne_przyciski, nieznane: f.abandonSteps.nieznane } } : {}), otwarcia_okna: f.opened, ...(f.abandonStages ? { porzucenia_wg_etapu: f.abandonStages, bledy_wg_etapu: f.errorStages } : {}), lejek_wg_stron: f.byPath.map(funnelJson("strona", "path")), lejek_wg_urzadzen: f.byDev.map(funnelJson("urzadzenie", "dev")) }));
+        out.okno_zapytania = r.inquiryWindow
+          ? { formularze: r.inquiryWindow.forms.map((x) => ({ formularz: x.form, grupa: x.group, od: x.from, do: x.to, start: x.started, proba: x.tried, wyslany: x.sent })), stare_5878_5795: funnelJson()(r.inquiryWindow.stare), nowe_6252: funnelJson()(r.inquiryWindow.nowe), wg_stron: r.inquiryWindow.byPath.map((p) => ({ strona: p.path, stare_5878_5795: funnelJson()(p.stare), nowe_6252: funnelJson()(p.nowe) })) }
+          : null;
         out.uwagi_formularze = FORM_NOTE;
       }
       if (want("klikniecia")) out.klikniecia = { najczestsze: r.clicks.top.map((c) => ({ rodzaj: c.rodzaj, etykieta: c.etyk, strona: c.path, urzadzenie: c.dev, liczba: c.count })), telefon_wg_strony: r.clicks.phoneByPath, punkty_mapy: r.clicks.points.slice(0, 500) };

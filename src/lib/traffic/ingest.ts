@@ -12,7 +12,7 @@ export const MAX_EVENTS = 50;
 export const RATE_LIMIT_PER_MIN = 60;
 
 export const DEVICES = ["telefon", "tablet", "komputer"] as const;
-export const EVENT_TYPES = ["wejscie", "klik", "form_start", "form_proba", "form_wyslany", "form_blad", "form_porzucony", "baner_pokazany", "baner_wybor", "koniec"] as const;
+export const EVENT_TYPES = ["wejscie", "klik", "form_start", "form_proba", "form_wyslany", "form_blad", "form_porzucony", "form_otwarty", "baner_pokazany", "baner_wybor", "koniec"] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 export const CLICK_KINDS = ["telefon", "email", "link_wewn", "link_zewn", "menu", "plik", "przycisk", "inne"] as const;
 export const CONSENT_STATES = ["s1m1", "s1m0", "s0m0", "brak"] as const;
@@ -113,6 +113,7 @@ function parseEvent(raw: unknown): ParsedEvent | null {
     case "form_start":
     case "form_proba":
     case "form_wyslany":
+    case "form_otwarty": // wniosek 63: okno zapytania otwarte (odsłona, na której formularz 6252 faktycznie pokazano)
       data.form = str(o.form, 40);
       break;
     case "form_blad":
